@@ -68,6 +68,36 @@ test('view, try and the project default go through the core', () => {
     assert.doesNotMatch(DRAFT, /['"]\/exec['"]/);
 });
 
+test('the three blocks come from localEdits, panelModel and readPublished', () => {
+    assert.match(DRAFT, /localEdits\(mls\.stor\.files, project\)/);
+    assert.match(DRAFT, /panelModel\(/);
+    assert.match(DRAFT, /readPublished\(/);
+    assert.match(DRAFT, /collab-draft-published-/);
+    const publish = methodOf(DRAFT, 'private async _onPublish');
+    assert.match(publish, /rememberPublished:/);
+    assert.match(publish, /draftFiles/);
+    assert.match(publish, /sessionStorage\.setItem/);
+    const writeAt = publish.indexOf('sessionStorage.setItem');
+    const tryAt = publish.lastIndexOf('try {', writeAt);
+    assert.ok(tryAt !== -1 && tryAt < writeAt, 'the published write sits in try/catch');
+});
+
+test('undo local calls setContent only after confirm', () => {
+    const undo = methodOf(DRAFT, 'private async _onUndoLocal');
+    const confirmAt = undo.indexOf('confirm(');
+    const setAt = undo.indexOf('setContent(');
+    assert.ok(confirmAt !== -1 && setAt > confirmAt, 'setContent sits behind confirm');
+    assert.match(undo, /if\s*\(\s*!confirm\(/);
+    assert.match(undo, /setContent\(file, \{ content: null \}\)/);
+    assert.match(undo, /file\.status = 'nochange'/);
+});
+
+test('serviceDraft.less stays within 15 lines', () => {
+    const less = readFileSync(`${SERVICES}serviceDraft.less`, 'utf8');
+    const lines = less.endsWith('\n') ? less.split('\n').length - 1 : less.split('\n').length;
+    assert.ok(lines <= 15, `serviceDraft.less has ${lines} lines`);
+});
+
 test('serviceDraft is on l5ServicesLeft before serviceSave', () => {
     const draftAt = PLUGIN.indexOf("widget: '_102020_/l2/aura/services/serviceDraft'");
     const saveAt = PLUGIN.indexOf("widget: '_100554_serviceSave'");

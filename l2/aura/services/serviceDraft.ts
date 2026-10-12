@@ -11,7 +11,10 @@ import {
     discard,
     experimentDraft,
     loadPanel,
+    localEdits,
+    panelModel,
     publish,
+    readPublished,
     saveDefaultDraft,
     saveToDraft,
     slugForBranch,
@@ -19,6 +22,9 @@ import {
     type FetchImpl,
     type IDraftWaitResult,
     type IListedDraft,
+    type ILocalEdit,
+    type IPanelModel,
+    type IPublishedRecord,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 
 /// **collab_i18n_start**
@@ -57,6 +63,17 @@ const message_en = {
     defaultSaved: 'Saved as the project default.',
     configMissing: 'The project config could not be read.',
     noDiff: 'No differences.',
+    localTitle: 'In your browser (not saved)',
+    oneFile: '{count} file',
+    manyFiles: '{count} files',
+    withError: 'with error',
+    undoLocal: 'Undo local',
+    confirmUndo: 'Discard the local copy of {file}?',
+    draftTitle: 'In draft {slug} (saved, not published)',
+    publishedTitle: 'Published',
+    release: 'Release',
+    noLocal: 'No files in the browser.',
+    noPublished: 'Nothing published from this browser yet.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -96,6 +113,17 @@ const messages: Record<string, MessageType> = {
         defaultSaved: 'Gravado como padrão do projeto.',
         configMissing: 'Não foi possível ler o config do projeto.',
         noDiff: 'Sem diferenças.',
+        localTitle: 'No seu navegador (não salvo)',
+        oneFile: '{count} arquivo',
+        manyFiles: '{count} arquivos',
+        withError: 'com erro',
+        undoLocal: 'Desfazer local',
+        confirmUndo: 'Descartar a cópia local de {file}?',
+        draftTitle: 'No rascunho {slug} (salvo, não publicado)',
+        publishedTitle: 'Publicado',
+        release: 'Release',
+        noLocal: 'Nenhum arquivo no navegador.',
+        noPublished: 'Nada publicado a partir deste navegador.',
     },
     es: {
         svcTitle: 'Borrador',
@@ -132,6 +160,17 @@ const messages: Record<string, MessageType> = {
         defaultSaved: 'Guardado como predeterminado del proyecto.',
         configMissing: 'No se pudo leer la config del proyecto.',
         noDiff: 'Sin diferencias.',
+        localTitle: 'En su navegador (no guardado)',
+        oneFile: '{count} archivo',
+        manyFiles: '{count} archivos',
+        withError: 'con error',
+        undoLocal: 'Deshacer local',
+        confirmUndo: '¿Descartar la copia local de {file}?',
+        draftTitle: 'En el borrador {slug} (guardado, no publicado)',
+        publishedTitle: 'Publicado',
+        release: 'Release',
+        noLocal: 'Ningún archivo en el navegador.',
+        noPublished: 'Nada publicado desde este navegador.',
     },
 };
 /// **collab_i18n_end**
@@ -145,6 +184,29 @@ interface IDriverView {
 interface IDraftPing {
     promoting?: unknown;
     rebuilding?: boolean;
+    release?: { id?: string } | null;
+}
+
+const blockClass = 'flex flex-col gap-3 px-4 py-4 border-b border-gray-200 dark:border-gray-800';
+const actionClass = 'text-[9px] font-semibold uppercase tracking-wider px-2 py-3 border border-gray-200 dark:border-gray-800 disabled:opacity-30';
+
+function publishedStorageKey(project: number): string {
+    return `collab-draft-published-${project}`;
+}
+
+function readStoredPublished(project: number): IPublishedRecord | null {
+    try {
+        return readPublished(sessionStorage.getItem(publishedStorageKey(project)));
+    } catch (err) {
+        console.error('[serviceDraft] sessionStorage read failed:', err);
+        return null;
+    }
+}
+
+function releaseIdOf(ping: IDraftPing): string | null {
+    const id = ping.release?.id;
+    if (typeof id !== 'string' || id.trim() === '') return null;
+    return id;
 }
 
 interface ICollabRelease {
@@ -211,6 +273,7 @@ export class ServiceDraft102020 extends ServiceBase {
     @state() private _errorFiles: string[] = [];
     @state() private _note = '';
     @state() private _ping: IDraftPing | null = null;
+    @state() private _releaseId: string | null = null;
     @state() private _diffBranch = '';
     @state() private _diffText: string | null = null;
 
@@ -245,50 +308,126 @@ export class ServiceDraft102020 extends ServiceBase {
         }
         if (!isVmDriver(this._driver)) {
             const driver = driverText(this._driver, this.msg.unknownDriver);
-            return html`<p class="not-vm">${this.msg.notVm.replace('{driver}', driver)}</p>`;
+            return html`<div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200"><p class="px-4 py-4">${this.msg.notVm.replace('{driver}', driver)}</p></div>`;
         }
         return this._renderPanel();
     }
 
+    private _countLabel(count: number): string {
+        const template = count === 1 ? this.msg.oneFile : this.msg.manyFiles;
+        return template.replace('{count}', String(count));
+    }
+
+    private _namesSuffix(names: string): string {
+        return names ? ` — ${names}` : '';
+    }
+
     private _renderPanel() {
-        const current = this._current;
-        const branch = current?.branch ?? this._branch ?? '';
-        const files = current?.files ?? [];
+        const project = this._projectId;
+        const edited = project ? collectEditedFiles(mls.stor.files, project) : [];
+        const local = project ? localEdits(mls.stor.files, project) : [];
+        if (edited.length !== local.length) {
+            console.error('[serviceDraft] local list and localEdits diverged', edited.length, local.length);
+        }
+        const model = panelModel({
+            local,
+            draft: this._current ? this._current.files : null,
+            published: project ? readStoredPublished(project) : null,
+            release: this._releaseId,
+        });
         const busy = this._phase === 'loading' || this._phase === 'publishing';
         return html`
-            ${this._phase === 'loading' ? html`<p class="loading">${this.msg.loading}</p>` : nothing}
-            ${this._phase === 'publishing' ? html`<p class="ping">${this._pingText()}</p>` : nothing}
-            ${this._phase === 'error' ? html`<p class="error">${this._error}</p>` : nothing}
-            ${this._errorFiles.length
-                ? html`<ul class="files">${this._errorFiles.map((file) => html`<li>${file}</li>`)}</ul>`
-                : nothing}
-            <div class="row"><span class="label">${this.msg.slug}</span><span>${this._slug}</span></div>
-            <div class="row"><span class="label">${this.msg.branch}</span><span>${branch}</span></div>
-            <div class="row"><span class="label">${this.msg.ahead}</span><span>${current ? current.ahead : ''}</span></div>
-            <div class="row"><span class="label">${this.msg.behind}</span><span>${current ? current.behind : ''}</span></div>
-            <div class="row"><span class="label">${this.msg.touched}</span></div>
-            ${files.length
-                ? html`<ul class="files">${files.map((file) => html`<li>${file}</li>`)}</ul>`
-                : html`<p class="no-files">${this.msg.noFiles}</p>`}
-            ${this._blocked.length
-                ? html`<p class="blocked">${this.msg.blocked}</p>
-                    <ul class="files">${this._blocked.map((file) => html`<li>${fileLabel(file)}</li>`)}</ul>`
-                : nothing}
-            <div class="actions">
-                <button ?disabled=${busy} @click=${() => { void this._onSave(); }}>${this.msg.save}</button>
-                <button ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${this.msg.publish}</button>
-                <button ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${this.msg.discard}</button>
-                <button ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>
+            <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
+                ${this._phase === 'loading' ? html`<p class="px-4 py-4">${this.msg.loading}</p>` : nothing}
+                ${this._phase === 'publishing' ? html`<p class="px-4 py-4">${this._pingText()}</p>` : nothing}
+                ${this._phase === 'error' ? html`<p class="px-4 py-4 text-amber-700 dark:text-amber-300">${this._error}</p>` : nothing}
+                ${this._errorFiles.length
+                    ? html`<div class="flex flex-col gap-0.5 px-4">${this._errorFiles.map((file) => html`<div>${file}</div>`)}</div>`
+                    : nothing}
+                ${this._renderLocal(model, edited, busy)}
+                ${this._renderDraft(model, busy)}
+                ${this._renderPublished(model)}
+                ${this._note ? html`<p class="px-4 py-4">${this._note}</p>` : nothing}
+                ${this._renderOthers(busy)}
             </div>
-            ${this._note ? html`<p class="note">${this._note}</p>` : nothing}
-            ${this._renderOthers(busy)}
+        `;
+    }
+
+    private _renderLocal(model: IPanelModel, edited: mls.stor.IFileInfo[], busy: boolean) {
+        const files = model.local.files;
+        const heading = `${this.msg.localTitle}: ${this._countLabel(model.local.count)}${this._namesSuffix(files.map((file) => file.shortPath).join(', '))}`;
+        return html`
+            <div class=${blockClass}>
+                <div class="font-semibold">${heading}</div>
+                ${files.length === 0
+                    ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noLocal}</p>`
+                    : html`<div class="flex flex-col gap-0.5">
+                        ${files.map((file, index) => this._renderLocalFile(file, edited[index], busy))}
+                    </div>`}
+                ${this._blocked.length
+                    ? html`<p class="text-amber-700 dark:text-amber-300">${this.msg.blocked}</p>
+                        <div class="flex flex-col gap-0.5">${this._blocked.map((file) => html`<div>${fileLabel(file)}</div>`)}</div>`
+                    : nothing}
+                <div class="flex flex-wrap gap-3">
+                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${this.msg.save}</button>
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderLocalFile(edit: ILocalEdit, file: mls.stor.IFileInfo | undefined, busy: boolean) {
+        return html`
+            <div class="flex items-center gap-3">
+                <span>${edit.shortPath}</span>
+                ${edit.hasError ? html`<span class="text-amber-700 dark:text-amber-300">${this.msg.withError}</span>` : nothing}
+                <button
+                    class=${actionClass}
+                    ?disabled=${busy || !file}
+                    @click=${() => { if (file) void this._onUndoLocal(file, edit.shortPath); }}
+                >${this.msg.undoLocal}</button>
+            </div>
+        `;
+    }
+
+    private _renderDraft(model: IPanelModel, busy: boolean) {
+        const current = this._current;
+        const heading = `${this.msg.draftTitle.replace('{slug}', this._slug)}: ${this._countLabel(model.draft.count)}${this._namesSuffix(model.draft.files.join(', '))}`;
+        return html`
+            <div class=${blockClass}>
+                <div class="font-semibold">${heading}</div>
+                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.branch}</span><span>${current?.branch ?? this._branch ?? ''}</span></div>
+                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.ahead}</span><span>${current ? current.ahead : ''}</span></div>
+                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.behind}</span><span>${current ? current.behind : ''}</span></div>
+                ${model.draft.files.length === 0
+                    ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noFiles}</p>`
+                    : html`<div class="flex flex-col gap-0.5">${model.draft.files.map((file) => html`<div>${file}</div>`)}</div>`}
+                <div class="flex flex-wrap gap-3">
+                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${this.msg.publish}</button>
+                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${this.msg.discard}</button>
+                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderPublished(model: IPanelModel) {
+        const published = model.published;
+        const heading = `${this.msg.publishedTitle}: ${this._countLabel(published.count)}${this._namesSuffix(published.files.join(', '))}`;
+        return html`
+            <div class=${blockClass}>
+                <div class="font-semibold">${heading}</div>
+                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.release}</span><span>${published.release ?? ''}</span></div>
+                ${published.files.length === 0
+                    ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noPublished}</p>`
+                    : html`<div class="flex flex-col gap-0.5">${published.files.map((file) => html`<div>${file}</div>`)}</div>`}
+            </div>
         `;
     }
 
     private _renderOthers(busy: boolean) {
         return html`
-            <div class="others">
-                <div class="row"><span class="label">${this.msg.others}</span></div>
+            <div class="others flex flex-col gap-3 px-4 py-4">
+                <div class="text-[9px] font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-200">${this.msg.others}</div>
                 ${this._others.length === 0
                     ? html`<p class="no-files">${this.msg.noOthers}</p>`
                     : this._others.map((item) => this._renderOther(item, busy))}
@@ -300,17 +439,18 @@ export class ServiceDraft102020 extends ServiceBase {
         const slug = slugForBranch(item.branch);
         const files = item.files ?? [];
         return html`
-            <div class="other">
-                <div class="row"><span class="label">${this.msg.branch}</span><span>${item.branch}</span></div>
-                <div class="row"><span class="label">${this.msg.ahead}</span><span>${item.ahead}</span></div>
-                <div class="row"><span class="label">${this.msg.behind}</span><span>${item.behind}</span></div>
-                <div class="row"><span class="label">${this.msg.touched}</span></div>
+            <div class="other flex flex-col gap-3">
+                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.branch}</span><span>${item.branch}</span></div>
+                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.ahead}</span><span>${item.ahead}</span></div>
+                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.behind}</span><span>${item.behind}</span></div>
+                <div class="font-semibold">${this.msg.touched}</div>
                 ${files.length
-                    ? html`<ul class="files">${files.map((file) => html`<li>${file}</li>`)}</ul>`
-                    : html`<p class="no-files">${this.msg.noFiles}</p>`}
-                <div class="actions">
-                    <button ?disabled=${busy} @click=${() => { void this._onView(item.branch); }}>${this.msg.view}</button>
+                    ? html`<div class="flex flex-col gap-0.5">${files.map((file) => html`<div>${file}</div>`)}</div>`
+                    : html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noFiles}</p>`}
+                <div class="flex flex-wrap gap-3">
+                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onView(item.branch); }}>${this.msg.view}</button>
                     <button
+                        class=${actionClass}
                         ?disabled=${busy || slug === null}
                         title=${slug === null ? this.msg.experimentDisabled : nothing}
                         @click=${() => { if (slug) this._onExperiment(slug); }}
@@ -389,7 +529,24 @@ export class ServiceDraft102020 extends ServiceBase {
             this._phase = 'error';
             return;
         }
+        await this._readRelease();
         this._phase = 'idle';
+    }
+
+    private async _readRelease(): Promise<void> {
+        const release = collabReleaseApi();
+        if (!release) {
+            console.error('[serviceDraft] collabRelease is not installed');
+            this._releaseId = null;
+            return;
+        }
+        try {
+            const ping = await release();
+            this._releaseId = releaseIdOf(ping);
+        } catch (err) {
+            console.error('[serviceDraft] ping failed:', err);
+            this._releaseId = null;
+        }
     }
 
     private _askComment(): string | undefined {
@@ -433,6 +590,20 @@ export class ServiceDraft102020 extends ServiceBase {
         await this._load(true);
     }
 
+    private async _onUndoLocal(file: mls.stor.IFileInfo, shortPath: string): Promise<void> {
+        if (!confirm(this.msg.confirmUndo.replace('{file}', shortPath))) return;
+        try {
+            await mls.stor.localStor.setContent(file, { content: null });
+            file.status = 'nochange';
+        } catch (err) {
+            console.error('[serviceDraft] undo local failed:', err);
+            this._error = err instanceof Error ? err.message : String(err);
+            this._phase = 'error';
+            return;
+        }
+        this.requestUpdate();
+    }
+
     private async _onPublish(): Promise<void> {
         const project = this._projectId;
         if (!project || !this._slug || !isVmDriver(this._driver)) return;
@@ -450,14 +621,25 @@ export class ServiceDraft102020 extends ServiceBase {
         this._ping = null;
         this._phase = 'publishing';
         this._startPing();
+        const draftFiles = this._current ? this._current.files : [];
         try {
             const result = await publish({
                 fetchImpl,
                 waitForNew: () => release.waitForNew({
-                    onTick: (ping) => { this._ping = readPing(ping); },
+                    onTick: (ping) => {
+                        this._ping = readPing(ping);
+                        this._releaseId = releaseIdOf(ping);
+                    },
                 }),
                 reload: () => location.reload(),
-            }, project, this._slug, comment);
+                rememberPublished: (record) => {
+                    try {
+                        sessionStorage.setItem(publishedStorageKey(project), JSON.stringify(record));
+                    } catch (err) {
+                        console.error('[serviceDraft] sessionStorage write failed:', err);
+                    }
+                },
+            }, project, this._slug, comment, draftFiles);
             if (result.outcome === 'conflict') {
                 console.error('[serviceDraft] promote conflict:', result.files);
                 this._error = this.msg.conflict;
@@ -573,7 +755,10 @@ export class ServiceDraft102020 extends ServiceBase {
             if (this._phase !== 'publishing') return;
             try {
                 const ping = await release();
-                if (this._phase === 'publishing') this._ping = readPing(ping);
+                if (this._phase === 'publishing') {
+                    this._ping = readPing(ping);
+                    this._releaseId = releaseIdOf(ping);
+                }
             } catch (err) {
                 console.error('[serviceDraft] ping failed:', err);
             }
