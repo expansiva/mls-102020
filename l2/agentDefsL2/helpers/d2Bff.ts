@@ -545,6 +545,8 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
   // B.2 actions: one command per submit, with the page's write and the input that write asks for.
   const submits = d2PageSubmits(context);
   const pageEdits = [...new Set((['desktop', 'mobile'] as const).flatMap(device => Object.values(context.drafts[device].organisms).flatMap(row => row.edits)))];
+  const editsOfSubmit = (intentId: string): string[] => [...new Set((['desktop', 'mobile'] as const).flatMap(device =>
+    Object.values(context.drafts[device].organisms).filter(row => row.submits.some(submit => submit.intentId === intentId)).flatMap(row => row.edits)))];
   for (const [intentId, write] of submits) {
     const commands = design.endpoints.filter(endpoint => endpoint.kind === 'cmd' && endpoint.when === intentId);
     if (commands.length !== 1) {
@@ -555,8 +557,10 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
     if (write && command.writes !== write) add('D2_BFF_SUBMIT_WRITE', `endpoints.${command.id}.writes`, `submit ${intentId} writes ${write} in the page draft, and its command writes ${command.writes}.`);
     const pageWrite = d2WriteByKey(context.need.writes, command.writes ?? '');
     if (!pageWrite) continue; // reported by B.4
+    const owned = editsOfSubmit(intentId);
+    const edits = owned.some(path => entityOf(path) === pageWrite.entity) ? owned : pageEdits;
     const carried = d2BffValueLeaves(command.input, design).filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths);
-    const missing = d2WriteRequiredInput(pageWrite, context.entities, pageEdits).filter(path => !carried.some(origin => covers(origin, path)));
+    const missing = d2WriteRequiredInput(pageWrite, context.entities, edits).filter(path => !carried.some(origin => covers(origin, path)));
     if (missing.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, `command ${command.id} (${command.writes}) asks for ${missing.join(', ')}; each input leaf that fills a stored value names that Entity.path as a field origin.`);
   }
 
