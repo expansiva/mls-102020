@@ -146,6 +146,25 @@ test('studio mode with the cookie starts the injected auto-saver and leaving sto
     }
 });
 
+test('auto-save listens to FileAction on levels 1, 2 and 3', () => {
+    const startAt = TOOL.indexOf('public start(): void');
+    const stopAt = TOOL.indexOf('public stop(): void');
+    const onFileAt = TOOL.indexOf('private readonly onFileAction');
+    const onStyleAt = TOOL.indexOf('private readonly onStyleChanged');
+    assert.ok(startAt !== -1 && stopAt > startAt && onFileAt > stopAt && onStyleAt > onFileAt);
+    const start = TOOL.slice(startAt, stopAt);
+    const stop = TOOL.slice(stopAt, onFileAt);
+    const onFile = TOOL.slice(onFileAt, onStyleAt);
+    for (const level of [1, 2, 3]) {
+        assert.match(start, new RegExp(`addListener\\(${level}, 'FileAction'`));
+    }
+    assert.match(stop, /removeEventListener\(\[1, 2, 3\], \['FileAction'\]/);
+    assert.doesNotMatch(onFile, /ev\.level !== 2 \|\|/);
+    assert.match(onFile, /ev\.level !== 1 && ev\.level !== 2 && ev\.level !== 3/);
+    assert.match(start, /addListener\(2, 'styleChanged'/);
+    assert.match(stop, /removeEventListener\(\[2\], \['styleChanged'/);
+});
+
 test('the watcher gate is the same start and stop', () => {
     const body = TOOL.slice(TOOL.indexOf('async function syncWatcher'), TOOL.indexOf('async function syncEditor'));
     const offBranch = body.slice(0, body.indexOf('syncDraftAutoSave(true, draftCookieOn())'));

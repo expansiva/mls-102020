@@ -191,7 +191,9 @@ class DraftAutoSave implements IDraftAutoSave {
 
   public start(): void {
     if (this.listening) return;
+    mls.events.addListener(1, 'FileAction', this.onFileAction);
     mls.events.addListener(2, 'FileAction', this.onFileAction);
+    mls.events.addListener(3, 'FileAction', this.onFileAction);
     mls.events.addListener(2, 'styleChanged' as mls.events.TypeEvent, this.onStyleChanged);
     this.listening = true;
     const project = siteProject();
@@ -208,7 +210,7 @@ class DraftAutoSave implements IDraftAutoSave {
 
   public stop(): void {
     if (!this.listening) return;
-    mls.events.removeEventListener([2], ['FileAction'], this.onFileAction);
+    mls.events.removeEventListener([1, 2, 3], ['FileAction'], this.onFileAction);
     mls.events.removeEventListener([2], ['styleChanged' as mls.events.TypeEvent], this.onStyleChanged);
     this.listening = false;
     publishPanel({
@@ -220,7 +222,7 @@ class DraftAutoSave implements IDraftAutoSave {
   }
 
   private readonly onFileAction = (ev: mls.events.IEvent): void => {
-    if (ev.level !== 2 || ev.type !== 'FileAction' || !ev.desc) return;
+    if ((ev.level !== 1 && ev.level !== 2 && ev.level !== 3) || ev.type !== 'FileAction' || !ev.desc) return;
     let fileAction: mls.events.IFileAction;
     try {
       fileAction = JSON.parse(ev.desc) as mls.events.IFileAction;
