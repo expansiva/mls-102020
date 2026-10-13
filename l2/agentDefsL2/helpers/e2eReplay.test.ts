@@ -487,6 +487,18 @@ void test('d2_75: a field leaf takes the ontology name and type, without refusal
   assert.equal(normalizeD2BffDesign(buildD2BffDesign(renamed), bff.entities).bindings.organisms.find(row => row.organism === 'formularioLancamento')?.reads, 'buscarItemCardapio.name');
 });
 
+void test('d2_91: a context origin drops free paths before the path format test; a field origin still asserts', () => {
+  const context = atendimentoAnswer();
+  const leaf = context.types.find(item => item.name === 'MesaDoSalao')!.fields.find(field => field.name === 'code')!;
+  leaf.origin = { kind: 'context', paths: ['sessao.usuarioConectado'] };
+  const design = buildD2BffDesign(context);
+  assert.deepEqual(design.types.find(item => item.name === 'MesaDoSalao')!.fields.find(field => field.name === 'code')!.origin, { kind: 'context', paths: [] });
+
+  const field = atendimentoAnswer();
+  field.types.find(item => item.name === 'MesaDoSalao')!.fields.find(item => item.name === 'code')!.origin = { kind: 'field', paths: ['sessao.usuarioConectado'] };
+  assert.match(refusalOf(() => buildD2BffDesign(field)), /D2_BFF_ASSERT: types\.MesaDoSalao\.fields\.code\.origin\.paths: each path is Entity\.path/u);
+});
+
 void test('d2_75: B refuses by fact, naming the exact path; D goes back to A', async () => {
   const bff = (await dining()).out.bff.atendimento;
 

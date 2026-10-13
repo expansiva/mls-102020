@@ -453,7 +453,7 @@ export function d2MenuPages(menu: D2Menu): string[] {
 function parseOrigin(value: unknown, path: string, assert: (path: string, what: string) => never, fail: (path: string, what: string) => void): D2BffOrigin {
   const row = record(value) ?? assert(path, 'not an object');
   if (row.kind !== 'field' && row.kind !== 'aggregate' && row.kind !== 'context') assert(`${path}.kind`, 'field, aggregate or context');
-  const paths = Array.isArray(row.paths) ? row.paths : [];
+  const paths = row.kind === 'context' ? [] : (Array.isArray(row.paths) ? row.paths : []);
   if (!paths.every(item => typeof item === 'string' && PATH.test(item))) assert(`${path}.paths`, 'each path is Entity.path');
   if (row.kind === 'field' && paths.length !== 1) fail(`${path}.paths`, 'a field origin names exactly one Entity.path');
   if (row.kind === 'aggregate' && !paths.length) fail(`${path}.paths`, 'an aggregate names the Entity.path values it uses');
