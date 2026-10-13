@@ -6,9 +6,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
+import { bindAutoSaveFactory, syncDraftAutoSave, type IDraftAutoSave } from '/_102020_/l2/aura/studio/studioEditTool.js';
 
 const SERVICES = fileURLToPath(new URL('.', import.meta.url));
 const DRAFT = readFileSync(`${SERVICES}serviceDraft.ts`, 'utf8');
+const TOOL = readFileSync(fileURLToPath(new URL('../studio/studioEditTool.ts', import.meta.url)), 'utf8');
 const PLUGIN = readFileSync(fileURLToPath(new URL('../../pluginCollabCoreIndex.ts', import.meta.url)), 'utf8');
 
 /** The body of a method, from its signature to the next one at the same indentation. */
@@ -47,7 +50,7 @@ test('en, pt and es declare the same keys', () => {
     const keys = [...enBody.matchAll(/^\s{4}(\w+):/gm)].map((match) => match[1]);
     assert.ok(keys.length >= 8, 'the scan found the english keys');
     for (const key of keys) {
-        const declared = catalogs.split(`${key}:`).length - 1;
+        const declared = [...catalogs.matchAll(new RegExp(`^\\s+${key}:`, 'gm'))].length;
         assert.equal(declared, 3, `${key} is declared in en, pt and es`);
     }
 });
@@ -96,6 +99,61 @@ test('serviceDraft.less stays within 15 lines', () => {
     const less = readFileSync(`${SERVICES}serviceDraft.less`, 'utf8');
     const lines = less.endsWith('\n') ? less.split('\n').length - 1 : less.split('\n').length;
     assert.ok(lines <= 15, `serviceDraft.less has ${lines} lines`);
+});
+
+test('the browser block shows auto-save on, off and the failure', () => {
+    const line = methodOf(DRAFT, 'private _autoSaveLine()');
+    const errorAt = line.indexOf('state.error');
+    const offAt = line.indexOf('!state.on');
+    const onAt = line.indexOf('autoSaveOn');
+    assert.ok(errorAt !== -1 && offAt > errorAt && onAt > offAt, 'failure, then off, then the last-send line');
+    assert.match(line, /autoSaveWaiting/);
+    assert.match(line, /autoSaveFailed/);
+    assert.match(line, /autoSaveOff/);
+    assert.match(DRAFT, /Auto-save: ligado · último envio há \{ago\}s · \{pending\} pendentes/);
+    assert.match(DRAFT, /não salvo: \{reason\}/);
+    const local = methodOf(DRAFT, 'private _renderLocal');
+    assert.match(local, /_autoSaveLine\(\)/);
+});
+
+test('auto-save sends through saveToDraft, not setContents on its own', () => {
+    const sendAt = TOOL.indexOf('await saveToDraft(');
+    assert.notEqual(sendAt, -1, 'the tool sends with saveToDraft');
+    const send = TOOL.slice(sendAt, TOOL.indexOf(');', sendAt) + 2);
+    assert.match(send, /autosaveMessage\(batch\)/);
+    assert.match(send, /\(clean, msg\) => mls\.stor\.setContents\(clean, msg\)/);
+    assert.match(send, /mls\.stor\.localStor\.setContent\(file, \{ content: null \}\)/);
+    const outside = TOOL.slice(0, sendAt) + TOOL.slice(sendAt + send.length);
+    assert.doesNotMatch(outside, /mls\.stor\.setContents\(/);
+});
+
+test('studio mode with the cookie starts the injected auto-saver and leaving stops it', () => {
+    const log: string[] = [];
+    const fake: IDraftAutoSave = {
+        start() { log.push('start'); },
+        stop() { log.push('stop'); },
+    };
+    bindAutoSaveFactory(() => fake);
+    try {
+        syncDraftAutoSave(true, true);
+        assert.deepEqual(log, ['start']);
+        syncDraftAutoSave(false, true);
+        assert.deepEqual(log, ['start', 'stop']);
+        syncDraftAutoSave(true, false);
+        assert.deepEqual(log, ['start', 'stop', 'stop']);
+    } finally {
+        bindAutoSaveFactory(null);
+    }
+});
+
+test('the watcher gate is the same start and stop', () => {
+    const body = TOOL.slice(TOOL.indexOf('async function syncWatcher'), TOOL.indexOf('async function syncEditor'));
+    const offBranch = body.slice(0, body.indexOf('syncDraftAutoSave(true, draftCookieOn())'));
+    assert.match(offBranch, /if \(!state\.studioMode\)/);
+    assert.match(offBranch, /watcher\?\.stop\(\)/);
+    assert.match(offBranch, /syncDraftAutoSave\(false, false\)/);
+    const teardown = TOOL.slice(TOOL.indexOf('function teardown'), TOOL.indexOf('async function apply'));
+    assert.match(teardown, /syncDraftAutoSave\(false, false\)/);
 });
 
 test('serviceDraft is on l5ServicesLeft before serviceSave', () => {

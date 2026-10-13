@@ -26,6 +26,7 @@ import {
     type IPanelModel,
     type IPublishedRecord,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
+import { subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
 
 /// **collab_i18n_start**
 const message_en = {
@@ -74,6 +75,10 @@ const message_en = {
     release: 'Release',
     noLocal: 'No files in the browser.',
     noPublished: 'Nothing published from this browser yet.',
+    autoSaveOn: 'Auto-save: on · last send {ago}s ago · {pending} pending',
+    autoSaveWaiting: 'Auto-save: on · no send yet · {pending} pending',
+    autoSaveOff: 'Auto-save: off',
+    autoSaveFailed: 'not saved: {reason}',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -124,6 +129,10 @@ const messages: Record<string, MessageType> = {
         release: 'Release',
         noLocal: 'Nenhum arquivo no navegador.',
         noPublished: 'Nada publicado a partir deste navegador.',
+        autoSaveOn: 'Auto-save: ligado · último envio há {ago}s · {pending} pendentes',
+        autoSaveWaiting: 'Auto-save: ligado · ainda sem envio · {pending} pendentes',
+        autoSaveOff: 'Auto-save: desligado',
+        autoSaveFailed: 'não salvo: {reason}',
     },
     es: {
         svcTitle: 'Borrador',
@@ -171,6 +180,10 @@ const messages: Record<string, MessageType> = {
         release: 'Release',
         noLocal: 'Ningún archivo en el navegador.',
         noPublished: 'Nada publicado desde este navegador.',
+        autoSaveOn: 'Auto-save: activo · último envío hace {ago}s · {pending} pendientes',
+        autoSaveWaiting: 'Auto-save: activo · todavía sin envío · {pending} pendientes',
+        autoSaveOff: 'Auto-save: apagado',
+        autoSaveFailed: 'no guardado: {reason}',
     },
 };
 /// **collab_i18n_end**
@@ -279,13 +292,23 @@ export class ServiceDraft102020 extends ServiceBase {
 
     private _projectId: number | undefined;
     private _pingTimer = 0;
+    private _autoSaveTimer = 0;
+    private _unsubAutoSave: (() => void) | undefined;
+    @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null };
 
     connectedCallback(): void {
         super.connectedCallback();
+        this._unsubAutoSave = subscribeAutoSave((state) => {
+            this._autoSave = state;
+            this._syncAutoSaveClock(state.on && state.lastSentAt !== null && !state.error);
+        });
         void this._load();
     }
 
     disconnectedCallback(): void {
+        this._unsubAutoSave?.();
+        this._unsubAutoSave = undefined;
+        this._syncAutoSaveClock(false);
         this._stopPing();
         super.disconnectedCallback();
     }
@@ -353,12 +376,35 @@ export class ServiceDraft102020 extends ServiceBase {
         `;
     }
 
+    private _autoSaveLine(): string {
+        const state = this._autoSave;
+        if (state.error) return this.msg.autoSaveFailed.replace('{reason}', state.error);
+        if (!state.on) return this.msg.autoSaveOff;
+        if (state.lastSentAt === null) {
+            return this.msg.autoSaveWaiting.replace('{pending}', String(state.pending));
+        }
+        const ago = String(Math.max(0, Math.floor((Date.now() - state.lastSentAt) / 1000)));
+        return this.msg.autoSaveOn.replace('{ago}', ago).replace('{pending}', String(state.pending));
+    }
+
+    private _syncAutoSaveClock(running: boolean): void {
+        if (!running) {
+            if (!this._autoSaveTimer) return;
+            clearInterval(this._autoSaveTimer);
+            this._autoSaveTimer = 0;
+            return;
+        }
+        if (this._autoSaveTimer) return;
+        this._autoSaveTimer = window.setInterval(() => { this.requestUpdate(); }, 1000);
+    }
+
     private _renderLocal(model: IPanelModel, edited: mls.stor.IFileInfo[], busy: boolean) {
         const files = model.local.files;
         const heading = `${this.msg.localTitle}: ${this._countLabel(model.local.count)}${this._namesSuffix(files.map((file) => file.shortPath).join(', '))}`;
         return html`
             <div class=${blockClass}>
                 <div class="font-semibold">${heading}</div>
+                <p>${this._autoSaveLine()}</p>
                 ${files.length === 0
                     ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noLocal}</p>`
                     : html`<div class="flex flex-col gap-0.5">
