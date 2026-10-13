@@ -375,6 +375,26 @@ void test('d2_65: the same write in a form and in actions is refused with the pl
   assert.match(issues[0].message, /the actions organism does not repeat it/u);
 });
 
+void test('decision prompt of a replay page omits group usage and sends short categories', () => {
+  const data = context('reembolsoDespesas', 'minhas_despesas');
+  const usage = 'USAGE_SENTINEL_d2_96_not_in_decision';
+  const group: D2MoleculeGroup = {
+    groupId: 'groupViewTable', purpose: 'Tabular records', indexReference: 'index-ref', usageReference: 'usage-ref',
+    tags: ['groupviewtable--ml-responsive-data-table'], scenarios: [{ scenario: 'list', recommended: ['groupviewtable--ml-responsive-data-table'] }],
+    indexSource: 'index source', indexText: 'INDEX_SENTINEL_d2_96', usageSource: 'usage source', usageText: usage,
+  };
+  data.groups = [group];
+  data.selectedGroups = { organism1: ['groupViewTable'] };
+  const payload = JSON.parse(buildD2PagesDecisionPrompt(data).prompt) as {
+    categories: Array<Record<string, unknown>>;
+    moleculeResearch: { groups: Array<Record<string, unknown>> };
+  };
+  assert.equal(JSON.stringify(payload).includes(usage), false);
+  assert.equal(Object.hasOwn(payload.moleculeResearch.groups[0], 'usage'), false);
+  assert.deepEqual(Object.keys(payload.moleculeResearch.groups[0]).sort(), ['groupId', 'purpose', 'scenarios', 'tags']);
+  for (const category of payload.categories) assert.deepEqual(Object.keys(category).sort(), ['categoryId', 'description', 'name', 'typicalEntities']);
+});
+
 void test('four real reembolsoDespesas pages include the nine minhas_despesas organisms below the prompt ceiling', () => {
   const needs = fixture<{ pages: Array<{ pageId: string }> }>('reembolsoDespesas', 'needs');
   assert.equal(needs.pages.length, 4);
@@ -564,7 +584,7 @@ void test('controleEstoque/produtos molecular context omits repeated indexes wit
   data.groups = groupIds.map((groupId, index): D2MoleculeGroup => ({
     groupId, purpose: `Published purpose ${index}`, indexReference: `/${groupId}/index`, usageReference: `/${groupId}/usage`,
     tags: [`${groupId.toLowerCase()}--fixture`], scenarios: [{ scenario: `Scenario ${index}`, recommended: [`${groupId.toLowerCase()}--fixture`] }],
-    indexSource: `index source ${index}`, indexText: 'repeated-index-content'.repeat(500),
+    indexSource: `index source ${index}`, indexText: 'repeated-index-content'.repeat(1000),
     usageSource: `usage source ${index}`, usageText: 'usage-contract-content'.repeat(350),
   }));
   data.selectedGroups = Object.fromEntries(data.page.organisms.map((_, index) => [`organism${index + 1}`, groupIds]));

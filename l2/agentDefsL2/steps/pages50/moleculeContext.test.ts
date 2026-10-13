@@ -26,7 +26,7 @@ void test('molecular research reads only selected groups and validates exact tag
   const decision = JSON.parse(moleculeDecisionContext(selected, shortlist.groups)) as { groups: Array<Record<string, unknown>> };
   assert.deepEqual(decision.groups, [{
     groupId: 'groupViewTable', purpose: 'Tabular records',
-    tags: ['groupviewtable--ml-responsive-data-table'], scenarios: [], usage: 'usage',
+    tags: ['groupviewtable--ml-responsive-data-table'], scenarios: [],
   }]);
   assert.equal(Object.hasOwn(decision.groups[0], 'index'), false);
   assert.deepEqual(gateD2MoleculeRoles({ lista: [{ role: 'list', preferred: 'groupviewtable--ml-responsive-data-table' }] }, { lista: ['groupViewTable'] }, shortlist.groups), []);

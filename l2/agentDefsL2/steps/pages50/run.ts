@@ -221,7 +221,10 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
     ontology: Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))),
     // Disclosure is checked against the page actors' grants only.
     access: { grants: ((record(artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => page.actors.includes(text(record(raw).actorRef))) },
-    categories: context.template.categories,
+    categories: context.template.categories.map(item => {
+      const row = item as typeof item & { name?: string; description?: string; typicalEntities?: unknown };
+      return { categoryId: row.categoryId, name: row.name, description: row.description, typicalEntities: row.typicalEntities };
+    }),
     moleculeResearch: JSON.parse(moleculeDecisionContext(context.selectedGroups, context.groups)),
     // d2_71: a regeneration starts from the approved page11 and changes only what the reason asks.
     approved: approved ? { desktop: { definition: approved.definitions.desktop, needs: approved.needs.desktop }, mobile: { definition: approved.definitions.mobile, needs: approved.needs.mobile } } : null,
