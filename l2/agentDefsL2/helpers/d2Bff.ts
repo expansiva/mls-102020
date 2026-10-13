@@ -6,7 +6,7 @@ import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL
 import type { D2Page11Needs, D2Page11OrganismNeeds } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
 import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
-import { d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
+import { d2RequiredRelationTargets, d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
 /**
  * d2_73: the BFF of one page, designed by the LLM (bff55 A) and checked by code (bff55 B). The code checks facts only:
@@ -560,12 +560,8 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
     const owned = editsOfSubmit(intentId);
     const edits = owned.some(path => entityOf(path) === pageWrite.entity) ? owned : pageEdits;
     const carried = d2BffValueLeaves(command.input, design).filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths);
-    const written = context.entities[pageWrite.entity] as { relationships?: Record<string, { via?: string; to?: string; required?: unknown }> } | undefined;
-    const relatedCover = (path: string): boolean => Object.values(written?.relationships ?? {}).some(rel => {
-      const required = rel.required === true || (typeof rel.required === 'string' && rel.required.trim().length > 0);
-      const to = rel.to ?? '';
-      return required && rel.via === path && to.length > 0 && carried.some(origin => entityOf(origin) === to);
-    });
+    const relatedCover = (path: string): boolean => d2RequiredRelationTargets(context.entities[pageWrite.entity]).some(rel =>
+      rel.via === path && carried.some(origin => entityOf(origin) === rel.to));
     const missing = d2WriteRequiredInput(pageWrite, context.entities, edits).filter(path => !carried.some(origin => covers(origin, path)) && !relatedCover(path));
     if (missing.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, `command ${command.id} (${command.writes}) asks for ${missing.join(', ')}; each input leaf that fills a stored value names that Entity.path as a field origin.`);
   }
