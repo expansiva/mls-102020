@@ -161,7 +161,7 @@ function normalizeSubmitWrites(needs: unknown, writes: readonly D2Write[]): unkn
   })) };
 }
 
-/** One entity on the page: bare paths gain its prefix. A read some page actor cannot see is dropped; edits stay. */
+/** One entity on the page: bare paths gain its prefix. A read no page actor can see is dropped; edits stay. */
 export function normalizeNeedsPaths(needs: unknown, page: D2PagesContext['page'], entities: D2PagesContext['artifacts']['entities'], grants: readonly unknown[]): unknown {
   void entities;
   const cited = new Set<string>();
@@ -184,7 +184,7 @@ export function normalizeNeedsPaths(needs: unknown, page: D2PagesContext['page']
         const path = only && !/^[A-Z]/u.test(item) ? `${only}.${item}` : item;
         if (path !== item) prefixed.push(path);
         const entityId = path.split('.')[0];
-        if (dropUnseen && /^[A-Z]/u.test(path) && page.actors.some(actor => !grants.some(rawGrant => {
+        if (dropUnseen && /^[A-Z]/u.test(path) && !page.actors.some(actor => grants.some(rawGrant => {
           const grant = record(rawGrant);
           if (text(grant.actorRef) !== actor) return false;
           if (!((grant.entityRefs as unknown[] | undefined) ?? []).some(ref => text(ref) === entityId)) return false;
@@ -240,7 +240,7 @@ export function d2PageIssues(context: D2PagesContext, definitions: Record<D2Page
   const menu = context.artifacts.menu as D2Page11Menu;
   const needPages = record(context.artifacts.needs).pages as D2Page11NeedPage[];
   if (!Array.isArray(needPages)) throw new Error('D2_PAGE11_SOURCE_NEEDS');
-  const sources: D2Page11GateSources = { pageId: context.page.pageId, actor: context.page.actors[0], menu,
+  const sources: D2Page11GateSources = { pageId: context.page.pageId, actor: context.page.actors[0], pageActors: context.page.actors, menu,
     needsPages: needPages, entities: context.artifacts.entities as Record<string, Ns5OntologyAnyEntity>,
     access: context.artifacts.access as D2Page11GateSources['access'], categories: context.template.categories,
     templatePaths: context.template.templatePaths, moleculeTags: new Set(context.groups.flatMap(group => group.tags)),
@@ -248,12 +248,19 @@ export function d2PageIssues(context: D2PagesContext, definitions: Record<D2Page
   const origins = menuOrigins(context.page, definitions.desktop);
   const groupsByOrganism = Object.fromEntries(origins.map(origin => [origin.organismId, context.selectedGroups[`organism${origin.sourceIndex + 1}`] ?? []]));
   const kindMismatch = Object.keys(definitions.desktop.organisms).filter(id => definitions.mobile.organisms[id]?.kind !== definitions.desktop.organisms[id].kind);
-  return [...gateD2Page11Pair(definitions.desktop, definitions.mobile),
+  const issues = [...gateD2Page11Pair(definitions.desktop, definitions.mobile),
     ...kindMismatch.map(id => ({ code: 'D2_PAGE11_DEVICE_KIND', path: `organisms.${id}`, message: `Organism ${id} has different kinds across devices.` })),
     ...(['desktop', 'mobile'] as const).flatMap(device => [
       ...context.page.actors.flatMap(actor => gateD2Page11(definitions[device], needs[device], { ...sources, actor })),
       ...gateD2MoleculeRoles(definitions[device].molecules, groupsByOrganism, context.groups).map(message => ({ code: 'D2_MOLECULE_ROLE_UNSELECTED', path: device, message })),
     ])];
+  const seen = new Set<string>();
+  return issues.filter(issue => {
+    const key = `${issue.code}\u0000${issue.path}\u0000${issue.message}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** The page11 already approved for this page, kept as the base of a regeneration (d2_71). */
