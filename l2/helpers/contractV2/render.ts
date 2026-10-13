@@ -1,5 +1,8 @@
 /// <mls fileReference="_102020_/l2/helpers/contractV2/render.ts" enhancement="_blank"/>
 
+// Estrutura do shared congelada pelo Wagner em 13/10/2026 ("o defs deve ter a intenção, do que deve ser feito, sem amarrar a LLM materializador").
+// Nenhuma chave, campo ou forma entra ou sai sem autorização dele, datada e com a frase. Leitores: agentDefsL2 (gate e derivação), describeEffort, agentMaterializeL2 (equipe).
+
 import type {
   D2ContractV2Definition, D2ContractV2Jsdoc, D2ContractV2Location, D2ContractV2Meta, D2ContractV2MetaList, D2ContractV2MetaOutput,
   D2ContractV2MetaParam, D2ContractV2Projection, D2ContractV2Route,

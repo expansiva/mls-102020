@@ -1,5 +1,8 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/page11.ts" enhancement="_blank"/>
 
+// Estrutura do shared congelada pelo Wagner em 13/10/2026 ("o defs deve ter a intenção, do que deve ser feito, sem amarrar a LLM materializador").
+// Nenhuma chave, campo ou forma entra ou sai sem autorização dele, datada e com a frase. Leitores: agentDefsL2 (gate e derivação), describeEffort, agentMaterializeL2 (equipe).
+
 /** Public page11 v2 contains only rendering decisions. Identity comes from its path. */
 export type D2Page11Device = 'desktop' | 'mobile';
 export type D2Page11Priority = 'primary' | 'main' | 'secondary';
