@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import { describeEffort, describeEffortFrom } from '/_102020_/l2/helpers/effort/describeEffort.js';
-import { renderD2SharedV2 } from '/_102020_/l2/helpers/sharedV2/format.js';
 import type { EffortInput, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
 
 const FIXTURE = new URL('./fixtures/agendaClinica/contracts/', import.meta.url);
@@ -27,7 +26,6 @@ function input(item: Pick<L4DiffItem, 'changeId' | 'kind' | 'op' | 'entity' | 'b
   };
 }
 
-const LOCATION = { project: 102047, module: 'agendaClinica' };
 const MODULE_DEFS = `export const agendaClinicaModule = {
   "schemaVersion": "2026-09-10-ns5-module-v2",
   "moduleName": "agendaClinica",
@@ -50,30 +48,21 @@ const CONFIG = JSON.stringify({
   },
 });
 
-function shared(pageId: string, fields: Record<string, string[]>): string {
-  return renderD2SharedV2({ ...LOCATION, pageId }, {
-    entry: { params: {} },
-    forms: {},
-    requests: {},
-    states: {},
-    functions: {},
-    journeys: [],
-    rules: {},
-    access: { actors: [], grants: [] },
-    fields,
+function needs(pages: Array<{ pageId: string; entities: string[] }>): string {
+  return JSON.stringify({
+    pages: pages.map(page => ({
+      pageId: page.pageId,
+      reads: page.entities.map(entity => ({ entity })),
+    })),
   });
 }
 
-function sharedWithoutFields(pageId: string): string {
-  return shared(pageId, { 'Paciente.name': ['nome'] }).replace(/,\n  "fields": \{[\s\S]*?\n  \}/u, '');
-}
-
-const NAME = 'field:details.identification.name';
+const NAME = 'field:name';
 const TEXT_BEFORE = { title: 'Name', type: 'string' };
 const TEXT_AFTER = { title: 'Full name', type: 'string' };
 
-function textSources(pages: Record<string, string>, moduleSource: string | undefined = MODULE_DEFS, configSource: string | undefined = CONFIG) {
-  return { shared: pages, moduleSource, configSource };
+function textSources(needsSource: string | undefined, moduleSource: string | undefined = MODULE_DEFS, configSource: string | undefined = CONFIG) {
+  return { needsSource, moduleSource, configSource };
 }
 
 void test('rule changed cites only the pages whose routes list the id', () => {
@@ -143,19 +132,17 @@ void test('describeEffort abends without reading files when the project is unres
   }
 });
 
-void test('text-only field change materializes the pages that show the field and then agentAddLanguage', () => {
-  const pages = {
-    ficha: shared('ficha', { 'Paciente.details.identification': ['nome'] }),
-    detalhe: shared('detalhe', { 'Paciente.details.identification.name': ['nome'] }),
-    outras: shared('outras', { 'Paciente.details.address': ['rua'] }),
-  };
+void test('text-only field change materializes the pages that read the entity and then agentAddLanguage', () => {
+  const plan = needs([
+    { pageId: 'ficha', entities: ['Paciente'] },
+    { pageId: 'outras', entities: ['Consulta'] },
+  ]);
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
-  }), {}, textSources(pages));
+  }), {}, textSources(plan));
   assert.equal(row.status, 'computed');
   assert.deepEqual(row.regenerateDefs, []);
   assert.deepEqual(row.materialize, [
-    { kind: 'page', id: 'detalhe', path: 'l2/agendaClinica/web/contracts/detalhe.defs.ts' },
     { kind: 'page', id: 'ficha', path: 'l2/agendaClinica/web/contracts/ficha.defs.ts' },
   ]);
   assert.deepEqual(row.runAgents, [{
@@ -172,7 +159,7 @@ void test('a field whose type changed is not text and keeps the rule-only abend'
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente',
     before: { title: 'Name', type: 'string' }, after: { title: 'Name', type: 'number' },
-  }), contracts(), textSources({ ficha: shared('ficha', { 'Paciente.details.identification.name': ['nome'] }) }));
+  }), contracts(), textSources(needs([{ pageId: 'ficha', entities: ['Paciente'] }])));
   assert.equal(row.status, 'abend');
   assert.equal(row.abend?.reason, 'v1 computes only rule changed; field changed is not handled');
   assert.deepEqual(row.materialize, []);
@@ -182,7 +169,7 @@ void test('a field whose type changed is not text and keeps the rule-only abend'
 void test('a text field no page shows is computed with empty lists', () => {
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
-  }), {}, textSources({ outras: shared('outras', { 'Consulta.notes': ['nota'] }) }));
+  }), {}, textSources(needs([{ pageId: 'outras', entities: ['Consulta'] }])));
   assert.equal(row.status, 'computed');
   assert.deepEqual(row.regenerateDefs, []);
   assert.deepEqual(row.materialize, []);
@@ -190,27 +177,27 @@ void test('a text field no page shows is computed with empty lists', () => {
   assert.equal(row.abend, undefined);
 });
 
-void test('a shared without a field index abends', () => {
+void test('a module without needs abends with the missing path', () => {
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
-  }), {}, textSources({ ficha: sharedWithoutFields('ficha') }));
+  }), {}, textSources(undefined));
   assert.equal(row.status, 'abend');
-  assert.equal(row.abend?.reason, 'shared has no field index; regenerate the L2 defs');
+  assert.equal(row.abend?.reason, 'l4/agendaClinica/pool/l1/web/needs.json');
 });
 
-void test('a shared the parser rejects abends with the file name and the parser error', () => {
+void test('a needs file the parser rejects abends with the path and the parser error', () => {
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
-  }), {}, textSources({ ficha: 'export const definition = {} as const;\n' }));
+  }), {}, textSources('{'));
   assert.equal(row.status, 'abend');
-  assert.equal(row.abend?.reason, 'ficha.defs.ts: D2_SHARED_V2_SOURCE_SHAPE');
+  assert.match(row.abend?.reason ?? '', /^l4\/agendaClinica\/pool\/l1\/web\/needs\.json: /u);
 });
 
 void test('a module with no language in module.defs or l5 config abends', () => {
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
   }), {}, textSources(
-    { ficha: shared('ficha', { 'Paciente.details.identification.name': ['nome'] }) },
+    needs([{ pageId: 'ficha', entities: ['Paciente'] }]),
     'export const module = { "title": "Agenda", "userLanguage": "es" };\n',
     JSON.stringify({ projects: { '102047': { modules: [{ moduleId: 'agendaClinica' }] } } }),
   ));
@@ -218,11 +205,11 @@ void test('a module with no language in module.defs or l5 config abends', () => 
   assert.equal(row.abend?.reason, 'module has no declared languages');
 });
 
-void test('describeEffort reads shared, module.defs and l5 config for a text change', async () => {
+void test('describeEffort reads needs, module.defs and l5 config for a text change', async () => {
   const previous = mls.stor.files;
-  const body = shared('ficha', { 'Paciente.details.identification': ['nome'] });
+  const body = needs([{ pageId: 'ficha', entities: ['Paciente'] }, { pageId: 'outras', entities: ['Consulta'] }]);
   mls.stor.files = {
-    a: { project: 102047, level: 2, status: 'active', folder: 'agendaClinica/web/shared', extension: '.defs.ts', shortName: 'ficha', getContent: async () => body },
+    a: { project: 102047, level: 4, status: 'active', folder: 'agendaClinica/pool/l1/web', extension: '.json', shortName: 'needs', getContent: async () => body },
     b: { project: 102047, level: 4, status: 'active', folder: 'agendaClinica', extension: '.defs.ts', shortName: 'module', getContent: async () => MODULE_DEFS },
     c: { project: 102047, level: 5, status: 'active', folder: '', extension: '.json', shortName: 'config', getContent: async () => CONFIG },
     d: { project: 102047, level: 2, status: 'active', folder: 'agendaClinica/web/contracts', extension: '.defs.ts', shortName: 'ficha', getContent: async () => 'contract' },

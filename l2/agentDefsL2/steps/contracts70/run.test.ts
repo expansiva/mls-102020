@@ -36,11 +36,11 @@ const design: D2BffDesign = {
 };
 
 function sharedOf(endpoints: D2BffDesign['endpoints']): D2SharedV2Definition {
+  const rules = [...new Set(endpoints.flatMap(item => item.rules))].sort();
   return {
-    entry: { params: {} }, forms: {},
+    entry: { params: { rowId: { type: 'string', sources: ['url'], effect: 'select', persist: false, required: false } } },
     requests: Object.fromEntries(endpoints.map(item => [item.id, { kind: item.kind, trigger: item.when, ...(item.writes ? { writes: item.writes } : {}), returns: item.output.map(leaf => leaf.name) }])),
-    states: {}, functions: {}, journeys: [], rules: Object.fromEntries(endpoints.map(item => [item.id, item.rules])), access: { actors: ['clerk'], grants: ['manage'] },
-    fields: {},
+    states: {}, journeys: [], rules, access: { actors: ['clerk'], grants: ['manage'] },
   };
 }
 

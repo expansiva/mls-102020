@@ -1,16 +1,14 @@
 /// <mls fileReference="_102020_/l2/helpers/effort/describeEffort.ts" enhancement="_blank"/>
 
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
-import { parseD2SharedV2 } from '/_102020_/l2/helpers/sharedV2/format.js';
 import { isTextOnlyChange, type EffortAgentRef, type EffortAnswer, type EffortInput, type EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
 const MASTER = { project: '102020', kind: 'l2', device: 'web' } as const;
-const SHARED_FIELDS = 'shared has no field index; regenerate the L2 defs';
 const NO_LANGUAGES = 'module has no declared languages';
 
 export interface DescribeEffortSources {
-  /** `l2/<module>/web/shared/<pageId>.defs.ts` bodies, keyed by page id. */
-  shared: Record<string, string>;
+  /** `l4/<module>/pool/l1/web/needs.json` body. Absent abends with that path. */
+  needsSource?: string;
   /** `l4/<module>/module.defs.ts` body. Absent is the same as a file with no languages. */
   moduleSource?: string;
   /** `l5/config.json` body. Absent means the module has no `userLanguage` there. */
@@ -39,9 +37,8 @@ function fieldPath(input: EffortInput): string {
   return `${input.item.entity}.${fieldId}`;
 }
 
-/** The screen shows the field when `fields` has the path or an ancestor. */
-function sharedShowsField(fields: Record<string, string[]>, path: string): boolean {
-  return Object.keys(fields).some(key => key === path || path.startsWith(`${key}.`));
+function needsPath(moduleName: string): string {
+  return `l4/${moduleName}/pool/l1/web/needs.json`;
 }
 
 function quoted(source: string, name: string): string | undefined {
@@ -97,21 +94,31 @@ function moduleLanguages(moduleSource: string | undefined, configSource: string 
   return { codes };
 }
 
+/** Pages whose `reads[].entity` is the entity of the field (`fieldPath` up to the first `.`). */
 function pagesShowingField(input: EffortInput, sources: DescribeEffortSources | undefined): { pages: string[]; error?: string } {
-  const path = fieldPath(input);
-  const pages: string[] = [];
-  const shared = sources?.shared ?? {};
-  for (const pageId of Object.keys(shared).sort()) {
-    let fields: Record<string, string[]>;
-    try {
-      fields = parseD2SharedV2(shared[pageId]).definition.fields;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes('missing field fields')) return { pages: [], error: SHARED_FIELDS };
-      return { pages: [], error: `${pageId}.defs.ts: ${message}` };
-    }
-    if (sharedShowsField(fields, path)) pages.push(pageId);
+  const entity = fieldPath(input).split('.')[0] ?? '';
+  const path = needsPath(input.module);
+  const source = sources?.needsSource;
+  if (!source) return { pages: [], error: path };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { pages: [], error: `${path}: ${message}` };
   }
+  const pagesRaw = parsed && typeof parsed === 'object' ? (parsed as { pages?: unknown }).pages : undefined;
+  if (!Array.isArray(pagesRaw)) return { pages: [], error: `${path}: pages` };
+  const pages: string[] = [];
+  for (const page of pagesRaw) {
+    if (!page || typeof page !== 'object') continue;
+    const pageId = (page as { pageId?: unknown }).pageId;
+    const reads = (page as { reads?: unknown }).reads;
+    if (typeof pageId !== 'string' || !Array.isArray(reads)) continue;
+    const shows = reads.some(read => !!read && typeof read === 'object' && (read as { entity?: unknown }).entity === entity);
+    if (shows && !pages.includes(pageId)) pages.push(pageId);
+  }
+  pages.sort();
   return { pages };
 }
 
@@ -193,15 +200,14 @@ export async function describeEffort(input: EffortInput): Promise<EffortAnswer> 
   const project = projectId(input);
   if (project === undefined) return answer(input, [], `cannot resolve the project of base ${input.base.baseId}`);
   if (isTextOnlyChange(input.item)) {
-    const shared: Record<string, string> = {};
+    let needsSource: string | undefined;
     let moduleSource: string | undefined;
     let configSource: string | undefined;
-    const sharedFolder = `${input.module}/web/shared`;
+    const needsFolder = `${input.module}/pool/l1/web`;
     for (const file of Object.values(mls.stor.files) as StorFile[]) {
       if (!file || file.project !== project || file.status === 'deleted') continue;
-      if (file.level === 2 && file.folder === sharedFolder && file.extension === '.defs.ts') {
-        const body = await fileBody(file);
-        if (body) shared[file.shortName] = body;
+      if (file.level === 4 && file.folder === needsFolder && file.extension === '.json' && file.shortName === 'needs') {
+        needsSource = await fileBody(file);
         continue;
       }
       if (file.level === 4 && file.folder === input.module && file.extension === '.defs.ts' && file.shortName === 'module') {
@@ -212,7 +218,7 @@ export async function describeEffort(input: EffortInput): Promise<EffortAnswer> 
         configSource = await fileBody(file);
       }
     }
-    return describeEffortFrom(input, {}, { shared, moduleSource, configSource });
+    return describeEffortFrom(input, {}, { needsSource, moduleSource, configSource });
   }
   const folder = `${input.module}/web/contracts`;
   const contracts: Record<string, string> = {};
