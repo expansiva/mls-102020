@@ -9,6 +9,7 @@ import type { D2InputSnapshot, D2InputArtifacts, D2SelectedPage, D2RunIdentity }
 import { buildD2Page11WithExperience, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { renderD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import { d2BffL4Slice, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import type { D2MoleculeInventory, D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { gateD2MoleculeRoles, moleculeDecisionContext } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeSelection.js';
 import type { D2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages50/templateContext.js';
@@ -218,7 +219,12 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
       const row = record(raw);
       return text(row.pageId) === page.pageId ? row : { pageId: row.pageId, writes: row.writes };
     }) },
-    ontology: Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))),
+    ontology: d2BffL4Slice(
+      Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))) as Record<string, Ns5OntologyAnyEntity>,
+      (artifacts.rules ?? {}) as Record<string, string>,
+      page as D2NeedPage,
+      [],
+    ).entities,
     // Disclosure is checked against the page actors' grants only.
     access: { grants: ((record(artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => page.actors.includes(text(record(raw).actorRef))) },
     categories: context.template.categories.map(item => {

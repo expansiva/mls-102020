@@ -395,6 +395,22 @@ void test('decision prompt of a replay page omits group usage and sends short ca
   for (const category of payload.categories) assert.deepEqual(Object.keys(category).sort(), ['categoryId', 'description', 'name', 'typicalEntities']);
 });
 
+void test('decision prompt of a replay page sends the bff entity slice, not the def record', () => {
+  const data = context('reembolsoDespesas', 'minhas_despesas');
+  const frozenL4 = (subpath: string): string => readFileSync(new URL(`../../helpers/fixtures/reembolsoDespesas/${subpath.replace('l4/reembolsoDespesas/', 'l4/')}`, import.meta.url), 'utf8');
+  const entityIds = ['Colaborador', 'Despesa', 'GestorEquipe'];
+  data.artifacts.entities = Object.fromEntries(entityIds.map(id => [id, parseNs4ClassicDefsSource(frozenL4(`l4/reembolsoDespesas/ontology/${id}.defs.ts`))]));
+  const payload = JSON.parse(buildD2PagesDecisionPrompt(data).prompt) as { ontology: Record<string, { fields?: Array<{ path?: string }> }> };
+  const ids = Object.keys(payload.ontology);
+  assert.ok(ids.includes('Despesa'));
+  for (const id of ids) {
+    const entity = payload.ontology[id];
+    assert.equal(Object.hasOwn(entity, 'record'), false);
+    assert.ok((entity.fields ?? []).length > 0);
+    for (const field of entity.fields ?? []) assert.match(field.path ?? '', new RegExp(`^${id}\\.`));
+  }
+});
+
 void test('four real reembolsoDespesas pages include the nine minhas_despesas organisms below the prompt ceiling', () => {
   const needs = fixture<{ pages: Array<{ pageId: string }> }>('reembolsoDespesas', 'needs');
   assert.equal(needs.pages.length, 4);
