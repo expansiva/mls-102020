@@ -165,3 +165,8 @@ void test('ontology, grants, category, experience, molecules and forbidden field
   const tooLong = clone(sources()); tooLong.promptTokens = 160001;
   assert.ok(issues(product(), productDraft(), tooLong).includes('D2_PAGE11_PROMPT_LIMIT'));
 });
+
+void test('needs path shape error names the first item that is not Entity.path', () => {
+  const organisms = { listaMotoristas: { reads: ['Motorista.id', 'id'], edits: [], selects: '', submits: [] } };
+  assert.throws(() => buildD2Page11Needs({ organisms }), /D2_PAGE11_NEEDS_READS: listaMotoristas: "id" is not Entity\.path/u);
+});

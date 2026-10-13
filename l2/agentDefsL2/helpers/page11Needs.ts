@@ -41,7 +41,11 @@ export function buildD2Page11Needs(value: unknown): D2Page11Needs {
 }
 
 function paths(value: unknown, code: string): string[] {
-  if (!Array.isArray(value) || !value.every(item => typeof item === 'string' && /^[A-Z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+$/u.test(item))) throw new Error(code);
+  if (!Array.isArray(value)) throw new Error(code);
+  const shape = /^[A-Z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+$/u;
+  for (const item of value) {
+    if (typeof item !== 'string' || !shape.test(item)) throw new Error(`${code}: ${JSON.stringify(item)} is not Entity.path`);
+  }
   return value;
 }
 function object(value: unknown, code: string): Record<string, unknown> {
