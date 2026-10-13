@@ -19,7 +19,7 @@ export const D2_BFF_VERSION = '2026-10-04-agent-defs-l2-bff-v2' as const;
 export const D2_BFF_REFUSAL_VERSION = '2026-10-04-agent-defs-l2-bff-refusal' as const;
 export const D2_BFF_PROMPT_LIMIT_CHARS = 640_000;
 export const D2_BFF_SYSTEM_PREFIX = `<!-- modelType: reasoning -->
-<!-- reasoningEffort: high -->
+<!-- reasoningEffort: medium -->
 <!-- x-tool-strict: true -->`;
 
 export interface D2BffContext {
