@@ -25,6 +25,7 @@ export interface D2Page11GateSources {
   templatePaths: ReadonlySet<string>;
   moleculeTags: ReadonlySet<string>;
   promptTokens?: number;
+  pageActors?: string[];
 }
 export interface D2Page11Issue { code: string; path: string; message: string }
 
@@ -95,6 +96,7 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
       if (!sources.templatePaths.has(path)) add('D2_PAGE11_TEMPLATE_MISSING', 'template', `Selected template ${path} is absent.`);
     }
   }
+  const pageActors = sources.pageActors ?? [sources.actor];
   const currentNeeds = sources.needsPages.find(item => item.pageId === sources.pageId);
   if (!currentNeeds) add('D2_PAGE11_NEEDS_PAGE_MISSING', 'page11Needs', `Page ${sources.pageId} has no needs.json entry.`);
   else if (!currentNeeds.actors.includes(sources.actor)) add('D2_PAGE11_NEEDS_ACTOR', 'page11Needs', `Actor ${sources.actor} is absent from needs.json page ${sources.pageId}.`);
@@ -126,7 +128,7 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
       } else {
         const target = findPage(sources.menu.tree, intent.to ?? '');
         if (!target) add('D2_PAGE11_NAVIGATE_PAGE', `organisms.${id}.intents.${intent.id}`, `Navigate target ${intent.to} is absent from the menu.`);
-        else if (!actorsFor(sources.menu, target.path).has(sources.actor)) add('D2_PAGE11_NAVIGATE_ACTOR', `organisms.${id}.intents.${intent.id}`, `Actor ${sources.actor} cannot access target ${intent.to}.`);
+        else if (!pageActors.some(actor => actorsFor(sources.menu, target.path).has(actor))) add('D2_PAGE11_NAVIGATE_ACTOR', `organisms.${id}.intents.${intent.id}`, `No actor of the page (${pageActors.join(', ')}) can access target ${intent.to}.`);
         else {
           const targetWrites = new Set(keysOf(sources.needsPages.find(item => item.pageId === intent.to)?.writes ?? [], `needs.${intent.to}.writes`));
           const delegated = [...pageWrites].filter(write => targetWrites.has(write));
@@ -139,7 +141,7 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
       const entityId = path.split('.')[0];
       const entity = sources.entities[entityId];
       if (!entity || !resolvableFieldPaths(entity).includes(path)) add('D2_PAGE11_FIELD_UNKNOWN', `page11Needs.organisms.${id}`, `Path ${path} is absent from ontology entity ${entityId}.`);
-      else if (!granted(path, sources.actor, sources.access.grants)) add('D2_PAGE11_FIELD_GRANT', `page11Needs.organisms.${id}`, `Actor ${sources.actor} has no disclosure grant for ${path}.`);
+      else if (!pageActors.some(actor => granted(path, actor, sources.access.grants))) add('D2_PAGE11_FIELD_GRANT', `page11Needs.organisms.${id}`, `No actor of the page (${pageActors.join(', ')}) has a disclosure grant for ${path}.`);
     }
   }
   issues.push(...d2Page11WriteDuplicates(draft));

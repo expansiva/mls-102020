@@ -166,6 +166,31 @@ void test('ontology, grants, category, experience, molecules and forbidden field
   assert.ok(issues(product(), productDraft(), tooLong).includes('D2_PAGE11_PROMPT_LIMIT'));
 });
 
+void test('a field or navigate target is refused only when no actor of the page can reach it', () => {
+  const path = 'Produto.details.identification.name';
+  const denied = clone(productDraft());
+  denied.organisms.lista.reads = [path];
+  const shared = clone(sources());
+  shared.pageActors = ['estoquista', 'outro'];
+  shared.access.grants = [
+    { actorRef: 'estoquista', entityRefs: ['Produto'], disclosure: { mode: 'fieldsOnly', allowedFields: ['Produto.id'] } },
+    { actorRef: 'outro', entityRefs: ['Produto'], disclosure: { mode: 'fullRecord' } },
+  ];
+  assert.equal(issues(product(), denied, shared).includes('D2_PAGE11_FIELD_GRANT'), false);
+  const nobody = clone(shared);
+  nobody.access.grants = shared.access.grants.map(grant => ({ ...grant, disclosure: { mode: 'fieldsOnly', allowedFields: ['Produto.id'] } }));
+  const fieldIssues = gateD2Page11(product(), denied, nobody);
+  assert.ok(fieldIssues.some(item => item.code === 'D2_PAGE11_FIELD_GRANT' && item.message === `No actor of the page (estoquista, outro) has a disclosure grant for ${path}.`));
+  const navigate = clone(sources());
+  navigate.pageActors = ['estoquista', 'outro'];
+  navigate.menu.authorities = { 'actor:estoquista': ['produtos'], 'actor:outro': ['movimentacoes'] };
+  assert.equal(issues(product(), productDraft(), navigate).includes('D2_PAGE11_NAVIGATE_ACTOR'), false);
+  const closed = clone(navigate);
+  closed.menu.authorities = { 'actor:estoquista': ['produtos'], 'actor:outro': ['produtos'] };
+  const navigateIssues = gateD2Page11(product(), productDraft(), closed);
+  assert.ok(navigateIssues.some(item => item.code === 'D2_PAGE11_NAVIGATE_ACTOR' && item.message === 'No actor of the page (estoquista, outro) can access target movimentacoes.'));
+});
+
 void test('needs path shape error names the first item that is not Entity.path', () => {
   const organisms = { listaMotoristas: { reads: ['Motorista.id', 'id'], edits: [], selects: '', submits: [] } };
   assert.throws(() => buildD2Page11Needs({ organisms }), /D2_PAGE11_NEEDS_READS: listaMotoristas: "id" is not Entity\.path/u);
