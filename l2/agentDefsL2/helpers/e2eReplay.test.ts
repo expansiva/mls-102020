@@ -34,6 +34,7 @@ import { beforePromptStep as sharedStep } from '/_102020_/l2/agentDefsL2/steps/s
 import { gateD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { buildD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/helpers/sharedV2/format.js';
 import { deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
+import { d2RequiredRelationTargets } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 import { approveD2BffUnit, bffDesignInfo, bffReceiptInfo, bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, readApprovedD2Bff, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { buildD2BffDesign, d2CoverageObligation, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
@@ -1112,4 +1113,36 @@ void test('d2_84 s2: every read or edit is in fields, and fields has nothing els
     });
     assertFieldIndex(`clinicR2/${pageId}`, page.derive, deriveD2Shared(page.derive).fields);
   }
+});
+
+void test('d2_92 s2: without an editor of the write entity, the submitting organism is the form when it edits something', async () => {
+  const { out } = await dining();
+  const base = out.shared.atendimento.derive;
+  const write = { entity: 'Inscricao', operation: 'create' as const };
+  const need = { ...base.need, writes: [...base.need.writes, write] };
+  const organism = (edits: string[]) => ({
+    desktop: { organisms: { inscreverMe: { kind: 'form', text: 'Inscrever', intents: [{ id: 'inscrever', kind: 'submit' as const }] } }, sections: [{ id: 'main', organisms: ['inscreverMe'] }] },
+    mobile: { organisms: { inscreverMe: { kind: 'form', text: 'Inscrever', intents: [{ id: 'inscrever', kind: 'submit' as const }] } }, sections: [{ id: 'main', organisms: ['inscreverMe'] }] },
+  });
+  const drafts = (edits: string[]) => ({
+    desktop: { organisms: { inscreverMe: { reads: [] as string[], edits, selects: '', submits: [{ intentId: 'inscrever', write: 'Inscricao.create' }] } } },
+    mobile: { organisms: { inscreverMe: { reads: [] as string[], edits, selects: '', submits: [{ intentId: 'inscrever', write: 'Inscricao.create' }] } } },
+  });
+  const page11Shape = (src: typeof base.page11.desktop, edits: string[]) => {
+    const skeleton = organism(edits);
+    return {
+      desktop: { ...src, organisms: { inscreverMe: { ...Object.values(src.organisms)[0], ...skeleton.desktop.organisms.inscreverMe } }, sections: skeleton.desktop.sections },
+      mobile: { ...base.page11.mobile, organisms: { inscreverMe: { ...Object.values(base.page11.mobile.organisms)[0], ...skeleton.mobile.organisms.inscreverMe } }, sections: skeleton.mobile.sections },
+    };
+  };
+  const withEdits = deriveD2Shared({ ...base, need, page11: page11Shape(base.page11.desktop, ['Participante.details.identification.name']), drafts: drafts(['Participante.details.identification.name']) });
+  assert.deepEqual(withEdits.forms.inscrever, { organism: 'inscreverMe', submit: 'inscrever' });
+  const context = { page11: page11Shape(base.page11.desktop, ['Participante.details.identification.name']), drafts: drafts(['Participante.details.identification.name']), need, menu: base.menu, design: base.design, entities: base.entities };
+  assert.equal(gateD2SharedV2(withEdits, context).filter(issue => issue.code === 'D2_SHARED_V2_FORM_UNBOUND').length, 0);
+
+  const withoutEdits = deriveD2Shared({ ...base, need, page11: page11Shape(base.page11.desktop, []), drafts: drafts([]) });
+  assert.equal(withoutEdits.forms.inscrever, undefined);
+
+  const entity = { relationships: { participante: { via: 'Inscricao.participanteId', to: 'Participante', required: true }, itens: { via: 'ItemComanda.inscricaoId', to: 'ItemComanda', required: true } } };
+  assert.deepEqual(d2RequiredRelationTargets(entity as never, 'Inscricao'), [{ via: 'Inscricao.participanteId', to: 'Participante' }]);
 });

@@ -20,15 +20,15 @@ interface EntityView {
   relationships?: Record<string, { via?: string; to?: string; required?: unknown }>;
 }
 
-/** Required relationships of an entity whose `via` and `to` are both present (d2_92). */
-export function d2RequiredRelationTargets(entity: Ns5OntologyAnyEntity | undefined): Array<{ via: string; to: string }> {
+/** Required relationships of an entity whose `via` is a foreign key of that entity (`Entity.field`) and `to` is present (d2_92). */
+export function d2RequiredRelationTargets(entity: Ns5OntologyAnyEntity | undefined, entityId?: string): Array<{ via: string; to: string }> {
   const relationships = (entity as EntityView | undefined)?.relationships ?? {};
   const out: Array<{ via: string; to: string }> = [];
   for (const rel of Object.values(relationships)) {
     const required = rel.required === true || (typeof rel.required === 'string' && rel.required.trim().length > 0);
     const via = rel.via ?? '';
     const to = rel.to ?? '';
-    if (required && via.length > 0 && to.length > 0) out.push({ via, to });
+    if (required && via.length > 0 && to.length > 0 && (entityId === undefined || via.startsWith(`${entityId}.`))) out.push({ via, to });
   }
   return out;
 }

@@ -255,7 +255,10 @@ function deriveForms(input: D2SharedDeriveInput, organisms: Map<string, Organism
       if (pageWrite.operation === 'transition' && !payload.length) continue;
       const wanted = pageWrite.operation === 'transition' ? payload : [];
       const candidates = [...organisms].filter(([, row]) => row.edits.some(path => path.split('.')[0] === entityId) && wanted.every(path => row.edits.includes(path)));
-      if (!candidates.length) continue;
+      if (!candidates.length) {
+        if (unit.edits.length) forms[submit.intentId] = { organism: unitId, submit: submit.intentId };
+        continue;
+      }
       const sameSection = candidates.filter(([id, row]) => row.section && row.section === unit.section && id !== unitId);
       // More than one candidate: the one that edits most of the entity, in page order.
       const score = ([, row]: [string, OrganismRow]) => row.edits.filter(path => path.split('.')[0] === entityId).length;

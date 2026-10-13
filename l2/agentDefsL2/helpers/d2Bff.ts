@@ -560,7 +560,7 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
     const owned = editsOfSubmit(intentId);
     const edits = owned.some(path => entityOf(path) === pageWrite.entity) ? owned : pageEdits;
     const carried = d2BffValueLeaves(command.input, design).filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths);
-    const relatedCover = (path: string): boolean => d2RequiredRelationTargets(context.entities[pageWrite.entity]).some(rel =>
+    const relatedCover = (path: string): boolean => d2RequiredRelationTargets(context.entities[pageWrite.entity], pageWrite.entity).some(rel =>
       rel.via === path && carried.some(origin => entityOf(origin) === rel.to));
     const missing = d2WriteRequiredInput(pageWrite, context.entities, edits).filter(path => !carried.some(origin => covers(origin, path)) && !relatedCover(path));
     if (missing.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, `command ${command.id} (${command.writes}) asks for ${missing.join(', ')}; each input leaf that fills a stored value names that Entity.path as a field origin.`);
