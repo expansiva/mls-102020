@@ -1,7 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/pages50/run.ts" enhancement="_blank"/>
 
 import { readJson, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
-import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
@@ -162,6 +161,50 @@ function normalizeSubmitWrites(needs: unknown, writes: readonly D2Write[]): unkn
   })) };
 }
 
+/** One entity on the page: bare paths gain its prefix. A read some page actor cannot see is dropped; edits stay. */
+export function normalizeNeedsPaths(needs: unknown, page: D2PagesContext['page'], entities: D2PagesContext['artifacts']['entities'], grants: readonly unknown[]): unknown {
+  void entities;
+  const cited = new Set<string>();
+  for (const row of [...page.reads, ...page.writes]) {
+    const entity = text(record(row).entity);
+    if (entity) cited.add(entity);
+  }
+  const only = cited.size === 1 ? [...cited][0] : '';
+  const prefixed: string[] = [];
+  const removed: string[] = [];
+  const root = record(needs);
+  const organisms = record(root.organisms);
+  const next = { ...root, organisms: Object.fromEntries(Object.entries(organisms).map(([id, raw]) => {
+    const unit = record(raw);
+    const list = (key: 'reads' | 'edits', dropUnseen: boolean): unknown => {
+      if (!Array.isArray(unit[key])) return unit[key];
+      const kept: unknown[] = [];
+      for (const item of unit[key] as unknown[]) {
+        if (typeof item !== 'string') { kept.push(item); continue; }
+        const path = only && !/^[A-Z]/u.test(item) ? `${only}.${item}` : item;
+        if (path !== item) prefixed.push(path);
+        const entityId = path.split('.')[0];
+        if (dropUnseen && /^[A-Z]/u.test(path) && page.actors.some(actor => !grants.some(rawGrant => {
+          const grant = record(rawGrant);
+          if (text(grant.actorRef) !== actor) return false;
+          if (!((grant.entityRefs as unknown[] | undefined) ?? []).some(ref => text(ref) === entityId)) return false;
+          const disclosure = record(grant.disclosure);
+          return grantShowsPath({
+            mode: text(disclosure.mode),
+            ...(Array.isArray(disclosure.allowedFields) ? { allowedFields: disclosure.allowedFields.map(text) } : {}),
+            ...(Array.isArray(disclosure.deniedFields) ? { deniedFields: disclosure.deniedFields.map(text) } : {}),
+          }, path);
+        }))) { removed.push(path); continue; }
+        kept.push(path);
+      }
+      return kept;
+    };
+    return [id, { ...unit, reads: list('reads', true), edits: list('edits', false) }];
+  })) };
+  console.info(`pages50 ${page.pageId}: prefixed ${JSON.stringify(prefixed)}; removed ${JSON.stringify(removed)}`);
+  return next;
+}
+
 export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { diagnostic: string; previous: unknown }, approved?: D2ApprovedPage11 | null): { prompt: string; chars: number } {
   const { page, artifacts } = context;
   const payload = {
@@ -177,7 +220,7 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
     }) },
     ontology: Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))),
     // Disclosure is checked against the page actors' grants only.
-    access: pageAccess(page, artifacts),
+    access: { grants: ((record(artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => page.actors.includes(text(record(raw).actorRef))) },
     categories: context.template.categories,
     moleculeResearch: JSON.parse(moleculeDecisionContext(context.selectedGroups, context.groups)),
     // d2_71: a regeneration starts from the approved page11 and changes only what the reason asks.
@@ -188,31 +231,6 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
   const prompt = JSON.stringify(payload);
   if (prompt.length > D2_PAGES_PROMPT_LIMIT_CHARS) throw new Error(`D2_PAGE11_PROMPT_LIMIT: ${prompt.length} > ${D2_PAGES_PROMPT_LIMIT_CHARS}`);
   return { prompt, chars: prompt.length };
-}
-
-/** Paths every page actor sees. An entity everyone sees whole is omitted; one nobody-sees is `[]`. */
-function pageAccess(page: D2PagesContext['page'], artifacts: D2PagesContext['artifacts']): { grants: unknown[]; visibleToAllActors: Record<string, string[]> } {
-  const actors = page.actors;
-  const ontology = Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))) as Record<string, Ns5OntologyAnyEntity>;
-  const grants = ((record(artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => actors.includes(text(record(raw).actorRef)));
-  const visibleToAllActors: Record<string, string[]> = {};
-  for (const [entityId, entity] of Object.entries(ontology)) {
-    const paths = resolvableFieldPaths(entity).filter(path => path !== entityId);
-    const visible = paths.filter(path => actors.every(actor => grants.some(raw => {
-      const grant = record(raw);
-      if (text(grant.actorRef) !== actor) return false;
-      if (!((grant.entityRefs as unknown[] | undefined) ?? []).some(id => text(id) === entityId)) return false;
-      const disclosure = record(grant.disclosure);
-      return grantShowsPath({
-        mode: text(disclosure.mode),
-        ...(Array.isArray(disclosure.allowedFields) ? { allowedFields: disclosure.allowedFields.map(text) } : {}),
-        ...(Array.isArray(disclosure.deniedFields) ? { deniedFields: disclosure.deniedFields.map(text) } : {}),
-      }, path);
-    })));
-    if (visible.length === paths.length) continue;
-    visibleToAllActors[entityId] = visible;
-  }
-  return { grants, visibleToAllActors };
 }
 
 export interface D2PagesWriter { writeSource(info: Ns5FileInfo, source: string): Promise<void>; writeJson(info: Ns5FileInfo, value: unknown): Promise<unknown> }
@@ -286,9 +304,10 @@ export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesRe
     mobile: buildD2Page11WithExperience(raw.mobile.definition, context.template.categories),
   };
   const writes = pageWrites(context.page);
+  const grants = ((record(context.artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => context.page.actors.includes(text(record(raw).actorRef)));
   const needs: Record<D2Page11Device, D2Page11Needs> = {
-    desktop: buildD2Page11Needs(normalizeSubmitWrites(raw.desktop.needs, writes)),
-    mobile: buildD2Page11Needs(normalizeSubmitWrites(raw.mobile.needs, writes)),
+    desktop: buildD2Page11Needs(normalizeSubmitWrites(normalizeNeedsPaths(raw.desktop.needs, context.page, context.artifacts.entities, grants), writes)),
+    mobile: buildD2Page11Needs(normalizeSubmitWrites(normalizeNeedsPaths(raw.mobile.needs, context.page, context.artifacts.entities, grants), writes)),
   };
   if (!context.page.actors.length) throw new Error('D2_PAGE11_ACTOR_MISSING');
   const issues = d2PageIssues(context, definitions, needs, Math.max(promptChars, repairPromptChars));

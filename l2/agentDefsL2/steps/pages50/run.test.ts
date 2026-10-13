@@ -13,7 +13,7 @@ import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { d2NormalizeWriteKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { gateD2Page11 } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, d2PageWriteKeys, d2RegenerationReason, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, d2PageWriteKeys, d2RegenerationReason, normalizeNeedsPaths, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`../../helpers/fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
 const categories = (JSON.parse(readFileSync(new URL('../../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8')) as { categories: D2PagesContext['template']['categories'] }).categories;
@@ -120,6 +120,7 @@ void test('run gate refuses missing write, unknown field and unknown molecule wi
   (noWrite.desktop.needs as { organisms: Record<string, { submits: unknown[] }> }).organisms.acoesCadastro.submits = [];
   await assert.rejects(() => approveD2PagesUnit(data, noWrite, 1400, 0, writer), /D2_PAGE11_SUBMIT_WRITE/u);
   const badField = product();
+  data.artifacts.access = { grants: data.page.actors.map(actorRef => ({ actorRef, entityRefs: ['Produto'], disclosure: { mode: 'fullRecord' } })) } as D2PagesContext['artifacts']['access'];
   (badField.desktop.needs as { organisms: Record<string, { reads: string[] }> }).organisms.lista.reads = ['Produto.unknown'];
   await assert.rejects(() => approveD2PagesUnit(data, badField, 1400, 0, writer), /D2_PAGE11_FIELD_UNKNOWN/u);
   const badMolecule = product();
@@ -405,27 +406,82 @@ void test('four real reembolsoDespesas pages include the nine minhas_despesas or
   console.log(`reembolsoDespesas fixture maximum decision prompt: ${maximum} chars`);
 });
 
-void test('d2_88: visibleToAllActors is the field intersection and omits an entity both actors see whole', () => {
+function bareNeeds(reads: string[], edits: string[] = []): { organisms: Record<string, { reads: string[]; edits: string[]; selects: string; submits: [] }> } {
+  return { organisms: { lista: { reads, edits, selects: '', submits: [] } } };
+}
+
+void test('d2_89: one entity prefixes bare reads and edits; two entities leave them for the builder to refuse', () => {
   const data = context('controleEstoque', 'produtos');
-  data.page.actors = ['full', 'limited'];
-  data.page.reads = [{ entity: 'X' }, { entity: 'Y' }];
-  data.page.writes = [];
-  data.page.organisms = [];
-  data.artifacts.entities = {
-    X: { entityId: 'X', fields: [{ fieldId: 'a' }, { fieldId: 'b' }] },
-    Y: { entityId: 'Y', fields: [{ fieldId: 'c' }] },
-  } as D2PagesContext['artifacts']['entities'];
+  data.page.reads = [{ entity: 'M' }];
+  data.page.writes = [{ entity: 'M', operation: 'update' }];
+  const grants = data.page.actors.map(actorRef => ({ actorRef, entityRefs: ['M'], disclosure: { mode: 'fullRecord' } }));
+  const one = normalizeNeedsPaths(bareNeeds(['id', 'details.x']), data.page, data.artifacts.entities, grants) as { organisms: { lista: { reads: string[] } } };
+  assert.deepEqual(one.organisms.lista.reads, ['M.id', 'M.details.x']);
+  const built = buildD2Page11Needs(one);
+  assert.deepEqual(built.organisms.lista.reads, ['M.id', 'M.details.x']);
+  data.page.reads = [{ entity: 'M' }, { entity: 'N' }];
+  const two = normalizeNeedsPaths(bareNeeds(['id']), data.page, data.artifacts.entities, []);
+  assert.deepEqual((two as { organisms: { lista: { reads: string[] } } }).organisms.lista.reads, ['id']);
+  assert.throws(() => buildD2Page11Needs(two), /D2_PAGE11_NEEDS_READS/u);
+});
+
+void test('d2_89: a read some page actor cannot see is dropped; the same path in edits still fails the grant gate', async () => {
+  const writer: D2PagesWriter = { writeSource: async () => undefined, writeJson: async () => undefined };
+  const open = (actors: string[]): D2PagesContext => {
+    const data = context('controleEstoque', 'produtos');
+    data.page.actors = actors;
+    data.page.reads = [{ entity: 'X' }];
+    data.page.writes = [];
+    const pages = (data.artifacts.needs as { pages: Array<{ pageId: string; actors: string[]; writes: unknown[] }> }).pages;
+    const row = pages.find(item => item.pageId === 'produtos');
+    assert.ok(row);
+    row.actors = actors;
+    row.writes = [];
+    (data.artifacts.menu as { authorities: Record<string, string[]> }).authorities = Object.fromEntries(actors.map(actor => [actor, ['produtos']]));
+    data.artifacts.entities = { X: { entityId: 'X', fields: [{ fieldId: 'a' }, { fieldId: 'b' }] } } as D2PagesContext['artifacts']['entities'];
+    data.artifacts.access = { grants: [
+      { actorRef: 'full', entityRefs: ['X'], disclosure: { mode: 'fullRecord' } },
+      { actorRef: 'limited', entityRefs: ['X'], disclosure: { mode: 'fieldsOnly', allowedFields: ['X.a'] } },
+    ] } as D2PagesContext['artifacts']['access'];
+    return data;
+  };
+  const answer = product();
+  for (const device of ['desktop', 'mobile'] as const) {
+    const organisms = (answer[device].definition as { organisms: Record<string, { intents: unknown[] }> }).organisms;
+    for (const organism of Object.values(organisms)) organism.intents = [];
+    const draft = answer[device].needs as { organisms: Record<string, { reads: string[]; edits: string[]; submits: unknown[] }> };
+    for (const unit of Object.values(draft.organisms)) { unit.reads = []; unit.edits = []; unit.submits = []; }
+    draft.organisms.lista.reads = ['X.a', 'X.b'];
+  }
+  const writes = new Map<string, unknown>();
+  const capturing: D2PagesWriter = { writeSource: async () => undefined, writeJson: async (info, value) => { writes.set(`${info.shortName}${info.extension}`, value); } };
+  await approveD2PagesUnit(open(['full', 'limited']), answer, 1400, 0, capturing);
+  const saved = writes.get('produtosDesktop.json') as { organisms: { lista: { reads: string[] } } };
+  assert.deepEqual(saved.organisms.lista.reads, ['X.a']);
+  const hiddenEdit = product();
+  for (const device of ['desktop', 'mobile'] as const) {
+    const organisms = (hiddenEdit[device].definition as { organisms: Record<string, { intents: unknown[] }> }).organisms;
+    for (const organism of Object.values(organisms)) organism.intents = [];
+    const draft = hiddenEdit[device].needs as { organisms: Record<string, { reads: string[]; edits: string[]; submits: unknown[] }> };
+    for (const unit of Object.values(draft.organisms)) { unit.reads = []; unit.edits = []; unit.submits = []; }
+    draft.organisms.lista.edits = ['X.b'];
+  }
+  await assert.rejects(() => approveD2PagesUnit(open(['full', 'limited']), hiddenEdit, 1400, 0, writer), /D2_PAGE11_FIELD_GRANT/u);
+});
+
+void test('d2_89: the decision payload is the page actors grants and the prompt has no visibleToAllActors', () => {
+  const data = context('controleEstoque', 'produtos');
+  data.page.actors = ['full'];
   data.artifacts.access = { grants: [
-    { actorRef: 'full', entityRefs: ['X', 'Y'], disclosure: { mode: 'fullRecord' } },
-    { actorRef: 'limited', entityRefs: ['X'], disclosure: { mode: 'fieldsOnly', allowedFields: ['X.a'] } },
-    { actorRef: 'limited', entityRefs: ['Y'], disclosure: { mode: 'fullRecord' } },
+    { actorRef: 'full', entityRefs: ['X'], disclosure: { mode: 'fullRecord' } },
     { actorRef: 'outsider', entityRefs: ['X'], disclosure: { mode: 'fullRecord' } },
   ] } as D2PagesContext['artifacts']['access'];
-  const payload = JSON.parse(buildD2PagesDecisionPrompt(data).prompt) as { access: { grants: Array<{ actorRef: string }>; visibleToAllActors: Record<string, string[]> } };
-  assert.deepEqual(payload.access.visibleToAllActors.X, ['X.a']);
-  assert.equal(payload.access.visibleToAllActors.X.includes('X.b'), false);
-  assert.equal('Y' in payload.access.visibleToAllActors, false);
+  const payload = JSON.parse(buildD2PagesDecisionPrompt(data).prompt) as { access: { grants: Array<{ actorRef: string }> } };
+  assert.deepEqual(Object.keys(payload.access), ['grants']);
   assert.equal(payload.access.grants.some(grant => grant.actorRef === 'outsider'), false);
+  const prompt = readFileSync(new URL('./prompt.md', import.meta.url), 'utf8');
+  assert.equal(prompt.includes('visibleToAllActors'), false);
+  assert.match(prompt, /Field paths\s+must exist in ontology and be disclosed by the actor's grants\./u);
 });
 
 void test('controleEstoque/produtos molecular context omits repeated indexes with margin below the prompt ceiling', () => {
