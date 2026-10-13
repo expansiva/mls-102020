@@ -18,7 +18,7 @@ import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2ChosenMolecules, d2Pa
 
 interface Args { project: number; module: string; scope?: D2Scope; pageId: string; stage: 'groups' | 'decision'; attempt: 1 | 2; selectedGroups?: Record<string, string[]>; groupAssessments?: D2PagesContext['groupAssessments']; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
 const GROUPS_SYSTEM_PROMPT = `<!-- modelType: reasoning -->
-<!-- reasoningEffort: high -->
+<!-- reasoningEffort: low -->
 <!-- x-tool-strict: true -->
 
 Select relevant molecular groups by purpose for every organism. Return exact catalog group IDs.`;
@@ -219,7 +219,7 @@ function next(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep
     prompt: JSON.stringify(args), rags: [], planning: { planId: `pages50-${args.pageId}-${args.stage}-${args.attempt}`, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' } } as mls.msg.AIAgentStep);
 }
 
-const groupSchema = { type: 'object', additionalProperties: false, required: ['organisms'], properties: { organisms: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['organismId', 'groups'], properties: { organismId: { type: 'string' }, groups: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['groupId', 'relevant', 'reason'], properties: { groupId: { type: 'string' }, relevant: { type: 'boolean' }, reason: { type: 'string' } } } } } } } } };
+const groupSchema = { type: 'object', additionalProperties: false, required: ['organisms'], properties: { organisms: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['organismId', 'groups'], properties: { organismId: { type: 'string' }, groups: { type: 'array', items: { type: 'string' } } } } } } };
 /** The page schema with `write` limited to the page's exact write keys (a page without writes keeps the plain field; its gate refuses any submit). */
 export async function readPageSchema(enums: D2PageChoiceEnums = { writeKeys: [], categories: [], kinds: [], targets: [], tags: [] }): Promise<Record<string, unknown>> {
   const [page, needs] = await Promise.all([

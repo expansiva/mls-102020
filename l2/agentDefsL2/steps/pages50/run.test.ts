@@ -65,7 +65,7 @@ void test('groups beforePrompt declares the reasoning model and preserves its st
   assert.equal(ready.type, 'prompt_ready');
   const systemPrompt = ready.systemPrompt ?? '';
   assert.equal(systemPrompt.startsWith('<!-- modelType: reasoning -->'), true);
-  assert.match(systemPrompt, /<!-- reasoningEffort: high -->/u);
+  assert.match(systemPrompt, /<!-- reasoningEffort: low -->/u);
   assert.match(systemPrompt, /<!-- x-tool-strict: true -->/u);
   assert.match(systemPrompt, /Select relevant molecular groups by purpose for every organism\. Return exact catalog group IDs\./u);
   assert.equal(ready.tools?.[0]?.function.name, 'submitD2MoleculeGroups');

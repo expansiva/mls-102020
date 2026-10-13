@@ -19,10 +19,7 @@ void test('molecular research reads only selected groups and validates exact tag
   const inventory = await buildD2MoleculeInventory(port, 102047);
   const phaseOne = moleculeGroupPrompt(inventory, [{ id: 'organism1', kind: 'list', text: 'Products' }]);
   assert.equal(phaseOne.includes('groupviewtable--ml-responsive-data-table'), false);
-  const judgment = parseD2MoleculeGroupJudgment({ organisms: [{ organismId: 'organism1', groups: [
-    { groupId: 'groupViewTable', relevant: true, reason: 'The organism lists records.' },
-    { groupId: 'groupEnterText', relevant: false, reason: 'The organism does not edit text.' },
-  ] }] }, ['organism1'], inventory);
+  const judgment = parseD2MoleculeGroupJudgment({ organisms: [{ organismId: 'organism1', groups: ['groupViewTable'] }] }, ['organism1'], inventory);
   const selected = judgment.selected;
   const shortlist = await readD2MoleculeShortlist(port, inventory, selected);
   assert.deepEqual(reads, ['groupViewTable']);
@@ -34,6 +31,6 @@ void test('molecular research reads only selected groups and validates exact tag
   assert.equal(Object.hasOwn(decision.groups[0], 'index'), false);
   assert.deepEqual(gateD2MoleculeRoles({ lista: [{ role: 'list', preferred: 'groupviewtable--ml-responsive-data-table' }] }, { lista: ['groupViewTable'] }, shortlist.groups), []);
   assert.equal(gateD2MoleculeRoles({ lista: [{ role: 'text', preferred: 'groupentertext--ml-enter-text' }] }, { lista: ['groupViewTable'] }, shortlist.groups).length, 1);
-  assert.throws(() => parseD2MoleculeGroupJudgment({ organisms: [{ organismId: 'organism1', groups: [{ groupId: 'groupViewTable', relevant: true, reason: 'Fits.' }] }] }, ['organism1'], inventory), /D2_MOLECULE_GROUP_COVERAGE/u);
+  assert.throws(() => parseD2MoleculeGroupJudgment({ organisms: [{ organismId: 'organism1', groups: ['invented'] }] }, ['organism1'], inventory), /D2_MOLECULE_GROUP_RESPONSE/u);
   await assert.rejects(() => readD2MoleculeShortlist(port, inventory, { organism1: ['invented'] }), /D2_MOLECULE_GROUP_UNKNOWN/u);
 });

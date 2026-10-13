@@ -36,7 +36,7 @@ export async function buildD2MoleculeInventory(port: D2MoleculeCatalogPort, proj
 }
 
 export function moleculeGroupPrompt(inventory: D2MoleculeInventory, organisms: Array<{ id: string; kind: string; text: string }>): string {
-  return JSON.stringify({ organisms, groups: inventory.groups, instruction: 'For each organism, assess every group by its published purpose. Return groupId, relevant and a specific reason for relevant and discarded groups. Do not infer from group name. No match is valid.' });
+  return JSON.stringify({ organisms, groups: inventory.groups, instruction: 'For each organism, return only the relevant catalog group ids. Omit the organism or return an empty list when none apply. Do not return a reason. Do not infer from group name. No match is valid.' });
 }
 
 /** Phase two reads only selected indexes and usage contracts. */

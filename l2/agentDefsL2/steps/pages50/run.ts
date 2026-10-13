@@ -51,7 +51,7 @@ export interface D2PagesContext {
   template: D2PageTemplateContext;
   inventory: D2MoleculeInventory;
   selectedGroups: Record<string, string[]>;
-  groupAssessments?: Array<{ organismId: string; groups: Array<{ groupId: string; relevant: boolean; reason: string }> }>;
+  groupAssessments?: Array<{ organismId: string; groups: Array<{ groupId: string; relevant: boolean; reason?: string }> }>;
   groups: D2MoleculeGroup[];
   moleculeHashes: Record<string, string>;
   skill: string;
