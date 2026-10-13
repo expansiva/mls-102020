@@ -3,7 +3,7 @@
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { d2BffValueLeaves, d2FedReads, d2PageSubmits, d2ReadCovered, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { d2BffValueLeaves, d2FedReads, d2ReadCovered, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2SharedV2, type D2SharedV2Definition, type D2SharedV2Issue } from '/_102020_/l2/helpers/sharedV2/format.js';
 
 export interface D2SharedGateContext {
@@ -16,75 +16,38 @@ export interface D2SharedGateContext {
 }
 
 /**
- * D (d2_73): facts of the shared over the approved BFF, never its shape. Every organism is fed (an organism that reads is
- * listed in the organisms of some state (d2_80), what it reads is held by a state whose source carries it, what it edits
- * is a form), every function calls an endpoint that exists, every intent has a function, every state is filled by a
- * source, a function or a form; references, navigation targets and journey steps exist.
+ * D (d2_73, d2_94): facts of the shared over the approved BFF, never its shape. Every organism that reads is listed in
+ * the organisms of some state (d2_80) and what it reads is held by a state whose source carries it. Every state is
+ * filled by a source. Journey steps exist and name organisms of the page.
  */
 export function gateD2SharedV2(value: unknown, context: D2SharedGateContext): D2SharedV2Issue[] {
   const issues: D2SharedV2Issue[] = [];
   let definition: D2SharedV2Definition;
   try { definition = buildD2SharedV2(value); } catch (error) { return [{ code: 'D2_SHARED_V2_FORMAT', path: 'definition', message: String(error) }]; }
   const add = (code: string, path: string, message: string): void => { issues.push({ code, path, message }); };
-  const organisms = new Map<string, { reads: Set<string>; edits: Set<string>; intents: Array<{ id: string; kind: string; to?: string }> }>();
+  const organisms = new Map<string, { reads: Set<string> }>();
   for (const device of ['desktop', 'mobile'] as const) {
-    for (const [id, organism] of Object.entries(context.page11[device].organisms)) {
-      const row = organisms.get(id) ?? { reads: new Set<string>(), edits: new Set<string>(), intents: [] };
-      for (const intent of organism.intents) if (!row.intents.some(item => item.id === intent.id)) row.intents.push(intent);
+    for (const id of Object.keys(context.page11[device].organisms)) {
+      const row = organisms.get(id) ?? { reads: new Set<string>() };
       const draft = context.drafts[device].organisms[id];
       for (const path of draft ? d2FedReads(draft) : []) row.reads.add(path);
-      for (const path of draft?.edits ?? []) row.edits.add(path);
       organisms.set(id, row);
     }
   }
 
-  // D.4: every state is filled by a source, a function or a form.
+  // D.4: every state is filled by a source.
   for (const [id, state] of Object.entries(definition.states)) {
-    if (!validStateSource(id, state.source, definition)) add('D2_SHARED_V2_STATE_SOURCE', `states.${id}`, `State ${id} source ${JSON.stringify(state.source)} is not <endpoint>.<output key>, <command>.input, entry.params.<name>, another state id, or a function whose sets is this state.`);
+    if (!validStateSource(id, state.source, definition)) add('D2_SHARED_V2_STATE_SOURCE', `states.${id}`, `State ${id} source ${JSON.stringify(state.source)} is not <endpoint>.<output key>, <command>.input, entry.params.<name>, or another state id.`);
   }
 
-  // D.1: an organism that reads is listed by a state; what it reads is held by a state; what it edits belongs to a form.
+  // D.1: an organism that reads is listed by a state; what it reads is held by a state.
   const held = new Map(Object.keys(definition.states).map(id => [id, heldPaths(id, definition, context.design)]));
-  const formOrganisms = new Set(Object.values(definition.forms).map(form => form.organism));
   const listed = new Set(Object.values(definition.states).flatMap(state => state.organisms));
   for (const [id, row] of organisms) {
     if (row.reads.size && !listed.has(id)) add('D2_SHARED_V2_ORGANISM_UNFED', `organisms.${id}`, `Organism ${id} reads, and no state lists it in organisms.`);
     for (const path of row.reads) {
       if ([...held.values()].some(origins => d2ReadCovered(path, origins, context.entities))) continue;
       add('D2_SHARED_V2_ORGANISM_UNFED', `organisms.${id}`, `Organism ${id} reads ${path}, and no state holds it: no state's source is an endpoint output that carries it.`);
-    }
-    if (row.edits.size && !formOrganisms.has(id)) add('D2_SHARED_V2_FORM_UNBOUND', `organisms.${id}`, `Organism ${id} edits ${[...row.edits].join(', ')} and is the organism of no form.`);
-  }
-
-  // Forms bind an organism of the page to one of its submits.
-  const submits = d2PageSubmits(context);
-  for (const [id, form] of Object.entries(definition.forms)) {
-    if (!organisms.has(form.organism)) add('D2_SHARED_V2_FORM', `forms.${id}`, `Form ${id} names organism ${form.organism}, which is not on the page.`);
-    if (!submits.has(form.submit)) add('D2_SHARED_V2_FORM', `forms.${id}`, `Form ${id} submits ${form.submit}, which is not a submit intent of the page.`);
-  }
-
-  // D.2: functions call endpoints that exist and touch states that exist; a navigation reaches a page the actors open.
-  const pageActors = new Set(context.need.actors);
-  for (const [id, fn] of Object.entries(definition.functions)) {
-    if (fn.calls && !definition.requests[fn.calls]) add('D2_SHARED_V2_FUNCTION_CALL', `functions.${id}`, `Function ${id} calls ${fn.calls}, which is not an endpoint of the page.`);
-    if (fn.sets && !definition.states[fn.sets]) add('D2_SHARED_V2_FUNCTION_SET', `functions.${id}`, `Function ${id} sets ${JSON.stringify(fn.sets)}, which is not one state id.`);
-    for (const target of fn.updates ?? []) if (!definition.states[target]) add('D2_SHARED_V2_FUNCTION_UPDATE', `functions.${id}.updates`, `Function ${id} updates ${target}, which is not a state.`);
-    if (fn.navigate && !canNavigate(context.menu, fn.navigate, pageActors)) add('D2_SHARED_V2_FUNCTION_NAVIGATE', `functions.${id}`, `Function ${id} navigates to ${fn.navigate}, which the page actors cannot open.`);
-    for (const [key, ref] of Object.entries(fn.carries ?? {})) {
-      const stateId = ref.split('.')[0];
-      if (!definition.states[stateId]) add('D2_SHARED_V2_CARRIES_PATH', `functions.${id}.carries.${key}`, `Carry ${key} reads ${JSON.stringify(ref)}, and ${stateId} is not a state.`);
-    }
-  }
-
-  // D.3: every submit has a function that calls its command; every navigation intent has its function.
-  for (const [organismId, row] of organisms) {
-    for (const intent of row.intents) {
-      if (intent.kind === 'submit') {
-        const command = context.design.endpoints.find(endpoint => endpoint.kind === 'cmd' && endpoint.when === intent.id);
-        if (!command || !Object.values(definition.functions).some(fn => fn.calls === command.id)) add('D2_SHARED_V2_SUBMIT_FUNCTION', `organisms.${organismId}.intents.${intent.id}`, `Submit ${intent.id} has no function that calls its command${command ? ` ${command.id}` : ''}.`);
-      } else if (!definition.functions[intent.id] && !Object.values(definition.functions).some(fn => fn.navigate === intent.to)) {
-        add('D2_SHARED_V2_FUNCTION_MISSING', `organisms.${organismId}.intents.${intent.id}`, `Intent ${intent.id} has no function.`);
-      }
     }
   }
 
@@ -98,7 +61,6 @@ export function gateD2SharedV2(value: unknown, context: D2SharedGateContext): D2
   for (const row of definition.journeys) {
     if (!journeySteps.has(row.step)) add('D2_SHARED_V2_JOURNEY_INVENTED', `journeys.${row.step}`, `Journey step ${row.step} is not a real step for this page.`);
     for (const organism of row.organisms) if (!organisms.has(organism)) add('D2_SHARED_V2_JOURNEY_REF', `journeys.${row.step}`, `Journey step ${row.step} names organism ${organism}, which is not on the page.`);
-    for (const fn of row.functions) if (!definition.functions[fn]) add('D2_SHARED_V2_JOURNEY_REF', `journeys.${row.step}`, `Journey step ${row.step} names function ${fn}, which does not exist.`);
   }
   return issues;
 }
@@ -139,7 +101,7 @@ function validStateSource(stateId: string, source: string, definition: D2SharedV
     return request.returns.includes(tail);
   }
   if (definition.states[source]) return source !== stateId;
-  return definition.functions[source]?.sets === stateId;
+  return false;
 }
 
 /** Menu pages the page actors can open: the navigate targets a shared function may name. */

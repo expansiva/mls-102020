@@ -422,21 +422,23 @@ void test('d2_75: the shared comes from the design by code: entry params, refres
   const shared = out.sharedDefs.atendimento;
   const design = out.designs.atendimento;
   // rule 8: the selected record survives a reload, from the URL then local storage.
-  assert.deepEqual(shared.entry.params.comandaId, { type: 'string', sources: ['url', 'localStorage'], effect: 'select:detalheComanda', persist: true });
+  assert.deepEqual(shared.entry.params.comandaId, { type: 'string', sources: ['url', 'localStorage'], effect: 'select:detalheComanda', persist: true, required: false });
+  assert.equal(shared.entry.params.comandaId.required, false);
   assert.deepEqual(shared.states.selectedComanda, { source: 'entry.params.comandaId', description: 'Comanda pronta para a tela do garçom: cabeçalho, itens e subtotal.', organisms: ['acoesAtendimento', 'detalheComanda', 'lookupAtendimento'] });
-  // One function per endpoint, same id; a command redraws with its output and reloads what A declared.
-  assert.deepEqual(Object.keys(shared.functions).sort(), design.endpoints.map(item => item.id).sort());
-  assert.deepEqual(shared.functions.abrirComanda, { calls: 'abrirComanda', description: 'Abrir uma comanda para a mesa escolhida.', sets: 'comanda', updates: ['mesas'] });
-  // The selection calls the detail query A declared, which sets the detail state.
-  assert.deepEqual([shared.functions.carregarComanda.calls, shared.functions.carregarComanda.sets], ['carregarComanda', 'comanda']);
   // No state takes a function as source; no description is an identifier.
   for (const [id, state] of Object.entries(shared.states)) {
     assert.ok(state.source.startsWith('entry.params.') || design.endpoints.some(item => state.source.startsWith(`${item.id}.`)), id);
     assert.doesNotMatch(state.description, /^[a-z][A-Za-z0-9]*$/u, id);
   }
-  for (const [id, fn] of Object.entries(shared.functions)) assert.equal(fn.description, design.endpoints.find(item => item.id === id)?.jsdoc.purpose, id);
-  // Form from the input of the write (d2_72): only the create that asks for typed input has one.
-  assert.deepEqual(shared.forms, { lancarItem: { organism: 'formularioLancamento', submit: 'lancarItem' } });
+  const requiredFilter = design.endpoints.filter(item => item.kind === 'qry').flatMap(item => item.input).find(leaf => {
+    const name = leaf.name.split('.').pop() ?? '';
+    const param = shared.entry.params[name];
+    return name !== 'page' && leaf.optional !== true && param?.effect.startsWith('filter:');
+  });
+  if (!requiredFilter) assert.fail('a required filter leaf');
+  assert.equal(shared.entry.params[requiredFilter.name.split('.').pop()!].required, true);
+  assert.deepEqual(shared.rules, [...new Set(design.endpoints.flatMap(item => item.rules))].sort());
+  for (const journey of shared.journeys) assert.equal('functions' in journey, false);
   // requests, rules and access are A's.
   assert.deepEqual(shared.requests.lancarItem, { kind: 'cmd', trigger: 'lancarItem', writes: 'ItemComanda.create', returns: ['comanda'] });
   assert.deepEqual(shared.access, { actors: ['garcom'], grants: ['garcomAtendimentoComandas'] });
@@ -882,12 +884,6 @@ void test('d2_78: every endpoint has the destination A declared, transcribed by 
   const stock = emptyOut();
   await replay('stock', stock);
   const shared = stock.sharedDefs.produtos;
-  // search replaces the list, load more appends to it, saving upserts it and replaces the detail.
-  assert.deepEqual(shared.functions.buscarProdutos, { calls: 'buscarProdutos', description: 'Buscar produtos pelo nome digitado.', sets: 'produtos' });
-  // d2_79: produtos is a paged list (its hasMore sibling folds into the one form), so load more appends to its items.
-  assert.deepEqual(shared.functions.carregarMaisProdutos, { calls: 'carregarMaisProdutos', description: 'Trazer a página seguinte da lista de produtos. (produtos.items: append)', updates: ['produtos'] });
-  assert.deepEqual(shared.functions.cadastrarProduto, { calls: 'cadastrarProduto', description: 'Cadastrar um produto para acompanhar o estoque. (produtos.items: upsert)', sets: 'produto', updates: ['produtos'] });
-  for (const fn of Object.values(shared.functions)) if (fn.calls) assert.ok(fn.sets || fn.updates?.length, JSON.stringify(fn));
   // The selected record keeps select: even with a filter of the same page; filters come only from queries an organism reads.
   assert.equal(shared.entry.params.produtoId.effect, 'select:detalheProduto');
   assert.deepEqual(Object.entries(shared.entry.params).filter(([, param]) => param.effect.startsWith('filter:')).map(([name, param]) => `${name}=${param.effect}`), ['name=filter:saldosResumo', 'page=filter:saldosResumo']);
@@ -925,8 +921,7 @@ void test('d2_78: offline replay of r5 — five pages reach the contract without
   assert.equal(run.report.compilation.filter(item => item.status !== 'passed').length, 0);
   for (const [pageId, source] of Object.entries(run.sources)) {
     if (source.contract) assert.doesNotMatch(source.contract, /\bmeta:/u, pageId);
-    const shared = parseD2SharedV2(source.shared).definition;
-    for (const [id, fn] of Object.entries(shared.functions)) if (fn.calls) assert.ok(fn.sets || fn.updates?.length, `${pageId}.${id}`);
+    parseD2SharedV2(source.shared);
   }
 });
 
@@ -975,8 +970,6 @@ void test('d2_79: field leaves keep their ontology path (recorded r6); every pag
       if (paged) assert.deepEqual(endpoint.input.filter(leaf => /^page(Size)?$/u.test(leaf.name)).map(leaf => leaf.name), ['page', 'pageSize'], endpoint.id);
     }
   }
-  // "Load more" appends to the items of the paged list.
-  assert.match(parseD2SharedV2(five.sources.cardapio.shared).definition.functions.carregarMaisItensCardapio.description, /\.items: append\)$/u);
 });
 
 /** bff55 context of one clinicR2 page, from the accepted pages50 answer of the p4_32 run. */
@@ -1055,94 +1048,7 @@ void test('d2_82 s3: a create-only form does not ask the backend to feed the fie
   assert.match(control, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
 });
 
-void test('d2_84 s1: derived shared indexes organisms that read or edit each ontology path', async () => {
-  const agendaCtx = await clinicR2Bff('agenda_diaria');
-  const agendaAnswer = clinicR2Answer('agenda_diaria-2.json');
-  agendaAnswer.types.find(item => item.name === 'IdentificacaoProfissional')!.fields.push({ name: 'countryCode', type: 'string', origin: { kind: 'field', paths: ['Profissional.details.identification.countryCode'] } });
-  const agenda = deriveD2Shared(sharedPageOf(agendaCtx, d2BffApproved(agendaCtx, agendaAnswer), {
-    agenda_diaria: { page11Text: agendaCtx.page11Text, drafts: agendaCtx.drafts },
-  }).derive);
-  const identification = agenda.fields['Paciente.details.identification'];
-  assert.ok(identification?.includes('consultaDoDia'), JSON.stringify(agenda.fields));
-  assert.deepEqual(identification, [...new Set(identification)].sort());
-  assert.deepEqual(Object.keys(agenda.fields), Object.keys(agenda.fields).sort());
-
-  const pacientesCtx = await clinicR2Bff('pacientes');
-  const pacientes = deriveD2Shared(sharedPageOf(pacientesCtx, buildD2BffDesign(clinicR2Answer('pacientes-2.json')), {
-    pacientes: { page11Text: pacientesCtx.page11Text, drafts: pacientesCtx.drafts },
-  }).derive);
-  assert.ok(pacientes.fields['Paciente.details.identification.name']?.includes('patientForm'), JSON.stringify(pacientes.fields));
-});
-
-/** d2_84 s2: fields is exactly the organisms that read or edit each draft path. */
-function assertFieldIndex(label: string, derive: D2SharedPage['derive'], fields: Record<string, string[]>): void {
-  const expected = new Map<string, Set<string>>();
-  for (const device of ['desktop', 'mobile'] as const) {
-    for (const [id, row] of Object.entries(derive.drafts[device].organisms)) {
-      for (const path of [...row.reads, ...row.edits]) {
-        const ids = expected.get(path) ?? new Set<string>();
-        ids.add(id);
-        expected.set(path, ids);
-      }
-    }
-  }
-  for (const [path, ids] of expected) {
-    for (const id of ids) assert.ok(fields[path]?.includes(id), `${label} ${path} missing ${id}`);
-  }
-  for (const [path, ids] of Object.entries(fields)) {
-    const have = expected.get(path);
-    assert.ok(have, `${label} ${path} has no reader or editor`);
-    for (const id of ids) assert.ok(have.has(id), `${label} ${path} lists ${id} without a read or edit`);
-  }
-}
-
-void test('d2_84 s2: every read or edit is in fields, and fields has nothing else', async () => {
-  for (const alias of ['dining', 'stock', 'clinic', 'clinicR2', 'expense', 'expenseR2']) {
-    const out = emptyOut();
-    await replay(alias, out);
-    for (const [pageId, definition] of Object.entries(out.sharedDefs)) {
-      assertFieldIndex(`${alias}/${pageId}`, out.shared[pageId].derive, definition.fields);
-    }
-    if (alias === 'dining' || alias === 'stock' || alias === 'expense') assert.ok(Object.keys(out.sharedDefs).length > 0, alias);
-  }
-
-  for (const [pageId, answerName] of [['agenda_diaria', 'agenda_diaria-2.json'], ['pacientes', 'pacientes-2.json']] as const) {
-    const ctx = await clinicR2Bff(pageId);
-    const page = sharedPageOf(ctx, buildD2BffDesign(clinicR2Answer(answerName)), {
-      [pageId]: { page11Text: ctx.page11Text, drafts: ctx.drafts },
-    });
-    assertFieldIndex(`clinicR2/${pageId}`, page.derive, deriveD2Shared(page.derive).fields);
-  }
-});
-
-void test('d2_92 s2: without an editor of the write entity, the submitting organism is the form when it edits something', async () => {
-  const { out } = await dining();
-  const base = out.shared.atendimento.derive;
-  const write = { entity: 'Inscricao', operation: 'create' as const };
-  const need = { ...base.need, writes: [...base.need.writes, write] };
-  const organism = (edits: string[]) => ({
-    desktop: { organisms: { inscreverMe: { kind: 'form', text: 'Inscrever', intents: [{ id: 'inscrever', kind: 'submit' as const }] } }, sections: [{ id: 'main', organisms: ['inscreverMe'] }] },
-    mobile: { organisms: { inscreverMe: { kind: 'form', text: 'Inscrever', intents: [{ id: 'inscrever', kind: 'submit' as const }] } }, sections: [{ id: 'main', organisms: ['inscreverMe'] }] },
-  });
-  const drafts = (edits: string[]) => ({
-    desktop: { organisms: { inscreverMe: { reads: [] as string[], edits, selects: '', submits: [{ intentId: 'inscrever', write: 'Inscricao.create' }] } } },
-    mobile: { organisms: { inscreverMe: { reads: [] as string[], edits, selects: '', submits: [{ intentId: 'inscrever', write: 'Inscricao.create' }] } } },
-  });
-  const page11Shape = (src: typeof base.page11.desktop, edits: string[]) => {
-    const skeleton = organism(edits);
-    return {
-      desktop: { ...src, organisms: { inscreverMe: { ...Object.values(src.organisms)[0], ...skeleton.desktop.organisms.inscreverMe } }, sections: skeleton.desktop.sections },
-      mobile: { ...base.page11.mobile, organisms: { inscreverMe: { ...Object.values(base.page11.mobile.organisms)[0], ...skeleton.mobile.organisms.inscreverMe } }, sections: skeleton.mobile.sections },
-    };
-  };
-  const withEdits = deriveD2Shared({ ...base, need, page11: page11Shape(base.page11.desktop, ['Participante.details.identification.name']), drafts: drafts(['Participante.details.identification.name']) });
-  assert.deepEqual(withEdits.forms.inscrever, { organism: 'inscreverMe', submit: 'inscrever' });
-  const context = { page11: page11Shape(base.page11.desktop, ['Participante.details.identification.name']), drafts: drafts(['Participante.details.identification.name']), need, menu: base.menu, design: base.design, entities: base.entities };
-  assert.equal(gateD2SharedV2(withEdits, context).filter(issue => issue.code === 'D2_SHARED_V2_FORM_UNBOUND').length, 0);
-
-  const withoutEdits = deriveD2Shared({ ...base, need, page11: page11Shape(base.page11.desktop, []), drafts: drafts([]) });
-  assert.equal(withoutEdits.forms.inscrever, undefined);
-
+void test('d2_92 s2: a required relation target is still the non-optional relation of the write entity', () => {
   const entity = { relationships: { participante: { via: 'Inscricao.participanteId', to: 'Participante', required: true }, itens: { via: 'ItemComanda.inscricaoId', to: 'ItemComanda', required: true } } };
   assert.deepEqual(d2RequiredRelationTargets(entity as never, 'Inscricao'), [{ via: 'Inscricao.participanteId', to: 'Participante' }]);
 });

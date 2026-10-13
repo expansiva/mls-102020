@@ -3,17 +3,15 @@
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { d2WriteByKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
-import { d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
-import { d2BffTypeRoot, d2PageSubmits, parseD2BffType, type D2BffDesign, type D2BffEndpoint, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { d2BffTypeRoot, parseD2BffType, type D2BffDesign, type D2BffEndpoint, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { gateD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import type { D2SharedV2Definition, D2SharedV2Issue } from '/_102020_/l2/helpers/sharedV2/format.js';
 
 /**
  * d2_75: the shared is written by code. It transcribes the design of A (endpoints and bindings) and derives only facts:
- * entry params (rule 8: URL, then local storage), the form of each submit from the input its write asks for (d2_72),
+ * entry params (rule 8: URL, then local storage; d2_94: required from the query leaf, else false), the page's rule ids,
  * and descriptions taken from the JSDoc and the named types. No description is an identifier; no state takes a function
- * as source.
+ * as source. Forms, functions and fields are not derived (d2_94).
  */
 export interface D2SharedDeriveInput {
   pageId: string;
@@ -39,22 +37,19 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
   const organisms = mergedOrganisms(input);
 
   const requests: D2SharedV2Definition['requests'] = {};
-  const rules: D2SharedV2Definition['rules'] = {};
   for (const item of design.endpoints) {
     requests[item.id] = { kind: item.kind, trigger: item.when === 'interaction' ? item.id : item.when, ...(item.writes ? { writes: item.writes } : {}), returns: item.output.map(leaf => leaf.name) };
-    rules[item.id] = item.rules;
   }
+  const rules = sortedUnique(design.endpoints.flatMap(item => item.rules));
 
   // States: one per endpoint output key an organism reads from.
   const refs = [...new Set(design.bindings.organisms.map(row => row.reads))];
   const keyCount = new Map<string, number>();
   for (const ref of refs) keyCount.set(ref.split('.')[1], (keyCount.get(ref.split('.')[1]) ?? 0) + 1);
-  const stateOf = new Map<string, string>();
   const states: D2SharedV2Definition['states'] = {};
   for (const ref of refs) {
     const [endpointId, key] = ref.split('.');
     const id = (keyCount.get(key) ?? 0) > 1 ? `${endpointId}${pascal(key)}` : key;
-    stateOf.set(ref, id);
     // d2_80: the state lists every organism that reads its source.
     const readers = design.bindings.organisms.filter(row => row.reads === ref).map(row => row.organism);
     states[id] = { source: ref, description: leafDescription(endpoint(endpointId), key, design), organisms: sortedUnique(readers) };
@@ -64,82 +59,35 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
   // Precedence of entry params (d2_78): a filter, then a navigation, and a selection's select: wins over both.
   const params: D2SharedV2Definition['entry']['params'] = { ...filterParams(input), ...navigationParams(input) };
   const selected = new Set<string>();
-  const selectionState = new Map<string, string>();
   for (const row of design.bindings.selections) {
     const entity = selectionEntity(row.via, design);
     if (!entity) continue;
     const param = `${camel(entity)}Id`;
     const target = organisms.get(row.organism)?.selects || row.organism;
-    if (!selected.has(param)) params[param] = { type: 'string', sources: SOURCES, effect: `select:${target}`, persist: true };
+    if (!selected.has(param)) params[param] = { type: 'string', sources: SOURCES, effect: `select:${target}`, persist: true, required: false };
     selected.add(param);
     const stateId = `selected${entity}`;
     const typeName = 'query' in row.via ? outputType(endpoint(row.via.query), design) : listItemType(row.via.list, design);
     // d2_80: the selecting organism and its target, over every selection that lands in this state.
     const feeds = sortedUnique([...(states[stateId]?.organisms ?? []), row.organism, target]);
     states[stateId] = { source: `entry.params.${param}`, description: design.types.find(type => type.name === typeName)?.description || leafDescription(endpoint(('query' in row.via ? row.via.query : row.via.list).split('.')[0]), '', design), organisms: feeds };
-    // The selecting organism and the one it opens both know the selected record (a navigation from either carries it).
-    for (const id of [row.organism, target]) if (!selectionState.has(id)) selectionState.set(id, stateId);
   }
-  // Functions: one per endpoint, with the endpoint's id. Destinations are only what A declared (d2_78): the state its own
-  // output feeds, the updates (replace → sets; append, upsert, remove → updates, named in the description) and the
-  // states of the queries a command reloads.
-  const functions: D2SharedV2Definition['functions'] = {};
-  const fedBy = (endpointId: string): string[] => [...stateOf].filter(([ref]) => ref.split('.')[0] === endpointId).map(([, id]) => id);
-  for (const item of design.endpoints) {
-    const declared = design.bindings.updates.filter(row => row.endpoint === item.id && stateOf.has(row.state));
-    const replaced = [...(item.kind === 'qry' ? fedBy(item.id) : []), ...declared.filter(row => row.mode === 'replace').map(row => stateOf.get(row.state)!)];
-    const changed = declared.filter(row => row.mode !== 'replace').map(row => stateOf.get(row.state)!);
-    const reloads = design.bindings.commands.filter(row => row.endpoint === item.id).flatMap(row => row.refreshes).flatMap(fedBy);
-    const targets = [...new Set([...replaced, ...changed, ...reloads])];
-    // On a paged list the change lands in its items (d2_79).
-    const paged = (ref: string): boolean => { const [sourceId, key] = ref.split('.'); return Boolean(endpoint(sourceId)?.output.find(leaf => leaf.name === key)?.paginated); };
-    const modes = declared.filter(row => row.mode !== 'replace').map(row => `${stateOf.get(row.state)}${paged(row.state) ? '.items' : ''}: ${row.mode}`);
-    functions[item.id] = {
-      calls: item.id, description: modes.length ? `${item.jsdoc.purpose} (${modes.join('; ')})` : item.jsdoc.purpose,
-      ...(replaced.length ? { sets: replaced[0] } : {}),
-      ...(targets.filter(id => id !== replaced[0]).length ? { updates: targets.filter(id => id !== replaced[0]) } : {}),
-    };
-  }
+  // Prefill: an id an organism edits may come in the URL. Selection, navigation and filter keep their params.
   for (const [organismId, row] of organisms) {
-    for (const intent of row.intents) {
-      if (intent.kind !== 'navigate' || !intent.to || functions[intent.id]) continue;
-      const stateId = selectionState.get(organismId);
-      const entity = stateId?.slice('selected'.length) ?? '';
-      functions[intent.id] = { navigate: intent.to, description: row.text, ...(stateId ? { carries: { [`${camel(entity)}Id`]: `${stateId}.id` } } : {}) };
-    }
-  }
-
-  // Form prefill: an id the form edits may come in the URL.
-  const forms = deriveForms(input, organisms);
-  for (const form of Object.values(forms)) {
-    for (const path of organisms.get(form.organism)?.edits ?? []) {
+    for (const path of row.edits) {
       const name = path.split('.').slice(-1)[0];
-      if (name.endsWith('Id') && !params[name]) params[name] = { type: 'string', sources: SOURCES, effect: `prefill:${form.organism}`, persist: false };
+      if (name.endsWith('Id') && !params[name]) params[name] = { type: 'string', sources: SOURCES, effect: `prefill:${organismId}`, persist: false, required: false };
     }
   }
 
   return {
     entry: { params },
-    forms,
     requests,
     states,
-    functions,
-    journeys: design.bindings.journeys.map(row => ({ step: row.step, organisms: row.organisms, functions: row.endpoints, ...(row.continuesIn ? { continuesIn: row.continuesIn } : {}) })),
+    journeys: design.bindings.journeys.map(row => ({ step: row.step, organisms: row.organisms, ...(row.continuesIn ? { continuesIn: row.continuesIn } : {}) })),
     rules,
     access: input.access,
-    fields: fieldsOf(organisms),
   };
-}
-
-/** Ontology path → organisms that read or edit it, keys and ids sorted, from the drafts as written. */
-function fieldsOf(organisms: Map<string, OrganismRow>): Record<string, string[]> {
-  const byPath = new Map<string, string[]>();
-  for (const [id, row] of organisms) {
-    for (const path of [...row.reads, ...row.edits]) byPath.set(path, [...(byPath.get(path) ?? []), id]);
-  }
-  const fields: Record<string, string[]> = {};
-  for (const path of [...byPath.keys()].sort()) fields[path] = sortedUnique(byPath.get(path) ?? []);
-  return fields;
 }
 
 /** D over the derived shared (d2_70): the code's own output passes its own fact checks. */
@@ -213,7 +161,7 @@ function navigationParams(input: D2SharedDeriveInput): D2SharedV2Definition['ent
         const target = (selected ? draft(selected) : undefined) ?? draft(id);
         const entity = target?.reads[0]?.split('.')[0] ?? '';
         if (!entity || !readEntities.has(entity)) continue;
-        params[`${camel(entity)}Id`] = params[`${camel(entity)}Id`] ?? { type: 'string', sources: SOURCES, effect: `select:${entity}`, persist: true };
+        params[`${camel(entity)}Id`] = params[`${camel(entity)}Id`] ?? { type: 'string', sources: SOURCES, effect: `select:${entity}`, persist: true, required: false };
       }
     }
   }
@@ -236,36 +184,8 @@ function filterParams(input: D2SharedDeriveInput): D2SharedV2Definition['entry']
       const name = leaf.name.split('.').slice(-1)[0];
       if (name === 'pageSize' || params[name]) continue;
       const ref = parseD2BffType(leaf.type);
-      params[name] = { type: ref?.base === 'number' || ref?.base === 'boolean' ? ref.base : 'string', sources: SOURCES, effect: `filter:${target}`, persist: true };
+      params[name] = { type: ref?.base === 'number' || ref?.base === 'boolean' ? ref.base : 'string', sources: SOURCES, effect: `filter:${target}`, persist: true, required: name !== 'page' && leaf.optional !== true };
     }
   }
   return params;
-}
-
-/** The form of each submit is the organism that edits the input its write asks for (d2_72); a write without input has none. */
-function deriveForms(input: D2SharedDeriveInput, organisms: Map<string, OrganismRow>): D2SharedV2Definition['forms'] {
-  const forms: D2SharedV2Definition['forms'] = {};
-  const writes = d2PageSubmits(input);
-  for (const [unitId, unit] of organisms) {
-    for (const submit of unit.submits) {
-      const pageWrite = d2WriteByKey(input.need.writes, writes.get(submit.intentId) || submit.write);
-      if (!pageWrite) continue;
-      const entityId = pageWrite.entity;
-      const payload = pageWrite.operation === 'transition' ? d2TransitionPayload(input.entities[entityId], entityId, pageWrite.transitionRef ?? '') : [];
-      if (pageWrite.operation === 'transition' && !payload.length) continue;
-      const wanted = pageWrite.operation === 'transition' ? payload : [];
-      const candidates = [...organisms].filter(([, row]) => row.edits.some(path => path.split('.')[0] === entityId) && wanted.every(path => row.edits.includes(path)));
-      if (!candidates.length) {
-        if (unit.edits.length) forms[submit.intentId] = { organism: unitId, submit: submit.intentId };
-        continue;
-      }
-      const sameSection = candidates.filter(([id, row]) => row.section && row.section === unit.section && id !== unitId);
-      // More than one candidate: the one that edits most of the entity, in page order.
-      const score = ([, row]: [string, OrganismRow]) => row.edits.filter(path => path.split('.')[0] === entityId).length;
-      const pool = sameSection.length === 1 ? sameSection : candidates;
-      const chosen = [...pool].sort((a, b) => score(b) - score(a))[0];
-      forms[submit.intentId] = { organism: chosen[0], submit: submit.intentId };
-    }
-  }
-  return forms;
 }
