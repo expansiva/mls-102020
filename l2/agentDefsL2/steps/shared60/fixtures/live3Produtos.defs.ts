@@ -10,7 +10,8 @@ export const definition = {
           "localStorage"
         ],
         "effect": "select:detalheProduto",
-        "persist": true
+        "persist": true,
+        "required": false
       },
       "search": {
         "type": "string",
@@ -19,7 +20,8 @@ export const definition = {
           "localStorage"
         ],
         "effect": "filter:listaProdutos",
-        "persist": true
+        "persist": true,
+        "required": true
       },
       "page": {
         "type": "number",
@@ -28,14 +30,9 @@ export const definition = {
           "localStorage"
         ],
         "effect": "filter:listaProdutos",
-        "persist": true
+        "persist": true,
+        "required": false
       }
-    }
-  },
-  "forms": {
-    "formularioProduto": {
-      "organism": "formularioProduto",
-      "submit": "cadastrarProduto"
     }
   },
   "requests": {
@@ -58,81 +55,38 @@ export const definition = {
   "states": {
     "listaProdutos": {
       "source": "load.produtos",
-      "description": "Produtos carregados"
+      "description": "Produtos carregados",
+      "organisms": []
     },
     "filtroBuscaProdutos": {
       "source": "entry.params.search",
-      "description": "Busca de produtos"
+      "description": "Busca de produtos",
+      "organisms": []
     },
     "paginaProdutos": {
       "source": "entry.params.page",
-      "description": "Página de produtos"
+      "description": "Página de produtos",
+      "organisms": []
     },
     "produtoSelecionado": {
       "source": "entry.params.produtoId",
-      "description": "Produto selecionado"
+      "description": "Produto selecionado",
+      "organisms": []
     },
     "produtoCadastro": {
       "source": "cadastrarProduto.input",
-      "description": "Dados do produto"
+      "description": "Dados do produto",
+      "organisms": []
     },
     "produtoCadastrado": {
       "source": "cadastrarProduto.produto",
-      "description": "Produto cadastrado"
+      "description": "Produto cadastrado",
+      "organisms": []
     },
     "movimentacoesProduto": {
       "source": "abrirMovimentacoes",
-      "description": "Produto para movimentações"
-    }
-  },
-  "functions": {
-    "load": {
-      "description": "Carregar produtos",
-      "calls": "load",
-      "sets": "listaProdutos",
-      "updates": [
-        "produtoSelecionado"
-      ]
-    },
-    "filterListaProdutos": {
-      "description": "Filtrar produtos",
-      "calls": "load",
-      "sets": "listaProdutos",
-      "updates": [
-        "filtroBuscaProdutos",
-        "paginaProdutos",
-        "produtoSelecionado"
-      ]
-    },
-    "loadMoreListaProdutos": {
-      "description": "Carregar mais produtos",
-      "calls": "load",
-      "sets": "listaProdutos",
-      "updates": [
-        "paginaProdutos"
-      ]
-    },
-    "cadastrarProduto": {
-      "description": "Cadastrar produto",
-      "calls": "cadastrarProduto",
-      "sets": "produtoCadastrado",
-      "updates": [
-        "produtoCadastro",
-        "listaProdutos",
-        "produtoSelecionado"
-      ]
-    },
-    "selecionarProduto": {
-      "description": "Selecionar produto",
-      "sets": "produtoSelecionado"
-    },
-    "abrirMovimentacoes": {
-      "description": "Abrir movimentações",
-      "sets": "movimentacoesProduto",
-      "navigate": "movimentacoes",
-      "carries": {
-        "produtoId": "produtoSelecionado.id"
-      }
+      "description": "Produto para movimentações",
+      "organisms": []
     }
   },
   "journeys": [
@@ -141,9 +95,6 @@ export const definition = {
       "organisms": [
         "saldoAtual",
         "alertasSaldoBaixo"
-      ],
-      "functions": [
-        "load"
       ]
     },
     {
@@ -151,11 +102,6 @@ export const definition = {
       "organisms": [
         "listaProdutos",
         "detalheProduto"
-      ],
-      "functions": [
-        "filterListaProdutos",
-        "loadMoreListaProdutos",
-        "selecionarProduto"
       ]
     },
     {
@@ -163,9 +109,6 @@ export const definition = {
       "organisms": [
         "formularioProduto",
         "acoesCadastro"
-      ],
-      "functions": [
-        "cadastrarProduto"
       ]
     },
     {
@@ -173,9 +116,6 @@ export const definition = {
       "organisms": [
         "saldoAtual",
         "detalheProduto"
-      ],
-      "functions": [
-        "selecionarProduto"
       ]
     },
     {
@@ -183,19 +123,12 @@ export const definition = {
       "organisms": [
         "listaProdutos",
         "detalheProduto"
-      ],
-      "functions": [
-        "filterListaProdutos",
-        "selecionarProduto"
       ]
     },
     {
       "step": "registrarMovimentacaoEstoque/registrarMovimentacao",
       "organisms": [
         "detalheProduto"
-      ],
-      "functions": [
-        "abrirMovimentacoes"
       ],
       "continuesIn": "movimentacoes"
     },
@@ -204,24 +137,14 @@ export const definition = {
       "organisms": [
         "alertasSaldoBaixo",
         "detalheProduto"
-      ],
-      "functions": [
-        "selecionarProduto"
       ]
     }
   ],
-  "rules": {
-    "load": [
-      "quantidadeMinimaValida",
-      "saldoAtualProduto",
-      "avisoSaldoMinimoProduto"
-    ],
-    "cadastrarProduto": [
-      "quantidadeMinimaValida",
-      "saldoAtualProduto",
-      "avisoSaldoMinimoProduto"
-    ]
-  },
+  "rules": [
+    "avisoSaldoMinimoProduto",
+    "quantidadeMinimaValida",
+    "saldoAtualProduto"
+  ],
   "access": {
     "actors": [
       "estoquista"

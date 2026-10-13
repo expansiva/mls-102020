@@ -12,6 +12,7 @@ import { d2PagesRefusedMessage, settleD2Pages, type D2PageRefusal } from '/_1020
 import { bffWorkerSteps } from '/_102020_/l2/agentDefsL2/steps/bff55/agentD2Bff.js';
 import { reusableD2Bff } from '/_102020_/l2/agentDefsL2/steps/bff55/agentD2BffPage.js';
 import { D2_BFF_REFUSAL_VERSION } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
+import { approveD2SharedPage, D2_SHARED_VERSION, type D2SharedPage, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 
 const identity = { project: 102047, module: 'mod' };
 const refusal = (schemaVersion: string, pageId: string, taskId: string, diagnostic: string): D2PageRefusal => ({ schemaVersion, ...identity, pageId, taskId, diagnostic });
@@ -54,4 +55,29 @@ void test('d2_64: a refused page does not stop its siblings; the stage fails onc
   assert.match(bothMessage, /pageB: D2_BFF_REPAIR_LIMIT: D2_BFF_COVERAGE/u);
   assert.match(bothMessage, /pageC: D2_BFF_PROMPT_LIMIT/u);
   await assert.rejects(() => settleD2Pages('task4', { ...port, pageIds: async () => null }, 'D2_BFF_INPUT_MISSING'), /D2_BFF_INPUT_MISSING/u);
+});
+
+void test('d2_94: shared na forma antiga com recibo antigo é regravado, sem forms, functions nem fields', async () => {
+  assert.match(D2_SHARED_VERSION, /2026-10-13/u);
+  const blank = { template: { category: 'list', experience: 'consultar' }, intent: 'consultar', sections: [], organisms: {}, molecules: {} };
+  const draft = { organisms: {} };
+  const page: D2SharedPage = {
+    identity, inputHash: 'hash',
+    page11Text: { desktop: '', mobile: '' },
+    draftText: { desktop: '{}', mobile: '{}' },
+    derive: {
+      pageId: 'produtos', page11: { desktop: blank, mobile: blank }, drafts: { desktop: draft, mobile: draft },
+      need: { pageId: 'produtos', actors: [], reads: [], writes: [] },
+      menu: { tree: [], authorities: {} },
+      design: { types: [], endpoints: [], bindings: { organisms: [], commands: [], selections: [], journeys: [], updates: [] } },
+      access: { actors: [], grants: [] }, entities: {}, siblings: [],
+    },
+  };
+  const oldSource = '/// <mls fileReference="_102047_/l2/mod/web/shared/produtos.defs.ts" enhancement="_blank"/>\n\nexport const definition = { "forms": {}, "functions": {}, "fields": {} } as const;\n';
+  const oldReceipt = { schemaVersion: '2026-10-08-agent-defs-l2-shared-v5', ...identity, pageId: 'produtos', inputHash: 'old', page11Hashes: { desktop: 'a', mobile: 'b' }, draftHashes: { desktop: 'c', mobile: 'd' }, designHash: 'e', siblingsHash: 'f', sourceHash: 'g' } as unknown as D2SharedReceipt;
+  let written = '';
+  const result = await approveD2SharedPage(page, { source: oldSource, receipt: oldReceipt }, { writeSource: async (_info, source) => { written = source; }, writeJson: async () => undefined });
+  assert.equal(result.wrote, true);
+  assert.equal(result.receipt.schemaVersion, D2_SHARED_VERSION);
+  assert.equal(/"forms"|"functions"|"fields"/u.test(written), false);
 });

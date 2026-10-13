@@ -10,7 +10,8 @@ export const definition = {
           "localStorage"
         ],
         "effect": "filter:historicoMovimentacoes",
-        "persist": true
+        "persist": true,
+        "required": true
       },
       "page": {
         "type": "number",
@@ -19,14 +20,9 @@ export const definition = {
           "localStorage"
         ],
         "effect": "filter:historicoMovimentacoes",
-        "persist": true
+        "persist": true,
+        "required": false
       }
-    }
-  },
-  "forms": {
-    "formularioMovimentacao": {
-      "organism": "formularioMovimentacao",
-      "submit": "registrarMovimentacao"
     }
   },
   "requests": {
@@ -57,55 +53,33 @@ export const definition = {
   "states": {
     "movimentacoes": {
       "source": "load.movimentacoes",
-      "description": "Histórico de movimentações de estoque."
+      "description": "Histórico de movimentações de estoque.",
+      "organisms": []
     },
     "produtos": {
       "source": "load.produtos",
-      "description": "Produtos com saldo e alertas de estoque."
+      "description": "Produtos com saldo e alertas de estoque.",
+      "organisms": []
     },
     "produtoId": {
       "source": "entry.params.produtoId",
-      "description": "Produto usado para filtrar o histórico."
+      "description": "Produto usado para filtrar o histórico.",
+      "organisms": []
     },
     "page": {
       "source": "entry.params.page",
-      "description": "Página atual do histórico de movimentações."
+      "description": "Página atual do histórico de movimentações.",
+      "organisms": []
     },
     "movimentacaoEstoque": {
       "source": "registrarMovimentacao.input",
-      "description": "Movimentação de estoque em preenchimento."
+      "description": "Movimentação de estoque em preenchimento.",
+      "organisms": []
     },
     "movimentacaoEstoqueRegistrada": {
       "source": "registrarMovimentacao.movimentacaoEstoque",
-      "description": "Movimentação de estoque registrada."
-    }
-  },
-  "functions": {
-    "load": {
-      "description": "Carrega movimentações e produtos para consulta e registro.",
-      "calls": "load",
-      "sets": "movimentacoes",
-      "updates": [
-        "produtos"
-      ]
-    },
-    "filterHistoricoMovimentacoes": {
-      "description": "Recarrega o histórico desde a primeira página conforme o produto e a página informados.",
-      "calls": "loadMovimentacoes",
-      "sets": "movimentacoes"
-    },
-    "loadMoreHistoricoMovimentacoes": {
-      "description": "Acrescenta a próxima página ao histórico de movimentações.",
-      "calls": "loadMovimentacoes",
-      "sets": "movimentacoes"
-    },
-    "registrarMovimentacao": {
-      "description": "Registra a movimentação de estoque informada.",
-      "calls": "registrarMovimentacao",
-      "sets": "movimentacaoEstoqueRegistrada",
-      "updates": [
-        "movimentacoes"
-      ]
+      "description": "Movimentação de estoque registrada.",
+      "organisms": []
     }
   },
   "journeys": [
@@ -114,9 +88,6 @@ export const definition = {
       "organisms": [
         "historicoMovimentacoes",
         "formularioMovimentacao"
-      ],
-      "functions": [
-        "load"
       ]
     },
     {
@@ -124,10 +95,6 @@ export const definition = {
       "organisms": [
         "formularioMovimentacao",
         "historicoMovimentacoes"
-      ],
-      "functions": [
-        "filterHistoricoMovimentacoes",
-        "loadMoreHistoricoMovimentacoes"
       ]
     },
     {
@@ -136,23 +103,15 @@ export const definition = {
         "formularioMovimentacao",
         "confirmarMovimentacao"
       ],
-      "functions": [
-        "registrarMovimentacao"
-      ],
       "continuesIn": "movimentacoes"
     }
   ],
-  "rules": {
-    "load": [
-      "saldoAtualProduto",
-      "avisoSaldoMinimoProduto"
-    ],
-    "loadMovimentacoes": [],
-    "registrarMovimentacao": [
-      "quantidadeMovimentadaPositiva",
-      "registroMovimentacaoAtualizaSaldo"
-    ]
-  },
+  "rules": [
+    "avisoSaldoMinimoProduto",
+    "quantidadeMovimentadaPositiva",
+    "registroMovimentacaoAtualizaSaldo",
+    "saldoAtualProduto"
+  ],
   "access": {
     "actors": [
       "estoquista"

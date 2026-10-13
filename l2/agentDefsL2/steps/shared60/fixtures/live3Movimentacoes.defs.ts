@@ -10,7 +10,8 @@ export const definition = {
           "localStorage"
         ],
         "effect": "filter:historicoMovimentacoes",
-        "persist": true
+        "persist": true,
+        "required": true
       },
       "page": {
         "type": "number",
@@ -19,14 +20,9 @@ export const definition = {
           "localStorage"
         ],
         "effect": "filter:historicoMovimentacoes",
-        "persist": true
+        "persist": true,
+        "required": false
       }
-    }
-  },
-  "forms": {
-    "formularioMovimentacao": {
-      "organism": "formularioMovimentacao",
-      "submit": "registrarMovimentacao"
     }
   },
   "requests": {
@@ -50,72 +46,33 @@ export const definition = {
   "states": {
     "historicoMovimentacoes": {
       "source": "load.movimentacoes",
-      "description": "Histórico de movimentações de estoque."
+      "description": "Histórico de movimentações de estoque.",
+      "organisms": []
     },
     "produtos": {
       "source": "load.produtos",
-      "description": "Produtos e saldos de estoque."
+      "description": "Produtos e saldos de estoque.",
+      "organisms": []
     },
     "produtoIdFiltro": {
       "source": "entry.params.produtoId",
-      "description": "Produto selecionado para filtrar o histórico."
+      "description": "Produto selecionado para filtrar o histórico.",
+      "organisms": []
     },
     "paginaHistorico": {
       "source": "entry.params.page",
-      "description": "Página atual do histórico."
+      "description": "Página atual do histórico.",
+      "organisms": []
     },
     "movimentacaoEstoqueFormulario": {
       "source": "registrarMovimentacao.input",
-      "description": "Dados da movimentação em preenchimento."
+      "description": "Dados da movimentação em preenchimento.",
+      "organisms": []
     },
     "movimentacaoEstoqueRegistrada": {
       "source": "registrarMovimentacao.movimentacaoEstoque",
-      "description": "Movimentação de estoque registrada."
-    }
-  },
-  "functions": {
-    "load": {
-      "description": "Carrega movimentações e produtos.",
-      "calls": "load",
-      "sets": "historicoMovimentacoes",
-      "updates": [
-        "produtos"
-      ]
-    },
-    "filterHistoricoMovimentacoes": {
-      "description": "Filtra o histórico por produto e página.",
-      "calls": "load",
-      "sets": "historicoMovimentacoes",
-      "updates": [
-        "produtoIdFiltro",
-        "paginaHistorico"
-      ],
-      "carries": {
-        "produtoId": "produtoIdFiltro.value",
-        "page": "paginaHistorico.value"
-      }
-    },
-    "loadMoreHistoricoMovimentacoes": {
-      "description": "Carrega mais movimentações do histórico.",
-      "calls": "load",
-      "sets": "historicoMovimentacoes",
-      "updates": [
-        "paginaHistorico"
-      ],
-      "carries": {
-        "produtoId": "produtoIdFiltro.value",
-        "page": "paginaHistorico.value"
-      }
-    },
-    "registrarMovimentacao": {
-      "description": "Registra uma movimentação de estoque.",
-      "calls": "registrarMovimentacao",
-      "sets": "movimentacaoEstoqueRegistrada",
-      "updates": [
-        "historicoMovimentacoes",
-        "produtos",
-        "movimentacaoEstoqueFormulario"
-      ]
+      "description": "Movimentação de estoque registrada.",
+      "organisms": []
     }
   },
   "journeys": [
@@ -123,18 +80,12 @@ export const definition = {
       "step": "registrarMovimentacaoEstoque/consultarSaldo",
       "organisms": [
         "historicoMovimentacoes"
-      ],
-      "functions": [
-        "load"
       ]
     },
     {
       "step": "registrarMovimentacaoEstoque/localizarProduto",
       "organisms": [
         "formularioMovimentacao"
-      ],
-      "functions": [
-        "filterHistoricoMovimentacoes"
       ]
     },
     {
@@ -142,27 +93,17 @@ export const definition = {
       "organisms": [
         "formularioMovimentacao",
         "acoesRegistro"
-      ],
-      "functions": [
-        "registrarMovimentacao"
       ]
     }
   ],
-  "rules": {
-    "load": [
-      "movimentacaoEstoqueImutavel",
-      "quantidadeMovimentadaPositiva",
-      "registroMovimentacaoAtualizaSaldo",
-      "quantidadeMinimaValida",
-      "saldoAtualProduto",
-      "avisoSaldoMinimoProduto"
-    ],
-    "registrarMovimentacao": [
-      "movimentacaoEstoqueImutavel",
-      "quantidadeMovimentadaPositiva",
-      "registroMovimentacaoAtualizaSaldo"
-    ]
-  },
+  "rules": [
+    "avisoSaldoMinimoProduto",
+    "movimentacaoEstoqueImutavel",
+    "quantidadeMinimaValida",
+    "quantidadeMovimentadaPositiva",
+    "registroMovimentacaoAtualizaSaldo",
+    "saldoAtualProduto"
+  ],
   "access": {
     "actors": [
       "estoquista"
