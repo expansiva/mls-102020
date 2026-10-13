@@ -167,13 +167,20 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
   } catch (error) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))]; }
 }
 
-export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+/** Catalog, environment and input failures: the model cannot correct them, so attempt 1 ends. */
+const PAGES_NO_REPAIR = ['D2_PAGE11_ACTOR_DENIED', 'D2_PAGE11_NEEDS_ACTOR', 'D2_PAGES_INPUT_MISSING', 'D2_PAGES_PAGE_NOT_SELECTED', 'D2_PAGE11_TEMPLATE_MISSING', 'D2_PAGE11_CATEGORY_CATALOG_INVALID', 'D2_PAGE11_PROMPT_LIMIT', 'D2_MOLECULE_CATALOG_AMBIGUOUS', 'D2_MOLECULE_GROUP_DUPLICATE', 'D2_MOLECULE_GROUP_UNREADABLE', 'D2_MOLECULE_INDEX_EMPTY', 'D2_MOLECULE_INDEX_INVALID', 'D2_MOLECULE_PURPOSE_MISSING', 'D2_MOLECULE_SOURCE_UNREADABLE', 'D2_MOLECULE_STUDIO_UNAVAILABLE', 'D2_MOLECULE_TAG_DUPLICATE', 'D2_MOLECULE_ARRAY_UNCLOSED', 'D2_MOLECULE_REFERENCE'];
+
+function pagesSkipsRepair(diagnostic: string): boolean {
+  return PAGES_NO_REPAIR.some(code => diagnostic.startsWith(code));
+}
+
+export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, load: (args: Args) => Promise<D2PagesContext> = contextFor): Promise<mls.msg.AgentIntent[]> {
   const args = parseArgs(step.prompt || '');
   const name = args.stage === 'groups' ? 'submitD2MoleculeGroups' : 'submitD2Pages';
   let response: unknown;
   let recorded: { info: ReturnType<typeof d2LlmResponseInfo>; record: D2LlmResponseRecord } | undefined;
   try {
-    const data = await contextFor(args);
+    const data = await load(args);
     // The raw answer is kept before anything reads it (d2_69); each stage and repair is its own attempt.
     const attempt = `${args.stage}-${args.attempt}`;
     const info = d2LlmResponseInfo(args.project, `${args.module}/pipeline/agentDefsL2/pages50/responses`, args.pageId, attempt);
@@ -208,7 +215,7 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
       try { await recordD2LlmVerdict(recorded.info, recorded.record, diagnostic); }
       catch (recordError) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', recordError instanceof Error ? recordError.message : String(recordError))]; }
     }
-    if (args.attempt === 1) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
+    if (args.attempt === 1 && !pagesSkipsRepair(diagnostic)) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `One repair scheduled for ${args.pageId}: ${diagnostic}`)];
     return [updateD2Status(context, parentStep, step, hookSequential, 'failed', `D2_PAGES_REPAIR_LIMIT: ${diagnostic}`)];
   }

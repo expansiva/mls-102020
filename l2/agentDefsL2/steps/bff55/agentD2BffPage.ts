@@ -82,12 +82,19 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
   }
 }
 
-export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+/** Input and approved-artifact failures: the model cannot correct them, so attempt 1 ends. */
+const BFF_NO_REPAIR = ['D2_BFF_INPUT_MISSING', 'D2_BFF_PAGE_NOT_SELECTED', 'D2_BFF_PAGE11_MISSING', 'D2_BFF_NEEDS_PAGE', 'D2_BFF_APPROVED_', 'D2_BFF_PROMPT_LIMIT', 'D2_BFF_ASSERT'];
+
+function bffSkipsRepair(diagnostic: string): boolean {
+  return BFF_NO_REPAIR.some(code => diagnostic.startsWith(code));
+}
+
+export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, load: (identity: Identity, pageId: string) => Promise<D2BffContext> = loadD2BffContext): Promise<mls.msg.AgentIntent[]> {
   const args = parseArgs(step.prompt || '');
   let response: unknown;
   let recorded: { info: ReturnType<typeof d2LlmResponseInfo>; record: D2LlmResponseRecord } | undefined;
   try {
-    const data = await loadD2BffContext(args, args.pageId);
+    const data = await load(args, args.pageId);
     const built = buildD2BffPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
     // The raw answer is kept before anything reads it (d2_69).
     const info = d2LlmResponseInfo(args.project, `${args.module}/pipeline/agentDefsL2/bff55/responses`, args.pageId, String(args.attempt));
@@ -102,8 +109,7 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
       try { await recordD2LlmVerdict(recorded.info, recorded.record, diagnostic); }
       catch (recordError) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', recordError instanceof Error ? recordError.message : String(recordError))]; }
     }
-    // An internal assertion (what the strict schema guarantees) has no repair cycle (d2_76).
-    if (args.attempt === 1 && !diagnostic.startsWith('D2_BFF_ASSERT')) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
+    if (args.attempt === 1 && !bffSkipsRepair(diagnostic)) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `One repair scheduled for ${args.pageId}: ${diagnostic}`)];
     return refuse(context, parentStep, step, hookSequential, args, `D2_BFF_REPAIR_LIMIT: ${diagnostic}`);
   }

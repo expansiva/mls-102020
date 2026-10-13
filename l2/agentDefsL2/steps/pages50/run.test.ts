@@ -8,7 +8,8 @@ import { parseD2Page11Definition, renderD2Page11Definition } from '/_102020_/l2/
 import { buildD2Page11WithExperience, d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
-import { approvedPageSeed, beforePromptStep, readApprovedPage11, reusableD2Page, withPageEnums, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { afterPromptStep as afterPagesPrompt, approvedPageSeed, beforePromptStep, readApprovedPage11, reusableD2Page, withPageEnums, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { afterPromptStep as afterBffPrompt } from '/_102020_/l2/agentDefsL2/steps/bff55/agentD2BffPage.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { d2NormalizeWriteKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { gateD2Page11 } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
@@ -612,4 +613,41 @@ void test('controleEstoque/produtos molecular context omits repeated indexes wit
   const duplicatedIndexChars = prompt.chars + data.groups.reduce((total, group) => total + group.indexText.length, 0);
   assert.ok(duplicatedIndexChars > 160_000);
   assert.ok(160_000 - prompt.chars > 50_000);
+});
+
+void test('attempt 1 refuses codes the model cannot fix and still repairs a content error', async () => {
+  const execution = { message: { orderAt: 'message-1', threadId: 'thread-1' }, task: { PK: 'task-1' }, isTest: true } as mls.msg.ExecutionContext;
+  const agent = { agentName: 'agentDefsL2PagesPage' } as Parameters<typeof beforePromptStep>[0];
+  const parent = { type: 'agent', stepId: 1, interaction: null, stepTitle: 'parent', status: 'waiting_human_input', nextSteps: [], agentName: 'agentDefsL2PagesPage', prompt: '', rags: [], planning: { planId: 'parent', dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' } } as mls.msg.AIAgentStep;
+  const pageStep = (prompt: unknown): mls.msg.AIAgentStep => ({ ...parent, stepId: 2, prompt: JSON.stringify(prompt) } as mls.msg.AIAgentStep);
+  const repairAttempt = (intents: mls.msg.AgentIntent[]): number | undefined => {
+    const added = intents.find(item => item.type === 'add-step') as { step?: { prompt?: string } } | undefined;
+    return added?.step?.prompt ? (JSON.parse(added.step.prompt) as { attempt?: number }).attempt : undefined;
+  };
+  const pagesArgs = { project: 102047, module: 'controleEstoque', pageId: 'produtos', stage: 'groups' as const, attempt: 1 as const };
+  const blocked = await afterPagesPrompt(agent, execution, parent, pageStep(pagesArgs), 1, async () => { throw new Error('D2_PAGES_INPUT_MISSING'); });
+  assert.equal(blocked.some(item => item.type === 'prompt_ready'), false);
+  assert.equal(repairAttempt(blocked), undefined);
+  assert.match(JSON.stringify(blocked), /D2_PAGES_REPAIR_LIMIT: D2_PAGES_INPUT_MISSING/u);
+  const repaired = await afterPagesPrompt(agent, execution, parent, pageStep(pagesArgs), 1, async () => { throw new Error('D2_PAGE11_FIELD_UNKNOWN: Produto.unknown'); });
+  assert.equal(repaired.some(item => item.type === 'prompt_ready'), false);
+  assert.equal(repairAttempt(repaired), 2);
+  assert.match(JSON.stringify(repaired), /One repair scheduled for produtos: D2_PAGE11_FIELD_UNKNOWN: Produto\.unknown/u);
+  const roleUnselected = await afterPagesPrompt(agent, execution, parent, pageStep(pagesArgs), 1, async () => { throw new Error('D2_MOLECULE_ROLE_UNSELECTED: organism1/tag'); });
+  assert.equal(roleUnselected.some(item => item.type === 'prompt_ready'), false);
+  assert.equal(repairAttempt(roleUnselected), 2);
+  assert.match(JSON.stringify(roleUnselected), /One repair scheduled for produtos: D2_MOLECULE_ROLE_UNSELECTED: organism1\/tag/u);
+  const catalog = await afterPagesPrompt(agent, execution, parent, pageStep(pagesArgs), 1, async () => { throw new Error('D2_MOLECULE_INDEX_EMPTY: groupViewTable'); });
+  assert.equal(catalog.some(item => item.type === 'prompt_ready'), false);
+  assert.equal(repairAttempt(catalog), undefined);
+  assert.match(JSON.stringify(catalog), /D2_PAGES_REPAIR_LIMIT: D2_MOLECULE_INDEX_EMPTY: groupViewTable/u);
+  const bffArgs = { project: 102047, module: 'controleEstoque', pageId: 'produtos', attempt: 1 as const };
+  const bffBlocked = await afterBffPrompt(agent, execution, parent, pageStep(bffArgs), 1, async () => { throw new Error('D2_BFF_PAGE11_MISSING: produtos'); });
+  assert.equal(bffBlocked.some(item => item.type === 'prompt_ready'), false);
+  assert.equal(repairAttempt(bffBlocked), undefined);
+  assert.match(JSON.stringify(bffBlocked), /D2_BFF_PAGE11_MISSING: produtos/u);
+  const bffRepaired = await afterBffPrompt(agent, execution, parent, pageStep(bffArgs), 1, async () => { throw new Error('D2_BFF_ENDPOINT_INPUT: produtos'); });
+  assert.equal(bffRepaired.some(item => item.type === 'prompt_ready'), false);
+  assert.equal(repairAttempt(bffRepaired), 2);
+  assert.match(JSON.stringify(bffRepaired), /One repair scheduled for produtos: D2_BFF_ENDPOINT_INPUT: produtos/u);
 });
