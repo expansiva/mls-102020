@@ -93,3 +93,36 @@ test('a submit whose organisms edit nothing of the write entity still asks for t
   assert.equal(found.length, 1);
   assert.match(found[0], /Recebimento\.details\.valor/);
 });
+
+const relatedEntities = {
+  A: { relationships: { b: { to: 'B', via: 'A.bId', required: true } } } as Ns5OntologyAnyEntity,
+  B: {} as Ns5OntologyAnyEntity,
+};
+
+function createOfA(input: string[]): { context: D2BffCheckContext; built: D2BffDesign } {
+  const context: D2BffCheckContext = {
+    ...base,
+    entities: relatedEntities,
+    page11: { desktop: page({ criarA: organism('criarA') }), mobile: page({}) },
+    drafts: {
+      desktop: needs({
+        criarA: { reads: [], edits: ['B.details.email'], selects: '', submits: [{ intentId: 'criarA', write: 'A.create' }] },
+      }),
+      mobile: needs({}),
+    },
+    need: { pageId: 'pagina', actors: [], reads: [], writes: [{ entity: 'A', operation: 'create' }] },
+  };
+  return { context, built: design([{ id: 'criar', when: 'criarA', writes: 'A.create', input }]) };
+}
+
+test('create covers a required foreign key when the command carries a field of the related entity', () => {
+  const { context, built } = createOfA(['B.details.email']);
+  assert.deepEqual(issues(context, built), []);
+});
+
+test('create still asks for the required foreign key when the command carries nothing of the related entity', () => {
+  const { context, built } = createOfA([]);
+  const found = issues(context, built);
+  assert.equal(found.length, 1);
+  assert.match(found[0], /A\.bId/);
+});
