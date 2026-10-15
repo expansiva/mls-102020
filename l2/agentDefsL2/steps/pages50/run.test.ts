@@ -8,7 +8,7 @@ import { parseD2Page11Definition, renderD2Page11Definition } from '/_102020_/l2/
 import { buildD2Page11WithExperience, d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
-import { afterPromptStep as afterPagesPrompt, approvedPageSeed, beforePromptStep, readApprovedPage11, reusableD2Page, withPageEnums, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { afterPromptStep as afterPagesPrompt, approvedPageSeed, beforePromptStep, fromDecisionLists, readApprovedPage11, readPageSchema, reusableD2Page, withPageEnums, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import { afterPromptStep as afterBffPrompt } from '/_102020_/l2/agentDefsL2/steps/bff55/agentD2BffPage.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { d2NormalizeWriteKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
@@ -650,4 +650,54 @@ void test('attempt 1 refuses codes the model cannot fix and still repairs a cont
   assert.equal(bffRepaired.some(item => item.type === 'prompt_ready'), false);
   assert.equal(repairAttempt(bffRepaired), 2);
   assert.match(JSON.stringify(bffRepaired), /One repair scheduled for produtos: D2_BFF_ENDPOINT_INPUT: produtos/u);
+});
+
+void test('d2_97: the decision tool lists organisms and molecules by id and the answer returns to maps', async () => {
+  const previousFiles = mls.stor.files;
+  const previousKey = mls.stor.getKeyToFile;
+  mls.stor.getKeyToFile = info => info.shortName;
+  mls.stor.files = {
+    page11V2: { status: 'active', getContent: async () => readFileSync(new URL('../../schemas/page11V2.json', import.meta.url), 'utf8') },
+    page11NeedsV1: { status: 'active', getContent: async () => readFileSync(new URL('../../schemas/page11NeedsV1.json', import.meta.url), 'utf8') },
+  } as unknown as typeof mls.stor.files;
+  let schema: Record<string, unknown>;
+  try {
+    schema = await readPageSchema({ writeKeys: ['Produto.update'], categories: ['inventoryControl'], kinds: ['summary'], targets: ['', 'movimentacoes'], tags: ['groupviewtable--a'] });
+  } finally {
+    mls.stor.files = previousFiles;
+    mls.stor.getKeyToFile = previousKey;
+  }
+  const at = (root: unknown, path: string[]): unknown => path.reduce((node: unknown, key) => (node as Record<string, unknown> | undefined)?.[key], root);
+  const desktop = at(schema, ['properties', 'desktop', 'properties']) as Record<string, unknown>;
+  const organisms = at(desktop.definition, ['properties', 'organisms']) as { type?: string; additionalProperties?: unknown; items?: { required?: string[]; properties?: Record<string, unknown> } };
+  const molecules = at(desktop.definition, ['properties', 'molecules']) as typeof organisms;
+  const needsOrganisms = at(desktop.needs, ['properties', 'organisms']) as typeof organisms;
+  for (const node of [organisms, molecules, needsOrganisms]) {
+    assert.equal(node.type, 'array');
+    assert.equal(node.additionalProperties, undefined);
+    assert.deepEqual(at(node, ['items', 'properties', 'id']), { type: 'string' });
+    assert.ok(node.items?.required?.includes('id'));
+  }
+  assert.deepEqual(at(organisms, ['items', 'properties', 'kind', 'enum']), ['summary']);
+  assert.deepEqual(at(organisms, ['items', 'properties', 'intents', 'items', 'properties', 'to', 'enum']), ['', 'movimentacoes']);
+  assert.deepEqual(at(molecules, ['items', 'properties', 'recommendations', 'items', 'properties', 'preferred', 'enum']), ['groupviewtable--a']);
+  assert.deepEqual(molecules.items?.required, ['id', 'recommendations']);
+  assert.deepEqual(at(needsOrganisms, ['items', 'properties', 'submits', 'items', 'properties', 'write', 'enum']), ['Produto.update']);
+
+  const maps = {
+    categoryReason: 'because',
+    desktop: { definition: { organisms: { lista: { kind: 'summary' } }, molecules: { lista: [{ preferred: 'groupviewtable--a' }] } }, needs: { organisms: { lista: { submits: [{ write: 'Produto.update' }] } } } },
+    mobile: { definition: { organisms: { painel: { kind: 'summary' } }, molecules: {} }, needs: { organisms: {} } },
+  };
+  const lists = {
+    categoryReason: 'because',
+    desktop: {
+      definition: { organisms: [{ id: 'lista', kind: 'summary' }], molecules: [{ id: 'lista', recommendations: [{ preferred: 'groupviewtable--a' }] }] },
+      needs: { organisms: [{ id: 'lista', submits: [{ write: 'Produto.update' }] }] },
+    },
+    mobile: { definition: { organisms: [{ id: 'painel', kind: 'summary' }], molecules: {} }, needs: { organisms: {} } },
+  };
+  assert.deepEqual(fromDecisionLists(lists), maps);
+  assert.equal(fromDecisionLists(maps), maps);
+  assert.throws(() => fromDecisionLists({ desktop: { definition: { organisms: [{ id: 'lista' }, { id: 'lista' }] } } }), /D2_PAGE11_ORGANISM_DUPLICATE: desktop\.definition\.organisms\.lista/u);
 });

@@ -188,6 +188,7 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     const promptChars = args.stage === 'groups' ? 0 : data.prompt.length + 1 + data.skill.length + buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined, approved).chars;
     recorded = { info, record: await recordD2LlmResponse(info, { attempt, model: d2LlmModelOf(step), promptChars, receivedAt: new Date().toISOString(), raw: step.interaction?.payload?.[0] ?? null }) };
     response = toolPayload(step.interaction?.payload?.[0], name);
+    if (args.stage === 'decision') response = fromDecisionLists(response);
     if (args.stage === 'groups') {
       const result = parseD2MoleculeGroupJudgment(response, organismSources(data.page).map(item => item.id), data.inventory);
       const selectedGroups = result.selected;
@@ -235,7 +236,11 @@ export async function readPageSchema(enums: D2PageChoiceEnums = { writeKeys: [],
   ]);
   if (!page || !needs) throw new Error('D2_PAGES_SCHEMA_MISSING');
   const { $schema: _pageDialect, $id: _pageId, ...pageShape } = withPageEnums(page, enums);
-  const { $schema: _needsDialect, $id: _needsId, ...needsShape } = withWriteEnum(needs, enums.writeKeys);
+  const { $schema: _needsDialect, $id: _needsId, ...needsFields } = withWriteEnum(needs, enums.writeKeys);
+  const needsShape = structuredClone(needsFields);
+  toDecisionList(pageShape, 'organisms', 'object');
+  toDecisionList(pageShape, 'molecules', 'list');
+  toDecisionList(needsShape, 'organisms', 'object');
   const unit = { type: 'object', additionalProperties: false, required: ['definition', 'needs'], properties: { definition: pageShape, needs: needsShape } };
   return { type: 'object', additionalProperties: false, required: ['desktop', 'mobile', 'categoryReason'], properties: { desktop: unit, mobile: unit, categoryReason: { type: 'string' } } };
 }
@@ -265,4 +270,69 @@ export function withPageEnums(schema: Record<string, unknown>, enums: D2PageChoi
   limit(['properties', 'molecules', 'additionalProperties', 'items', 'properties', 'preferred'], enums.tags);
   limit(['properties', 'molecules', 'additionalProperties', 'items', 'properties', 'alternative'], enums.tags.length ? ['', ...enums.tags] : []);
   return copy;
+}
+
+/** Tool answers list organisms and molecules by `id`. The def and the gates keep the maps. A map answer is unchanged. */
+export function fromDecisionLists(response: unknown): unknown {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return response;
+  const root = response as Record<string, unknown>;
+  let changed = false;
+  const out: Record<string, unknown> = { ...root };
+  for (const device of ['desktop', 'mobile'] as const) {
+    const unit = asRecord(root[device]);
+    if (!unit) continue;
+    const definition = asRecord(unit.definition);
+    const needs = asRecord(unit.needs);
+    const organisms = listed(definition?.organisms, `${device}.definition.organisms`, dropId);
+    const molecules = listed(definition?.molecules, `${device}.definition.molecules`, item => item.recommendations);
+    const needOrganisms = listed(needs?.organisms, `${device}.needs.organisms`, dropId);
+    if (!organisms && !molecules && !needOrganisms) continue;
+    changed = true;
+    out[device] = {
+      ...unit,
+      definition: definition ? { ...definition, ...(organisms ? { organisms: organisms.map } : {}), ...(molecules ? { molecules: molecules.map } : {}) } : unit.definition,
+      needs: needs ? { ...needs, ...(needOrganisms ? { organisms: needOrganisms.map } : {}) } : unit.needs,
+    };
+  }
+  return changed ? out : response;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+function dropId(item: Record<string, unknown>): Record<string, unknown> {
+  const { id: _id, ...rest } = item;
+  return rest;
+}
+function listed(value: unknown, place: string, take: (item: Record<string, unknown>) => unknown): { map: Record<string, unknown> } | null {
+  if (!Array.isArray(value)) return null;
+  const map: Record<string, unknown> = {};
+  for (const raw of value) {
+    const item = asRecord(raw);
+    const id = typeof item?.id === 'string' ? item.id : '';
+    if (Object.hasOwn(map, id)) throw new Error(`D2_PAGE11_ORGANISM_DUPLICATE: ${place}.${id}`);
+    map[id] = take(item ?? {});
+  }
+  return { map };
+}
+function toDecisionList(schema: Record<string, unknown>, key: 'organisms' | 'molecules', kind: 'object' | 'list'): void {
+  const properties = asRecord(schema.properties);
+  const node = asRecord(properties?.[key]);
+  const extra = node?.additionalProperties;
+  if (!properties || !node || !extra || typeof extra !== 'object' || Array.isArray(extra)) throw new Error(`D2_PAGES_SCHEMA_FIELD_MISSING: ${key}`);
+  const copy = structuredClone(node);
+  delete copy.additionalProperties;
+  copy.type = 'array';
+  if (kind === 'object') {
+    const item = structuredClone(extra) as Record<string, unknown>;
+    const itemProperties = { ...(asRecord(item.properties) ?? {}), id: { type: 'string' } };
+    const required = Array.isArray(item.required) ? item.required.map(String) : [];
+    if (!required.includes('id')) required.push('id');
+    item.properties = itemProperties;
+    item.required = required;
+    copy.items = item;
+  } else {
+    copy.items = { type: 'object', additionalProperties: false, required: ['id', 'recommendations'], properties: { id: { type: 'string' }, recommendations: structuredClone(extra) } };
+  }
+  properties[key] = copy;
 }
