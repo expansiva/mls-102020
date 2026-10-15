@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-    normalizeHex, sanitizeGeneratedDs, buildGenerateDsHumanPrompt, expandColorTokens, parseColorKey,
+    normalizeHex, sanitizeGeneratedDs, buildGenerateDsHumanPrompt, expandColorTokens, parseColorKey, expandRoleStates,
     type GenerateDsRequest,
 } from '/_102020_/l2/aura/helpers/dsMatch/generateDsCore.js';
 import {
@@ -109,4 +109,21 @@ test('human prompt carries palette verbatim, the role list and language', () => 
     assert.match(p, /language: es/);
     const p2 = buildGenerateDsHumanPrompt({ projectId: 1, brief: 'only brief' });
     assert.doesNotMatch(p2, /Brand palette/);
+});
+
+test('expandRoleStates matches expandColorTokens for a mandatory role (editor "recalculate" == generator)', () => {
+    const base = { light: '#1890ff', dark: '#0b81ef' };
+    const full = expandColorTokens({ 'button-primary-bg': base });
+    const states = expandRoleStates(base);
+    for (const st of ['hover', 'focus', 'disabled'] as const) {
+        assert.equal(states.light?.[st], full[`button-primary-bg-${st}`]);
+        assert.equal(states.dark?.[st], full[`_dark-button-primary-bg-${st}`]);
+    }
+});
+
+test('expandRoleStates skips a mode whose base is not hex', () => {
+    const states = expandRoleStates({ light: '#ABC', dark: 'var(--x)' });
+    assert.ok(states.light && HEX.test(states.light.hover));
+    assert.equal(states.dark, undefined);
+    assert.deepEqual(expandRoleStates({}), {});
 });

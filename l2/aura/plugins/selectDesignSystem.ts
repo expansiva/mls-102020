@@ -4,14 +4,21 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { IDesignSystemTokens, DsFont, isMandatoryToken, defaultTokensTemplate } from '/_102029_/l2/designSystemBase.js';
+import { IDesignSystemTokens, DsFont, isMandatoryToken, defaultTokensTemplate, tokensCssFromTheme } from '/_102029_/l2/designSystemBase.js';
 import { readThemes, writeTheme, themeDsIndex } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
+import { expandRoleStates, normalizeHex } from '/_102020_/l2/aura/helpers/dsMatch/generateDsCore.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { ITask, setTask, getTask, getTasksByScope, hasRunning, clearScope, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
+import { canPreview, createLivePreview } from '/_102020_/l2/aura/plugins/helpers/dsLivePreview.js';
+import { collectUsedTokens, pageRegion } from '/_102020_/l2/aura/plugins/helpers/dsUsedTokens.js';
+import { groupColorRows, splitState, type ColorGroup } from '/_102020_/l2/aura/plugins/helpers/dsColorGroups.js';
+import { createHighlighter, elementsUsingTokens, tokensForElement } from '/_102020_/l2/aura/plugins/helpers/dsTokenInspect.js';
+import { baseName, colorRowsToMap, countByKind, diffTokens, tokenStatus, valueRowsToMap, type ChangeKind, type KeyChange, type TokenMaps, type TokenSection } from '/_102020_/l2/aura/plugins/helpers/dsDiff.js';
+import { parseTokenQuery, rowMatchesQuery, type SearchableRow } from '/_102020_/l2/aura/plugins/helpers/dsTokenSearch.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
 // DESIGN SYSTEM = the entries of `_<project>_/l2/designSystem.ts` — the SINGLE home of
@@ -86,6 +93,45 @@ const message_en = {
     saveNow: 'Save now',
     savedOk: 'Design system saved.',
     discardDraft: 'Discard draft',
+    undoChanges: 'Undo changes',
+    scopeNote: 'Tokens are shared: a change here applies to every module and page of this project that uses this design system.',
+    livePreviewOn: 'Live preview on — the app already shows your edits; save to keep them.',
+    livePreviewOff: 'This is not the design system active in the app — edits show only after saving and activating it.',
+    usedOnPage: 'Used on the current page',
+    onlyUsed: 'Only tokens used on this page',
+    useFont: 'Use font',
+    useFontIn: 'Apply to',
+    fontInUse: 'In use',
+    statesLabel: 'states',
+    recalcStates: 'Recalculate states',
+    recalcAll: 'Recalculate all states',
+    recalcNeedsHex: 'Needs a hex base color (#rrggbb) — states are derived from it.',
+    recalcHint: 'Rewrites hover/focus/disabled (light and dark) from the base color.',
+    searchPlaceholder: 'Search token…  (=value)',
+    searchHint: 'Name substring. Start with = to search values (e.g. =#1273d4). Esc clears, Ctrl+F focuses.',
+    searchOf: 'of',
+    noMatch: 'No tokens match',
+    viewGrouped: 'Grouped',
+    viewFlat: 'List',
+    viewHint: 'Grouped: one row per role, states inside. List: every token on its own row.',
+    inspect: 'Inspect',
+    inspectHint: 'Click an element of the page to see the tokens it reads. Esc exits.',
+    inspectPick: 'Click an element of the page…',
+    inspectOwn: 'Own',
+    inspectInherited: 'Inherited',
+    inspectNone: 'No design-system token on this element.',
+    hoverHint: 'Hover a token to outline where the page uses it.',
+    identityTitle: 'Identification',
+    filterTitle: 'Filter tokens',
+    inspectTitle: 'Inspect page',
+    changedN: 'changed',
+    addedN: 'new',
+    removedN: 'removed',
+    revertRow: 'Back to the saved value',
+    removedTitle: 'Removed',
+    restore: 'Restore',
+    newBadge: 'new',
+    diffHint: 'Show what changed',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -153,6 +199,45 @@ const messages: Record<string, MessageType> = {
         saveNow: 'Salvar agora',
         savedOk: 'Design system salvo.',
         discardDraft: 'Descartar rascunho',
+        undoChanges: 'Desfazer alterações',
+        scopeNote: 'Os tokens são compartilhados: alterar aqui vale para todos os módulos e páginas deste projeto que usam este design system.',
+        livePreviewOn: 'Prévia ao vivo ligada — o app já mostra as alterações; salve para mantê-las.',
+        livePreviewOff: 'Este não é o design system ativo no app — as alterações só aparecem depois de salvar e ativá-lo.',
+        usedOnPage: 'Usado na página atual',
+        onlyUsed: 'Só os usados nesta página',
+        useFont: 'Usar fonte',
+        useFontIn: 'Aplicar em',
+        fontInUse: 'Em uso',
+        statesLabel: 'estados',
+        recalcStates: 'Recalcular estados',
+        recalcAll: 'Recalcular todos os estados',
+        recalcNeedsHex: 'Precisa de uma cor base em hex (#rrggbb) — os estados são derivados dela.',
+        recalcHint: 'Reescreve hover/focus/disabled (light e dark) a partir da cor base.',
+        searchPlaceholder: 'Buscar token…  (=valor)',
+        searchHint: 'Parte do nome. Comece com = para buscar pelo valor (ex.: =#1273d4). Esc limpa, Ctrl+F foca.',
+        searchOf: 'de',
+        noMatch: 'Nenhum token encontrado',
+        viewGrouped: 'Agrupado',
+        viewFlat: 'Lista',
+        viewHint: 'Agrupado: uma linha por papel, estados dentro. Lista: cada token na sua linha.',
+        inspect: 'Inspecionar',
+        inspectHint: 'Clique num elemento da página para ver os tokens que ele usa. Esc sai.',
+        inspectPick: 'Clique num elemento da página…',
+        inspectOwn: 'Próprios',
+        inspectInherited: 'Herdados',
+        inspectNone: 'Nenhum token do design system neste elemento.',
+        hoverHint: 'Passe o mouse num token para contornar onde a página o usa.',
+        identityTitle: 'Identificação',
+        filterTitle: 'Filtrar tokens',
+        inspectTitle: 'Inspecionar página',
+        changedN: 'alterados',
+        addedN: 'novos',
+        removedN: 'removidos',
+        revertRow: 'Voltar ao valor salvo',
+        removedTitle: 'Removidos',
+        restore: 'Restaurar',
+        newBadge: 'novo',
+        diffHint: 'Ver o que mudou',
     },
     es: {
         title: 'UI · User Interface',
@@ -217,6 +302,45 @@ const messages: Record<string, MessageType> = {
         saveNow: 'Guardar ahora',
         savedOk: 'Design system guardado.',
         discardDraft: 'Descartar borrador',
+        undoChanges: 'Deshacer cambios',
+        scopeNote: 'Los tokens son compartidos: un cambio aquí vale para todos los módulos y páginas de este proyecto que usan este design system.',
+        livePreviewOn: 'Vista previa en vivo activa — la app ya muestra los cambios; guarde para mantenerlos.',
+        livePreviewOff: 'Este no es el design system activo en la app — los cambios solo aparecen después de guardarlo y activarlo.',
+        usedOnPage: 'Usado en la página actual',
+        onlyUsed: 'Solo los usados en esta página',
+        useFont: 'Usar fuente',
+        useFontIn: 'Aplicar en',
+        fontInUse: 'En uso',
+        statesLabel: 'estados',
+        recalcStates: 'Recalcular estados',
+        recalcAll: 'Recalcular todos los estados',
+        recalcNeedsHex: 'Necesita un color base en hex (#rrggbb) — los estados se derivan de él.',
+        recalcHint: 'Reescribe hover/focus/disabled (light y dark) a partir del color base.',
+        searchPlaceholder: 'Buscar token…  (=valor)',
+        searchHint: 'Parte del nombre. Empiece con = para buscar por valor (ej.: =#1273d4). Esc limpia, Ctrl+F enfoca.',
+        searchOf: 'de',
+        noMatch: 'Ningún token encontrado',
+        viewGrouped: 'Agrupado',
+        viewFlat: 'Lista',
+        viewHint: 'Agrupado: una fila por rol, estados dentro. Lista: cada token en su fila.',
+        inspect: 'Inspeccionar',
+        inspectHint: 'Haga clic en un elemento de la página para ver los tokens que usa. Esc sale.',
+        inspectPick: 'Haga clic en un elemento de la página…',
+        inspectOwn: 'Propios',
+        inspectInherited: 'Heredados',
+        inspectNone: 'Ningún token del design system en este elemento.',
+        hoverHint: 'Pase el mouse sobre un token para resaltar dónde lo usa la página.',
+        identityTitle: 'Identificación',
+        filterTitle: 'Filtrar tokens',
+        inspectTitle: 'Inspeccionar página',
+        changedN: 'cambiados',
+        addedN: 'nuevos',
+        removedN: 'eliminados',
+        revertRow: 'Volver al valor guardado',
+        removedTitle: 'Eliminados',
+        restore: 'Restaurar',
+        newBadge: 'nuevo',
+        diffHint: 'Ver qué cambió',
     },
 };
 /// **collab_i18n_end**
@@ -253,6 +377,16 @@ interface IDsDraftCache {
     colors: IColorRow[]; typo: IValueRow[]; global: IValueRow[]; fonts: DsFont[];
     palette: string[]; brief: string;
 }
+const COLOR_VIEW_KEY = 'aura-ds-editor-color-view';
+
+function readColorView(): 'grouped' | 'flat' {
+    try { return localStorage.getItem(COLOR_VIEW_KEY) === 'flat' ? 'flat' : 'grouped'; } catch { return 'grouped'; }
+}
+
+function writeColorView(view: 'grouped' | 'flat'): void {
+    try { localStorage.setItem(COLOR_VIEW_KEY, view); } catch { /* storage blocked — the choice lasts this session only */ }
+}
+
 let _draftCache: IDsDraftCache | null = null;
 let _draftStamp = 0;
 
@@ -298,6 +432,32 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _unsubTasks: (() => void) | undefined;
     private _appliedStamp = 0;   // last draft stamp this instance has in the form
 
+    // ── live preview: edits of the app's ACTIVE DS repaint the app before [save] ──
+    private _live = createLivePreview(document);
+    private _liveTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // ── tokens the page on screen reads (CSSOM scan of the app's content region) ──
+    @state() private _used: Set<string> = new Set();
+    @state() private _onlyUsed = false;
+    // Color roles expanded to show their -hover/-focus/-disabled rows (UI only, keyed by base name).
+    @state() private _openGroups: Set<string> = new Set();
+    // Colors view: one row per role (states inside) or the flat list of every token. Per-viewer preference.
+    @state() private _colorView: 'grouped' | 'flat' = readColorView();
+    // Token ↔ page element: hover a row to outline its elements; inspect mode picks an element.
+    private _hl = createHighlighter(document);
+    @state() private _inspecting = false;
+    @state() private _inspected: { label: string; own: string[]; inherited: string[] } | null = null;
+    private _inspectedEl: Element | null = null;
+    // What changed since the DS was loaded/saved: the form as loaded is the baseline (null in Add — all new).
+    private _baseline: { colors: IColorRow[]; typo: IValueRow[]; global: IValueRow[]; maps: TokenMaps; name: string; desc: string; fonts: string } | null = null;
+    private _formVersion = 0;
+    private _diffMemo: { version: number; changes: KeyChange[]; status: Record<TokenSection, Map<string, ChangeKind>>; counts: Record<ChangeKind, number> } | null = null;
+    @state() private _showDiff = false;
+    // Token search (name; `=` prefix = value). Combines (AND) with "only used on this page".
+    @state() private _query = '';
+    private _usedObserver: MutationObserver | undefined;
+    private _usedTimer: ReturnType<typeof setTimeout> | undefined;
+
     connectedCallback() {
         super.connectedCallback();
         // The sticky save bar needs a block-level host: the custom element is unknown to the
@@ -305,20 +465,371 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this.style.display = 'block';
         this._unsubTasks = subscribeTaskManager(() => { this._adoptDraft(); this.requestUpdate(); });
         if (this.projectId) this._load(this.projectId);
+        this._startUsedScan();
+        this.addEventListener('keydown', this._onEditorKeydown);
     }
+
+    /** Ctrl/Cmd+F while focus is INSIDE the editor jumps to the token search (the browser's find elsewhere). */
+    private _onEditorKeydown = (e: KeyboardEvent) => {
+        if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f') return;
+        const input = this.querySelector<HTMLInputElement>('[data-ds-search]');
+        if (!input) return;
+        e.preventDefault();
+        input.focus();
+        input.select();
+    };
 
     disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubTasks?.();
+        this._revertLivePreview();
+        this._stopUsedScan();
+        this.removeEventListener('keydown', this._onEditorKeydown);
+        this._stopInspect();
+        this._hl.destroy();
     }
 
-    /** Any edit to the working model — flips the "unsaved" indicator on the sticky save bar. */
-    private _touch(): void {
+    // ── token ↔ element ────────────────────────────────────────────────
+    private get _tokensCss(): string { return document.getElementById('ds-tokens')?.textContent ?? ''; }
+
+    /** Outline the page elements that read these tokens (a row hover). Inspect mode owns the overlay. */
+    private _hoverTokens(names: string[]): void {
+        if (this._inspecting) return;
+        const region = pageRegion(document);
+        const wanted = names.map(n => n.trim()).filter(Boolean);
+        if (!region || !wanted.length) return;
+        try {
+            this._hl.show(elementsUsingTokens(region, document, wanted, this._tokensCss), 'hover');
+        } catch (err) {
+            console.debug('[selectDesignSystem] token highlight skipped', err);
+        }
+    }
+
+    private _unhoverTokens(): void {
+        if (this._inspecting) return;
+        this._hl.clear();
+    }
+
+    private _toggleInspect(): void {
+        if (this._inspecting) this._stopInspect();
+        else this._startInspect();
+    }
+
+    // Window + capture: runs BEFORE the studio editor's own capture listeners on the page host, so while
+    // inspecting a click picks an element here instead of selecting it there.
+    private _startInspect(): void {
+        if (this._inspecting || !pageRegion(document)) return;
+        this._inspecting = true;
+        this._hl.clear();
+        for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click'] as const) window.addEventListener(type, this._onInspectPointer, true);
+        window.addEventListener('mousemove', this._onInspectMove, true);
+        window.addEventListener('keydown', this._onInspectKey, true);
+    }
+
+    private _stopInspect(): void {
+        if (!this._inspecting) return;
+        this._inspecting = false;
+        for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click'] as const) window.removeEventListener(type, this._onInspectPointer, true);
+        window.removeEventListener('mousemove', this._onInspectMove, true);
+        window.removeEventListener('keydown', this._onInspectKey, true);
+        this._inspectedEl = null;
+        this._inspected = null;
+        this._hl.clear();
+    }
+
+    /** The page element under an event, or null when the event is outside the page (the studio, this panel). */
+    private _pageTarget(e: Event): Element | null {
+        const region = pageRegion(document);
+        const t = e.target;
+        return region && t instanceof Element && region.contains(t) ? t : null;
+    }
+
+    private _onInspectPointer = (e: Event) => {
+        const el = this._pageTarget(e);
+        if (!el) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.type === 'click') this._inspectElement(el);
+    };
+
+    private _onInspectMove = (e: MouseEvent) => {
+        const el = this._pageTarget(e);
+        if (el) this._hl.show([el], el === this._inspectedEl ? 'pick' : 'hover');
+        else if (this._inspectedEl?.isConnected) this._hl.show([this._inspectedEl], 'pick');
+        else this._hl.clear();
+    };
+
+    private _onInspectKey = (e: KeyboardEvent) => {
+        if (e.key !== 'Escape') return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this._stopInspect();
+    };
+
+    private _inspectElement(el: Element): void {
+        const region = pageRegion(document);
+        if (!region) return;
+        // Only tokens of THIS design system — Tailwind internals (--tw-*) and app vars are noise here.
+        const dsNames = new Set([...this._colors, ...this._typo, ...this._global].map(r => r.name.trim()).filter(Boolean));
+        try {
+            const { own, inherited } = tokensForElement(el, region, document, this._tokensCss);
+            const cls = (el.getAttribute('class') ?? '').trim().split(/\s+/).filter(Boolean)[0];
+            const label = `<${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${cls ? `.${cls.length > 28 ? cls.slice(0, 27) + '…' : cls}` : ''}>`;
+            this._inspectedEl = el;
+            this._inspected = { label, own: own.filter(n => dsNames.has(n)), inherited: inherited.filter(n => dsNames.has(n)) };
+            this._hl.show([el], 'pick');
+        } catch (err) {
+            console.debug('[selectDesignSystem] inspect skipped', err);
+        }
+    }
+
+    /** Bring a token row into view: lift the filters hiding it, open its group/section, focus it. */
+    private async _revealToken(name: string): Promise<void> {
+        const row = [...this._colors, ...this._typo, ...this._global].find(r => r.name.trim() === name);
+        if (!row) return;
+        if (!this._rowVisible(row)) { this._query = ''; this._onlyUsed = false; }
+        const split = splitState(name);
+        if (split && this._colorView === 'grouped' && this._colors.some(r => r.name.trim() === split.base)) {
+            this._openGroups = new Set([...this._openGroups, split.base]);
+        }
+        await this.updateComplete;
+        const input = this.querySelector<HTMLInputElement>(`[data-ds-token="${CSS.escape(name)}"]`);
+        if (!input) return;
+        const details = input.closest('details');
+        if (details && !details.open) details.open = true;
+        input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        input.focus({ preventScroll: true });
+        input.animate([{ boxShadow: '0 0 0 3px rgba(236,72,153,.75)' }, { boxShadow: '0 0 0 0 rgba(236,72,153,0)' }], { duration: 1400 });
+    }
+
+    // ── used-on-page scan ──────────────────────────────────────────────
+    /** Scan now and again whenever the page region changes (navigation, re-render, class swaps). */
+    private _startUsedScan(): void {
+        const region = pageRegion(document);
+        if (!region) return;   // studio without the app — nothing to mark
+        this._usedObserver = new MutationObserver(() => this._scheduleUsedScan());
+        this._usedObserver.observe(region, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+        this._scheduleUsedScan();
+    }
+
+    private _stopUsedScan(): void {
+        this._usedObserver?.disconnect();
+        this._usedObserver = undefined;
+        clearTimeout(this._usedTimer);
+    }
+
+    private _scheduleUsedScan(): void {
+        clearTimeout(this._usedTimer);
+        this._usedTimer = setTimeout(() => this._scanUsed(), 500);
+    }
+
+    private _scanUsed(): void {
+        const region = pageRegion(document);
+        if (!region) { this._used = new Set(); return; }
+        try {
+            const tokensCss = document.getElementById('ds-tokens')?.textContent ?? '';
+            const used = collectUsedTokens(region, document, tokensCss);
+            // Re-render only when the set really changed — the observer fires on every page repaint.
+            if (used.size !== this._used.size || [...used].some(n => !this._used.has(n))) this._used = used;
+        } catch (err) {
+            console.debug('[selectDesignSystem] used-token scan skipped', err);
+        }
+    }
+
+    private _isUsed(name: string): boolean { return this._used.has(name.trim()); }
+
+    /** Any row filter on (search or "only used") — sections/groups open themselves to show the hits. */
+    private get _filtering(): boolean { return this._onlyUsed || parseTokenQuery(this._query) !== null; }
+
+    /** One rule for every section: "only used" AND the search. */
+    private _rowVisible(row: SearchableRow): boolean {
+        if (this._onlyUsed && !this._isUsed(row.name)) return false;
+        return rowMatchesQuery(row, parseTokenQuery(this._query));
+    }
+
+    private _countVisible(rows: SearchableRow[]): number {
+        let n = 0;
+        for (const r of rows) if (this._rowVisible(r)) n++;
+        return n;
+    }
+
+    /** Form rows (all sections) the page reads — drives the filter label and its visibility. */
+    private get _usedRowCount(): number {
+        let n = 0;
+        for (const r of this._colors) if (this._isUsed(r.name)) n++;
+        for (const r of this._typo) if (this._isUsed(r.name)) n++;
+        for (const r of this._global) if (this._isUsed(r.name)) n++;
+        return n;
+    }
+
+    // ── what changed (diff vs the loaded/saved form) ──────────────────
+    private _currentMaps(): TokenMaps {
+        return { color: colorRowsToMap(this._colors), typography: valueRowsToMap(this._typo), global: valueRowsToMap(this._global) };
+    }
+
+    private _snapshotBaseline(): void {
+        this._baseline = {
+            colors: this._colors.map(r => ({ ...r })),
+            typo: this._typo.map(r => ({ ...r })),
+            global: this._global.map(r => ({ ...r })),
+            maps: this._currentMaps(),
+            name: this._name.trim(),
+            desc: this._desc.trim(),
+            fonts: JSON.stringify(this._fonts),
+        };
+        this._formVersion++;
+    }
+
+    /** Memoized by form version — 352 keys are not diffed on every render. */
+    private get _diff() {
+        if (!this._baseline) return null;
+        if (this._diffMemo?.version !== this._formVersion) {
+            const changes = diffTokens(this._baseline.maps, this._currentMaps());
+            const status = tokenStatus(this._baseline.maps, changes);
+            this._diffMemo = { version: this._formVersion, changes, status, counts: countByKind(status) };
+        }
+        return this._diffMemo;
+    }
+
+    /** Status of the token(s) a row stands for: `added` for a new row, `changed` if any of `names` differs. */
+    private _rowKind(section: TokenSection, name: string, names?: string[]): ChangeKind | undefined {
+        const status = this._diff?.status[section];
+        if (!status) return undefined;
+        const own = status.get(name.trim());
+        if (own === 'added') return 'added';
+        return own ?? ((names ?? []).some(n => status.has(n.trim())) ? 'changed' : undefined);
+    }
+
+    private _rowsOf(section: TokenSection): (IColorRow | IValueRow)[] {
+        return section === 'color' ? this._colors : section === 'typography' ? this._typo : this._global;
+    }
+
+    /** Put these tokens back as saved: values restored, a NEW row removed. */
+    private _revertTokens(section: TokenSection, names: string[]): void {
+        const base = this._baseline;
+        if (!base) return;
+        const wanted = new Set(names.map(n => n.trim()));
+        const savedRows: (IColorRow | IValueRow)[] = section === 'color' ? base.colors : section === 'typography' ? base.typo : base.global;
+        const kept = this._rowsOf(section).filter(row => {
+            const n = row.name.trim();
+            if (!wanted.has(n)) return true;
+            const saved = savedRows.find(r => r.name.trim() === n);
+            if (!saved) return false;                     // added since load → reverting removes it
+            Object.assign(row, saved);
+            return true;
+        });
+        this._setRows(section, kept);
+        this._touch();
+        this._settleDirty();
+    }
+
+    /** Bring a removed token back, at (about) its saved position. */
+    private _restoreRemoved(section: TokenSection, name: string): void {
+        const base = this._baseline;
+        if (!base) return;
+        const savedRows: (IColorRow | IValueRow)[] = section === 'color' ? base.colors : section === 'typography' ? base.typo : base.global;
+        const at = savedRows.findIndex(r => r.name.trim() === name);
+        if (at < 0) return;
+        const rows = [...this._rowsOf(section)];
+        rows.splice(Math.min(at, rows.length), 0, { ...savedRows[at] });
+        this._setRows(section, rows);
+        this._touch();
+        this._settleDirty();
+    }
+
+    private _setRows(section: TokenSection, rows: (IColorRow | IValueRow)[]): void {
+        if (section === 'color') this._colors = rows as IColorRow[];
+        else if (section === 'typography') this._typo = rows as IValueRow[];
+        else this._global = rows as IValueRow[];
+    }
+
+    /** Everything back to the saved values by hand → not dirty any more. */
+    private _settleDirty(): void {
+        const base = this._baseline;
+        const d = this._diff;
+        if (!base || !d || d.changes.length) return;
+        if (this._name.trim() !== base.name || this._desc.trim() !== base.desc || JSON.stringify(this._fonts) !== base.fonts) return;
+        this._dirty = false;
+        this._showDiff = false;
+    }
+
+    /** "Removed (N)" chips at the end of a section, each one restorable. */
+    private _renderRemoved(section: TokenSection) {
+        const status = this._diff?.status[section];
+        const removed = status ? [...status].filter(([, k]) => k === 'removed').map(([n]) => n) : [];
+        if (!removed.length) return nothing;
+        return html`
+            <div class="flex flex-wrap items-center gap-1 text-[11px]">
+                <span class="font-semibold text-red-500 dark:text-red-400">${this.msg.removedTitle} (${removed.length}):</span>
+                ${removed.map(n => html`
+                    <button class="flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 line-through hover:no-underline hover:border-red-400 cursor-pointer"
+                        title=${this.msg.restore} @click=${() => this._restoreRemoved(section, n)}>${n} <span class="no-underline">↺</span></button>`)}
+            </div>
+        `;
+    }
+
+    /** Left bar + "↺" / "new" for a row whose token differs from the saved one. */
+    private _changeMark(section: TokenSection, name: string, names?: string[]) {
+        const kind = this._rowKind(section, name, names);
+        if (kind === 'added') return html`<span class="shrink-0 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">${this.msg.newBadge}</span>`;
+        if (kind !== 'changed') return nothing;
+        return html`
+            <button class="shrink-0 w-4 text-[12px] leading-none text-amber-600 dark:text-amber-400 hover:text-amber-700 cursor-pointer"
+                title=${this.msg.revertRow} @click=${() => this._revertTokens(section, names ?? [name])}>↺</button>`;
+    }
+
+    private _changeBar(section: TokenSection, name: string, names?: string[]): string {
+        const kind = this._rowKind(section, name, names);
+        return kind === 'added' ? 'border-emerald-500' : kind === 'changed' ? 'border-amber-400' : 'border-transparent';
+    }
+
+    /** Throw the unsaved edits away: the form goes back to the saved entry, the app to its tokens. */
+    private _undoChanges(): void {
+        const entry = this._selectedEntry;
+        if (!entry) return;
+        this._revertLivePreview();
+        this._loadFromEntry(entry);
+        this.requestUpdate();
+    }
+
+    /**
+     * Any edit to the working model — flips the "unsaved" indicator on the sticky save bar.
+     * `slow`: free-typed font fields — every preview of a half-typed Google family is a font request.
+     */
+    private _touch(slow = false): void {
+        this._formVersion++;
         this._dirty = true;
         this._saved = false;
         this._savedKey = null;
         // Keep the cached AI draft in sync with the user's review edits.
         if (this._isAdd && _draftCache) this._cacheDraft();
+        this._scheduleLivePreview(slow ? 600 : 150);
+    }
+
+    // ── live preview ───────────────────────────────────────────────────
+    private _scheduleLivePreview(delay: number): void {
+        clearTimeout(this._liveTimer);
+        this._liveTimer = setTimeout(() => this._applyLivePreview(), delay);
+    }
+
+    /** Repaint the app with the form's tokens — only for the app's active DS of this project. */
+    private _applyLivePreview(): void {
+        const entry = this._selectedEntry;
+        if (!entry || this._isAdd || this._editingKey !== entry.key) return;
+        if (!canPreview({ editorProjectId: this.projectId, bootProjectId: window.collabBoot?.projectId, entryName: entry.name, doc: document })) return;
+        try {
+            this._live.apply(tokensCssFromTheme(this._buildTheme(entry.dsIndex, this._name.trim() || entry.name, this._desc.trim())));
+        } catch (err) {
+            // A half-typed value must never break the form — the last good CSS stays on screen.
+            console.debug('[selectDesignSystem] live preview skipped', err);
+        }
+    }
+
+    /** The edit ended unsaved — put the app's tokens back. */
+    private _revertLivePreview(): void {
+        clearTimeout(this._liveTimer);
+        this._liveTimer = undefined;
+        this._live.restore();
     }
 
     /** A generation that finished in a previous (destroyed) instance still lands on the cache. */
@@ -362,6 +873,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     willUpdate(changed: Map<string, unknown>) {
+        // Leaving the DS being edited (knob, project) without saving drops its live preview.
+        if (changed.has('projectId') || changed.has('value')) this._revertLivePreview();
         if (changed.has('projectId')) {
             this._entries = [];
             this._editingKey = null;
@@ -438,6 +951,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._aiBrief = ''; this._genError = ''; this._generating = false;
         this._nameError = false; this._saveError = ''; this._saving = false;
         this._dirty = false; this._saved = false; this._savedKey = null;
+        this._baseline = null; this._formVersion++;
         // An unsaved AI draft for this project wins over the blank template.
         if (_draftCache && _draftCache.projectId === this.projectId) this._restoreDraft(_draftCache);
     }
@@ -460,6 +974,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._aiBrief = ''; this._genError = ''; this._generating = false;
         this._nameError = false; this._saveError = ''; this._saving = false;
         this._dirty = false; this._saved = this._savedKey === entry.key;
+        this._snapshotBaseline();
     }
 
     /** Load an AI-generated draft's tokens into the form (name/desc kept if the user typed them). */
@@ -553,8 +1068,10 @@ export class PluginSelectDesignSystem extends StateLitElement {
             <div class="flex flex-col gap-3">
                 ${this._navHeader(entry.name, this.msg.desc, this.value ?? 0)}
                 ${this._renderStatusBar()}
-                ${this._renderNameField()}
-                ${this._renderDescField()}
+                ${this._renderScopeNote(entry)}
+                ${this._renderIdentityPanel()}
+                ${this._renderFilterBar()}
+                ${this._renderInspectPanel()}
                 ${this._renderEditor()}
                 ${this._renderSave(this.msg.save)}
             </div>
@@ -566,10 +1083,11 @@ export class PluginSelectDesignSystem extends StateLitElement {
             <div class="flex flex-col gap-3">
                 ${this._navHeader(this.msg.addTitle, this.msg.addDesc, this._customKey)}
                 ${this._renderStatusBar()}
-                ${this._renderNameField()}
-                ${this._renderDescField()}
+                ${this._renderIdentityPanel()}
                 ${this._renderPaletteSection()}
                 ${this._renderAiSection()}
+                ${this._renderFilterBar()}
+                ${this._renderInspectPanel()}
                 ${this._renderEditor()}
                 ${this._renderSave(this.msg.create)}
             </div>
@@ -772,11 +1290,14 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return html`<div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5"><span class="text-[11px] text-red-600 dark:text-red-400">${this._saveError}</span></div>`;
     }
 
-    private _section(title: string, tag: string | null, open: boolean, body: unknown) {
+    /** `hits` (filtering only): the section opens itself when it has matches and shows how many. */
+    private _section(title: string, tag: string | null, open: boolean, body: unknown, hits: number | null = null) {
+        const filtering = hits !== null && this._filtering;
         return html`
-            <details class="group rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 overflow-hidden" ?open=${open}>
+            <details class="group rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 overflow-hidden" ?open=${filtering ? hits! > 0 : open}>
                 <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-3 py-2.5 flex items-center gap-2">
                     <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${title}</span>
+                    ${filtering ? html`<span class="text-[10px] font-semibold rounded px-1.5 py-0.5 ${hits ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800'}">${hits}</span>` : nothing}
                     ${tag ? html`<span class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5">${tag}</span>` : nothing}
                     <svg class="ml-auto w-3.5 h-3.5 text-gray-400 transition-transform group-open:rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                 </summary>
@@ -787,31 +1308,236 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     // colors: token | light | dark (dark may be empty = no _dark- pair)
     private _renderColorsSection() {
+        const hits = this._countVisible(this._colors);
+        const grouped = this._colorView === 'grouped';
         return this._section(this.msg.colorsTitle, this.msg.colorsTag, true, html`
-            <div class="grid grid-cols-[1fr_96px_96px_18px] gap-1.5 items-center text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 px-0.5">
+            <div class="self-start flex rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-[11px] font-semibold" title=${this.msg.viewHint}>
+                ${(['grouped', 'flat'] as const).map(v => html`
+                    <button class="px-2.5 py-1 cursor-pointer transition-colors ${this._colorView === v
+                        ? 'bg-indigo-500 dark:bg-indigo-600 text-white'
+                        : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 hover:text-indigo-500'}"
+                        @click=${() => { this._colorView = v; writeColorView(v); }}>${v === 'grouped' ? this.msg.viewGrouped : this.msg.viewFlat}</button>`)}
+            </div>
+            <div class="grid grid-cols-[minmax(0,1fr)_24px_24px_18px] gap-1.5 items-center text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 border-l-2 border-transparent pl-1">
                 <span>${this.msg.tokenCol}</span><span>${this.msg.light}</span><span>${this.msg.dark}</span><span></span>
             </div>
             <div class="flex flex-col gap-1.5">
-                ${this._colors.map((r, i) => this._renderColorRow(r, i))}
+                ${grouped
+                    ? groupColorRows(this._colors).map(g => this._renderColorGroup(g))
+                    : this._colors.map((r, i) => this._rowVisible(r) ? this._renderColorRow(r, i) : nothing)}
+                ${this._filtering && !hits ? this._renderNoMatch() : nothing}
             </div>
+            ${this._renderRemoved('color')}
             <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.darkHint}</span>
-            <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
-                @click=${() => { this._colors = [...this._colors, { name: '', light: '#888888', dark: '' }]; this._touch(); }}>${this.msg.addToken}</button>
-        `);
+            <div class="flex items-center gap-2 flex-wrap">
+                <button class="text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
+                    @click=${() => { this._colors = [...this._colors, { name: '', light: '#888888', dark: '' }]; this._touch(); }}>${this.msg.addToken}</button>
+                <button class="text-xs font-semibold px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
+                    title=${this.msg.recalcHint} @click=${() => this._recalcAllStates()}>↻ ${this.msg.recalcAll}</button>
+            </div>
+        `, hits);
     }
 
-    private _renderColorRow(row: IColorRow, i: number) {
+    private _renderNoMatch() {
+        return html`<span class="text-[11px] text-gray-400 dark:text-gray-500 italic px-0.5">${this.msg.noMatch}</span>`;
+    }
+
+    // ── color roles: base + -hover/-focus/-disabled ───────────────────
+    private _renderColorGroup(g: ColorGroup<IColorRow>) {
+        const members = [g.base, ...g.states];
+        if (!members.some(m => this._rowVisible(m.row))) return nothing;
+        if (!g.states.length) return this._renderColorRow(g.base.row, g.base.index, html`<span class="w-5 shrink-0"></span>`);
+
+        const key = g.base.row.name.trim();
+        // Filtering: a role whose hit is a STATE opens by itself, showing only the matching states.
+        const filtering = this._filtering;
+        const shownStates = filtering ? g.states.filter(s => this._rowVisible(s.row)) : g.states;
+        const open = this._openGroups.has(key) || (filtering && shownStates.length > 0);
+        const canRecalc = !!(normalizeHex(g.base.row.light) || normalizeHex(g.base.row.dark));
+        const toggle = html`
+            <button class="shrink-0 w-5 h-6 flex items-center gap-0.5 text-gray-400 hover:text-indigo-500 cursor-pointer"
+                title=${`${g.states.map(s => s.state).join(' / ')} — ${g.states.length} ${this.msg.statesLabel}`}
+                @click=${() => this._toggleGroup(key)}>
+                <svg class="w-3 h-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                <span class="flex flex-col gap-px">
+                    ${g.states.map(s => html`<span class="block w-1.5 h-1.5 rounded-[1px] border border-black/10" style="background:${s.row.light}"></span>`)}
+                </span>
+            </button>`;
+        return html`
+            <div class="flex flex-col gap-1.5">
+                ${this._renderColorRow(g.base.row, g.base.index, toggle, members.some(m => this._isUsed(m.row.name)), open ? undefined : members.map(m => m.row.name))}
+                ${open ? html`
+                    <div class="flex flex-col gap-1.5 ml-2.5 pl-2 border-l-2 border-gray-200 dark:border-gray-700">
+                        ${(this._openGroups.has(key) ? g.states : shownStates).map(st => this._renderColorRow(st.row, st.index))}
+                        <button class="self-start text-[11px] font-semibold px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+                            ?disabled=${!canRecalc} title=${canRecalc ? this.msg.recalcHint : this.msg.recalcNeedsHex}
+                            @click=${() => { if (this._recalcStates(g)) this._touch(); this.requestUpdate(); }}>↻ ${this.msg.recalcStates}</button>
+                    </div>` : nothing}
+            </div>
+        `;
+    }
+
+    private _toggleGroup(key: string): void {
+        const next = new Set(this._openGroups);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        this._openGroups = next;
+    }
+
+    /**
+     * Rewrite a role's states from its base — the generator's math (expandRoleStates), per mode.
+     * Overwrites hand-edited states on purpose: the button is explicit, undo covers regret.
+     */
+    private _recalcStates(g: ColorGroup<IColorRow>): boolean {
+        const derived = expandRoleStates({ light: g.base.row.light, dark: g.base.row.dark });
+        if (!derived.light && !derived.dark) return false;
+        for (const st of g.states) {
+            if (derived.light) st.row.light = derived.light[st.state];
+            if (derived.dark) st.row.dark = derived.dark[st.state];
+        }
+        return true;
+    }
+
+    private _recalcAllStates(): void {
+        let changed = false;
+        for (const g of groupColorRows(this._colors)) if (g.states.length && this._recalcStates(g)) changed = true;
+        if (changed) this._touch();
+        this.requestUpdate();
+    }
+
+    private _renderColorRow(row: IColorRow, i: number, lead: unknown = nothing, used?: boolean, hoverNames?: string[]) {
         const locked = isMandatoryToken('color', row.name);
         return html`
-            <div class="grid grid-cols-[1fr_96px_96px_18px] gap-1.5 items-center">
-                <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
-                    .value=${row.name} placeholder="token" ?readonly=${locked} title=${locked ? this.msg.mandatoryHint : ''}
-                    @input=${(e: Event) => { row.name = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />
+            <div class="grid grid-cols-[minmax(0,1fr)_24px_24px_18px] gap-1.5 items-center border-l-2 pl-1 ${this._changeBar('color', row.name, hoverNames)}"
+                @mouseenter=${() => this._hoverTokens(hoverNames ?? [row.name])} @mouseleave=${() => this._unhoverTokens()}>
+                ${this._usedMark(row.name, html`<input data-ds-token=${row.name.trim()} class="w-full min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
+                    .value=${row.name} placeholder="token" ?readonly=${locked} title=${locked ? `${row.name} — ${this.msg.mandatoryHint}` : row.name}
+                    @input=${(e: Event) => { row.name = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />`, lead, used, this._changeMark('color', row.name, hoverNames))}
                 ${this._colorCell(row, 'light')}
                 ${this._colorCell(row, 'dark')}
                 ${locked ? this._lockCell() : html`
                     <button class="text-gray-400 hover:text-red-500 text-base cursor-pointer rounded h-6 leading-none"
                         @click=${() => { this._colors = this._colors.filter((_, j) => j !== i); this._touch(); }}>×</button>`}
+            </div>
+        `;
+    }
+
+    /** Token-name cell with the "used on the current page" dot. */
+    private _usedMark(name: string, input: unknown, lead: unknown = nothing, used = this._isUsed(name), after: unknown = nothing) {
+        return html`
+            <div class="flex items-center gap-1 min-w-0">
+                ${lead}
+                <span class="w-1.5 h-1.5 rounded-full shrink-0 ${used ? 'bg-indigo-500 dark:bg-indigo-400' : 'bg-transparent'}"
+                    title=${used ? this.msg.usedOnPage : ''}></span>
+                <div class="flex-1 min-w-0">${input}</div>
+                ${after}
+            </div>
+        `;
+    }
+
+    /** What a token edit reaches (every module on this DS) and whether the app previews it live. */
+    private _renderScopeNote(entry: IDsEntry) {
+        const live = canPreview({ editorProjectId: this.projectId, bootProjectId: window.collabBoot?.projectId, entryName: entry.name, doc: document });
+        return html`
+            <div class="flex flex-col gap-1 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-2.5 py-2">
+                <span class="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">${this.msg.scopeNote}</span>
+                <span class="flex items-center gap-1.5 text-[11px] leading-snug ${live ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}">
+                    <span class="w-1.5 h-1.5 rounded-full shrink-0 ${live ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}"></span>
+                    ${live ? this.msg.livePreviewOn : this.msg.livePreviewOff}
+                </span>
+            </div>
+        `;
+    }
+
+    /**
+     * Sticky filter bar: token search + "only tokens used on this page" (shown only when the page
+     * reads at least one). Both combine; the counter is rows shown / all rows.
+     */
+    private _renderFilterBar() {
+        const usedCount = this._usedRowCount;
+        const all = [...this._colors, ...this._typo, ...this._global];
+        return html`
+            <div class="sticky top-0 z-10 flex flex-col gap-2.5 rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm">
+                ${this._panelTitle(this.msg.filterTitle)}
+                <div class="relative flex items-center">
+                    <svg class="absolute left-2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input data-ds-search type="search" class="w-full min-w-0 text-[11px]! pl-7 pr-16 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
+                        .value=${this._query} placeholder=${this.msg.searchPlaceholder} title=${this.msg.searchHint}
+                        @input=${(e: Event) => { this._query = (e.target as HTMLInputElement).value; }}
+                        @keydown=${(e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); this._query = ''; } }} />
+                    ${this._filtering ? html`
+                        <span class="absolute right-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 pointer-events-none">${this._countVisible(all)} ${this.msg.searchOf} ${all.length}</span>` : nothing}
+                </div>
+                ${usedCount ? html`
+                    <label class="self-start flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                        <input type="checkbox" class="accent-indigo-500 cursor-pointer" .checked=${this._onlyUsed}
+                            @change=${(e: Event) => { this._onlyUsed = (e.target as HTMLInputElement).checked; }} />
+                        <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400"></span>
+                        ${this.msg.onlyUsed} (${usedCount})
+                    </label>` : nothing}
+            </div>
+        `;
+    }
+
+    // ── panels ─────────────────────────────────────────────────────────
+    private _panelTitle(title: string) {
+        return html`<span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">${title}</span>`;
+    }
+
+    private _panel(title: string, body: unknown) {
+        return html`
+            <div class="flex flex-col gap-2.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 p-3">
+                ${this._panelTitle(title)}
+                ${body}
+            </div>
+        `;
+    }
+
+    /**
+     * Name + description, collapsed by default (rarely edited). Opens by itself where it matters: a
+     * new DS (the name starts empty and is required) and a save refused for lack of a name.
+     */
+    private _renderIdentityPanel() {
+        // Same collapsible section as Colors/Typography/Global; the chip shows the current name.
+        return this._section(this.msg.identityTitle, this._name.trim() || null, this._isAdd || this._nameError, html`
+            ${this._renderNameField()}
+            ${this._renderDescField()}
+        `);
+    }
+
+    /** Token ↔ page: the inspect switch, its hint and what the picked element reads. Only with the app on screen. */
+    private _renderInspectPanel() {
+        if (!pageRegion(document)) return nothing;
+        return this._panel(this.msg.inspectTitle, html`
+                    <div class="flex items-center gap-2">
+                        <button class="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border transition-colors cursor-pointer ${this._inspecting
+                            ? 'border-pink-400 bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400'
+                            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500'}"
+                            title=${this.msg.inspectHint} @click=${() => this._toggleInspect()}>
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
+                            ${this.msg.inspect}</button>
+                        <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${this._inspecting ? this.msg.inspectHint : this.msg.hoverHint}</span>
+                    </div>
+                    ${this._inspecting ? this._renderInspected() : nothing}
+        `);
+    }
+
+    private _renderInspected() {
+        const info = this._inspected;
+        if (!info) return html`<span class="text-[11px] text-pink-600 dark:text-pink-400 italic">${this.msg.inspectPick}</span>`;
+        const chips = (names: string[]) => names.map(n => html`
+            <button class="flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-pink-400 hover:text-pink-600 cursor-pointer"
+                @click=${() => this._revealToken(n)}>
+                <span class="w-2.5 h-2.5 rounded-sm border border-black/10" style="background:var(--${n})"></span>${n}</button>`);
+        return html`
+            <div class="flex flex-col gap-1.5 rounded-md border border-pink-200 dark:border-pink-800/40 bg-pink-50/60 dark:bg-pink-900/10 px-2 py-1.5">
+                <span class="text-[11px] font-mono font-semibold text-pink-700 dark:text-pink-300 truncate">${info.label}</span>
+                ${!info.own.length && !info.inherited.length ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400">${this.msg.inspectNone}</span>` : nothing}
+                ${info.own.length ? html`
+                    <span class="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">${this.msg.inspectOwn}</span>
+                    <div class="flex flex-wrap gap-1">${chips(info.own)}</div>` : nothing}
+                ${info.inherited.length ? html`
+                    <span class="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">${this.msg.inspectInherited}</span>
+                    <div class="flex flex-wrap gap-1">${chips(info.inherited)}</div>` : nothing}
             </div>
         `;
     }
@@ -825,27 +1551,36 @@ export class PluginSelectDesignSystem extends StateLitElement {
         `;
     }
 
-    // a color cell accepts ANY css value; the picker is a convenience that syncs on valid hex
+    // A color cell accepts ANY css value; the picker is a convenience that syncs on valid hex.
+    // Compact for the narrow panel: just the swatch; the value field pops over to its LEFT on hover
+    // or focus (Tab / touch reach it too) without moving the layout.
     private _colorCell(row: IColorRow, variant: 'light' | 'dark') {
         const value = row[variant];
         const isHex = /^#[0-9a-fA-F]{6}$/.test(value);
+        const empty = !value.trim();
         return html`
-            <div class="flex items-center gap-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-md px-1 py-1 bg-white dark:bg-gray-900">
-                <label class="relative w-4 h-4 rounded border border-black/10 overflow-hidden cursor-pointer shrink-0" style="background:${isHex ? value : 'transparent'}">
+            <div class="relative flex items-center justify-center h-7 group/cell">
+                <label class="relative w-5 h-5 rounded overflow-hidden cursor-pointer shrink-0 border ${empty ? 'border-dashed border-gray-300 dark:border-gray-600' : 'border-black/15 dark:border-white/15'}"
+                    style=${empty ? '' : `background:${value}`} title=${empty ? `${variant}: —` : `${variant}: ${value}`}>
                     <input type="color" class="absolute inset-0 opacity-0 cursor-pointer" .value=${isHex ? value : '#888888'}
                         @input=${(e: Event) => { row[variant] = (e.target as HTMLInputElement).value.toUpperCase(); this._touch(); this.requestUpdate(); }} />
                 </label>
-                <input class="w-full min-w-0 text-[10px]! font-mono text-gray-600 dark:text-gray-400 bg-transparent border-0 outline-none p-0"
-                    .value=${value} placeholder=${variant === 'dark' ? '—' : ''}
-                    @input=${(e: Event) => { row[variant] = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />
+                <div class="absolute right-full top-1/2 -translate-y-1/2 pr-1 z-20 opacity-0 pointer-events-none transition-opacity
+                        group-hover/cell:opacity-100 group-hover/cell:pointer-events-auto group-focus-within/cell:opacity-100 group-focus-within/cell:pointer-events-auto">
+                    <input class="w-[92px] text-[10px]! font-mono text-gray-700 dark:text-gray-300 rounded-md px-1.5 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 shadow-md outline-none focus:border-indigo-400"
+                        .value=${value} placeholder=${variant === 'dark' ? '—' : ''}
+                        @input=${(e: Event) => { row[variant] = (e.target as HTMLInputElement).value.trim(); this._touch(); this.requestUpdate(); }} />
+                </div>
             </div>
         `;
     }
 
     // typography: value rows + the font-loading cards
     private _renderTypographySection() {
+        const hits = this._countVisible(this._typo);
         return this._section(this.msg.typographyTitle, this.msg.typographyTag, false, html`
             ${this._renderValueRows(this._typo, 'typography', rows => { this._typo = rows; })}
+            ${this._filtering ? nothing : html`
             <div class="border-t border-gray-100 dark:border-gray-800/70 pt-3 flex flex-col gap-2">
                 <div class="flex items-center gap-2">
                     <span class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontsTitle}</span>
@@ -857,29 +1592,31 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 </div>
                 <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
                     @click=${() => { this._fonts = [...this._fonts, { name: '', source: 'google', family: '', weights: [400], fallback: 'sans-serif' }]; this._touch(); }}>${this.msg.addFont}</button>
-            </div>
-        `);
+            </div>`}
+        `, hits);
     }
 
     // global: plain token | value rows
     private _renderGlobalSection() {
         return this._section(this.msg.globalTitle, this.msg.globalTag, false,
-            this._renderValueRows(this._global, 'global', rows => { this._global = rows; }));
+            this._renderValueRows(this._global, 'global', rows => { this._global = rows; }), this._countVisible(this._global));
     }
 
     private _renderValueRows(rows: IValueRow[], section: 'typography' | 'global', commit: (rows: IValueRow[]) => void) {
         return html`
-            <div class="grid grid-cols-[1fr_1fr_18px] gap-1.5 items-center text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 px-0.5">
+            <div class="grid grid-cols-[1fr_1fr_18px] gap-1.5 items-center text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 border-l-2 border-transparent pl-1">
                 <span>${this.msg.tokenCol}</span><span>${this.msg.valueCol}</span><span></span>
             </div>
             <div class="flex flex-col gap-1.5">
                 ${rows.map((r, i) => {
+                    if (!this._rowVisible(r)) return nothing;
                     const locked = isMandatoryToken(section, r.name);
                     return html`
-                    <div class="grid grid-cols-[1fr_1fr_18px] gap-1.5 items-center">
-                        <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
-                            .value=${r.name} placeholder="token" ?readonly=${locked} title=${locked ? this.msg.mandatoryHint : ''}
-                            @input=${(e: Event) => { r.name = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />
+                    <div class="grid grid-cols-[1fr_1fr_18px] gap-1.5 items-center border-l-2 pl-1 ${this._changeBar(section, r.name)}"
+                        @mouseenter=${() => this._hoverTokens([r.name])} @mouseleave=${() => this._unhoverTokens()}>
+                        ${this._usedMark(r.name, html`<input data-ds-token=${r.name.trim()} class="w-full min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
+                            .value=${r.name} placeholder="token" ?readonly=${locked} title=${locked ? `${r.name} — ${this.msg.mandatoryHint}` : r.name}
+                            @input=${(e: Event) => { r.name = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />`, nothing, this._isUsed(r.name), this._changeMark(section, r.name))}
                         <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-400 rounded-md px-1.5 py-1.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:outline-none focus:border-indigo-400"
                             .value=${r.value} placeholder="value"
                             @input=${(e: Event) => { r.value = (e.target as HTMLInputElement).value; this._touch(); }} />
@@ -889,6 +1626,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                     </div>
                 `;})}
             </div>
+            ${this._renderRemoved(section)}
             <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
                 @click=${() => { commit([...rows, { name: '', value: '' }]); this._touch(); }}>${this.msg.addToken}</button>
         `;
@@ -916,7 +1654,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                             : html`<input class="min-w-0 text-[11px]! px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
                                 list=${source === 'google' ? 'ds-google-fonts' : nothing}
                                 .value=${font.family} placeholder=${this.msg.fontFamilyPlaceholder}
-                                @input=${(e: Event) => { font.family = (e.target as HTMLInputElement).value; this._touch(); this.requestUpdate(); }} />`}
+                                @input=${(e: Event) => { font.family = (e.target as HTMLInputElement).value; this._touch(true); this.requestUpdate(); }} />`}
                     </div>
                     <div class="flex flex-col gap-1">
                         <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontFallback}</label>
@@ -937,9 +1675,61 @@ export class PluginSelectDesignSystem extends StateLitElement {
                         <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontUrl}</label>
                         <input class="text-[11px]! px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400 font-mono"
                             .value=${font.url ?? ''} placeholder=${this.msg.fontUrlPlaceholder}
-                            @input=${(e: Event) => { font.url = (e.target as HTMLInputElement).value.trim() || undefined; this._touch(); }} />
+                            @input=${(e: Event) => { font.url = (e.target as HTMLInputElement).value.trim() || undefined; this._touch(true); }} />
                         <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${this.msg.fontUrlHint}</span>
                     </div>` : nothing}
+
+                ${this._renderUseFont(font)}
+            </div>
+        `;
+    }
+
+    // ── "use font": a loaded family only paints once a `font-family-*` typography token points at it ──
+    private _fontTargets = new WeakMap<DsFont, string>();
+
+    /** Typography tokens that hold a font family — where a font card can be applied. */
+    private get _familyTokens(): string[] {
+        return this._typo.map(r => r.name.trim()).filter(n => n.startsWith('font-family'));
+    }
+
+    /** CSS value for a font card: the quoted family + its generic fallback. */
+    private _fontFamilyValue(font: DsFont): string {
+        return `'${font.family.trim().replace(/'/g, '')}', ${font.fallback || 'sans-serif'}`;
+    }
+
+    /** Target token of a card: the user's pick, else the one named after the role, else the first. */
+    private _fontTarget(font: DsFont): string | undefined {
+        const tokens = this._familyTokens;
+        const picked = this._fontTargets.get(font);
+        if (picked && tokens.includes(picked)) return picked;
+        return tokens.find(t => t === `font-family-${font.name.trim()}`) ?? tokens[0];
+    }
+
+    private _useFont(font: DsFont, token: string): void {
+        const value = this._fontFamilyValue(font);
+        const row = this._typo.find(r => r.name.trim() === token);
+        if (row) row.value = value;
+        else this._typo = [...this._typo, { name: token, value }];
+        this._touch();
+        this.requestUpdate();
+    }
+
+    private _renderUseFont(font: DsFont) {
+        if (!font.family.trim()) return nothing;
+        const target = this._fontTarget(font);
+        if (!target) return nothing;
+        const family = font.family.trim().replace(/'/g, '').toLowerCase();
+        const inUse = this._typo.filter(r => r.name.startsWith('font-family')
+            && r.value.trim().replace(/^['"]/, '').toLowerCase().startsWith(family));
+        return html`
+            <div class="flex items-center gap-2 border-t border-gray-100 dark:border-gray-800/70 pt-2">
+                <span class="text-[11px] font-semibold text-gray-500 dark:text-gray-400 shrink-0">${this.msg.useFontIn}</span>
+                ${this._renderInlineSelect(this._familyTokens, target, v => { this._fontTargets.set(font, v); this.requestUpdate(); })}
+                <button class="shrink-0 text-[11px] font-semibold px-2 py-1 rounded bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors cursor-pointer"
+                    @click=${() => this._useFont(font, target)}>${this.msg.useFont}</button>
+                ${inUse.length ? html`
+                    <span class="ml-auto shrink-0 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400" title=${inUse.map(r => r.name).join(', ')}>
+                        ✓ ${this.msg.fontInUse}</span>` : nothing}
             </div>
         `;
     }
@@ -1012,6 +1802,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         }
         if (!this._dirty) return nothing;
         const hasDraft = this._isAdd && !!_draftCache;
+        const canUndo = !this._isAdd && !!this._selectedEntry;
         return html`
             <div class="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-2.5 py-1.5">
                 <span class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
@@ -1019,27 +1810,85 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 ${hasDraft ? html`
                     <button class="ml-auto shrink-0 text-[11px] text-gray-500 dark:text-gray-400 hover:text-red-500 hover:underline cursor-pointer whitespace-nowrap"
                         @click=${() => this._discardDraft()}>${this.msg.discardDraft}</button>` : nothing}
+                ${canUndo ? html`
+                    <button class="ml-auto shrink-0 text-[11px] text-gray-500 dark:text-gray-400 hover:text-red-500 hover:underline cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                        ?disabled=${this._saving} @click=${() => this._undoChanges()}>${this.msg.undoChanges}</button>` : nothing}
                 <button class="shrink-0 text-[11px] font-semibold px-2 py-1 rounded bg-amber-500 dark:bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer
-                        ${hasDraft ? '' : 'ml-auto'}"
+                        ${hasDraft || canUndo ? '' : 'ml-auto'}"
                     ?disabled=${this._saving} @click=${() => this._onSave()}>${this._saving ? this.msg.saving : this.msg.saveNow}</button>
             </div>
         `;
     }
 
     // Sticky footer: the form is long and the save button used to scroll out of sight — pin it.
+    // Two lines for the narrow panel: the state (+ undo) above, the full-width button below.
     private _renderSave(label: string) {
+        const dirty = this._dirty && !this._saved;
+        const canUndo = dirty && !this._isAdd && !!this._selectedEntry;
         return html`
-            <div class="sticky bottom-0 z-10 mt-1 py-2.5 flex items-center gap-2 border-t border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm">
-                <button class="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            <div class="sticky bottom-0 z-10 mt-1 py-2.5 flex flex-col gap-2 border-t border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm">
+                ${dirty && this._showDiff ? this._renderDiffList() : nothing}
+                ${dirty || this._saved ? html`
+                    <div class="flex items-center gap-2 min-w-0">
+                        ${dirty ? this._renderDiffToggle() : html`
+                            <span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 truncate">✓ ${this.msg.savedOk}</span>`}
+                        ${canUndo ? html`
+                            <button class="ml-auto shrink-0 text-[11px] text-gray-500 dark:text-gray-400 hover:text-red-500 hover:underline cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                                ?disabled=${this._saving} @click=${() => this._undoChanges()}>${this.msg.undoChanges}</button>` : nothing}
+                    </div>` : nothing}
+                <button class="w-full flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
                     ?disabled=${this._saving} @click=${() => this._onSave()}>
                     ${this._saving ? this._renderSpinner('border-white') : nothing}
                     ${this._saving ? this.msg.saving : label}</button>
-                ${this._dirty && !this._saved ? html`
-                    <span class="flex items-center gap-1.5">
-                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
-                        <span class="text-[11px] font-semibold text-amber-600 dark:text-amber-400">${this.msg.unsavedChanges}</span>
-                    </span>` : nothing}
-                ${this._saved ? html`<span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">✓ ${this.msg.savedOk}</span>` : nothing}
+            </div>
+        `;
+    }
+
+    /** "● Unsaved changes · 2 changed · 1 new ▸" — opens the list above the save button. */
+    private _renderDiffToggle() {
+        const c = this._diff?.counts;
+        const parts = c ? [
+            c.changed ? `${c.changed} ${this.msg.changedN}` : '',
+            c.added ? `${c.added} ${this.msg.addedN}` : '',
+            c.removed ? `${c.removed} ${this.msg.removedN}` : '',
+        ].filter(Boolean) : [];
+        const label = html`
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+            <span class="text-[11px] font-semibold text-amber-600 dark:text-amber-400 truncate">${this.msg.unsavedChanges}${parts.length ? ` · ${parts.join(' · ')}` : ''}</span>`;
+        if (!parts.length) return html`<span class="flex items-center gap-1.5 min-w-0">${label}</span>`;
+        return html`
+            <button class="flex items-center gap-1.5 min-w-0 cursor-pointer hover:underline decoration-amber-400" title=${this.msg.diffHint}
+                @click=${() => { this._showDiff = !this._showDiff; }}>
+                ${label}
+                <svg class="w-3 h-3 shrink-0 text-amber-500 transition-transform ${this._showDiff ? '-rotate-90' : 'rotate-90'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>`;
+    }
+
+    /** `token: old → new`, with swatches for colors; the name jumps to the row, ↺ reverts that token. */
+    private _renderDiffList() {
+        const changes = this._diff?.changes ?? [];
+        if (!changes.length) return nothing;
+        const swatch = (section: TokenSection, v?: string) => section === 'color' && v
+            ? html`<span class="w-2.5 h-2.5 rounded-sm shrink-0 border border-black/10" style="background:${v}"></span>` : nothing;
+        const val = (v?: string) => html`<span class="font-mono truncate max-w-[90px]" title=${v ?? ''}>${v?.trim() || '—'}</span>`;
+        return html`
+            <div class="max-h-48 overflow-y-auto flex flex-col gap-0.5 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-900/10 px-2 py-1.5">
+                ${changes.map(c => {
+                    const name = baseName(c.key);
+                    const dark = c.key !== name;
+                    return html`
+                        <div class="flex items-center gap-1.5 min-w-0 text-[10px] text-gray-600 dark:text-gray-300">
+                            <button class="min-w-0 truncate font-mono font-semibold text-left hover:text-indigo-500 hover:underline cursor-pointer ${c.kind === 'removed' ? 'line-through text-red-500' : ''}"
+                                title=${c.key} @click=${() => this._revealToken(name)}>${name}${dark ? html`<span class="font-normal text-gray-400"> (dark)</span>` : nothing}</button>
+                            <span class="ml-auto flex items-center gap-1 shrink-0">
+                                ${c.kind !== 'added' ? html`${swatch(c.section, c.from)}${val(c.from)}` : html`<span class="text-emerald-600 dark:text-emerald-400 font-semibold">${this.msg.newBadge}</span>`}
+                                ${c.kind !== 'removed' ? html`<span class="text-gray-400">→</span>${swatch(c.section, c.to)}${val(c.to)}` : nothing}
+                            </span>
+                            <button class="shrink-0 w-4 text-[12px] leading-none text-amber-600 dark:text-amber-400 hover:text-amber-700 cursor-pointer"
+                                title=${c.kind === 'removed' ? this.msg.restore : this.msg.revertRow}
+                                @click=${() => c.kind === 'removed' ? this._restoreRemoved(c.section, name) : this._revertTokens(c.section, [name])}>↺</button>
+                        </div>`;
+                })}
             </div>
         `;
     }
@@ -1096,7 +1945,10 @@ export class PluginSelectDesignSystem extends StateLitElement {
             // Saving from the sticky footer: the field that blocks the save is far above — take
             // the user there instead of failing silently.
             this._nameError = true;
-            this.querySelector('[data-ds-name]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            const nameInput = this.querySelector<HTMLElement>('[data-ds-name]');
+            const details = nameInput?.closest('details');
+            if (details) details.open = true;   // the identity panel is collapsed by default
+            nameInput?.scrollIntoView({ block: 'center', behavior: 'smooth' });
             return;
         }
         if (!this.projectId || this._saving) return;
@@ -1122,6 +1974,11 @@ export class PluginSelectDesignSystem extends StateLitElement {
             return;
         }
 
+        // What is on screen IS the saved DS now — keep it (and follow a rename).
+        // Flush a pending (debounced) edit first so the screen matches what was written.
+        clearTimeout(this._liveTimer);
+        if (!isNew) this._applyLivePreview();
+        this._live.commit(name);
         await this._load(this.projectId);
         // The compiled designSystem.js lags behind the just-written .ts, so _load can miss a
         // brand-new entry — upsert it optimistically so the list + knob reflect the save now.
@@ -1129,6 +1986,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._saving = false;
         this._dirty = false;
         this._saved = true;
+        this._showDiff = false;
+        this._snapshotBaseline();   // what is on screen IS the saved DS now
         this._savedKey = key;
 
         if (isNew) {

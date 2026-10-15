@@ -1,3 +1,22 @@
+## 2026-10-15 — groupViewData: `<CardTop>`, a faixa de ponta a ponta do `ml-card-grid`
+
+No teste das variantes do reembolsoDespesas (14/10), o template `decisionFirst` pedia uma faixa de situação de ponta a
+ponta no topo de cada cartão. Com o `ml-card-grid`, a faixa ficava recuada: o cartão tinha `p-4` próprio e toda `<Cell>`
+ficava a 16px da borda. Onde a faixa precisava tocar a borda, o gerador abandonou a molécula e montou o cartão à mão.
+
+**Na molécula** (`mls-102040/l2/molecules/groupviewdata/ml-card-grid.ts`):
+- novo slot opcional `<CardTop>` dentro da `<Row>` (só o primeiro conta), desenhado antes das células, sem recuo;
+- o padding saiu do cartão e foi para o corpo (a grade das células). Sem `<CardTop>`, o cartão fica igual;
+- a faixa segue os cantos de cima pela classe `.ml-card-top` (no `.less`), e não por `overflow-hidden` no cartão
+  inteiro, que cortaria popovers abertos a partir das células;
+- o clique na faixa é o clique do cartão.
+
+**Na skill:** a linha `CardTop` na tabela de slots (só `ml-card-grid`) e o exemplo *Card grid with a status strip*.
+
+**Nos `.defs.ts`** do 102040, apesar do cabeçalho "Do not change" (mesma decisão de 08/10): `ml-card-grid.defs.ts`
+(objetivo, responsabilidade e o espaçamento no corpo) e a linha do card-grid no `index.defs.ts` do grupo. Se forem
+regerados, estas frases precisam voltar.
+
 ## 2026-10-08 — groupViewData: o calendário lê a data da `<Row date>`
 
 A `ml-calendar-view` achava um evento procurando `AAAA-MM-DD` no texto de cada `<Cell>`. Essa convenção não estava

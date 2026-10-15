@@ -17,6 +17,7 @@ export const skill = `
 | \`Column\` | ✓ (min. 1) | Defines a column — attributes: \`field\`, \`header\`, \`width\`, \`align\`, \`hidden\`. \`field\` and \`header\` are plain attributes (\`header=\${…}\`, not \`.header\`) and must not be empty: \`ml-vertical-record-list\` refuses a column without them. A column with no visible title (actions) still names what it holds (\`header="Actions"\`) |
 | \`Rows\` | ✓ | Container for data rows |
 | \`Row\` | ✓ (min. 1) | A data row — attributes: \`selected\`, \`disabled\`. Bind them as booleans (\`?selected=\${…}\`). \`ml-calendar-view\` also reads \`date\` (ISO 8601, required to place the row) and \`title\` (chip text) — see *Calendar* |
+| \`CardTop\` | No | **\`ml-card-grid\` only.** At most one per \`Row\`: an edge-to-edge band at the top of the card (status strip, cover image), drawn before the cells with no inner spacing and following the card's top corners. Not a column, and not clickable on its own (the click is the card's). The other molecules of the group ignore it — see *Card grid with a status strip* |
 | \`Cell\` | ✓ | A data cell — accepts any content; attribute: \`colspan\` |
 | \`Empty\` | No | Content shown when there are no rows |
 | \`Loading\` | No | Content shown when \`loading\` is true |
@@ -228,6 +229,31 @@ kept only for pages written before the attribute existed.
   <Empty>
     <div class="text-center py-12 text-slate-400">No items to display</div>
   </Empty>
+</groupviewdata--ml-card-grid>
+\`\`\`
+
+### Card grid with a status strip — \`<CardTop>\`
+
+A band that must touch the card's edges goes in \`<CardTop>\`, never in a \`<Cell>\`: every Cell sits inside the card's
+inner spacing, so a strip placed there stays inset. The band carries its own colors and padding; the molecule only
+places it. Cards without \`<CardTop>\` stay as they are, so the strip can be per record.
+
+\`\`\`html
+<groupviewdata--ml-card-grid @row-click=\${(e) => this.openExpense(this.expenses[e.detail.index].id)}>
+  <Columns>
+    <Column field="description" header="Description" />
+    <Column field="amount" header="Amount" align="right" />
+  </Columns>
+  <Rows>
+    \${this.expenses.map(expense => html\`
+      <Row>
+        <CardTop>
+          <div class="px-4 py-1.5 text-xs font-semibold \${statusClass(expense.status)}">\${statusLabel(expense.status)}</div>
+        </CardTop>
+        <Cell>\${expense.description}</Cell>
+        <Cell>\${formatMoney(expense.amount)}</Cell>
+      </Row>\`)}
+  </Rows>
 </groupviewdata--ml-card-grid>
 \`\`\`
 

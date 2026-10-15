@@ -141,6 +141,26 @@ function colorForKey(parsed: ParsedColorKey, base: RoleBase): string {
     return scaleLightness(src, STATE_LIGHTNESS[parsed.state] ?? 1);
 }
 
+export type ColorState = 'hover' | 'focus' | 'disabled';
+export const COLOR_STATES: readonly ColorState[] = ['hover', 'focus', 'disabled'];
+
+/**
+ * The three states of ONE role from its base, per mode — the same math as
+ * {@link expandColorTokens}, for any role (custom ones included: the L5 → UI editor's
+ * "recalculate states"). A mode whose base is not a hex color is left out.
+ */
+export function expandRoleStates(base: { light?: string; dark?: string }): Partial<Record<'light' | 'dark', Record<ColorState, string>>> {
+    const out: Partial<Record<'light' | 'dark', Record<ColorState, string>>> = {};
+    for (const mode of ['light', 'dark'] as const) {
+        const src = normalizeHex(base[mode]);
+        if (!src) continue;
+        const states = {} as Record<ColorState, string>;
+        for (const st of COLOR_STATES) states[st] = colorForKey({ dark: mode === 'dark', role: '', state: st }, { light: src, dark: src });
+        out[mode] = states;
+    }
+    return out;
+}
+
 /**
  * Build the full mandatory color record from per-role bases. Every mandatory color key is
  * emitted (light + `_dark-`), computed from its role base; roles absent/invalid in `bases`
