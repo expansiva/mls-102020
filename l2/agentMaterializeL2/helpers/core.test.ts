@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildM4PlannedSteps, m4ScopeDevices, m4ScopeLabel, m4ScopePages, parseM4MessageInvocation, parseM4StepInvocation } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
+import { buildM4PlannedSteps, m4ScopeDevices, m4ScopeGenomes, m4ScopeLabel, m4ScopePages, parseM4MessageInvocation, parseM4StepInvocation } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 
 const run = (message: string) => parseM4MessageInvocation(message, 102047);
 
@@ -55,4 +55,19 @@ test('scope helpers', () => {
   assert.deepEqual(m4ScopeDevices({ device: 'mobile' }), ['mobile']);
   assert.equal(m4ScopeLabel({}), 'whole module');
   assert.equal(m4ScopeLabel({ pages: ['mesas'], device: 'mobile', force: true }), 'pages mesas; device mobile; force');
+});
+
+// 14/10/2026: UX variants of a page (page21…) — the same shared, another page11 — run alone with --genome.
+test('--genome limits a run to one page folder; without it, page11 and every accepted variant', () => {
+  assert.deepEqual(run('@@agentMaterializeL2 reembolsoDespesas --genome page21'), { kind: 'run', project: 102047, module: 'reembolsoDespesas', scope: { genome: 'page21' } });
+  assert.equal(run('@@agentMaterializeL2 reembolsoDespesas --genome 21').kind, 'refusal');
+  assert.equal(run('@@agentMaterializeL2 reembolsoDespesas --genome page1').kind, 'refusal');
+  const variants = [{ genome: 'page21', status: 'accepted' }, { genome: 'page31', status: 'refused' }];
+  assert.deepEqual(m4ScopeGenomes(variants, {}), ['page11', 'page21'], 'a refused variant is left out');
+  assert.deepEqual(m4ScopeGenomes(variants, { genome: 'page21' }), ['page21']);
+  assert.deepEqual(m4ScopeGenomes(variants, { genome: 'page31' }), [], 'a refused variant is never generated');
+  assert.deepEqual(m4ScopeGenomes(undefined, {}), ['page11']);
+  assert.equal(m4ScopeLabel({ genome: 'page21' }), 'genome page21');
+  const step = parseM4StepInvocation(JSON.stringify({ project: 102047, module: 'reembolsoDespesas', scope: { genome: 'page21' } }), 102047);
+  assert.deepEqual(step.kind === 'run' ? step.scope : null, { genome: 'page21' });
 });

@@ -87,11 +87,12 @@ export interface M4PipelineState {
 }
 
 /**
- * Optional scope of a run (`--page`, `--device`, `--force`). input20 always gates the whole module (cheap, and
+ * Optional scope of a run (`--page`, `--device`, `--genome`, `--force`). `genome` limits the pages to one page folder:
+ * page11 (the primary page) or a UX variant such as page21 (14/10/2026); absent = page11 and every accepted variant. input20 always gates the whole module (cheap, and
  * navigation targets need every page); shared40 and pages50 work only on the units in scope; `force` makes
  * those units regenerate even when their receipt is still valid.
  */
-export interface M4RunScope { pages?: string[]; device?: 'desktop' | 'mobile'; force?: boolean; review?: boolean }
+export interface M4RunScope { pages?: string[]; device?: 'desktop' | 'mobile'; force?: boolean; review?: boolean; genome?: string }
 export type M4ScopedIdentity = M4RunIdentity & { scope: M4RunScope };
 
 export type M4MessageInvocation =
@@ -101,7 +102,8 @@ export type M4MessageInvocation =
 export type M4StepInvocation = ({ kind: 'run' } & M4ScopedIdentity) | { kind: 'refusal'; diagnostic: string };
 
 const AGENT_PREFIXES = [/@@\s*_102020_\/l2\/agentMaterializeL2/giu, /@@\s*agentMaterializeL2/giu];
-const USAGE = 'Usage: @@agentMaterializeL2 <lowerCamel module> [--page <pageId>[,<pageId>…]] [--device desktop|mobile] [--force] [--review].';
+const USAGE = 'Usage: @@agentMaterializeL2 <lowerCamel module> [--page <pageId>[,<pageId>…]] [--device desktop|mobile] [--genome pageNN] [--force] [--review].';
+const GENOME = /^page\d\d$/u;
 const PAGE_ID = /^[a-z][A-Za-z0-9_]{0,59}$/u;
 
 /** The pages of `accepted` this run works on: all of them, or the `--page` ones (in their accepted order). */
@@ -112,9 +114,17 @@ export function m4ScopePages(accepted: string[], scope: M4RunScope | undefined):
 export function m4ScopeDevices(scope: M4RunScope | undefined): Array<'desktop' | 'mobile'> {
   return scope?.device ? [scope.device] : ['desktop', 'mobile'];
 }
+/**
+ * The page folders this run works on for a page: page11 and the accepted variants of input.json, or only `--genome`.
+ * A review (review55) only reads the primary page11.
+ */
+export function m4ScopeGenomes(variants: Array<{ genome: string; status: string }> | undefined, scope: M4RunScope | undefined): string[] {
+  const all = ['page11', ...(variants ?? []).filter(variant => variant.status === 'accepted').map(variant => variant.genome)];
+  return scope?.genome ? all.filter(genome => genome === scope.genome) : all;
+}
 /** One line for the step trace: `pages mesas, fechamento; device mobile; force`, or `whole module`. */
 export function m4ScopeLabel(scope: M4RunScope | undefined): string {
-  const parts = [scope?.pages?.length ? `pages ${scope.pages.join(', ')}` : '', scope?.device ? `device ${scope.device}` : '', scope?.force ? 'force' : '', scope?.review ? 'review' : ''].filter(Boolean);
+  const parts = [scope?.pages?.length ? `pages ${scope.pages.join(', ')}` : '', scope?.device ? `device ${scope.device}` : '', scope?.genome ? `genome ${scope.genome}` : '', scope?.force ? 'force' : '', scope?.review ? 'review' : ''].filter(Boolean);
   return parts.length ? parts.join('; ') : 'whole module';
 }
 
@@ -122,17 +132,19 @@ function validScope(value: unknown): M4RunScope | string {
   if (value === undefined) return {};
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 'Step scope must be an object.';
   const raw = value as Record<string, unknown>;
-  const unknown = Object.keys(raw).find(key => key !== 'pages' && key !== 'device' && key !== 'force' && key !== 'review');
+  const unknown = Object.keys(raw).find(key => key !== 'pages' && key !== 'device' && key !== 'force' && key !== 'review' && key !== 'genome');
   if (unknown) return `Unknown scope key: ${unknown}.`;
   if (raw.pages !== undefined && (!Array.isArray(raw.pages) || !raw.pages.every(item => typeof item === 'string' && PAGE_ID.test(item)))) return 'Scope pages must be page ids.';
   if (raw.device !== undefined && raw.device !== 'desktop' && raw.device !== 'mobile') return 'Scope device must be desktop or mobile.';
   if (raw.force !== undefined && typeof raw.force !== 'boolean') return 'Scope force must be a boolean.';
   if (raw.review !== undefined && typeof raw.review !== 'boolean') return 'Scope review must be a boolean.';
+  if (raw.genome !== undefined && (typeof raw.genome !== 'string' || !GENOME.test(raw.genome))) return 'Scope genome must be a page folder such as page21.';
   return {
     ...(Array.isArray(raw.pages) && raw.pages.length ? { pages: raw.pages as string[] } : {}),
     ...(raw.device ? { device: raw.device as 'desktop' | 'mobile' } : {}),
     ...(raw.force ? { force: true } : {}),
     ...(raw.review ? { review: true } : {}),
+    ...(typeof raw.genome === 'string' ? { genome: raw.genome } : {}),
   };
 }
 
@@ -163,6 +175,10 @@ export function parseM4MessageInvocation(value: string, project = currentM4Proje
       const value = inline ?? tokens[++i];
       if (value !== 'desktop' && value !== 'mobile') return { kind: 'refusal', diagnostic: `--device must be desktop or mobile. ${USAGE}` };
       scope.device = value;
+    } else if (name === '--genome') {
+      const value = inline ?? tokens[++i];
+      if (!value || !GENOME.test(value)) return { kind: 'refusal', diagnostic: `--genome must be a page folder such as page21. ${USAGE}` };
+      scope.genome = value;
     } else if (name === '--force') {
       scope.force = true;
     } else if (name === '--review') {
@@ -261,6 +277,7 @@ export const M4_HELP = [
   'The module is explicit and the project comes from the current context.',
   'Options: --page <id>[,<id>…] works on those pages only; --device desktop|mobile generates only that device',
   '(the shared is common to both); --force regenerates the units in scope even when nothing changed;',
+  '--genome pageNN generates only that page folder: page11, or a UX variant such as page21 (same shared, another page11);',
   '--review adds review55, a second LLM that reviews each page against its template (report only).',
   'input20 always gates the whole module.',
   'Steps: entry10, input20 (validates the defs of every page and reads the L4 context of each one) and',

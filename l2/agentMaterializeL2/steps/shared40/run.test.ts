@@ -6,7 +6,7 @@ import test from 'node:test';
 import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import {
-  M4_SHARED_RUNTIME_REFS, approveM4Shared, buildM4SharedContext, buildM4SharedPrompt, buildM4SharedRepairPrompt, m4AddedMemberFindings, m4SharedEnvironmentFailure, m4SharedReuseBlocker, mergeM4Findings, m4SharedToolFindings, m4SharedToolSchema, m4SharedToolSource, recordM4SharedAttempt, reusableM4Shared, type M4SharedPort,
+  M4_SHARED_RUNTIME_REFS, approveM4Shared, m4SharedRules, buildM4SharedContext, buildM4SharedPrompt, buildM4SharedRepairPrompt, m4AddedMemberFindings, m4SharedEnvironmentFailure, m4SharedReuseBlocker, mergeM4Findings, m4SharedToolFindings, m4SharedToolSchema, m4SharedToolSource, recordM4SharedAttempt, reusableM4Shared, type M4SharedPort,
 } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 
 interface Fixture {
@@ -81,11 +81,14 @@ test('the prompt carries target, contract, shared, organisms, the methods the pa
     '- class: ControleEstoqueProdutosShared',
     '- contract import: /_102047_/l2/controleEstoque/web/contracts/produtos.defs.js',
     'export interface ProdutosContracts',
-    '"filterListaProdutos"',
+    '"cadastrarProduto.input"',
     '- alertasSaldoBaixo (highlights):',
     'Intents: abrirMovimentacoes/navigate→movimentacoes',
     '# Methods the pages call',
     '- cadastrarProduto',
+    '- abrirMovimentacoes',
+    '# Navigations',
+    '- abrirMovimentacoes (organism detalheProduto) → /controleEstoque/movimentacoes; entry params of movimentacoes: produtoId, page',
     '# Business context (L4)',
     '## Entities (meaning and field titles)',
     '# Notes on the defs',
@@ -105,8 +108,8 @@ test('a repair is a focused fix (agentFix style): errors, refused file, its impo
   assert.ok(!humanPrompt.includes('# Organisms'), 'not the generation prompt again');
   for (const needle of [
     '# Ids to keep',
-    '- states: listaProdutos, filtroBuscaProdutos, paginaProdutos, produtoSelecionado, produtoCadastro, produtoCadastrado, movimentacoesProduto, scenary',
-    '- functions: load, filterListaProdutos, loadMoreListaProdutos, cadastrarProduto, selecionarProduto, abrirMovimentacoes, setScenario',
+    '- states: listaProdutos, filtroBuscaProdutos, paginaProdutos, produtoSelecionado, produtoCadastro, produtoCadastrado, scenary',
+    '- methods: load, cadastrarProduto, abrirMovimentacoes, setScenario',
     '- routes: controleEstoque.produtos.load, controleEstoque.produtos.cadastrarProduto',
     '# Errors', 'TS2540', '# Refused file', 'export class ControleEstoqueProdutosShared',
     '# Import declarations', '## /_102033_/l2/shared/layout/auraNavigate.js',
@@ -187,7 +190,7 @@ test('a refused answer is kept for diagnosis next to the receipts', async () => 
 test('a defs change after input20 is refused as stale', async () => {
   const port = await studio();
   const path = '102047/l2/controleEstoque/web/shared/produtos.defs.ts';
-  port.files.set(path, port.files.get(path)!.replace('"Carregar produtos"', '"Carregar todos os produtos"'));
+  port.files.set(path, port.files.get(path)!.replace('"Produtos carregados"', '"Todos os produtos carregados"'));
   await assert.rejects(buildM4SharedContext(identity, 'produtos', port), /M4_SHARED_INPUT_STALE: produtos shared/u);
 });
 
@@ -237,4 +240,17 @@ test('findings (V5) from the declaration: every public member the defs do not de
   const added = m4AddedMemberFindings(declaration, context.target).map(item => item.message.split(' ')[1]);
   assert.deepEqual(added, ['detalheProduto', 'novoRascunho', 'setNovoRascunho']);
   assert.deepEqual(mergeM4Findings([{ code: 'A', message: 'x' }], [{ code: 'A', message: 'x' }, { code: 'B', message: 'y' }]).map(item => item.code), ['A', 'B']);
+});
+
+// 14/10/2026: a page21 folder brought notes of the variant (template not found…) into the page warnings, and every
+// shared was regenerated. The shared is generated with the page11 notes only.
+test('the notes of a UX variant never reach the shared rules', () => {
+  const problems = [
+    { severity: 'warning', code: 'M4_INPUT_RETURN_UNREAD', page: 'p', path: 'shared:requests.x.returns', message: 'a' },
+    { severity: 'warning', code: 'M4_INPUT_TEMPLATE_MISSING', page: 'p', path: 'desktop:template.category', message: 'b' },
+    { severity: 'warning', code: 'M4_INPUT_TEMPLATE_MISSING', page: 'p', path: 'page21/desktop:template.category', message: 'c' },
+    { severity: 'warning', code: 'M4_INPUT_VARIANT_REFUSED', page: 'p', path: 'page21:', message: 'd' },
+    { severity: 'error', code: 'M4_INPUT_ROUTE_MISSING', page: 'p', path: 'shared:requests.y', message: 'e' },
+  ];
+  assert.deepEqual(m4SharedRules(problems).map(item => item.message), ['a', 'b']);
 });

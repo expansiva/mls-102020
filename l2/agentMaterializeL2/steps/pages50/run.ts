@@ -2,7 +2,8 @@
 
 // pages50, one page × device: context and prompt for the LLM, then approval of its answer.
 // The page sees the shared only through the declaration shared40 saved (web/shared/<pageId>Dts.txt).
-// Approval = gate → write web/<device>/page11/<pageId>.ts → Studio compile → receipt. The receipt holds
+// Approval = gate → write web/<device>/<genome>/<pageId>.ts → Studio compile → receipt. The genome is the page folder:
+// page11, or a UX variant such as page21 (14/10/2026) that has its own page11 defs and reuses the page's shared. The receipt holds
 // the hash of the whole prompt context: any change in the declaration, page11, template, tokens, molecule
 // contracts, locales or prompt regenerates the page; an unchanged context reuses it with no LLM call.
 
@@ -10,7 +11,8 @@ import { displayPath, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { sha256Text } from '/_102020_/l2/agentMaterializeL2/helpers/hash.js';
 import { readL4Module, renderL4Slice, resolveL4Refs } from '/_102020_/l2/agentMaterializeL2/helpers/l4/context.js';
 import { compileWithDeclaration } from '/_102020_/l2/agentMaterializeL2/helpers/studioDeclaration.js';
-import { moleculeGroupFolder, parseL2Page11, type L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { m4LocaleKey } from '/_102020_/l2/agentMaterializeL2/helpers/locale.js';
+import { L2_PRIMARY_GENOME, moleculeGroupFolder, parseL2Page11, type L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import { parseL2Contract } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
 import { m4OwnedFile, type M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
@@ -19,7 +21,7 @@ import { m4DefsInfo, moleculeIndexInfo, templateInfo } from '/_102020_/l2/agentM
 import { m4SharedReuseBlocker, readM4Snapshot, sharedDeclarationInfo, sharedSourceInfo, storedHash, studioSharedPort, type M4SharedPort } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { m4SharedClassName } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
 import {
-  M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4PageJourneyFunctions, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
+  M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 
 export const M4_PAGE_VERSION = '2026-10-05-materialize-l2-v4-page-v1' as const;
@@ -38,6 +40,8 @@ export interface M4PageContext {
   identity: M4RunIdentity;
   pageId: string;
   device: L2Page11Device;
+  /** The page folder: page11 or a UX variant (page21…). */
+  genome: string;
   prompt: string;
   target: M4PageTarget;
   humanPrompt: string;
@@ -57,6 +61,8 @@ export interface M4PageReceipt {
   module: string;
   pageId: string;
   device: L2Page11Device;
+  /** Absent in receipts of page11 written before 14/10/2026. */
+  genome?: string;
   contextHash: string;
   sourcePath: string;
   sourceHash: string;
@@ -75,16 +81,17 @@ export const studioPagePort: M4PagePort = { ...studioSharedPort, compile: (info,
 
 export const pagePromptInfo: Ns5FileInfo = { project: 102020, level: 2, folder: 'agentMaterializeL2/steps/pages50', shortName: 'prompt', extension: '.md' };
 export const pageRepairPromptInfo: Ns5FileInfo = { ...pagePromptInfo, shortName: 'promptRepair' };
-export function pageSourceInfo(identity: M4RunIdentity, pageId: string, device: L2Page11Device): Ns5FileInfo {
-  return { project: identity.project, level: 2, folder: `${identity.module}/web/${device}/page11`, shortName: pageId, extension: '.ts' };
+export function pageSourceInfo(identity: M4RunIdentity, pageId: string, device: L2Page11Device, genome: string = L2_PRIMARY_GENOME): Ns5FileInfo {
+  return { project: identity.project, level: 2, folder: `${identity.module}/web/${device}/${genome}`, shortName: pageId, extension: '.ts' };
 }
 const ownedFolder = (identity: M4RunIdentity) => `${identity.module}/pipeline/agentMaterializeL2/pages50`;
-const unitName = (pageId: string, device: L2Page11Device) => `${pageId}${device === 'desktop' ? 'Desktop' : 'Mobile'}`;
-export function pageReceiptInfo(identity: M4RunIdentity, pageId: string, device: L2Page11Device): Ns5FileInfo {
-  return { ...m4OwnedFile(identity, unitName(pageId, device)), folder: ownedFolder(identity) };
+/** page11 keeps the names it always had (`minhas_despesasDesktop`); a variant adds its folder (`minhas_despesasDesktopPage21`). */
+const unitName = (pageId: string, device: L2Page11Device, genome: string = L2_PRIMARY_GENOME) => `${pageId}${device === 'desktop' ? 'Desktop' : 'Mobile'}${genome === L2_PRIMARY_GENOME ? '' : `${genome[0].toUpperCase()}${genome.slice(1)}`}`;
+export function pageReceiptInfo(identity: M4RunIdentity, pageId: string, device: L2Page11Device, genome: string = L2_PRIMARY_GENOME): Ns5FileInfo {
+  return { ...m4OwnedFile(identity, unitName(pageId, device, genome)), folder: ownedFolder(identity) };
 }
-export function pageAttemptInfo(identity: M4RunIdentity, pageId: string, device: L2Page11Device, attempt: number): Ns5FileInfo {
-  return { project: identity.project, level: 2, folder: ownedFolder(identity), shortName: `${unitName(pageId, device)}Attempt${attempt}`, extension: '.txt' };
+export function pageAttemptInfo(identity: M4RunIdentity, pageId: string, device: L2Page11Device, attempt: number, genome: string = L2_PRIMARY_GENOME): Ns5FileInfo {
+  return { project: identity.project, level: 2, folder: ownedFolder(identity), shortName: `${unitName(pageId, device, genome)}Attempt${attempt}`, extension: '.txt' };
 }
 
 /** Base color token names of the first theme of l2/designSystem.ts (variants and _dark- keys dropped). */
@@ -95,31 +102,40 @@ export function designTokenNames(source: string): string[] {
   return [...new Set([...block.matchAll(/"([a-z0-9-]+)"\s*:/gu)].map(match => match[1]).filter(name => !/-(?:hover|focus|disabled)$/u.test(name) && !name.startsWith('_dark-')))];
 }
 
-/** Two-letter catalogue keys of module.defs.ts productLanguages, default first ('pt-BR' → 'pt'). */
+/**
+ * Catalogue keys of module.defs.ts productLanguages, default first: the whole code in lower case ('pt-BR' → 'pt-br').
+ * The same key agentAddLanguage writes (`normalizeLocale`, map key 'pt-br', const pageMessage_pt_br), and the one the
+ * runtime matches first (getMessageKey: exact `lang`, then two letters). Until 14/10/2026 it was cut to two letters,
+ * so pt-BR and pt-PT fell on the same `pt`, and agentAddLanguage could not find the `pt` a page already had.
+ */
 export function productLocales(moduleSource: string): string[] {
   const list = /"productLanguages"\s*:\s*\[([^\]]*)\]/u.exec(moduleSource)?.[1] ?? '';
   const languages = [...list.matchAll(/"([^"]+)"/gu)].map(match => match[1]);
   const fallback = /"defaultLanguage"\s*:\s*"([^"]+)"/u.exec(moduleSource)?.[1];
   const ordered = [fallback, ...languages].filter((item): item is string => Boolean(item));
-  const keys = [...new Set(ordered.map(language => language.slice(0, 2).toLowerCase()))];
+  const keys = [...new Set(ordered.map(m4LocaleKey).filter(Boolean))];
   return keys.length ? keys : ['en'];
 }
 
-export async function buildM4PageContext(identity: M4RunIdentity, pageId: string, device: L2Page11Device, port: M4PagePort = studioPagePort, snapshot?: M4InputSnapshot): Promise<M4PageContext> {
+export async function buildM4PageContext(identity: M4RunIdentity, pageId: string, device: L2Page11Device, port: M4PagePort = studioPagePort, snapshot?: M4InputSnapshot, genome: string = L2_PRIMARY_GENOME): Promise<M4PageContext> {
   const snap = snapshot ?? await readM4Snapshot(identity, port);
   const page = snap.pages.find(item => item.pageId === pageId);
   if (!page || page.status !== 'accepted') throw new Error(`M4_PAGE_NOT_ACCEPTED: ${pageId}`);
   const blocker = await m4SharedReuseBlocker(identity, pageId, port, snap);
   if (blocker) throw new Error(`M4_PAGE_SHARED_NOT_READY: the shared of ${pageId} is not reusable (${blocker}); shared40 must approve it first.`);
 
-  const page11Source = await port.read(m4DefsInfo(identity, device, pageId));
-  if (await sha256Text(page11Source) !== page.inputs[device]?.sha256) throw new Error(`M4_PAGE_INPUT_STALE: ${pageId} ${device} changed after input20; run the agent again.`);
+  // A variant must be accepted by input20 (its page11 parses and needs no shared member the page11 does not have).
+  const variant = genome === L2_PRIMARY_GENOME ? null : page.variants?.find(item => item.genome === genome);
+  if (genome !== L2_PRIMARY_GENOME && variant?.status !== 'accepted') throw new Error(`M4_PAGE_NOT_ACCEPTED: ${pageId} ${genome}`);
+  const expected = variant ? variant.inputs[device]?.sha256 : page.inputs[device]?.sha256;
+  const page11Source = await port.read(m4DefsInfo(identity, device, pageId, genome));
+  if (await sha256Text(page11Source) !== expected) throw new Error(`M4_PAGE_INPUT_STALE: ${pageId} ${device}${variant ? ` ${genome}` : ''} changed after input20; run the agent again.`);
   const page11 = parseL2Page11(page11Source).definition;
   const shared = parseL2Shared(await port.read(m4DefsInfo(identity, 'shared', pageId))).definition;
   const declaration = await port.read(sharedDeclarationInfo(identity, pageId));
-  // What the shared starts by itself is read from its code; the rest of each journey is the page's to start.
+  // What the shared starts by itself is read from its code; the other requests are the page's to start.
   const sharedInfo = sharedSourceInfo(identity, pageId);
-  const journeyFunctions = m4PageJourneyFunctions(shared, port.exists(sharedInfo) ? await port.read(sharedInfo) : '');
+  const pageOnlyRequests = m4PageOnlyRequests(shared, port.exists(sharedInfo) ? await port.read(sharedInfo) : '', Object.values(page.methods ?? {}));
   const rowTypes = m4RowTypes(await port.read(m4DefsInfo(identity, 'contract', pageId)));
   const template = templateInfo(page11.template.category);
   const templateText = template && port.exists(template) ? await port.read(template) : '';
@@ -158,19 +174,20 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
 
   const target: M4PageTarget = {
     ...identity, pageId, device, page11,
+    ...(genome === L2_PRIMARY_GENOME ? {} : { genome }),
     sharedClassName: m4SharedClassName(identity.module, pageId),
     locales, tokens,
     methods: page.methods ?? {},
     moleculeEvents: await m4PageMoleculeEvents(tags, port),
-    journeyFunctions,
+    pageOnlyRequests,
   };
   const prompt = await port.read(pagePromptInfo);
   const parts = [
     '# Target',
     `- path: ${m4PagePath(target)}`,
     `- device: ${device}`,
-    `- tag: ${m4PageTag(identity.project, identity.module, device, pageId)}`,
-    `- class: ${m4PageClassName(identity.module, device, pageId)} extends ${target.sharedClassName}`,
+    `- tag: ${m4PageTag(identity.project, identity.module, device, pageId, genome)}`,
+    `- class: ${m4PageClassName(identity.module, device, pageId, genome)} extends ${target.sharedClassName}`,
     `- shared import: ${m4SharedImport(target)}`,
     `- locales (default first): ${locales.join(', ')}`,
     '',
@@ -183,7 +200,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     `# Row types — web/contracts/${pageId}.defs.ts (the only fields a row has)`,
     '```ts', rowTypes, '```',
     '',
-    `# Page definition — web/${device}/page11/${pageId}.defs.ts`,
+    `# Page definition — web/${device}/${genome}/${pageId}.defs.ts`,
     '```ts', page11Source.trim(), '```',
     '',
     '# Journeys',
@@ -207,7 +224,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     scenaryContract || '(scene host contract not found: do not use scenes)',
   ];
   const humanPrompt = parts.join('\n');
-  return { identity, pageId, device, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), declaration, rowTypes };
+  return { identity, pageId, device, genome, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), declaration, rowTypes };
 }
 
 /**
@@ -245,8 +262,8 @@ export async function buildM4PageRepairPrompt(context: M4PageContext, repair: { 
   const parts = [
     '# Target',
     `- path: ${m4PagePath(target)}`,
-    `- tag: ${m4PageTag(target.project, target.module, target.device, target.pageId)}`,
-    `- class: ${m4PageClassName(target.module, target.device, target.pageId)} extends ${target.sharedClassName}`,
+    `- tag: ${m4PageTag(target.project, target.module, target.device, target.pageId, target.genome)}`,
+    `- class: ${m4PageClassName(target.module, target.device, target.pageId, target.genome)} extends ${target.sharedClassName}`,
     `- locales (every one needs every key): ${target.locales.join(', ')}`,
     '',
     '# Errors',
@@ -276,35 +293,37 @@ export async function approveM4Page(context: M4PageContext, source: unknown, att
   // `always` issues refuse even while the gate is off (view switching by hand, 02/10/2026).
   const refusing = M4_PAGE_GATE_ENFORCED ? errors : errors.filter(item => item.always);
   if (refusing.length) throw new Error(`M4_PAGE_GATE:\n${refusing.map(item => `${item.code}: ${item.message}`).join('\n')}`);
-  const info = pageSourceInfo(context.identity, context.pageId, context.device);
+  const info = pageSourceInfo(context.identity, context.pageId, context.device, context.genome);
   await port.writeText(info, text);
   const compiled = await port.compile(info, text);
   if (compiled.errors.length) throw new Error(`M4_PAGE_COMPILE:\n${compiled.errors.join('\n')}`);
   const receipt: M4PageReceipt = {
     schemaVersion: M4_PAGE_VERSION, ...context.identity, pageId: context.pageId, device: context.device,
+    ...(context.genome === L2_PRIMARY_GENOME ? {} : { genome: context.genome }),
     contextHash: context.contextHash, sourcePath: displayPath(info), sourceHash: await storedHash(await port.read(info)), attempt,
     design: m4PageDesign(design),
     advisories: issues.filter(item => !M4_PAGE_GATE_ENFORCED || item.severity === 'advisory').map(item => ({ code: item.code, message: `${item.severity === 'error' ? '[contract] ' : ''}${item.message}` })),
   };
-  await port.writeJson(pageReceiptInfo(context.identity, context.pageId, context.device), receipt);
+  await port.writeJson(pageReceiptInfo(context.identity, context.pageId, context.device, context.genome), receipt);
   return receipt;
 }
 
-export async function reusableM4Page(identity: M4RunIdentity, pageId: string, device: L2Page11Device, port: M4PagePort = studioPagePort, snapshot?: M4InputSnapshot): Promise<boolean> {
+export async function reusableM4Page(identity: M4RunIdentity, pageId: string, device: L2Page11Device, port: M4PagePort = studioPagePort, snapshot?: M4InputSnapshot, genome: string = L2_PRIMARY_GENOME): Promise<boolean> {
   try {
-    const receipt = await port.readJson<M4PageReceipt>(pageReceiptInfo(identity, pageId, device));
+    const receipt = await port.readJson<M4PageReceipt>(pageReceiptInfo(identity, pageId, device, genome));
     if (!receipt || receipt.schemaVersion !== M4_PAGE_VERSION || receipt.project !== identity.project || receipt.module !== identity.module || receipt.pageId !== pageId || receipt.device !== device) return false;
-    const info = pageSourceInfo(identity, pageId, device);
+    if ((receipt.genome ?? L2_PRIMARY_GENOME) !== genome) return false;
+    const info = pageSourceInfo(identity, pageId, device, genome);
     if (!port.exists(info) || await storedHash(await port.read(info)) !== receipt.sourceHash) return false;
-    return (await buildM4PageContext(identity, pageId, device, port, snapshot)).contextHash === receipt.contextHash;
+    return (await buildM4PageContext(identity, pageId, device, port, snapshot, genome)).contextHash === receipt.contextHash;
   } catch {
     return false;
   }
 }
 
-export async function recordM4PageAttempt(identity: M4RunIdentity, pageId: string, device: L2Page11Device, attempt: number, source: unknown, diagnostic: string, port: Pick<M4PagePort, 'writeText'> = studioPagePort): Promise<void> {
+export async function recordM4PageAttempt(identity: M4RunIdentity, pageId: string, device: L2Page11Device, attempt: number, source: unknown, diagnostic: string, port: Pick<M4PagePort, 'writeText'> = studioPagePort, genome: string = L2_PRIMARY_GENOME): Promise<void> {
   const body = typeof source === 'string' ? source : JSON.stringify(source ?? null, null, 2);
-  await port.writeText(pageAttemptInfo(identity, pageId, device, attempt), `/* refused: ${diagnostic.replace(/\*\//gu, '* /')} */\n\n${body}\n`);
+  await port.writeText(pageAttemptInfo(identity, pageId, device, attempt, genome), `/* refused: ${diagnostic.replace(/\*\//gu, '* /')} */\n\n${body}\n`);
 }
 
 /** Same rule as shared40: a compile failure the generated code did not cause spends no repair. */

@@ -2,46 +2,54 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildL2Shared, parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
+import { classifyL2StateSource, parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 
-const shared = (state: Record<string, unknown>) => ({
-  entry: { params: {} },
-  forms: {},
-  requests: { loadPatients: { kind: 'qry', trigger: 'load', returns: ['patients'] } },
-  states: { patients: state },
-  functions: { loadPatients: { description: 'Loads the patients.', calls: 'loadPatients', sets: 'patients' } },
-  journeys: [],
-  rules: {},
-  access: { actors: [], grants: [] },
+// The frozen structure (Wagner, 13/10/2026): no forms, no functions, rules is one list, params carry required.
+const shared = (extra: Record<string, unknown> = {}) => ({
+  entry: { params: { pacienteId: { type: 'string', sources: ['url', 'localStorage'], effect: 'select:patientDetail', persist: true, required: false } } },
+  requests: {
+    listarPacientes: { kind: 'qry', trigger: 'onLoad', returns: ['pacientes'] },
+    salvarPaciente: { kind: 'cmd', trigger: 'salvarPaciente', returns: ['paciente'], writes: 'Paciente.update' },
+  },
+  states: {
+    pacientes: { source: 'listarPacientes.pacientes', description: 'Patients.', organisms: ['patientList'] },
+    selectedPaciente: { source: 'entry.params.pacienteId', description: 'The chosen patient.', organisms: ['patientDetail'] },
+  },
+  journeys: [{ step: 'cadastrarPaciente/localizarPaciente', organisms: ['patientList'] }],
+  rules: ['patientOwnerOnly'],
+  access: { actors: ['recepcao'], grants: [] },
+  ...extra,
 });
 
-const source = (definition: unknown) => [
+const source = (definition: unknown, eol = '\n') => [
   '/// <mls fileReference="_102047_/l2/agendaClinica/web/shared/pacientes.defs.ts" enhancement="_blank"/>',
   '',
   `export const definition = ${JSON.stringify(definition, null, 2)} as const;`,
   '',
-].join('\n');
+].join(eol);
 
-// agentDefsL2 d2_80 (05/10/2026): every state lists the organisms it feeds. agendaClinica (07/10) was refused with
-// "L2_SHARED_STATE: patients: forbidden field organisms".
-test('a state that lists the organisms it feeds is read, and keeps them', () => {
-  const { definition } = parseL2Shared(source(shared({ source: 'loadPatients.patients', description: 'Patients.', organisms: ['patientList', 'patientDetail'] })));
-  assert.deepEqual(definition.states.patients, { source: 'loadPatients.patients', description: 'Patients.', organisms: ['patientList', 'patientDetail'] });
+test('the frozen structure is read through the official format', () => {
+  const { location, definition } = parseL2Shared(source(shared()));
+  assert.deepEqual(location, { project: 102047, module: 'agendaClinica', pageId: 'pacientes' });
+  assert.deepEqual(definition.rules, ['patientOwnerOnly']);
+  assert.equal(definition.entry.params.pacienteId.required, false);
+  assert.deepEqual(definition.journeys[0], { step: 'cadastrarPaciente/localizarPaciente', organisms: ['patientList'] });
 });
 
-// Defs rendered before d2_80 (comandaRestaurante, 04/10) have no organisms: same reading as before, no new key.
-test('a state without organisms is read as before', () => {
-  const { definition } = parseL2Shared(source(shared({ source: 'loadPatients.patients', description: 'Patients.' })));
-  assert.deepEqual(definition.states.patients, { source: 'loadPatients.patients', description: 'Patients.' });
-  assert.equal('organisms' in definition.states.patients, false);
+test('a file saved with CRLF is read', () => {
+  assert.equal(Object.keys(parseL2Shared(source(shared(), '\r\n')).definition.requests).length, 2);
 });
 
-test('organisms that is not a list of names is refused', () => {
-  assert.throws(() => buildL2Shared(shared({ source: 'loadPatients.patients', description: 'Patients.', organisms: 'patientList' })), /L2_SHARED_STATE_ORGANISMS: patients/u);
-  assert.throws(() => buildL2Shared(shared({ source: 'loadPatients.patients', description: 'Patients.', organisms: [1] })), /L2_SHARED_STATE_ORGANISMS: patients/u);
+// The old structure (before 13/10/2026) is refused: its forms and functions are no longer part of the format.
+test('a shared with forms or functions is refused', () => {
+  assert.throws(() => parseL2Shared(source(shared({ forms: {} }))), /forbidden field forms/u);
+  assert.throws(() => parseL2Shared(source(shared({ functions: {} }))), /forbidden field functions/u);
 });
 
-test('any other unknown state field is still refused, and source and description stay required', () => {
-  assert.throws(() => buildL2Shared(shared({ source: 'loadPatients.patients', description: 'Patients.', feeds: ['patientList'] })), /L2_SHARED_STATE: patients: forbidden field feeds/u);
-  assert.throws(() => buildL2Shared(shared({ source: 'loadPatients.patients', organisms: ['patientList'] })), /L2_SHARED_STATE: patients: missing field description/u);
+test('state sources are classified by the grammar', () => {
+  const { definition } = parseL2Shared(source(shared()));
+  assert.deepEqual(classifyL2StateSource('listarPacientes.pacientes', definition), { kind: 'requestReturn', request: 'listarPacientes', key: 'pacientes' });
+  assert.deepEqual(classifyL2StateSource('entry.params.pacienteId', definition), { kind: 'entryParam', param: 'pacienteId' });
+  assert.deepEqual(classifyL2StateSource('salvarPaciente.input', definition), { kind: 'requestInput', request: 'salvarPaciente' });
+  assert.deepEqual(classifyL2StateSource('listarPacientes.total', definition), { kind: 'invalid' });
 });

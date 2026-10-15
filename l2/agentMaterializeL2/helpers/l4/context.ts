@@ -113,7 +113,7 @@ export function buildL4Module(
  *   projection or a field segment of the contract. With no match at all, every entity (a module is small).
  */
 export function sliceL4ForPage(l4: L4ModuleContext, contract: L2ContractDefinition, shared: L2SharedDefinition): L4PageSlice {
-  const ruleIds = new Set([...contract.routes.flatMap(route => route.rules), ...Object.values(shared.rules ?? {}).flatMap(value => Array.isArray(value) ? value : [])]);
+  const ruleIds = new Set([...contract.routes.flatMap(route => route.rules), ...shared.rules]);
   const actorIds = new Set([...contract.routes.flatMap(route => route.access.actors), ...(shared.access?.actors ?? [])]);
   const journeyIds = new Set(shared.journeys.map(item => item.step.split('/')[0]).filter(Boolean));
   const journeys = l4.journeys.filter(item => journeyIds.has(item.journeyId));

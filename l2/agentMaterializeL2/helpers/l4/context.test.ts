@@ -36,34 +36,38 @@ test('comandaRestaurante: module, ontology with field titles, rules, journeys an
   assert.deepEqual(l4.actors.map(item => item.actorId).sort(), ['caixa', 'garcom']);
 });
 
+// reembolsoDespesas (13/10/2026): the first module in the frozen shared structure; comandaRestaurante still has the old one.
+const sliceOf = (l4: Awaited<ReturnType<typeof readL4Module>>, pageId: string) =>
+  sliceL4ForPage(l4, parseL2Contract(l2('reembolsoDespesas', 'contracts', pageId)).definition, parseL2Shared(l2('reembolsoDespesas', 'shared', pageId)).definition);
+
 test('the slice of a page holds only what it references', async () => {
-  const l4 = await readL4Module(102047, 'comandaRestaurante', diskPort);
-  const slice = (pageId: string) => sliceL4ForPage(l4, parseL2Contract(l2('comandaRestaurante', 'contracts', pageId)).definition, parseL2Shared(l2('comandaRestaurante', 'shared', pageId)).definition);
-  const mesas = slice('mesas');
-  assert.deepEqual(mesas.entities.map(item => item.entityId), ['Mesa'], 'mesas writes Mesa and names MesaResumo');
-  assert.deepEqual(mesas.actors.map(item => item.actorId), ['caixa']);
-  assert.deepEqual(mesas.journeys, [], 'mesas declares no journey');
-  assert.ok(Object.keys(mesas.rules).includes('mesaDisponivelParaAbrirComanda'), 'the rules of the entity it shows');
-  const fechamento = slice('fechamento');
-  assert.ok(fechamento.journeys.some(item => item.journeyId === 'fecharComanda'));
-  assert.ok(fechamento.entities.some(item => item.entityId === 'Comanda'));
-  const text = renderL4Slice(fechamento);
+  const l4 = await readL4Module(102047, 'reembolsoDespesas', diskPort);
+  const aprovadas = sliceOf(l4, 'despesas_aprovadas');
+  assert.deepEqual(aprovadas.entities.map(item => item.entityId), ['Despesa']);
+  assert.deepEqual(aprovadas.actors.map(item => item.actorId), ['financeiro']);
+  assert.deepEqual(aprovadas.journeys.map(item => item.journeyId).sort(), ['consultarDespesasAprovadas', 'registrarPagamentoDespesa']);
+  // the rules of the shared are one list since 13/10/2026; they reach the slice next to the route rules
+  for (const rule of ['financeApprovedExpenseAccess', 'paymentDateRequired']) assert.ok(Object.keys(aprovadas.rules).includes(rule), rule);
+  assert.deepEqual(sliceOf(l4, 'inicio').journeys, [], 'inicio declares no journey');
+  assert.ok(sliceOf(l4, 'despesas_da_equipe').entities.some(item => item.entityId === 'Colaborador'), 'the collaborator shown next to each expense');
+  const text = renderL4Slice(aprovadas);
   assert.match(text, /## Entities \(meaning and field titles\)/u);
   assert.match(text, /## Journeys/u);
-  assert.ok(!/ItemCardapio\*\*/u.test(renderL4Slice(mesas)), 'an unreferenced entity stays out');
+  assert.ok(!/GestorEquipe\*\*/u.test(renderL4Slice(sliceOf(l4, 'minhas_despesas'))), 'an unreferenced entity stays out');
 });
 
 test('a page that names no entity gets every entity by meaning only; the refs rebuild the same slice', async () => {
-  const l4 = await readL4Module(102047, 'comandaRestaurante', diskPort);
-  const slice = (pageId: string) => sliceL4ForPage(l4, parseL2Contract(l2('comandaRestaurante', 'contracts', pageId)).definition, parseL2Shared(l2('comandaRestaurante', 'shared', pageId)).definition);
-  const inicio = slice('inicio');
-  assert.equal(inicio.wide, true);
-  assert.match(renderL4Slice(inicio), /meaning only/u);
-  assert.ok(!/Código da mesa/u.test(renderL4Slice(inicio)), 'no field list when wide');
-  const mesas = slice('mesas');
-  assert.equal(mesas.wide, false);
-  assert.ok(!renderL4Slice(mesas).includes('`version`'), 'a field without title is left out');
-  assert.equal(renderL4Slice(resolveL4Refs(l4, l4RefsOf(mesas))), renderL4Slice(mesas));
+  const l4 = await readL4Module(102047, 'reembolsoDespesas', diskPort);
+  const hubContract = '/// <mls fileReference="_102047_/l2/reembolsoDespesas/web/contracts/hub.defs.ts" enhancement="_blank"/>\n\nexport {};\n';
+  const hubDefinition = { entry: { params: {} }, requests: {}, states: {}, journeys: [], rules: [], access: { actors: ['colaborador'], grants: [] } };
+  const hubShared = `/// <mls fileReference="_102047_/l2/reembolsoDespesas/web/shared/hub.defs.ts" enhancement="_blank"/>\n\nexport const definition = ${JSON.stringify(hubDefinition, null, 2)} as const;\n`;
+  const hub = sliceL4ForPage(l4, parseL2Contract(hubContract).definition, parseL2Shared(hubShared).definition);
+  assert.equal(hub.wide, true);
+  assert.match(renderL4Slice(hub), /meaning only/u);
+  const aprovadas = sliceOf(l4, 'despesas_aprovadas');
+  assert.equal(aprovadas.wide, false);
+  assert.ok(!renderL4Slice(aprovadas).includes('`version`'), 'a field without title is left out');
+  assert.equal(renderL4Slice(resolveL4Refs(l4, l4RefsOf(aprovadas))), renderL4Slice(aprovadas));
 });
 
 test('a module with no L4 gives an empty context, never a failure', async () => {

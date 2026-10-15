@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
-import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4MoleculeEvents, m4MoleculeImport, m4PageJourneyFunctions, m4PageClassName, m4PageTag, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4MoleculeEvents, m4MoleculeImport, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PagePath, m4PageTag, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 
 const input = JSON.parse(readFileSync(new URL('../input20/fixtures/controleEstoque.json', import.meta.url), 'utf8')) as { pages: Record<string, { desktop: string; mobile: string }> };
 // Hand-written reference desktop page of controleEstoque/produtos, typechecked with tsc against the reference shared.
@@ -15,7 +15,7 @@ function target(): M4PageTarget {
   return {
     project: 102047, module: 'controleEstoque', pageId: 'produtos', device: 'desktop',
     page11: parseL2Page11(input.pages.produtos.desktop).definition,
-    sharedClassName: 'ControleEstoqueProdutosShared', locales: ['pt'], tokens: TOKENS,
+    sharedClassName: 'ControleEstoqueProdutosShared', locales: ['pt-br'], tokens: TOKENS,
   };
 }
 // Errors refuse the page (contract); advisories are design observations kept in the receipt (01/10/2026).
@@ -54,28 +54,43 @@ test('the alternative molecule of an entry is accepted instead of the preferred 
 
 test('the page holds no state, no backend call and no lifecycle', () => {
   assert.deepEqual(codes(reference.replace("import { html, nothing } from 'lit';", "import { html, nothing } from 'lit';\nimport { execBff } from '/_102029_/l2/bffClient.js';")), ['M4_PAGE_BACKEND', 'M4_PAGE_IMPORT']);
-  assert.deepEqual(codes(reference.replace('  private msg: PageMessageType = pageMessage_pt;', "  private msg: PageMessageType = pageMessage_pt;\n  @state() private open = false;")), ['M4_PAGE_FORBIDDEN']);
+  assert.deepEqual(codes(reference.replace('  private msg: PageMessageType = pageMessage_pt_br;', "  private msg: PageMessageType = pageMessage_pt_br;\n  @state() private open = false;")), ['M4_PAGE_FORBIDDEN']);
   assert.deepEqual(codes(reference.replace('  renderLoadError() {', '  connectedCallback() { super.connectedCallback(); }\n\n  renderLoadError() {')), ['M4_PAGE_FORBIDDEN']);
 });
 
 test('visible text must come from the catalogue', () => {
   assert.deepEqual(codes(reference.replace("<Label>${this.msg['form.submit']}</Label>", '<Label>Cadastrar</Label>')), ['M4_PAGE_TEXT']);
   assert.deepEqual(codes(reference.replace("placeholder=${this.msg['lista.search.placeholder']}", 'placeholder="Nome do produto"')), ['M4_PAGE_TEXT']);
-  assert.deepEqual(codes(reference.replace("const pageMessages: { [key: string]: PageMessageType } = { 'pt': pageMessage_pt };", "const pageMessage_en: PageMessageType = pageMessage_pt;\nconst pageMessages: { [key: string]: PageMessageType } = { 'pt': pageMessage_pt, 'en': pageMessage_en };")), ['M4_PAGE_I18N']);
+  assert.deepEqual(codes(reference.replace("const pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br };", "const pageMessage_en: PageMessageType = pageMessage_pt_br;\nconst pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br, 'en': pageMessage_en };")), ['M4_PAGE_I18N']);
   assert.deepEqual(codes(reference.replace('    this.msg = pageMessages[this.getMessageKey(pageMessages)];\n', '')), ['M4_PAGE_I18N']);
+});
+
+// 14/10/2026: the catalogue key is the whole locale code, as agentAddLanguage writes it; two letters made pt-BR and
+// pt-PT one catalogue.
+test('i18n: one catalogue per locale code, keyed by the code; two regions of one language are two catalogues', () => {
+  const map = "const pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br };";
+  const twoRegions = reference.replace(map, "const pageMessage_pt_pt: PageMessageType = pageMessage_pt_br;\nconst pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br, 'pt-pt': pageMessage_pt_pt };");
+  assert.notEqual(twoRegions, reference);
+  const both = { ...target(), locales: ['pt-br', 'pt-pt'] };
+  assert.deepEqual(gateM4PageSource(twoRegions, both).filter(item => item.code === 'M4_PAGE_I18N'), []);
+  // one catalogue for both regions is refused
+  assert.match(gateM4PageSource(reference, both).find(item => item.code === 'M4_PAGE_I18N')!.message, /Locale pt-pt needs const pageMessage_pt_pt, keyed 'pt-pt'/u);
+  // the two-letter key of before is not the code agentAddLanguage and the runtime look up
+  const twoLetters = reference.replace(map, "const pageMessages: { [key: string]: PageMessageType } = { 'pt': pageMessage_pt_br };");
+  assert.match(gateM4PageSource(twoLetters, target()).find(item => item.code === 'M4_PAGE_I18N')!.message, /must key pageMessage_pt_br as 'pt-br'/u);
 });
 
 test('i18n: the names are the contract, not the exact declaration text (movimentacoes/desktop, 01/10)', () => {
   for (const variant of [
-    reference.replace('  private msg: PageMessageType = pageMessage_pt;', '  private msg = pageMessage_pt;'),
-    reference.replace('  private msg: PageMessageType = pageMessage_pt;', '  private msg: typeof pageMessage_pt = pageMessage_pt;'),
-    reference.replace("const pageMessages: { [key: string]: PageMessageType } = { 'pt': pageMessage_pt };", "const pageMessages: Record<string, PageMessageType> = { pt: pageMessage_pt };"),
+    reference.replace('  private msg: PageMessageType = pageMessage_pt_br;', '  private msg = pageMessage_pt_br;'),
+    reference.replace('  private msg: PageMessageType = pageMessage_pt_br;', '  private msg: typeof pageMessage_pt_br = pageMessage_pt_br;'),
+    reference.replace("const pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br };", "const pageMessages: Record<string, PageMessageType> = { 'pt-br': pageMessage_pt_br };"),
     reference.replace('    this.msg = pageMessages[this.getMessageKey(pageMessages)];\n    // scenes:', '    // resolve the language first\n    this.msg = pageMessages[this.getMessageKey(pageMessages)];\n    // scenes:'),
   ]) {
     assert.notEqual(variant, reference);
     assert.deepEqual(codes(variant), [], variant.slice(0, 0));
   }
-  const missingMsg = reference.replace('  private msg: PageMessageType = pageMessage_pt;\n', '');
+  const missingMsg = reference.replace('  private msg: PageMessageType = pageMessage_pt_br;\n', '');
   assert.match(gateM4PageSource(missingMsg, target()).find(item => item.code === 'M4_PAGE_I18N')!.message, /private msg: PageMessageType = pageMessage_<default locale>/u);
 });
 
@@ -224,40 +239,78 @@ test('a listener for an event the molecule never dispatches is refused, even wit
   assert.equal(unknown(reference.replace('<groupviewdata--ml-card-grid', '<groupviewdata--ml-card-grid @input=${() => 1}'), grid).length, 1);
 });
 
-// agendaClinica/consultas (09/10/2026): the scheduling journey lists the patient and professional searches, and no
-// control of the page called them, so both lists stayed empty.
-test('a journey function only the page can start must be called by the page; the shared\'s own calls and onLoad are exempt', () => {
+// agendaClinica/consultas (09/10/2026): the scheduling journey needed the patient and professional searches, and no
+// control of the page called them, so both lists stayed empty. Since 13/10/2026 the defs have no functions: the
+// requests themselves are what the page must start.
+test('a request only the page can start must be called by the page; onLoad, the shared\'s own calls and intents are exempt', () => {
   const shared = {
-    entry: { params: {} }, forms: {}, states: {}, rules: {}, access: { actors: [], grants: [] },
     requests: {
       carregar: { kind: 'qry', trigger: 'onLoad', returns: ['agenda'] },
       buscar: { kind: 'qry', trigger: 'buscar', returns: ['pacientes'] },
       detalhar: { kind: 'qry', trigger: 'detalhar', returns: ['consulta'] },
+      agendar: { kind: 'cmd', trigger: 'agendar', returns: ['consulta'], writes: 'Consulta.create' },
+      exportar: { kind: 'qry', trigger: 'exportar', returns: ['arquivo'] },
     },
-    functions: {
-      carregar: { description: 'Loads the agenda.', calls: 'carregar' },
-      buscar: { description: 'Searches patients.', calls: 'buscar' },
-      detalhar: { description: 'Loads the selected one.', calls: 'detalhar' },
-      selecionar: { description: 'Selects one.' },
+    states: {
+      agenda: { source: 'carregar.agenda', description: '', organisms: ['agendaDia'] },
+      pacientes: { source: 'buscar.pacientes', description: '', organisms: ['buscaPaciente'] },
+      consulta: { source: 'detalhar.consulta', description: '', organisms: ['detalheConsulta'] },
     },
     journeys: [
-      { step: 'localizar', organisms: [], functions: ['carregar', 'buscar', 'selecionar'] },
-      { step: 'conferir', organisms: [], functions: ['selecionar', 'detalhar', 'semFuncao'] },
+      { step: 'agendar/localizarPaciente', organisms: ['buscaPaciente'] },
+      { step: 'agendar/conferir', organisms: ['buscaPaciente', 'detalheConsulta'] },
     ],
-  } as unknown as Parameters<typeof m4PageJourneyFunctions>[0];
+  };
   const sharedSource = 'public selecionar(id: string): void { void this.detalhar(id); }';
-  assert.deepEqual(m4PageJourneyFunctions(shared, sharedSource), [
-    { fn: 'buscar', steps: ['localizar'] },
-    { fn: 'selecionar', steps: ['localizar', 'conferir'] },
-  ], 'carregar is onLoad, detalhar is called by the shared, semFuncao is not a function');
+  assert.deepEqual(m4PageOnlyRequests(shared, sharedSource, ['agendar']), [
+    { fn: 'buscar', steps: ['agendar/localizarPaciente', 'agendar/conferir'] },
+    { fn: 'exportar', steps: [] },
+  ], 'carregar is onLoad, detalhar is called by the shared, agendar is an intent (M4_PAGE_INTENT)');
 
-  const at = { ...target(), journeyFunctions: m4PageJourneyFunctions(shared, sharedSource) };
-  const uncalled = (source: string) => gateM4PageSource(source, at).filter(item => item.code === 'M4_PAGE_JOURNEY_UNCALLED');
+  const at = { ...target(), pageOnlyRequests: m4PageOnlyRequests(shared, sharedSource, ['agendar']) };
+  const uncalled = (source: string) => gateM4PageSource(source, at).filter(item => item.code === 'M4_PAGE_REQUEST_UNCALLED');
   const refused = uncalled(reference);
   assert.deepEqual(refused.map(item => item.always), [true, true]);
-  assert.match(refused[0].message, /"localizar" needs buscar, and nothing calls it: .*this\.buscar\(…\)/u);
-  assert.match(refused[1].message, /The journey steps "localizar", "conferir" need selecionar/u);
-  const wired = reference.replace('</main>', '<input @input=${() => this.buscar()}><button @click=${() => this.selecionar("1")}></button></main>');
+  assert.match(refused[0].message, /^Nothing calls buscar: .*this\.buscar\(…\)\. The journey steps "agendar\/localizarPaciente", "agendar\/conferir" need it\./u);
+  assert.match(refused[1].message, /^Nothing calls exportar: .*this\.exportar\(…\)\. Wire it/u);
+  const wired = reference.replace('</main>', '<input @input=${() => this.buscar()}><button @click=${() => this.exportar()}></button></main>');
   assert.notEqual(wired, reference);
   assert.deepEqual(uncalled(wired), []);
+});
+
+// 14/10/2026: the shell swaps `--page11--` for `--page21--` (and `/page11/` for `/page21/`) to show a UX variant.
+test('a variant page lives in its own folder and its tag differs only by the page folder', () => {
+  assert.equal(m4PageTag(102047, 'reembolsoDespesas', 'desktop', 'minhas_despesas'), 'reembolso-despesas--web--desktop--page11--minhas_despesas-102047');
+  assert.equal(m4PageTag(102047, 'reembolsoDespesas', 'desktop', 'minhas_despesas', 'page21'), 'reembolso-despesas--web--desktop--page21--minhas_despesas-102047');
+  assert.equal(m4PagePath({ project: 102047, module: 'reembolsoDespesas', device: 'mobile', pageId: 'inicio', genome: 'page21' }), '_102047_/l2/reembolsoDespesas/web/mobile/page21/inicio.ts');
+  assert.equal(m4PageClassName('reembolsoDespesas', 'mobile', 'inicio', 'page21'), 'ReembolsoDespesasMobilePage21InicioPage');
+  assert.equal(m4PageClassName('reembolsoDespesas', 'mobile', 'inicio'), 'ReembolsoDespesasMobilePage11InicioPage', 'page11 keeps its class name');
+});
+
+// reembolsoDespesas/despesas_aprovadas page31 desktop (14/10/2026): the payment date never reached the draft.
+test('a molecule handler that throws away its own event is refused; the harmless guards and the host guard pass', () => {
+  const field = (handler: string) => `<groupenterdate--ml-date-picker .value=\${x} @change=\${${handler}}><Label>\${y}</Label></groupenterdate--ml-date-picker>`;
+  const dropped = field('(e: CustomEvent<{ value: string | null }>) => {\n  if (e.target === e.currentTarget) return;\n  this.setRegistrarPagamentoDraft({ details: { dataPagamento: e.detail.value } });\n}');
+  assert.deepEqual(m4OwnEventDrops(dropped).map(item => `${item.tag} ${item.event}`), ['groupenterdate--ml-date-picker change']);
+  assert.equal(m4OwnEventDrops(field('(e) => { if (e.target !== e.currentTarget) { this.setDraft(e.detail.value); } }')).length, 1, 'acting only on bubbled events');
+  for (const harmless of [
+    '(e) => this.setDraft(e.detail.value)',
+    '(e) => { if (e.target !== e.currentTarget) return; this.setDraft(e.detail.value); }',
+    '(e) => { if (e.target === e.currentTarget) this.setDraft(e.detail.value); }',
+    '(ev: Event) => { if (ev.target !== ev.currentTarget) { ev.stopPropagation(); return; } this.setDraft(1); }',
+  ]) assert.deepEqual(m4OwnEventDrops(field(harmless)), [], harmless);
+  // the scene host keeps its guard
+  assert.deepEqual(m4OwnEventDrops('<molecules--ml-scenary-102020 .value=${v} @change=${(e) => { if (e.target === e.currentTarget) return; }}></molecules--ml-scenary-102020>'), []);
+  // the gate refuses it even while the rest of the gate is off
+  const page = reference.replace('</main>', `${dropped}</main>`);
+  assert.notEqual(page, reference);
+  const issue = gateM4PageSource(page, target()).find(item => item.code === 'M4_PAGE_OWN_EVENT_DROPPED');
+  assert.ok(issue && issue.always);
+  assert.match(issue.message, /use e\.detail directly/u);
+});
+
+test('`return this.setX(…)` after the own-event check still does the work and passes (mobile page21, 14/10/2026)', () => {
+  const field = '<groupenterdate--ml-date-shortcut-picker @change=${(e: CustomEvent<{ value: string | null }>) => { if (e.target === e.currentTarget) return this.setDraft(e.detail.value); }}></groupenterdate--ml-date-shortcut-picker>';
+  assert.deepEqual(m4OwnEventDrops(field), []);
+  assert.equal(m4OwnEventDrops(field.replace('return this.setDraft(e.detail.value);', '{ return; }')).length, 1);
 });

@@ -3,11 +3,13 @@
 // Pure gate of a generated shared .ts, run BEFORE the file is written and compiled. It checks what the
 // compiler cannot: that every id of the definition exists with its exact name, that only contract routes
 // and allowed modules are used, and that the file holds no rendering and no user-facing text.
-// Generic only (05/10/2026): no check depends on how a module names its functions. Compilation in the Studio comes after, in run.ts.
+// Generic only (05/10/2026): no check depends on how a module names its members. Compilation in the Studio comes after, in run.ts.
+// The shared defs have the frozen structure of 13/10/2026: every request is a public method of its own id, and every
+// navigate intent of page11 is a public method of its own id that calls auraNavigate (input20 `navigations`).
 
 import type { L2SharedDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import type { L2ContractDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
-import type { M4ContextInput, M4InputProblem } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
+import type { M4ContextInput, M4InputProblem, M4Navigation } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
 
 export interface M4SharedTarget {
   project: number;
@@ -18,10 +20,12 @@ export interface M4SharedTarget {
   contract: L2ContractDefinition;
   /** The input20 notes of this page: facts about the defs (the contract wins), never code prescriptions. */
   rules: M4InputProblem[];
-  /** Intent and form-submit names → the method that serves them (input20). Every method must exist. */
+  /** page11 intent names → the method that serves them (input20). Every method must exist. */
   methods?: Record<string, string>;
-  /** Form command-input members that are the page's selection (input20): the method reads them from the state. */
+  /** Submitted command-input members that are the page's selection (input20): the method reads them from the state. */
   contextInputs?: M4ContextInput[];
+  /** The navigate intents of the page (input20): each one a public method that calls auraNavigate. */
+  navigations?: M4Navigation[];
 }
 
 export interface M4SharedIssue { code: string; message: string }
@@ -106,11 +110,11 @@ export function gateM4SharedSource(source: string, target: M4SharedTarget): M4Sh
   for (const match of code.matchAll(/\b(?:window\.)?location\.(?:assign|replace)\s*\(|\b(?:window\.)?location(?:\.href)?\s*=(?!=)|\bhistory\.(?:pushState|replaceState)\s*\(/gu)) {
     push('M4_SHARED_LOCATION', `${match[0].trim()} is refused: the app is a single-page shell. Replace it with auraNavigate(href, { basePath: '/${target.module}' }) and import { auraNavigate } from '/_102033_/l2/shared/layout/auraNavigate.js'.`);
   }
-  for (const fnId of Object.keys(target.shared.functions)) {
-    if (methodBody(code, fnId) === null) push('M4_SHARED_FUNCTION_MISSING', `Function ${fnId} must be a public method named exactly ${fnId}.`);
+  for (const requestId of Object.keys(target.shared.requests)) {
+    if (methodBody(code, requestId) === null) push('M4_SHARED_METHOD_MISSING', `Request ${requestId} must be served by a public method named exactly ${requestId}.`);
   }
   for (const [ref, method] of Object.entries(target.methods ?? {})) {
-    if (methodBody(code, method) === null) push('M4_SHARED_FUNCTION_MISSING', `The pages call ${method} (for ${ref}); it must be a public method named exactly ${method}.`);
+    if (methodBody(code, method) === null) push('M4_SHARED_METHOD_MISSING', `The pages call ${method} (for ${ref}); it must be a public method named exactly ${method}.`);
   }
   // A form's command input member that is the page's selection comes from its state, not from the draft the
   // form edits (atendimento, 07/10/2026: lancarItem refused itself in the browser, comandaId was never filled).
@@ -130,7 +134,7 @@ export function gateM4SharedSource(source: string, target: M4SharedTarget): M4Sh
   // its result goes back to idle.
   const results = Object.entries(target.shared.requests).filter(([, request]) => request.kind === 'cmd').flatMap(([id]) => [`${id}Status`, `${id}Error`]);
   if (results.length) {
-    for (const method of m4SharedUiMethods(code, target.shared)) {
+    for (const method of m4SharedUiMethods(code, target)) {
       const body = reachableBody(code, method);
       const kept = results.filter(member => !new RegExp(`['"\`]${member}['"\`]`, 'u').test(body));
       if (kept.length) push('M4_SHARED_RESULT_RESET', `${method} changes what the commands act on (a form, the selection or the scene), so it must reset their results, in its own body or through a method it calls (a private resetCommandResults() is fine): ${kept.join(', ')} (statuses to 'idle', errors to null). Publish a command's status last, after its own draft reset, and never call a public setter after it.`);
@@ -162,20 +166,18 @@ export function gateM4SharedSource(source: string, target: M4SharedTarget): M4Sh
     if ((param.sources.includes('localStorage') || param.persist) && !code.includes('localStorage')) push('M4_SHARED_ENTRY_PARAM', `Entry param ${name} must use localStorage.`);
   }
 
-  for (const [fnId, fn] of Object.entries(target.shared.functions)) {
-    if (!fn.navigate) continue;
-    const body = reachableBody(code, fnId);
+  // A navigate intent of page11 (no navigation function since 13/10/2026): its method changes page with auraNavigate.
+  for (const nav of target.navigations ?? []) {
+    const body = reachableBody(code, nav.method);
+    if (!body) continue;
     if (!/\bauraNavigate\s*\(/u.test(body)) {
-      push('M4_SHARED_NAVIGATE', `Function ${fnId} must call auraNavigate(...) in its own body or in a method or function it calls (method, function declaration or arrow).`
-        + (/\bauraNavigate\s*\(/u.test(code) ? ' auraNavigate is called in the file, but not from code reachable from this function.'
-          : ` auraNavigate is never called in the file: add import { auraNavigate } from '/_102033_/l2/shared/layout/auraNavigate.js' and call auraNavigate(\`/${target.module}/${fn.navigate}?…\`, { basePath: '/${target.module}' }).`));
+      push('M4_SHARED_NAVIGATE', `${nav.method} must call auraNavigate(...) in its own body or in a method or function it calls (method, function declaration or arrow).`
+        + (/\bauraNavigate\s*\(/u.test(code) ? ' auraNavigate is called in the file, but not from code reachable from this method.'
+          : ` auraNavigate is never called in the file: add import { auraNavigate } from '/_102033_/l2/shared/layout/auraNavigate.js' and call auraNavigate(\`/${target.module}/${nav.to}?…\`, { basePath: '/${target.module}' }).`));
     }
-    // Text heuristics on purpose: the page name and each carry key must be visible somewhere in the
-    // reachable code, in whatever form (a path segment, a literal argument, an object key).
-    if (!new RegExp(`(?<![\\w$])${fn.navigate}(?![\\w$])`, 'u').test(body)) push('M4_SHARED_NAVIGATE', `Function ${fnId} must navigate to /${target.module}/${fn.navigate}.`);
-    for (const key of Object.keys(fn.carries ?? {})) {
-      if (!new RegExp(`(?<![\\w$])${key}(?![\\w$])`, 'u').test(body)) push('M4_SHARED_NAVIGATE', `Function ${fnId} must carry ${key} as a query param.`);
-    }
+    // Text heuristic on purpose: the target page must be visible somewhere in the reachable code, in whatever form
+    // (a path segment, a literal argument). What it carries is the generator's call, among the target's params.
+    if (!new RegExp(`(?<![\\w$])${nav.to}(?![\\w$])`, 'u').test(body)) push('M4_SHARED_NAVIGATE', `${nav.method} must navigate to /${target.module}/${nav.to}.`);
   }
 
   for (const literal of stringLiterals(code)) {
@@ -189,10 +191,11 @@ const NOT_METHODS = new Set(['if', 'for', 'while', 'switch', 'catch', 'return', 
 
 /**
  * The public methods the page calls to change what is on screen without asking the backend: form setters, selections,
- * setScenario. Left out: the lifecycle, and every function of the definition that calls a request or navigates (it
- * is a load or a command itself, or it leaves the page).
+ * setScenario. Left out: the lifecycle, the method of every request (a load or a command itself), every navigation
+ * (it leaves the page), and every method that reaches execBff: with no functions in the defs (13/10/2026) a filter or a
+ * load-more is a public method of the shared's own, and it asks the backend.
  */
-export function m4SharedUiMethods(code: string, shared: Pick<L2SharedDefinition, 'functions'>): string[] {
+export function m4SharedUiMethods(code: string, target: { shared: Pick<L2SharedDefinition, 'requests'>; navigations?: Array<Pick<M4Navigation, 'method'>> }): string[] {
   // `public` is optional in TypeScript (the reference shared omits it). A name counts only when its declaration is a
   // class method with no private/protected/static and not a module `function`: a bare call `goTo(x);` also starts a
   // line, and methodBody would find the private method or module function it calls.
@@ -212,8 +215,8 @@ export function m4SharedUiMethods(code: string, shared: Pick<L2SharedDefinition,
   };
   return [...names].filter(name => {
     if (LIFECYCLE_METHODS.has(name) || NOT_METHODS.has(name) || !isPublicMethod(name)) return false;
-    const fn = shared.functions[name];
-    return !(fn && (fn.calls || fn.navigate));
+    if (target.shared.requests[name] || (target.navigations ?? []).some(nav => nav.method === name)) return false;
+    return !/\bexecBff\s*[<(]/u.test(reachableBody(code, name));
   }).sort();
 }
 
@@ -232,7 +235,7 @@ export function m4FillStateJsdoc(source: string, target: Pick<M4SharedTarget, 's
     const index = lines.findIndex(line => field.test(line));
     if (index < 0 || /^[ \t]*\/\*\*.*\*\/[ \t]*$/u.test(lines[index - 1] ?? '')) continue;
     const indent = field.exec(lines[index])?.[1] ?? '';
-    const organisms = state.organisms?.length ? `; organisms ${state.organisms.join(', ')}` : '';
+    const organisms = state.organisms.length ? `; organisms ${state.organisms.join(', ')}` : '';
     lines.splice(index, 0, `${indent}/** state ${stateId} — ${oneLine(state.description)}; source ${oneLine(state.source)}${oneLine(organisms)} */`);
   }
   return lines.join('\n');

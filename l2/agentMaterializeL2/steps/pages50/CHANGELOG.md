@@ -43,3 +43,15 @@
   - **On the current pages:** the 18 pages of agendaClinica and comandaRestaurante show real gaps only, all of them load-more functions:
     - consultas (desktop and mobile): `carregarMaisAgenda`, `carregarMaisPacientesParaAgendamento`, `carregarMaisProfissionaisParaAgendamento`;
     - fechamento mobile: `carregarMaisComandasAbertas`.
+- 2026-10-13: **the frozen shared structure**: journeys no longer list functions.
+  - `M4_PAGE_JOURNEY_UNCALLED` became `M4_PAGE_REQUEST_UNCALLED` (`m4PageOnlyRequests`, `target.pageOnlyRequests`): every request that is not `onLoad`, that the shared's own code does not call, and that no page11 intent names must be called by the page. The journey steps it serves are found through the organisms of the states it feeds.
+  - Prompt: "Journeys: which business step each organism serves".
+- 2026-10-14: **the catalogue key is the whole locale code** (`helpers/locale.ts`), as agentAddLanguage writes it: `pt-BR` → map key `'pt-br'`, const `pageMessage_pt_br`.
+  - Until now `productLocales` cut every language to two letters: pt-BR and pt-PT (or en-US and en-GB) became one `pt`/`en` catalogue. Also, agentAddLanguage looked for `pt-br` in a page with `pageMessage_pt`, did not find it, and added a second Portuguese catalogue.
+  - `M4_PAGE_I18N` wants one `pageMessage_<suffix>` per locale code, keyed by the code in `pageMessages`, and refuses any other catalogue const.
+  - Prompt and repair prompt name the suffix rule. The runtime (`getMessageKey`) matches the exact `lang` first, so `lang="pt-BR"` finds `pt-br`. Pages generated before keep working: they are only changed when regenerated.
+- 2026-10-14: **UX variants** (page21…): one page per device per accepted variant, written to `web/<device>/<genome>/<pageId>.ts` with the tag `…--<genome>--…` and the class `…<Genome>…`, so the shell swaps it on the same route.
+  - The variant reuses the page's shared and its declaration; its own page11 (and so its template) is the only input that changes.
+  - Receipts and attempts of a variant carry the folder in their name (`minhas_despesasDesktopPage21`); the page11 ones keep theirs, so nothing already generated regenerates.
+  - `m4PageSlots` (page × device × genome) drives the sweeper and the shared40 chains; `--genome pageNN` limits a run to one folder. review55 still reviews page11 only.
+- 2026-10-15: **`M4_PAGE_OWN_EVENT_DROPPED`** (always enforced, `m4OwnEventDrops`): a handler bound on a molecule that throws away the molecule's own event — `if (e.target === e.currentTarget) return;`, or acting only when `e.target !== e.currentTarget`. A molecule dispatches on itself, so the bubbling guard belongs only to the scene host. reembolsoDespesas/despesas_aprovadas page31 desktop (14/10): the payment date never reached the draft. The harmless guards still pass (`!== … return;`, `=== … act`, `=== … return this.act(…)`). Prompt: the host guard is marked as host-only, with a field example; repair prompt: one line for the new code. Over the 42 generated pages of 102047, only that page is flagged (TASK-102020-materialize-l2-molecule-change-guard).

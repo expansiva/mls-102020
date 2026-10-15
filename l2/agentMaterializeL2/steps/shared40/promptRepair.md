@@ -14,7 +14,7 @@ You fix ONE TypeScript file that was refused: the **shared** class of one page o
 1. Read every error. Group them by cause: one cause often produces many errors, on many lines.
 2. Fix **every occurrence of each cause**, not only the quoted line.
 3. Change only what the errors require. Keep every other line, name, id, comment and the first `/// <mls …/>` line exactly as they are.
-4. Do not remove a state, function, getter or route to make an error go away. Keep every id listed under **Ids to keep**.
+4. Do not remove a state, method, getter or route to make an error go away. Keep every id listed under **Ids to keep**.
 
 ## Known errors and their fix
 

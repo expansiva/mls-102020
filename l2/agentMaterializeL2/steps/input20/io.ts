@@ -6,7 +6,7 @@
 import { fileExists, readJson, readSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { M4_INPUT_KINDS, type M4InputKind } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
-import { moleculeGroupFolder } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { L2_PRIMARY_GENOME, moleculeGroupFolder, type L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 
 /** Swappable IO, so run.ts is testable without the Studio. */
 export interface M4InputPort {
@@ -28,15 +28,37 @@ export const studioInputPort: M4InputPort = {
   readJson,
 };
 
-export function m4DefsFolder(identity: M4RunIdentity, kind: M4InputKind): string {
+/** `genome` is the page folder of a device: page11 (the primary page) unless a UX variant (page21…) is asked for. */
+export function m4DefsFolder(identity: M4RunIdentity, kind: M4InputKind, genome: string = L2_PRIMARY_GENOME): string {
   return kind === 'contract' ? `${identity.module}/web/contracts`
     : kind === 'shared' ? `${identity.module}/web/shared`
-    : `${identity.module}/web/${kind}/page11`;
+    : `${identity.module}/web/${kind}/${genome}`;
 }
 
-export function m4DefsInfo(identity: M4RunIdentity, kind: M4InputKind, pageId: string): Ns5FileInfo {
-  return { project: identity.project, level: 2, folder: m4DefsFolder(identity, kind), shortName: pageId, extension: '.defs.ts' };
+export function m4DefsInfo(identity: M4RunIdentity, kind: M4InputKind, pageId: string, genome: string = L2_PRIMARY_GENOME): Ns5FileInfo {
+  return { project: identity.project, level: 2, folder: m4DefsFolder(identity, kind, genome), shortName: pageId, extension: '.defs.ts' };
 }
+
+/** The UX variant folders (page12…page99, never page11) that hold defs of the page on either device, sorted. */
+export function discoverM4Variants(identity: M4RunIdentity, pageId: string, port: Pick<M4InputPort, 'listDefs'>): string[] {
+  const found: string[] = [];
+  for (let index = 12; index <= 99; index += 1) {
+    const genome = `page${index}`;
+    if (M4_DEVICES_OF_PAGE.some(device => port.listDefs(identity.project, m4DefsFolder(identity, device, genome)).includes(pageId))) found.push(genome);
+  }
+  return found;
+}
+
+export async function readM4VariantSources(identity: M4RunIdentity, pageId: string, genome: string, port: M4InputPort): Promise<Record<L2Page11Device, string | null>> {
+  const sources = {} as Record<L2Page11Device, string | null>;
+  for (const device of M4_DEVICES_OF_PAGE) {
+    const info = m4DefsInfo(identity, device, pageId, genome);
+    sources[device] = port.exists(info) ? await port.read(info) : null;
+  }
+  return sources;
+}
+
+const M4_DEVICES_OF_PAGE: readonly L2Page11Device[] = ['desktop', 'mobile'];
 
 /** A page exists when any of its four defs exists; the gate then refuses the ones that are incomplete. */
 export function discoverM4Pages(identity: M4RunIdentity, port: M4InputPort): string[] {

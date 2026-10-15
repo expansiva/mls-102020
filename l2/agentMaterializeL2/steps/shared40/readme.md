@@ -16,12 +16,13 @@
 
 - Read the defs as intent and commitments; never infer behavior from a name.
 - Nothing computed in the browser; a getter only picks the selected row by id.
-- Apply the mode declared in the function description (`replace`, `append`, `upsert`, `remove`); use the command output, reload only when the description says so.
+- Every request is a public method of its own id; every navigate intent of page11 is a public method of the intent id that calls `auraNavigate`. A command the person fills in gets a draft state and its setter.
+- Apply each command output member where its route comment says (`replace`, `append`, `upsert`, `remove`), even one that no state reads; use the command output, reload only when the route comment says so.
 - The selection holds the id; the selected state is the record (from the declared detail query, or the loaded row). The selection wins over the filter.
 - Each method's JSDoc carries the purpose of its route and what it redraws: that is how the pages learn what it is for.
-- A gap of the defs (a form with no draft state, a selection no function writes) is completed minimally and reported in `findings` (V5).
+- A gap of the defs (a selection no request writes, a filter no state holds) is completed minimally and reported in `findings` (V5).
 - `readonly` fields never go into a command input; `version` goes back in the next write.
 
 ## Gate (module-independent only)
 
-Header, imports, class, no rendering, every state and function of the defs, every method of `methods`, scene state, routes used and known, entry params, `auraNavigate` only, no user-facing text, no `this[x] =`, **no `any`** (except `handleIcaStateChange`) and **no `!`**. Then the Studio compile, and up to three focused repairs.
+Header, imports, class, no rendering, every state and request of the defs, every method of `methods`, every navigation (`auraNavigate` to its target), scene state, routes used and known, entry params, `auraNavigate` only, no user-facing text, no `this[x] =`, **no `any`** (except `handleIcaStateChange`) and **no `!`**. Then the Studio compile, and up to three focused repairs.

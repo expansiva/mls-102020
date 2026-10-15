@@ -8,6 +8,7 @@ Run `@@agentMaterializeL2 <module>`. The project comes from the current context.
 |---|---|
 | `--page <id>[,<id>…]` | shared40 and pages50 work only on these pages. input20 always gates the whole module, and refuses an id that is not an accepted page |
 | `--device desktop\|mobile` | pages50 generates only this device (the shared is common to both) |
+| `--genome pageNN` | only that page folder: `page11`, or a UX variant such as `page21` (`web/<device>/page21/<pageId>.defs.ts`, same shared, its own page11 and template). Without it, page11 and every accepted variant are generated; the shell switches variants with Ctrl+Alt+E |
 | `--force` | regenerates the units in scope even when nothing changed (with `--device`, only that device's pages) |
 | `--review` | adds `review55`: a second LLM reviews each page in scope against its template (report only; off by default) |
 
@@ -20,7 +21,7 @@ Examples: `@@agentMaterializeL2 comandaRestaurante --page mesas --device mobile`
 | kind | file | role |
 |---|---|---|
 | contract | `l2/<module>/web/contracts/<pageId>.defs.ts` | commitment (routes, types, rules, access); the route JSDoc is intent |
-| shared | `l2/<module>/web/shared/<pageId>.defs.ts` | commitment (ids of states, functions, params, forms); descriptions and modes are intent |
+| shared | `l2/<module>/web/shared/<pageId>.defs.ts` | commitment (ids of states, requests, params); descriptions are intent. Frozen structure of 13/10/2026 (`_102020_/l2/helpers/sharedV2/format.ts`): no forms, no functions |
 | desktop, mobile | `l2/<module>/web/<device>/page11/<pageId>.defs.ts` | intent of the page, organisms, suggested molecules, template |
 | L4 | `l4/<module>/{module,rules,access}.defs.ts`, `ontology/`, `journeys/` | intent: meanings, field titles, rule texts, business steps, actors; sliced per page |
 
@@ -49,7 +50,7 @@ Examples: `@@agentMaterializeL2 comandaRestaurante --page mesas --device mobile`
   - `nodejsSaveConfigJson.ts` (with `helpers/cfeModuleNavigation.ts`), which composes the frontend of `l5/config.json`. `scripts/build.mjs` runs it from `l2/<masters.frontend.agentFolder>/`.
 
   They are copies of the old files. The materialization pipeline (entry10 … review55) does not use them.
-- No hard-coded module, page, category or function name.
+- No hard-coded module, page, category, request or state name.
 - Browser only (Studio). Proof is Studio compilation.
 - Tailwind in the page `.ts`, no `.less` (V3). Texts in the product languages of the L4 module (V4).
 - Nothing is computed in the browser; a gap in the shared defs is completed minimally and reported (V5).

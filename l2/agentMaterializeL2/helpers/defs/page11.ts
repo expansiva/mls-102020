@@ -1,7 +1,8 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeL2/helpers/defs/page11.ts" enhancement="_blank"/>
 
 // Copy, private to agentMaterializeL2 (from l2/helpers/defsL2v2, 05/10/2026; that original was removed with agentMaterializeL2v2 on 08/10/2026).
-// Reader of the public page11 v2 defs (web/<device>/page11/<pageId>.defs.ts). It knows the file grammar
+// Reader of the public page11 v2 defs (web/<device>/page11/<pageId>.defs.ts, and of a UX variant folder such as
+// web/<device>/page21/, 14/10/2026). It knows the file grammar
 // only, never a producer's or consumer's policy.
 // The grammar is the one agentDefsL2 renders (helpers/page11.ts there, 30/09/2026).
 
@@ -18,7 +19,13 @@ export interface L2Page11Definition {
   molecules: Record<string, L2Page11Molecule[]>;
 }
 export interface L2PageLocation { project: number; module: string; pageId: string }
-export interface L2Page11Location extends L2PageLocation { device: L2Page11Device }
+/**
+ * The page folder of a device: `page11` is the primary page; `page21`, `page31`… are UX variants of the same page (the
+ * "genomes" the shell cycles with Ctrl+Alt+E, mls-102033/l2/shared/contentPageGenome.ts). Same grammar in every one.
+ */
+export const L2_PRIMARY_GENOME = 'page11';
+export const L2_GENOME = /^page\d\d$/u;
+export interface L2Page11Location extends L2PageLocation { device: L2Page11Device; genome: string }
 
 const ID = /^[a-z][A-Za-z0-9]*$/u;
 const PAGE_ID = /^[a-z][A-Za-z0-9_]*$/u;
@@ -26,11 +33,11 @@ const TAG = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*--[a-z][a-z0-9-]*$/u;
 
 /** Parses the exact renderer grammar as JSON, with no eval, import or code execution. */
 export function parseL2Page11(source: string): { location: L2Page11Location; definition: L2Page11Definition } {
-  const match = /^\/\/\/ <mls fileReference="_(\d+)_\/l2\/([a-z][A-Za-z0-9]*)\/web\/(desktop|mobile)\/page11\/([a-z][A-Za-z0-9_]*)\.defs\.ts" enhancement="_blank"\/>\r?\n\r?\nexport const definition = ([\s\S]+) as const;\r?\n?$/u.exec(source);
+  const match = /^\/\/\/ <mls fileReference="_(\d+)_\/l2\/([a-z][A-Za-z0-9]*)\/web\/(desktop|mobile)\/(page\d\d)\/([a-z][A-Za-z0-9_]*)\.defs\.ts" enhancement="_blank"\/>\r?\n\r?\nexport const definition = ([\s\S]+) as const;\r?\n?$/u.exec(source);
   if (!match) throw new Error('L2_PAGE11_SOURCE_SHAPE');
   let parsed: unknown;
-  try { parsed = JSON.parse(match[5]); } catch { throw new Error('L2_PAGE11_SOURCE_JSON'); }
-  const location: L2Page11Location = { project: Number(match[1]), module: match[2], device: match[3] as L2Page11Device, pageId: match[4] };
+  try { parsed = JSON.parse(match[6]); } catch { throw new Error('L2_PAGE11_SOURCE_JSON'); }
+  const location: L2Page11Location = { project: Number(match[1]), module: match[2], device: match[3] as L2Page11Device, genome: match[4], pageId: match[5] };
   return { location, definition: buildL2Page11(parsed) };
 }
 

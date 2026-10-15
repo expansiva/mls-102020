@@ -144,9 +144,10 @@ export async function buildM4SharedContext(identity: M4RunIdentity, pageId: stri
     className: m4SharedClassName(identity.module, pageId),
     shared: parseL2Shared(shared).definition,
     contract: parseL2Contract(contract).definition,
-    rules: page.problems.filter(item => item.severity === 'warning'),
+    rules: m4SharedRules(page.problems),
     methods: page.methods ?? {},
     contextInputs: page.contextInputs ?? [],
+    navigations: page.navigations ?? [],
   };
   const l4Context = page.l4 ? await readL4Module(identity.project, identity.module, { listDefs: (project, folder) => port.listDefs(project, folder, 4), exists: port.exists, read: port.read }) : null;
   const l4 = l4Context && page.l4 ? renderL4Slice(resolveL4Refs(l4Context, page.l4)) : '';
@@ -177,6 +178,9 @@ export async function buildM4SharedPrompt(context: M4SharedContext, port: Pick<M
     '# Methods the pages call',
     ...methodLines(target),
     '',
+    '# Navigations',
+    ...navigationLines(target),
+    '',
     '# Business context (L4)',
     context.l4 || '(the module has no L4 context)',
     '',
@@ -203,7 +207,7 @@ export async function buildM4SharedRepairPrompt(context: M4SharedContext, repair
     '',
     '# Ids to keep',
     `- states: ${Object.keys(target.shared.states).join(', ')}, scenary`,
-    `- functions: ${Object.keys(target.shared.functions).join(', ')}, setScenario`,
+    `- methods: ${[...Object.keys(target.shared.requests), ...(target.navigations ?? []).map(nav => nav.method)].join(', ')}, setScenario`,
     `- routes: ${target.contract.routes.map(route => route.route).join(', ')}`,
     '',
     '# Errors',
@@ -222,15 +226,24 @@ export async function buildM4SharedRepairPrompt(context: M4SharedContext, repair
     '# Methods the pages call',
     ...methodLines(target),
     '',
+    '# Navigations',
+    ...navigationLines(target),
+    '',
     '# Notes on the defs',
     ...rulesLines(target),
   ];
   return { systemPrompt: await port.read(repairPromptInfo), humanPrompt: parts.join('\n') };
 }
 
-/** Names the page11 intents and the forms use → the public method that serves them. */
+/** Names the page11 intents use → the public method that serves them. */
 function methodLines(target: M4SharedTarget): string[] {
   const rows = Object.entries(target.methods ?? {}).map(([ref, method]) => ref === method ? `- ${method}` : `- ${ref} → ${method} (the defs name it ${ref}; the method is ${method})`);
+  return rows.length ? rows : ['- none'];
+}
+
+/** The navigate intents of page11: the method, the organism it lives in, the target page and what that page reads. */
+function navigationLines(target: M4SharedTarget): string[] {
+  const rows = (target.navigations ?? []).map(nav => `- ${nav.method} (organism ${nav.organism}) → /${target.module}/${nav.to}; entry params of ${nav.to}: ${nav.targetParams.length ? nav.targetParams.join(', ') : 'none'}`);
   return rows.length ? rows : ['- none'];
 }
 
@@ -289,7 +302,7 @@ export async function m4SharedReuseBlocker(identity: M4RunIdentity, pageId: stri
     const unit = page?.units.find(item => item.kind === 'shared');
     if (!page || !unit) return 'page not accepted by input20';
     if (unit.inputHash !== receipt.unitInputHash) return 'contract or shared defs changed (unit fingerprint)';
-    if (await rulesHashOf(page.problems.filter(item => item.severity === 'warning')) !== receipt.rulesHash) return 'input20 rules of the page changed';
+    if (await rulesHashOf(m4SharedRules(page.problems)) !== receipt.rulesHash) return 'input20 rules of the page changed';
     if (await sha256Text(await port.read(promptInfo)) !== receipt.promptHash) return 'shared40 prompt.md changed';
     const sourceInfo = sharedSourceInfo(identity, pageId);
     const declarationInfo = sharedDeclarationInfo(identity, pageId);
@@ -323,13 +336,22 @@ export function m4SharedEnvironmentFailure(diagnostic: string): boolean {
   return /Studio imports unavailable|Studio TypeScript compiler is unavailable|Studio model is unavailable|Studio compiler returned no result|Studio compile failed/u.test(diagnostic);
 }
 
+/**
+ * The input20 notes the shared is generated with: the warnings of the page, except those of a UX variant (path
+ * `page21:` or `page21/<device>:`). A variant has its own page11 and reuses the shared, so its notes (a template not
+ * found, a variant left out) never regenerate it (14/10/2026: adding the page21 folders regenerated every shared).
+ */
+export function m4SharedRules<T extends { severity: string; path: string }>(problems: T[]): T[] {
+  return problems.filter(item => item.severity === 'warning' && !/^page\d\d[:/]/u.test(item.path));
+}
+
 async function rulesHashOf(rules: Array<{ code: string; path: string; message: string }>): Promise<string> {
   return sha256Text(JSON.stringify(rules.map(rule => [rule.code, rule.path, rule.message])));
 }
 
 /**
  * Deterministic findings (V5): every public member of the compiled declaration that the defs do not declare.
- * Generic: the known set is the defs ids (states, functions, resolved methods), the status members of every
+ * Generic: the known set is the defs ids (states, requests, navigations, resolved methods), the status members of every
  * request, the scene state and the lifecycle of StateLitElement. Anything else was added by the generator.
  */
 export function m4AddedMemberFindings(declaration: string, target: M4SharedTarget): M4Finding[] {
@@ -339,7 +361,7 @@ export function m4AddedMemberFindings(declaration: string, target: M4SharedTarge
   const body = open < 0 || close < 0 ? '' : declaration.slice(open + 1, close);
   const requests = Object.keys(target.shared.requests);
   const known = new Set([
-    ...Object.keys(target.shared.states), ...Object.keys(target.shared.functions), ...Object.values(target.methods ?? {}),
+    ...Object.keys(target.shared.states), ...Object.keys(target.shared.requests), ...(target.navigations ?? []).map(nav => nav.method), ...Object.values(target.methods ?? {}),
     ...requests.flatMap(id => [`${id}Status`, `${id}Error`]),
     'scenary', 'setScenario', 'pageStatus', 'connectedCallback', 'disconnectedCallback', 'handleIcaStateChange',
   ]);

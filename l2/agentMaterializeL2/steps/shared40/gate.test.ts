@@ -10,6 +10,7 @@ interface InputFixture {
   project: number; module: string; defsPipelineStatus: string; knownMolecules: string[]; knownTemplates: string[];
   pages: Record<string, { contract: string; shared: string; desktop: string; mobile: string }>;
 }
+// The controleEstoque defs of 30/09/2026, with the shared converted to the frozen structure of 13/10/2026 (no forms, no functions).
 const inputFixture = JSON.parse(readFileSync(new URL('../input20/fixtures/controleEstoque.json', import.meta.url), 'utf8')) as InputFixture;
 // Hand-written reference shared of controleEstoque/produtos, typechecked with tsc against the real contract.
 const reference = (JSON.parse(readFileSync(new URL('./fixtures/produtosShared.json', import.meta.url), 'utf8')) as { source: string }).source;
@@ -26,6 +27,8 @@ function target(pageId = 'produtos'): M4SharedTarget {
     className: m4SharedClassName(inputFixture.module, pageId),
     shared: parsed.shared, contract: parsed.contract,
     rules: gate.problems.filter(item => item.page === pageId),
+    methods: parsed.methods,
+    navigations: parsed.navigations,
   };
 }
 const codes = (source: string) => gateM4SharedSource(source, target()).map(item => item.code).sort();
@@ -35,14 +38,18 @@ test('the reference produtos shared passes the gate with no issue', () => {
   assert.deepEqual(gateM4SharedSource(reference, target()), []);
 });
 
-test('a missing state, function or method the pages call is named', () => {
+test('a missing state, request method or method the pages call is named', () => {
   const noState = reference.replace('@property({ attribute: false }) filtroBuscaProdutos', 'filtroBuscaProdutos');
   assert.deepEqual(codes(noState), ['M4_SHARED_STATE_MISSING']);
-  const noFunction = reference.replace('selecionarProduto(produtoId: string | null): void {', 'selectProduto(produtoId: string | null): void {');
-  assert.deepEqual(codes(noFunction), ['M4_SHARED_FUNCTION_MISSING']);
-  // 05/10/2026: no check by function name; a resolved method (createX → criarX) must exist
+  // every request is a public method of its own id (frozen structure, 13/10/2026)
+  const noRequestMethod = reference.replace('  async load(): Promise<void> {', '  async carregar(): Promise<void> {').replaceAll('this.load()', 'this.carregar()');
+  assert.notEqual(noRequestMethod, reference);
+  assert.deepEqual(codes(noRequestMethod), ['M4_SHARED_METHOD_MISSING']);
+  // a method of the shared's own (selecionarProduto) is not prescribed: the defs no longer list functions
+  assert.deepEqual(codes(reference.replace('selecionarProduto(produtoId: string | null): void {', 'selectProduto(produtoId: string | null): void {')), []);
+  // 05/10/2026: no check by name; a resolved method (createX → criarX) must exist
   const withMethods = gateM4SharedSource(reference, { ...target(), methods: { createProduto: 'criarProduto' } }).map(item => item.code);
-  assert.deepEqual(withMethods, ['M4_SHARED_FUNCTION_MISSING']);
+  assert.deepEqual(withMethods, ['M4_SHARED_METHOD_MISSING']);
 });
 
 test('routes: an unknown route and an uncalled request are refused', () => {
@@ -86,9 +93,15 @@ test('header and class name are exact', () => {
   assert.deepEqual(codes(reference.replace('export class ControleEstoqueProdutosShared', 'export class ProdutosShared')), ['M4_SHARED_CLASS']);
 });
 
-test('navigation must use auraNavigate to the target page with every carry', () => {
-  const noCarry = reference.replace('movimentacoes?produtoId=${', 'movimentacoes?id=${');
-  assert.deepEqual(codes(noCarry), ['M4_SHARED_NAVIGATE']);
+test('a navigate intent is a method that calls auraNavigate to its target page', () => {
+  assert.deepEqual(target().navigations, [{ method: 'abrirMovimentacoes', organism: 'detalheProduto', to: 'movimentacoes', targetParams: ['produtoId', 'page'] }]);
+  const wrongPage = reference.replace('movimentacoes?produtoId=${', 'produtos?produtoId=${');
+  assert.deepEqual(codes(wrongPage), ['M4_SHARED_NAVIGATE']);
+  // what it carries is the generator's call (the defs no longer declare carries)
+  assert.deepEqual(codes(reference.replace('movimentacoes?produtoId=${', 'movimentacoes?id=${')), []);
+  const noMethod = reference.replace('  abrirMovimentacoes(): void {', '  irParaMovimentacoes(): void {');
+  assert.notEqual(noMethod, reference);
+  assert.ok(codes(noMethod).includes('M4_SHARED_METHOD_MISSING'));
 });
 
 test('rules are met through delegation to a private method or a module function (first Studio run, 30/09)', () => {
@@ -168,14 +181,14 @@ test('a fresh visit: connectedCallback must reset statuses, errors and the scene
 
 // atendimento, 07/10/2026: the draft held comandaId, nobody filled it, and lancarItem refused itself in the browser.
 test('a form input member that is the page selection must be read from its state', () => {
-  const item = { form: 'cadastro', method: 'cadastrarProduto', route: 'controleEstoque.produtos.cadastrarProduto', member: 'contextoId', param: 'contextoId' };
+  const item = { organism: 'acoesCadastro', method: 'cadastrarProduto', route: 'controleEstoque.produtos.cadastrarProduto', member: 'contextoId', param: 'contextoId' };
   const read = gateM4SharedSource(reference, { ...target(), contextInputs: [{ ...item, state: 'produtoCadastro' }] }).map(issue => issue.code);
   assert.ok(!read.includes('M4_SHARED_CONTEXT_INPUT'), 'cadastrarProduto reads this.produtoCadastro');
   const unread = gateM4SharedSource(reference, { ...target(), contextInputs: [{ ...item, state: 'selectedContexto' }] });
   const issue = unread.find(row => row.code === 'M4_SHARED_CONTEXT_INPUT');
   assert.ok(issue, 'cadastrarProduto never reads this.selectedContexto');
   assert.match(issue.message, /cadastrarProduto must fill the input member contextoId of controleEstoque\.produtos\.cadastrarProduto from this\.selectedContexto/u);
-  // a method the gate cannot find is reported by M4_SHARED_FUNCTION_MISSING, not here
+  // a method the gate cannot find is reported by M4_SHARED_METHOD_MISSING, not here
   assert.ok(!gateM4SharedSource(reference, { ...target(), contextInputs: [{ ...item, method: 'naoExiste', state: 'selectedContexto' }] }).some(row => row.code === 'M4_SHARED_CONTEXT_INPUT'));
 });
 
@@ -191,7 +204,8 @@ test('a state field with no JSDoc gets it back from the defs before the gate; on
   assert.ok(!codes(filled).includes('M4_SHARED_JSDOC'));
   for (const id of states) {
     const state = target().shared.states[id];
-    assert.ok(filled.includes(`/** state ${id} — ${state.description.replace(/\s+/gu, ' ').trim()}; source ${state.source} */`), id);
+    const organisms = state.organisms.length ? `; organisms ${state.organisms.join(', ')}` : '';
+    assert.ok(filled.includes(`/** state ${id} — ${state.description.replace(/\s+/gu, ' ').trim()}; source ${state.source}${organisms} */`), id);
   }
 });
 
@@ -209,7 +223,7 @@ test('the filled JSDoc keeps the indentation, lists the organisms and cannot clo
 // Guilherme, 09/10/2026: "Item lançado" and old errors stayed on screen while the person edited the next item,
 // picked another record or changed scene. Changing what a command acts on resets its result.
 test('within a visit, every setter, selection and scene change resets the command results', () => {
-  assert.deepEqual(m4SharedUiMethods(reference, target().shared), ['selecionarProduto', 'setProdutoCadastro', 'setScenario'], 'public is optional; loads, commands and the lifecycle are left out');
+  assert.deepEqual(m4SharedUiMethods(reference, target()), ['selecionarProduto', 'setProdutoCadastro', 'setScenario'], 'public is optional; requests, navigations, what reaches execBff (filter, load more) and the lifecycle are left out');
   assert.ok(!codes(reference).includes('M4_SHARED_RESULT_RESET'), 'the reference resets through resetCommandResults()');
   const unreset = reference.replace('  setProdutoCadastro(value: ProdutoCadastroDraft): void {\n    this.resetCommandResults();\n', '  setProdutoCadastro(value: ProdutoCadastroDraft): void {\n');
   assert.notEqual(unreset, reference);
@@ -217,5 +231,5 @@ test('within a visit, every setter, selection and scene change resets the comman
   assert.equal(issues.length, 1);
   assert.match(issues[0].message, /^setProdutoCadastro changes what the commands act on .*: cadastrarProdutoStatus, cadastrarProdutoError/u);
   // a private helper is not a page entry point, and a bare call is not a method
-  assert.ok(!m4SharedUiMethods('class X {\n  private helper(): void {}\n  run(): void {\n    helper(1);\n  }\n}', { functions: {} }).includes('helper'));
+  assert.ok(!m4SharedUiMethods('class X {\n  private helper(): void {}\n  run(): void {\n    helper(1);\n  }\n}', { shared: { requests: {} } }).includes('helper'));
 });

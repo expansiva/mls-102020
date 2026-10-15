@@ -11,12 +11,12 @@
 import { displayPath } from '/_102035_/l2/solution/fs.js';
 import { m4ScopeDevices, m4ScopeLabel, m4ScopePages, markM4Step, type M4RunIdentity, type M4RunScope } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { addAgentStep, agentResult } from '/_102020_/l2/agentMaterializeL2/helpers/intents.js';
-import type { L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { L2_PRIMARY_GENOME, type L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { readM4Snapshot, reusableM4Shared, sharedReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { sharedWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/shared40/agentM4Shared.js';
 import { pageReceiptInfo, reusableM4Page, studioPagePort, type M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
-import { pageWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4Pages.js';
+import { m4PageSlots, pageWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4Pages.js';
 import { m4ReviewState, reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 import { reviewWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/review55/agentM4Review.js';
 
@@ -28,9 +28,10 @@ export async function m4ChainForce(identity: M4RunIdentity, scope: M4RunScope, p
   const devices = m4ScopeDevices(scope);
   // With --device the shared is not in scope: a new shared would regenerate both devices.
   if (!scope.device) for (const pageId of pages) await port.writeJson(sharedReceiptInfo(identity, pageId), invalid('force'));
-  for (const pageId of pages) for (const device of devices) {
-    await port.writeJson(pageReceiptInfo(identity, pageId, device), invalid('force'));
-    if (scope.review) await port.writeJson(reviewReceiptInfo(identity, pageId, device), invalid('force'));
+  const snapshot = await readM4Snapshot(identity, port);
+  for (const slot of m4PageSlots(snapshot, pages, devices, scope)) {
+    await port.writeJson(pageReceiptInfo(identity, slot.pageId, slot.device, slot.genome), invalid('force'));
+    if (scope.review && slot.genome === L2_PRIMARY_GENOME) await port.writeJson(reviewReceiptInfo(identity, slot.pageId, slot.device), invalid('force'));
   }
 }
 
@@ -45,18 +46,22 @@ async function reviewStep(identity: M4RunIdentity, pageId: string, device: L2Pag
 /** After a page's shared is approved (or reused): its page workers, or — when a page is done — its review. */
 export async function m4ChainAfterShared(identity: M4RunIdentity, pageId: string, scope: M4RunScope, snapshot?: M4InputSnapshot, port: M4PagePort = studioPagePort): Promise<mls.msg.AIAgentStep[]> {
   const steps: mls.msg.AIAgentStep[] = [];
-  for (const device of m4ScopeDevices(scope)) {
-    if (!await reusableM4Page(identity, pageId, device, port, snapshot)) steps.push(pageWorkerStep({ ...identity, pageId, device, attempt: 1, scope, chain: true }));
-    else {
-      const review = await reviewStep(identity, pageId, device, scope, snapshot, port);
+  const snap = snapshot ?? await readM4Snapshot(identity, port);
+  for (const slot of m4PageSlots(snap, [pageId], m4ScopeDevices(scope), scope)) {
+    const variant = slot.genome === L2_PRIMARY_GENOME ? {} : { genome: slot.genome };
+    if (!await reusableM4Page(identity, pageId, slot.device, port, snap, slot.genome)) steps.push(pageWorkerStep({ ...identity, pageId, device: slot.device, ...variant, attempt: 1, scope, chain: true }));
+    else if (slot.genome === L2_PRIMARY_GENOME) {
+      // review55 reads the primary page11 only.
+      const review = await reviewStep(identity, pageId, slot.device, scope, snap, port);
       if (review) steps.push(review);
     }
   }
   return steps;
 }
 
-/** After one page × device is approved: its review, if any. */
-export async function m4ChainAfterPage(identity: M4RunIdentity, pageId: string, device: L2Page11Device, scope: M4RunScope, port: M4PagePort = studioPagePort): Promise<mls.msg.AIAgentStep[]> {
+/** After one page × device is approved: its review, if any (only for page11: review55 reads the primary page11). */
+export async function m4ChainAfterPage(identity: M4RunIdentity, pageId: string, device: L2Page11Device, scope: M4RunScope, port: M4PagePort = studioPagePort, genome: string = L2_PRIMARY_GENOME): Promise<mls.msg.AIAgentStep[]> {
+  if (genome !== L2_PRIMARY_GENOME) return [];
   const review = await reviewStep(identity, pageId, device, scope, undefined, port);
   return review ? [review] : [];
 }
@@ -87,9 +92,9 @@ export async function m4ChainSettled(identity: M4RunIdentity, scope: M4RunScope 
   const result = (settled: boolean) => ({ settled, pages, snapshotHash: snapshot.snapshotHash });
   for (const pageId of pages) {
     if (!await reusableM4Shared(identity, pageId, port, snapshot)) return result(false);
-    for (const device of m4ScopeDevices(scope)) {
-      if (!await reusableM4Page(identity, pageId, device, port, snapshot)) return result(false);
-      if (scope.review && !(await m4ReviewState(identity, pageId, device, port, snapshot)).settled) return result(false);
+    for (const slot of m4PageSlots(snapshot, [pageId], m4ScopeDevices(scope), scope)) {
+      if (!await reusableM4Page(identity, pageId, slot.device, port, snapshot, slot.genome)) return result(false);
+      if (scope.review && slot.genome === L2_PRIMARY_GENOME && !(await m4ReviewState(identity, pageId, slot.device, port, snapshot)).settled) return result(false);
     }
   }
   return result(true);

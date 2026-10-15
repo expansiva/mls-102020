@@ -1,27 +1,26 @@
 <!-- modelType: code -->
 <!-- x-tool-strict: true -->
-You generate ONE TypeScript file: the **shared** class of one page of a browser app. The shared is the headless half of the page. It holds the state, calls the backend and implements every function. It never renders. The desktop and mobile pages extend it later and only render, reading its compiled `.d.ts`: **the JSDoc you write is how the pages learn what each member is for.** Return the whole file in `submitSharedTs.source`, and in `submitSharedTs.findings` every gap of the defs you had to complete (see the end).
+You generate ONE TypeScript file: the **shared** class of one page of a browser app. The shared is the headless half of the page. It holds the state, calls the backend and implements every action of the page. It never renders. The desktop and mobile pages extend it later and only render, reading its compiled `.d.ts`: **the JSDoc you write is how the pages learn what each member is for.** Return the whole file in `submitSharedTs.source`, and in `submitSharedTs.findings` every gap of the defs you had to complete (see the end).
 
 ## What you receive
 
-The defs carry **intent and commitments**, not a script. A commitment cannot vary: the routes, their input and output types, `rules`, `access`, and the ids of states, functions, params and forms. Intent tells you what each part is for: the route comments, descriptions, organism texts and the business context.
+The defs carry **intent and commitments**, not a script. A commitment cannot vary: the routes, their input and output types, `rules`, `access`, the ids of states, requests and params, and the intent ids of the page definitions. Intent tells you what each part is for: the route comments, descriptions, organism texts and the business context. **The members that serve the intent are yours to design** (the defs list no functions and no forms): the rules below say which ones must exist and how they behave.
 
 - **Contract**: `web/contracts/<pageId>.defs.ts`. Types only: one interface per record projection, plus `interface <Page>Contracts` keyed by route string `'<module>.<pageId>.<requestId>'`, each with `kind`, `input`, `output`, `rules` and `access`. Above each route a comment says its **purpose**, **input**, **processing** and **output**: read the purpose to know what the call is for, and the output to know what it redraws. `readonly` fields are computed by the backend and are never written. **On types and on what a route does, the contract wins.** A page with no route has the empty contract `export {};` (a hub): its shared only navigates.
 - **Shared definition**: `web/shared/<pageId>.defs.ts`:
-  - `entry.params`: optional page params, each with a `type`, `sources`, `effect` (`select:<organism>`, `filter:<organism>`, `prefill:<organism>`) and `persist`.
-  - `requests`: the calls; each id is the last segment of a contract route; `trigger` says what starts it (`onLoad`, or an action name).
-  - `states`: `{ source, description }`. A source is `<request>.<key>`, `entry.params.<param>` or `<command>.input` (a form draft).
-  - `functions`: `{ description, calls?, sets?, updates?, navigate?, carries? }`. A function has the id of the request it calls. **The end of the description may declare a mode in parentheses**: `(state: replace)`, `(state: append)`, `(state: upsert)`, `(state: remove)`; it may also say that the function reloads queries.
-  - `forms`: `{ <id>: { organism, submit } }`: the organism that edits the input of a write, and its command. A button with nothing to type (open, approve, cancel) is not a form and calls its function directly.
-  - `journeys`, `rules`, `access`.
-- **Organisms**: the page organisms (id, kind, text), so you know what each state feeds.
-- **Methods the pages call**: the names the page definitions and the forms use, each mapped to the method that serves it. Every listed method must exist, public, with exactly that name.
+  - `entry.params`: page params, each with a `type`, `sources`, `effect` (`select:<organism>`, `filter:<organism>`, `prefill:<organism>`), `persist` and `required`.
+  - `requests`: the calls; each id is the last segment of a contract route. `trigger` says what starts it: `onLoad` (the initial load), or an action, usually the request's own id (something the person does: pick a record, change a filter, submit). `returns`: the output members it delivers.
+  - `states`: `{ source, description, organisms }`. A source is `<request>.<key>`, `entry.params.<param>` or `<command>.input` (a form draft); `organisms` are the organisms the state feeds.
+  - `journeys` (the business steps and the organisms that serve each), `rules` (the business rules of the page, one list) and `access`.
+- **Organisms**: the page organisms (id, kind, text, intents), so you know what each state feeds and what the person does there: a `submit` intent runs the request of that id, a `navigate` intent changes page.
+- **Methods the pages call**: the names the page definitions use, each mapped to the method that serves it. Every listed method must exist, public, with exactly that name.
+- **Navigations**: each navigate intent, with the organism it lives in, its target page and the entry params that page reads.
 - **Business context (L4)**: meanings of the entities and their fields, the business rules by text, the journeys and the actors. Use it to understand, to name error details and to pre-validate a command; never to add a route, a field or a computation.
 - **Notes on the defs**: facts about inconsistencies already found. Information, not code to copy.
 
 ## How to read the defs
 
-Names are free: every module names its functions, states and requests in its own language and style. **Never infer behavior from a name.** Infer it from the defs: what a function calls, sets and updates, its description and mode, the contract input and output of its route and the route comment, the effect of each entry param, and the text of each organism.
+Names are free: every module names its states and requests in its own language and style. **Never infer behavior from a name.** Infer it from the defs: the route comment of each request (its purpose, its input, its processing, and its output: what it redraws and how), the contract input and output types, its trigger, the states it feeds and their organisms, the effect of each entry param, and the text and intents of each organism.
 
 **Nothing is computed in the browser.** The contract output is already shaped for the page: the record comes with its items and totals, indicators come computed, a list comes filtered as the intent asks. Never sum, count, filter or join in the shared. A getter may only pick an element: the selected row of a loaded list by its id.
 
@@ -35,7 +34,7 @@ import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { execBff } from '/_102029_/l2/bffClient.js';
 import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { runBlockingUiAction } from '/_102029_/l2/interactionRuntime.js';           // when a command exists
-import { auraNavigate } from '/_102033_/l2/shared/layout/auraNavigate.js';           // when a function navigates
+import { auraNavigate } from '/_102033_/l2/shared/layout/auraNavigate.js';           // when the page navigates
 import type { <Page>Contracts, <every projection type you use> } from '<contract .defs.js path>';
 export type { <Page>Contracts, <every projection type of the contract> } from '<contract .defs.js path>';
 
@@ -59,7 +58,9 @@ export class <ClassName> extends StateLitElement { … }
 - **Status members**, which you add yourself: `pageStatus: 'idle' | 'loading' | 'empty' | 'success' | 'error'`, plus for every request `<requestId>Status: 'idle' | 'loading' | 'success' | 'error'` and `<requestId>Error: ErrorState`, with `export type ErrorState = { code: string; message: string; details?: unknown } | null`. Each has a JSDoc and a state key too.
 - **Scene state** (always): `@property({ attribute: false }) scenary = '';` with the JSDoc `/** state scenary — the visible scene of the page; '' until the page shows its first scene */`, and a public `setScenario(value: string): void` that publishes it. Not persisted, never in the URL.
 - **Write every JSDoc in English**, one language for the whole file (the pages read it whatever the product language).
-- **Every function of the definition** is a public method with exactly its id, and a JSDoc the pages can act on: `/** function <id> — <purpose of its route, from the route comment>; redraws <the states it writes and how: replace, append, upsert, remove>; <its arguments and what they mean> */`. It takes only what the page must supply; nothing it can read from its own states.
+- **Every request of the definition** is a public method with exactly its id, and a JSDoc the pages can act on: `/** request <id> — <purpose of its route, from the route comment>; redraws <the states it writes and how: replace, append, upsert, remove>; <its arguments and what they mean> */`. It takes only what the page must supply; nothing it can read from its own states. An `onLoad` request is also the method the page calls to reload, to filter and to page its list.
+- **Every navigate intent** is a public method with exactly the intent id (see Navigations).
+- **A draft for every command the person fills in** (submitted from an organism of kind `form`, or whose input has fields the person types): the state whose source is `<command>.input` when the definition has one; otherwise a public `<requestId>Draft` state of a local exported `<Name>Draft` type, built like a `<command>.input` state, with its public setter `set<RequestIdPascal>Draft(value)`. A command with nothing to type (approve, send, cancel) takes what it needs from the context: the selected record, its `version`, the identity.
 
 ## The selection is the item
 
@@ -71,9 +72,9 @@ Selecting takes the id or `null` (`null` clears it). An id that no loaded row an
 
 ## When the defs leave a gap (decision V5)
 
-The pages can only do what the shared exposes. When the defs describe a behavior the page must drive but give no member for it (a form with no `<command>.input` state, a selection that no function writes), **complete the minimum**: add the draft state with its setter, or the public selection method, with a JSDoc that starts with what it does (`/** draft — … */`, `/** select — … */`). Never invent a route, a field or a computation. **A command whose output leaves another state stale** (its record stays in a list it no longer belongs to, a total no longer matches) is also a gap: apply only what the defs declare, and report it.
+The pages can only do what the shared exposes. When the defs describe a behavior the page must drive but give no member for it (a selection that no request writes, a filter that no state holds), **complete the minimum**: add the draft state with its setter, or the public selection method, with a JSDoc that starts with what it does (`/** draft — … */`, `/** select — … */`). Never invent a route, a field or a computation. **A command whose output leaves another state stale** (its record stays in a list it no longer belongs to, a total no longer matches) is also a gap: apply only what the defs declare, and report it.
 
-**Report each completion and each gap in `findings`**: `{ "code": "<FORM_DRAFT_MISSING | SELECT_SETTER_MISSING | STATE_LEFT_STALE | …>", "message": "<what was missing and what you added>" }`. An empty array when nothing was missing.
+**Report each completion and each gap in `findings`**: `{ "code": "<SELECT_SETTER_MISSING | FILTER_STATE_MISSING | STATE_LEFT_STALE | …>", "message": "<what was missing and what you added>" }`. An empty array when nothing was missing.
 
 ## State runtime (collabState)
 
@@ -116,17 +117,17 @@ The pages can only do what the shared exposes. When the defs describe a behavior
 ## Requests
 
 - **Queries** (`kind: 'qry'`): `execBff(route, input, { mode: 'silent' })`. Before the first `await`, set `<requestId>Status = 'loading'` and clear the error, and ignore a call while it is loading. On `response.ok` write the output states, then `success`. Otherwise store `response.error` whole and set `error`. A thrown error becomes `{ code: 'client.unexpected', message: '', details: { name } }`.
-- Every query input carries the current values of the params that filter what it loads, as the contract input names them. Omit null or empty optional values; send every required one (a required `page`/`pageSize` starts at the first page and a sensible size). A function that filters a list takes the filter values as arguments, publishes them, and reloads from the first page.
-- **Apply the declared mode** to the state a function writes: `replace` swaps it; `append` adds the next page to `items` (or to the array) and keeps `page`/`hasMore` in sync; `upsert` inserts or updates the record by `id` in the list or in the item; `remove` takes it out. With no mode, a query replaces what it `sets`. Loading the next page does nothing unless the output said there is more.
+- Every query input carries the current values of the params that filter what it loads, as the contract input names them. Omit null or empty optional values; send every required one (a required `page`/`pageSize` starts at the first page and a sensible size). The method of a list query takes what the person changes as arguments (a filter value, the page to load): a new filter publishes its state and loads from the first page. **A paged list** (`{ items, page, pageSize, hasMore }`) takes the page to load and whether to append it (`append = false`): the page decides whether it shows a pager or a "load more". The state of the `page` param records **the page the person went to with a pager** (replace). **Appending never writes it**: a "load more" only adds items and keeps `page`/`hasMore` in the list itself, so a new visit opens where a pager left it, or at the first page after a "load more" (never on page 2 alone).
+- **The mode comes from the route comment and the output type**: a query replaces what it returns; `append` adds the next page to `items` and keeps `page`/`hasMore` in sync; `upsert` inserts or updates a record by `id` in a list; `remove` takes it out. Loading the next page does nothing unless the output said there is more.
 - **Commands** (`kind: 'cmd'`): the input is **only the input of the write**, from the form draft, or from the context and identity for a button with nothing to type. When a required leaf is empty, do not call: publish `{ code: 'client.requiredMissing', message: '', details: { stateKeys: [...] } }` and set `error`. You may pre-validate a rule of the route the L4 states plainly; the backend still guarantees it. Call inside `runBlockingUiAction(signal => execBff(route, input, { mode: 'blocking', signal }))`, whose `undefined` result means aborted (`client.unexpected`, `details: { name: 'aborted' }`). On success:
-  - apply the output to the `updates` states with their declared mode; **use the returned value, never reload**, unless the description says the command reloads queries: then call their functions after it, with the current params, before setting `success`;
-  - reset the draft.
+  - apply **every output member** where its route comment says it goes, even when no state has it as its source: the record redraws the state that holds that record (and the selection); a row is inserted or updated by `id` in the list that shows it; a record that no longer belongs to a list (its new status is not what the list shows) is removed from it. **Use the returned value, never reload**, unless the route comment says the command reloads queries: then call their methods after it, with the current params, before setting `success`;
+  - reset the draft: a draft that edits an existing record (prefilled from it) is **filled again from the record the command returns**, so editing it once more starts from what was saved; only the draft of a new record goes back to empty.
 - When the output carries `version`, keep it and send it back in the next write of that record. `readonly` fields never go into a command input.
 - The only client error codes are `client.requiredMissing`, `client.preconditionMissing`, `client.selectionInvalid`, `client.snapshotMissing` and `client.unexpected`.
 
-## Functions without a request
+## Navigations
 
-- **Navigation** (`navigate` + `carries`): refuse with `client.preconditionMissing` when a carried value is null. Otherwise call `auraNavigate('/<module>/<target>?<param>=<encodeURIComponent(value)>&…', { basePath: '/<module>' })` with one query param per `carries` key, into the entry params of the target page. A carry written `<state>.<field>` of a state that holds a scalar sends the value itself.
+- **Every navigate intent** is a public method named exactly the intent id. It takes what the person picks for it (the row they open) and carries it into the entry params of the target page (listed under Navigations): only values this page holds that mean the same thing there (the record the person picked → the param that selects it on the target). A navigation that carries nothing just opens the page. Refuse with `client.preconditionMissing` when a value it must carry is null. Otherwise call `auraNavigate('/<module>/<target>?<param>=<encodeURIComponent(value)>&…', { basePath: '/<module>' })`.
   - `auraNavigate` (imported from `/_102033_/l2/shared/layout/auraNavigate.js`) is the **only** way to change page. `window.location.assign`, `location.href = …`, `location.replace` and `history.pushState`/`replaceState` are refused. Reading `window.location.search` for entry params is fine.
   - The exact shape:
     ```ts
@@ -135,7 +136,7 @@ The pages can only do what the shared exposes. When the defs describe a behavior
 
 ## Initial load
 
-Every request with `trigger: 'onLoad'` runs through its function at the end of `connectedCallback`, with the entry params already applied. `pageStatus` is `loading` while it runs, `error` if it failed, `empty` when every loaded list is empty, and `success` otherwise. Nothing else writes `pageStatus`. A hub has no load: its `pageStatus` is `success`.
+Every request with `trigger: 'onLoad'` runs through its method at the end of `connectedCallback`, with the entry params already applied. `pageStatus` is `loading` while it runs, `error` if it failed, `empty` when every loaded list is empty, and `success` otherwise. Nothing else writes `pageStatus`. A hub has no load: its `pageStatus` is `success`.
 
 ## Before you answer
 

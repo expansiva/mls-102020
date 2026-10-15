@@ -6,17 +6,20 @@
 // i18n catalogue and colors only through design tokens. Compilation in the Studio comes after, in run.ts.
 
 import type { L2Page11Definition, L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
-import { moleculeGroupFolder } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { L2_PRIMARY_GENOME, moleculeGroupFolder } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import type { L2SharedDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
+import { m4LocaleConst } from '/_102020_/l2/agentMaterializeL2/helpers/locale.js';
 
 export interface M4PageTarget {
   project: number;
   module: string;
   pageId: string;
   device: L2Page11Device;
+  /** The page folder: page11 (absent) or a UX variant such as page21. */
+  genome?: string;
   page11: L2Page11Definition;
   sharedClassName: string;
-  /** Two-letter catalogue keys, default first ('pt', 'en'). */
+  /** Catalogue keys, the whole locale code, default first ('pt-br', 'en-us'). */
   locales: string[];
   /** Color token names of the project design system (base names, no -hover/-focus/-disabled). */
   tokens: string[];
@@ -27,34 +30,30 @@ export interface M4PageTarget {
    * source could not be read): the event check only refuses what it can prove.
    */
   moleculeEvents?: Record<string, string[]>;
-  /** The journey functions only the page can start (m4PageJourneyFunctions); each must be called by the page. */
-  journeyFunctions?: M4JourneyFunction[];
+  /** The requests only the page can start (m4PageOnlyRequests); each must be called by the page. */
+  pageOnlyRequests?: M4PageOnlyRequest[];
 }
 
-export interface M4JourneyFunction { fn: string; steps: string[] }
+export interface M4PageOnlyRequest { fn: string; steps: string[] }
 
 /**
- * The functions of the page's journeys that nothing but the page can call: each one listed in a journey step and
- * declared by the shared, except those the shared starts by itself (the request of an onLoad trigger, or any
- * function its own code calls: this.fn( in the shared .ts). agendaClinica/consultas (09/10/2026): the scheduling
- * journey lists localizarProfissionaisParaAgendamento, and no control of the page called it.
+ * The requests that nothing but the page can start: every request of the shared except those the shared starts by
+ * itself (an onLoad trigger, or a request its own code calls: this.<id>( in the shared .ts) and those a page11 intent
+ * names (M4_PAGE_INTENT checks them). Each comes with the journey steps that show what it returns: the steps whose
+ * organisms are fed by its states. agendaClinica/consultas (09/10/2026): the scheduling step needed
+ * localizarProfissionaisParaAgendamento, and no control of the page called it. Since 13/10/2026 the defs have no
+ * functions, so the request itself is the method (it was the journey's function list before).
  */
-export function m4PageJourneyFunctions(shared: L2SharedDefinition, sharedSource: string): M4JourneyFunction[] {
-  const steps = new Map<string, string[]>();
-  for (const journey of shared.journeys) {
-    for (const fn of journey.functions) {
-      if (shared.functions[fn]) steps.set(fn, [...(steps.get(fn) ?? []), journey.step]);
-    }
+export function m4PageOnlyRequests(shared: Pick<L2SharedDefinition, 'requests' | 'states' | 'journeys'>, sharedSource: string, intentMethods: string[] = []): M4PageOnlyRequest[] {
+  const found: M4PageOnlyRequest[] = [];
+  for (const [id, request] of Object.entries(shared.requests)) {
+    if (request.trigger === 'onLoad' || intentMethods.includes(id)) continue;
+    if (new RegExp(`\\bthis\\.${id}\\s*(?:<[^>\\n]*>)?\\s*\\(`, 'u').test(sharedSource)) continue;
+    const organisms = new Set(Object.values(shared.states).filter(state => state.source.startsWith(`${id}.`)).flatMap(state => state.organisms));
+    const steps = shared.journeys.filter(journey => journey.organisms.some(organism => organisms.has(organism))).map(journey => journey.step);
+    found.push({ fn: id, steps: [...new Set(steps)] });
   }
-  const startedByShared = (fn: string): boolean => {
-    const calls = shared.functions[fn].calls;
-    if (calls && shared.requests[calls]?.trigger === 'onLoad') return true;
-    return new RegExp(`\\bthis\\.${fn}\\s*(?:<[^>\\n]*>)?\\s*\\(`, 'u').test(sharedSource);
-  };
-  return [...steps.entries()]
-    .filter(([fn]) => !startedByShared(fn))
-    .map(([fn, list]) => ({ fn, steps: [...new Set(list)] }))
-    .sort((a, b) => a.fn.localeCompare(b.fn));
+  return found.sort((a, b) => a.fn.localeCompare(b.fn));
 }
 
 /**
@@ -115,6 +114,59 @@ export function m4BoundEvents(code: string, tag: string): string[] {
   return found;
 }
 /**
+ * The event handlers bound on a molecule that throw away the molecule's own event. A molecule dispatches its events on
+ * itself, so in its handler `e.target === e.currentTarget` is always true. The bubbling guard belongs only to the scene
+ * host (M4_PAGE_SCENARY_BUBBLE); on a field it is either useless or fatal. reembolsoDespesas/despesas_aprovadas page31
+ * desktop (14/10/2026): `if (e.target === e.currentTarget) return;` on ml-date-picker, so the payment date never
+ * reached the draft and "Confirmar" stayed off. Fatal forms only:
+ * - `if (x.target === x.currentTarget) return` — drops its own event;
+ * - `if (x.target !== x.currentTarget) <acts>` — acts only on events bubbling from inside it, never on its own.
+ * Harmless forms pass: `if (x.target !== x.currentTarget) return;` and `if (x.target === x.currentTarget) <acts>`.
+ */
+export function m4OwnEventDrops(code: string): Array<{ tag: string; event: string; handler: string }> {
+  const found: Array<{ tag: string; event: string; handler: string }> = [];
+  for (const match of code.matchAll(/<(group[a-z]+--ml-[a-z0-9-]+)(?![\w-])/gu)) {
+    let i = (match.index ?? 0) + match[0].length;
+    let quote = '';
+    for (; i < code.length; i += 1) {
+      const ch = code[i];
+      if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = ''; continue; }
+      if (ch === '"' || ch === '\'') { quote = ch; continue; }
+      if (ch === '>') break;
+      if (ch !== '$' && ch !== '@') continue;
+      const binding = ch === '@' ? /^@([A-Za-z][\w:.-]*)\s*=\s*\$\{/u.exec(code.slice(i, i + 80)) : null;
+      if (ch === '$' && code[i + 1] !== '{') continue;
+      // Skip (or read, for an @event) one `${…}` expression with its nested braces and strings.
+      const start = binding ? i + binding[0].length : i + 2;
+      let depth = 1;
+      let j = start;
+      let inner = '';
+      for (; j < code.length && depth > 0; j += 1) {
+        const c = code[j];
+        if (inner) { if (c === '\\') j += 1; else if (c === inner) inner = ''; continue; }
+        if (c === '\'' || c === '"' || c === '`') inner = c;
+        else if (c === '{') depth += 1;
+        else if (c === '}') depth -= 1;
+      }
+      const expression = code.slice(start, j - 1);
+      if (binding && dropsOwnEvent(expression)) found.push({ tag: match[1], event: binding[1], handler: expression.replace(/\s+/gu, ' ').trim().slice(0, 160) });
+      i = j - 1;
+    }
+  }
+  return found;
+}
+
+function dropsOwnEvent(handler: string): boolean {
+  // A bare `return` only: `return this.setX(…)` still does the work (mobile page21, 14/10/2026).
+  if (/if\s*\(\s*([A-Za-z_$][\w$]*)\.target\s*===\s*\1\.currentTarget\s*\)\s*\{?\s*return\s*(?:;|\}|$)/u.test(handler)) return true;
+  const inverse = /if\s*\(\s*([A-Za-z_$][\w$]*)\.target\s*!==\s*\1\.currentTarget\s*\)\s*/u.exec(handler);
+  if (!inverse) return false;
+  const rest = handler.slice((inverse.index ?? 0) + inverse[0].length);
+  const consequent = rest.startsWith('{') ? rest.slice(1, Math.max(1, rest.indexOf('}'))) : rest.slice(0, Math.max(0, rest.indexOf(';')) || rest.length);
+  return !/^\s*return\b/u.test(consequent) && /\bthis\./u.test(consequent);
+}
+
+/**
  * `error` breaks the contract (the app or the pipeline) and refuses the page. `advisory` is a design
  * observation: recorded in the receipt, never a refusal. Design belongs to the page LLM (Guilherme,
  * 01/10/2026: too many rules made every screen the same).
@@ -136,15 +188,16 @@ const TOKEN_VARIANTS = /-(?:hover|focus|disabled)$/u;
 const pascal = (value: string) => `${value[0].toUpperCase()}${value.slice(1)}`;
 const kebab = (value: string) => value.replace(/[A-Z]/gu, char => `-${char.toLowerCase()}`);
 
-export function m4PageClassName(module: string, device: L2Page11Device, pageId: string): string {
-  return `${pascal(module)}${pascal(device)}Page11${pascal(pageId)}Page`;
+/** `genome` is the page folder (page11, or a UX variant such as page21); the shell swaps `--pageNN--` to change variant. */
+export function m4PageClassName(module: string, device: L2Page11Device, pageId: string, genome: string = L2_PRIMARY_GENOME): string {
+  return `${pascal(module)}${pascal(device)}${pascal(genome)}${pascal(pageId)}Page`;
 }
 /** `controleEstoque/web/desktop/page11/produtos.ts` in 102047 → `controle-estoque--web--desktop--page11--produtos-102047`. */
-export function m4PageTag(project: number, module: string, device: L2Page11Device, pageId: string): string {
-  return `${kebab(module)}--web--${device}--page11--${kebab(pageId)}-${project}`;
+export function m4PageTag(project: number, module: string, device: L2Page11Device, pageId: string, genome: string = L2_PRIMARY_GENOME): string {
+  return `${kebab(module)}--web--${device}--${genome}--${kebab(pageId)}-${project}`;
 }
-export function m4PagePath(target: Pick<M4PageTarget, 'project' | 'module' | 'device' | 'pageId'>): string {
-  return `_${target.project}_/l2/${target.module}/web/${target.device}/page11/${target.pageId}.ts`;
+export function m4PagePath(target: Pick<M4PageTarget, 'project' | 'module' | 'device' | 'pageId' | 'genome'>): string {
+  return `_${target.project}_/l2/${target.module}/web/${target.device}/${target.genome ?? L2_PRIMARY_GENOME}/${target.pageId}.ts`;
 }
 export function m4SharedImport(target: Pick<M4PageTarget, 'project' | 'module' | 'pageId'>): string {
   return `/_${target.project}_/l2/${target.module}/web/shared/${target.pageId}.js`;
@@ -163,8 +216,8 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   const advise = (code: string, message: string) => issues.push({ code, message, severity: 'advisory' });
   const text = source.replace(/\r\n/gu, '\n');
   const code = stripComments(text);
-  const className = m4PageClassName(target.module, target.device, target.pageId);
-  const tag = m4PageTag(target.project, target.module, target.device, target.pageId);
+  const className = m4PageClassName(target.module, target.device, target.pageId, target.genome);
+  const tag = m4PageTag(target.project, target.module, target.device, target.pageId, target.genome);
 
   const header = `/// <mls fileReference="${m4PagePath(target)}" enhancement="_102020_/l2/enhancementAura"/>`;
   if (text.split('\n')[0] !== header) push('M4_PAGE_HEADER', `The first line must be exactly: ${header}`);
@@ -232,6 +285,12 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
     }
   }
 
+  // A field that throws its own event away compiles and silently does nothing (m4OwnEventDrops). Enforced even while
+  // the rest of the gate is off.
+  for (const drop of m4OwnEventDrops(code)) {
+    issues.push({ code: 'M4_PAGE_OWN_EVENT_DROPPED', severity: 'error', always: true, message: `The @${drop.event} handler of <${drop.tag}> throws away the molecule's own event (${drop.handler}). A molecule dispatches its events on itself, so e.target === e.currentTarget is always true there: use e.detail directly, with no target check. The bubbling guard belongs only to the scene host.` });
+  }
+
   // Scenes: optional, decided by the page (Guilherme, 01/10/2026); when used, the host is wired to the shared.
   const hosts = code.split(`<${M4_SCENARY_TAG}`).length - 1;
   // Views switch ONLY through the host (Guilherme, 02/10/2026: a page switched views by hand, without
@@ -266,13 +325,14 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   // Design choices about scenes (one view or many, where a task form lives) belong to the page LLM and to
   // the review step; no check here (05/10/2026).
 
-  // Journeys: a step only the page can start, wired to nothing, leaves its list empty or its action dead
+  // A request only the page can start, wired to nothing, leaves its list empty or its action dead
   // (agendaClinica/consultas, 09/10/2026). Enforced even while the rest of the gate is off.
-  for (const item of target.journeyFunctions ?? []) {
+  for (const item of target.pageOnlyRequests ?? []) {
     const method = target.methods?.[item.fn] ?? item.fn;
     if (new RegExp(`\\bthis\\.${method}\\s*\\(`, 'u').test(code)) continue;
     const named = item.steps.map(step => `"${step}"`).join(', ');
-    issues.push({ code: 'M4_PAGE_JOURNEY_UNCALLED', severity: 'error', always: true, message: `The journey step${item.steps.length > 1 ? 's' : ''} ${named} need${item.steps.length > 1 ? '' : 's'} ${method}, and nothing calls it: the shared does not start it and the page never calls this.${method}(…). Wire it to the control that does that step (the typed value of a search field, a load-more action, a button), as its JSDoc in the shared declaration describes.` });
+    const forSteps = item.steps.length ? ` The journey step${item.steps.length > 1 ? 's' : ''} ${named} need${item.steps.length > 1 ? '' : 's'} it.` : '';
+    issues.push({ code: 'M4_PAGE_REQUEST_UNCALLED', severity: 'error', always: true, message: `Nothing calls ${method}: the shared does not start it and the page never calls this.${method}(…).${forSteps} Wire it to the control that does it (picking a record, the typed value of a search field, a load-more action, a button), as its JSDoc in the shared declaration describes.` });
   }
 
   // Intents.
@@ -287,11 +347,16 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   const start = text.indexOf('/// **collab_i18n_start**');
   const end = text.indexOf('/// **collab_i18n_end**');
   if (start < 0 || end < start) push('M4_PAGE_I18N', 'The catalogue must sit between /// **collab_i18n_start** and /// **collab_i18n_end**.');
+  // One catalogue per locale key, the whole code (14/10/2026: 'pt-br' → const pageMessage_pt_br, map key 'pt-br'),
+  // as agentAddLanguage writes it; two letters made pt-BR and pt-PT the same catalogue.
+  const suffixes = target.locales.map(m4LocaleConst);
   for (const locale of target.locales) {
-    if (!new RegExp(`\\bconst\\s+pageMessage_${locale}\\b`, 'u').test(code)) push('M4_PAGE_I18N', `Locale ${locale} needs const pageMessage_${locale}.`);
+    const suffix = m4LocaleConst(locale);
+    if (!new RegExp(`\\bconst\\s+pageMessage_${suffix}\\b`, 'u').test(code)) push('M4_PAGE_I18N', `Locale ${locale} needs const pageMessage_${suffix}, keyed '${locale}' in pageMessages.`);
+    else if (!new RegExp(`['"]?${[...locale].map(ch => (/[a-z0-9]/u.test(ch) ? ch : `\\x${ch.charCodeAt(0).toString(16).padStart(2, '0')}`)).join('')}['"]?\\s*:\\s*pageMessage_${suffix}\\b`, 'u').test(code)) push('M4_PAGE_I18N', `pageMessages must key pageMessage_${suffix} as '${locale}' (the code agentAddLanguage and the runtime look up).`);
   }
-  const extra = [...code.matchAll(/\bconst\s+pageMessage_([a-z]{2})\b/gu)].map(match => match[1]).filter(locale => !target.locales.includes(locale));
-  if (extra.length) push('M4_PAGE_I18N', `Locales [${extra.join(', ')}] are not product languages; declare only ${target.locales.join(', ')}.`);
+  const extra = [...code.matchAll(/\bconst\s+pageMessage_([a-z0-9_]+)\b/gu)].map(match => match[1]).filter(suffix => !suffixes.includes(suffix));
+  if (extra.length) push('M4_PAGE_I18N', `Catalogues [${extra.map(suffix => `pageMessage_${suffix}`).join(', ')}] are not product languages; declare only ${suffixes.map(suffix => `pageMessage_${suffix}`).join(', ')}.`);
   // The NAMES are the contract (@@addLanguage and the Studio text editor look for them); the compiler checks
   // the types. Any declaration form is accepted (01/10/2026: the exact-text check refused valid variants).
   if (!/\btype\s+PageMessageType\b/u.test(code)) push('M4_PAGE_I18N', 'Declare the catalogue type: type PageMessageType = typeof pageMessage_<default locale>;');

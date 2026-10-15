@@ -7,13 +7,16 @@
 import { displayPath, writeJson } from '/_102035_/l2/solution/fs.js';
 import { sha256Text } from '/_102020_/l2/agentMaterializeL2/helpers/hash.js';
 import { m4OwnedFile, type M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
-import { gateM4Input, M4_INPUT_KINDS, type M4ContextInput, type M4InputKind, type M4InputProblem } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
+import { gateM4Input, M4_INPUT_KINDS, type M4ContextInput, type M4InputKind, type M4InputProblem, type M4Navigation } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
 import {
-  discoverM4Pages, loadMoleculeCatalog, m4DefsInfo, readDefsPipelineStatus, readM4PageSources, studioInputPort, templateInfo, type M4InputPort,
+  discoverM4Pages, discoverM4Variants, loadMoleculeCatalog, m4DefsInfo, readDefsPipelineStatus, readM4PageSources, readM4VariantSources, studioInputPort, templateInfo, type M4InputPort,
 } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
+import { m4LocaleKey } from '/_102020_/l2/agentMaterializeL2/helpers/locale.js';
 import { l4RefsOf, readL4Module, renderL4Slice, sliceL4ForPage, type L4ModuleContext, type L4PageRefs } from '/_102020_/l2/agentMaterializeL2/helpers/l4/context.js';
 
-export const M4_INPUT_VERSION = '2026-10-05-materialize-l2-v4-input-v2' as const;
+// v3 (13/10/2026): the frozen shared (no forms, no functions); pages carry their navigations.
+// v4 (14/10/2026): pages carry their UX variants (page21…).
+export const M4_INPUT_VERSION = '2026-10-14-materialize-l2-input-v4' as const;
 
 /** One future materialization unit; its inputHash decides reuse in the later steps. */
 export type M4UnitKind = 'shared' | 'desktop' | 'mobile' | 'tests';
@@ -26,12 +29,23 @@ export interface M4InputPage {
   /** Only accepted pages have units. */
   units: M4Unit[];
   problems: M4InputProblem[];
-  /** Intent and form-submit names → the shared method that serves them (gate `methods`). */
+  /** page11 intent names → the shared method that serves them (gate `methods`). */
   methods: Record<string, string>;
-  /** Form command-input members that come from the page's selection (gate `contextInputs`). */
+  /** Submitted command-input members that come from the page's selection (gate `contextInputs`). */
   contextInputs?: M4ContextInput[];
+  /** The navigate intents of the page (gate `navigations`). */
+  navigations?: M4Navigation[];
+  /** UX variants of the page (page21…): their own page11 per device, the same shared. Absent = none. */
+  variants?: M4InputVariant[];
   /** Ids of the L4 context this page references (task V6); the text is rebuilt at prompt time. Null when refused. */
   l4: L4PageRefs | null;
+}
+/** A UX variant of a page in input.json: accepted ones have a unit per device (reuse is decided by the pages50 receipt). */
+export interface M4InputVariant {
+  genome: string;
+  status: 'accepted' | 'refused';
+  inputs: Record<'desktop' | 'mobile', { path: string; sha256: string } | null>;
+  units: M4Unit[];
 }
 export interface M4InputSnapshot {
   schemaVersion: typeof M4_INPUT_VERSION;
@@ -57,9 +71,13 @@ const TEMPLATE_IN_SOURCE = /"category": "([^"]+)"/u;
 export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort = studioInputPort): Promise<M4InputRunResult> {
   const pageIds = discoverM4Pages(identity, port);
   const pages = [];
-  for (const pageId of pageIds) pages.push({ pageId, sources: await readM4PageSources(identity, pageId, port) });
+  for (const pageId of pageIds) {
+    const variants = [];
+    for (const genome of discoverM4Variants(identity, pageId, port)) variants.push({ genome, sources: await readM4VariantSources(identity, pageId, genome, port) });
+    pages.push({ pageId, sources: await readM4PageSources(identity, pageId, port), variants });
+  }
 
-  const page11Sources = pages.flatMap(page => [page.sources.desktop, page.sources.mobile]).filter((item): item is string => item !== null);
+  const page11Sources = pages.flatMap(page => [page.sources.desktop, page.sources.mobile, ...page.variants.flatMap(variant => [variant.sources.desktop, variant.sources.mobile])]).filter((item): item is string => item !== null);
   const moleculeExists = await loadMoleculeCatalog([...new Set(page11Sources.flatMap(source => [...source.matchAll(TAG_IN_SOURCE)].map(match => match[1])))], port);
   const templates = new Map<string, string | null>();
   for (const category of new Set(page11Sources.map(source => TEMPLATE_IN_SOURCE.exec(source)?.[1]).filter((item): item is string => Boolean(item)))) {
@@ -78,6 +96,30 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
     moleculeExists,
   });
 
+  // The variants of a page: inputs always; units only when accepted (both devices parse and need no new shared member).
+  const snapshotVariants = async (pageId: string, variants: Array<{ genome: string; sources: Record<'desktop' | 'mobile', string | null> }>): Promise<M4InputVariant[]> => {
+    const out: M4InputVariant[] = [];
+    const accepted = gate.accepted.includes(pageId) ? gate.parsed[pageId].variants : [];
+    for (const variant of variants) {
+      const inputs = {} as M4InputVariant['inputs'];
+      const hashes = {} as Record<'desktop' | 'mobile', string>;
+      for (const device of ['desktop', 'mobile'] as const) {
+        const source = variant.sources[device];
+        hashes[device] = source === null ? '' : await sha256Text(source);
+        inputs[device] = source === null ? null : { path: displayPath(m4DefsInfo(identity, device, pageId, variant.genome)), sha256: hashes[device] };
+      }
+      const parsed = accepted.find(item => item.genome === variant.genome);
+      const units: M4Unit[] = [];
+      if (parsed) {
+        for (const device of ['desktop', 'mobile'] as const) {
+          const template = await sha256Text(templates.get(parsed.page11[device].template.category) ?? '');
+          units.push({ unitId: `${pageId}__${device}__${variant.genome}`, kind: device, inputHash: await sha256Text([hashes[device], template].join('\n')) });
+        }
+      }
+      out.push({ genome: variant.genome, status: parsed ? 'accepted' : 'refused', inputs, units });
+    }
+    return out;
+  };
   const snapshotPages: M4InputPage[] = [];
   for (const page of pages) {
     const hashes = {} as Record<M4InputKind, string>;
@@ -93,9 +135,13 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
       const parsed = gate.parsed[page.pageId];
       const templateHash = async (device: 'desktop' | 'mobile') => sha256Text(templates.get(parsed.page11[device].template.category) ?? '');
       const unit = async (kind: M4UnitKind, parts: string[]): Promise<M4Unit> => ({ unitId: `${page.pageId}__${kind}`, kind, inputHash: await sha256Text(parts.join('\n')) });
-      const l4Hash = await sha256Text(renderL4Slice(sliceL4ForPage(l4, parsed.contract, parsed.shared)));
+      const slice = sliceL4ForPage(l4, parsed.contract, parsed.shared);
+      const l4Hash = await sha256Text(renderL4Slice(slice));
+      // The shared holds no visible text (the pages write every catalogue), so the product languages are not part of its
+      // fingerprint: adding en-US and es-ES regenerated every shared of reembolsoDespesas for nothing (14/10/2026).
+      const sharedL4Hash = await sha256Text(renderL4Slice({ ...slice, module: { ...slice.module, productLanguages: [], defaultLanguage: '' } }));
       // D1 (30/09/2026): the contract .defs.ts is used as is (types for execBff); it is an input, not a unit.
-      units.push(await unit('shared', [hashes.contract, hashes.shared, l4Hash]));
+      units.push(await unit('shared', [hashes.contract, hashes.shared, sharedL4Hash]));
       units.push(await unit('desktop', [hashes.contract, hashes.shared, hashes.desktop, await templateHash('desktop'), l4Hash]));
       units.push(await unit('mobile', [hashes.contract, hashes.shared, hashes.mobile, await templateHash('mobile'), l4Hash]));
       units.push(await unit('tests', [hashes.shared, hashes.desktop, hashes.mobile, l4Hash]));
@@ -108,11 +154,13 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
       problems: gate.problems.filter(item => item.page === page.pageId),
       methods: gate.parsed[page.pageId]?.methods ?? {},
       contextInputs: gate.parsed[page.pageId]?.contextInputs ?? [],
+      navigations: gate.parsed[page.pageId]?.navigations ?? [],
+      ...(page.variants.length ? { variants: await snapshotVariants(page.pageId, page.variants) } : {}),
       l4: accepted ? l4RefsOf(sliceL4ForPage(l4, gate.parsed[page.pageId].contract, gate.parsed[page.pageId].shared)) : null,
     });
   }
   const moduleProblems = [...gate.problems.filter(item => item.page === '*'), ...l4Notes(l4)];
-  const snapshotHash = await sha256Text(JSON.stringify({ defsPipelineStatus, pages: snapshotPages.map(page => ({ pageId: page.pageId, inputs: page.inputs })) }));
+  const snapshotHash = await sha256Text(JSON.stringify({ defsPipelineStatus, pages: snapshotPages.map(page => ({ pageId: page.pageId, inputs: page.inputs, ...(page.variants ? { variants: page.variants.map(variant => ({ genome: variant.genome, inputs: variant.inputs })) } : {}) })) }));
   const snapshot: M4InputSnapshot = {
     schemaVersion: M4_INPUT_VERSION, ...identity, defsPipelineStatus, snapshotHash,
     accepted: gate.accepted, refused: gate.refused, moduleProblems, pages: snapshotPages,
@@ -130,6 +178,12 @@ function l4Notes(l4: L4ModuleContext): M4InputProblem[] {
   const notes: M4InputProblem[] = [];
   const note = (code: string, path: string, message: string) => notes.push({ severity: 'warning', code, page: '*', path, message });
   if (!l4.module.productLanguages.length) note('M4_INPUT_L4_LANGUAGES', 'l4:module.defs.ts', 'The L4 module declares no product language; the pages fall back to en.');
+  // Two spellings of one language ('pt-BR' and 'pt_br') would be one catalogue key (helpers/locale.ts): the pages get it once.
+  const byKey = new Map<string, string[]>();
+  for (const language of l4.module.productLanguages) byKey.set(m4LocaleKey(language), [...(byKey.get(m4LocaleKey(language)) ?? []), language]);
+  for (const [key, spellings] of byKey) {
+    if (spellings.length > 1) note('M4_INPUT_L4_LANGUAGES', 'l4:module.defs.ts', `Product languages [${spellings.join(', ')}] are the same catalogue key ${key}; the pages declare it once.`);
+  }
   if (!l4.entities.length) note('M4_INPUT_L4_ONTOLOGY', 'l4:ontology', 'The L4 ontology was not found; labels come from the L2 defs alone.');
   return notes;
 }

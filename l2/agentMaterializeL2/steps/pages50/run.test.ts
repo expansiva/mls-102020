@@ -85,8 +85,10 @@ async function studio(compileErrors: string[] = []) {
 }
 
 test('locales and design tokens are read from the real module and design system', () => {
-  assert.deepEqual(productLocales(real('mls-102047/l4/controleEstoque/module.defs.ts')), ['pt']);
-  assert.deepEqual(productLocales('"productLanguages": ["en-US", "pt-BR"], "defaultLanguage": "pt-BR"'), ['pt', 'en']);
+  assert.deepEqual(productLocales(real('mls-102047/l4/controleEstoque/module.defs.ts')), ['pt-br']);
+  assert.deepEqual(productLocales('"productLanguages": ["en-US", "pt-BR"], "defaultLanguage": "pt-BR"'), ['pt-br', 'en-us']);
+  // 14/10/2026: two regions of one language are two catalogues, and two spellings of one code are one
+  assert.deepEqual(productLocales('"productLanguages": ["pt-BR", "pt-PT", "pt_br"], "defaultLanguage": "pt-BR"'), ['pt-br', 'pt-pt']);
   const tokens = designTokenNames(real('mls-102047/l2/designSystem.ts'));
   assert.ok(tokens.includes('page-bg') && tokens.includes('status-error-text') && !tokens.some(name => name.endsWith('-hover')));
 });
@@ -100,7 +102,7 @@ test('the page prompt carries target, declaration, page11, tokens, molecules wit
     '- tag: controle-estoque--web--desktop--page11--produtos-102047',
     '- class: ControleEstoqueDesktopPage11ProdutosPage extends ControleEstoqueProdutosShared',
     '- shared import: /_102047_/l2/controleEstoque/web/shared/produtos.js',
-    '- locales (default first): pt',
+    '- locales (default first): pt-br',
     'export declare class ControleEstoqueProdutosShared',
     '"experience": "splitViewOperations"',
     '"step": "acompanharSaldos/consultarSaldos"',
@@ -160,7 +162,7 @@ test('a page repair is a focused fix (agentFix style): errors, refused file, its
   const { systemPrompt, humanPrompt } = await buildM4PageRepairPrompt(context, { diagnostic, previous: pageRef.source, design: { concept: 'grid and panel' } }, port);
   assert.equal(systemPrompt, real('mls-102020/l2/agentMaterializeL2/steps/pages50/promptRepair.md'));
   assert.ok(!humanPrompt.includes('## Usage contract'), 'not the generation prompt again');
-  for (const needle of ['# Errors', 'TS2339', '# Refused file', '"concept": "grid and panel"', '# Shared declaration', 'export declare class ControleEstoqueProdutosShared', '- locales (every one needs every key): pt', '# Row types', 'export interface ProdutoLoad {']) {
+  for (const needle of ['# Errors', 'TS2339', '# Refused file', '"concept": "grid and panel"', '# Shared declaration', 'export declare class ControleEstoqueProdutosShared', '- locales (every one needs every key): pt-br', '# Row types', 'export interface ProdutoLoad {']) {
     assert.ok(humanPrompt.includes(needle), needle);
   }
   assert.match(systemPrompt, /^<!-- modelType: code -->/u);

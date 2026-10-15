@@ -21,8 +21,8 @@ You fix ONE TypeScript file that the Studio refused: the **page** of one device 
 
 - **TS2339 "Property 'x' does not exist on type '<RowType>'"** (or on its `details`): the field is not in the row type. Take the field of the **Row types** section that holds that information (a date → the row's date field, for example `movimentadoEm`, which may sit at the root and not in `details`). If no field holds it, remove that display. Never guess another name.
 - **TS2339 "Property 'x' does not exist on type '<Page>'"**: the page reads or calls a member the shared does not declare. Use the declared member that means the same thing (see the shared declaration and its JSDoc). Never invent one. If nothing matches, render that part read-only from what exists.
-- **TS2339 / TS7053 on `this.msg['key']`**: the key is missing in the catalogue. Add it to `pageMessage_<lang>` of **every** locale. Do not cast `this.msg`.
-- **TS7053 "expression of type 'string' can't be used to index type '{ pt: … }'"** on `pageMessages[this.getMessageKey(pageMessages)]`: the catalogue map is untyped. Declare it `const pageMessages: Record<string, PageMessageType> = { pt: pageMessage_pt };` (every locale). Change nothing else.
+- **TS2339 / TS7053 on `this.msg['key']`**: the key is missing in the catalogue. Add it to `pageMessage_<suffix>` of **every** locale. Do not cast `this.msg`.
+- **TS7053 "expression of type 'string' can't be used to index type '{ pt: … }'"** on `pageMessages[this.getMessageKey(pageMessages)]`: the catalogue map is untyped. Declare it `const pageMessages: Record<string, PageMessageType> = { 'pt-br': pageMessage_pt_br };` (every locale, keyed by its code). Change nothing else.
 - **TS7006 "Parameter 'e' implicitly has an 'any' type"** in an event arrow: type it, for example `(e: CustomEvent<{ value: string }>) => …` or `(e: CustomEvent<{ index: number }>) => …`, as the molecule contract emits.
 - **TS2345 / TS2322 on a shared method argument**: pass the declared type (`string | null` for a selection, the whole draft for a form setter: `this.setX({ ...draft, field })`).
 - **TS2322 involving `typeof nothing` / `TemplateResult`**: remove the return-type annotation from the render method.
@@ -33,6 +33,7 @@ You fix ONE TypeScript file that the Studio refused: the **page** of one device 
 - **M4_PAGE_ANY "The page uses `any`"**: give each helper parameter the row type the shared declares (`import type { ProdutoLoad } from '<shared module>'`) and read the nested paths of that type (`item.details.identification.name`, not `item.name`). Then fix every TS error the real type reveals.
 
 - **M4_PAGE_SCENARY_BUBBLE**: replace the host handler with `@change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) this.setScenario(e.detail.value); }}`. Change nothing else.
+- **M4_PAGE_OWN_EVENT_DROPPED**: in the handler named in the error, remove the `e.target`/`e.currentTarget` check and keep what it does with `e.detail` (the molecule's event is always its own). Change nothing else; the host of the scenes keeps its guard.
 
 - **M4_PAGE_SCENARY_CUSTOM "The page switches views by hand"**: the views are rendered by a condition on `this.scenary` (or `this.setScenario` is called with no host). Keep the same views, and move them into the scene host:
   ```ts

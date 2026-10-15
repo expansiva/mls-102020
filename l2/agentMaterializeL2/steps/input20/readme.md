@@ -1,6 +1,6 @@
 # input20 — gate of the defs and L4 context
 
-Deterministic, no LLM. For every page of the module it reads the four L2 defs, decides whether code can be generated, resolves the names the pages and forms use, slices the L4 for that page, and fingerprints the units of the later steps. Output: `l2/<module>/pipeline/agentMaterializeL2/input.json`.
+Deterministic, no LLM. For every page of the module it reads the four L2 defs, decides whether code can be generated, resolves the names the page intents use, slices the L4 for that page, and fingerprints the units of the later steps. Output: `l2/<module>/pipeline/agentMaterializeL2/input.json`.
 
 ## What refuses a page (only what makes generation impossible)
 
@@ -8,9 +8,8 @@ Deterministic, no LLM. For every page of the module it reads the four L2 defs, d
 |---|---|
 | `M4_INPUT_DEFS_MISSING` / `_FORMAT` / `_LOCATION` | a defs file is missing, does not follow the grammar, or names another page |
 | `M4_INPUT_ROUTE_MISSING` | a request of the shared has no route in the contract |
-| `M4_INPUT_FUNCTION_REF` | a function calls something that is not a request |
-| `M4_INPUT_NAVIGATE_TARGET` | a function or intent navigates to a page that does not exist |
-| `M4_INPUT_UNRESOLVED` | a form submit or an intent names no function, request or request trigger |
+| `M4_INPUT_NAVIGATE_TARGET` | an intent navigates to a page that does not exist |
+| `M4_INPUT_UNRESOLVED` | an intent names no request or request trigger |
 | `M4_INPUT_DEFS_PIPELINE_INCOMPLETE` | (module) agentDefsL2 has not completed |
 
 Everything else is a **note** (`warning`): a fact for the generators, never a code prescription (the contract wins on types).
