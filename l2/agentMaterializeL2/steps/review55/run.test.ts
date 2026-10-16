@@ -49,11 +49,17 @@ async function studio() {
 }
 
 test('review55 is planned only with --review (Guilherme, 05/10: off by default)', () => {
-  assert.deepEqual(m4PlannedStepIds({}), ['entry10', 'input20', 'shared40', 'pages50']);
-  assert.deepEqual(m4PlannedStepIds({ review: true }), ['entry10', 'input20', 'shared40', 'pages50', 'review55']);
+  assert.deepEqual(m4PlannedStepIds({}), ['entry10', 'input20', 'shared40', 'pages50', 'finalize70']);
+  assert.deepEqual(m4PlannedStepIds({ review: true }), ['entry10', 'input20', 'shared40', 'pages50', 'review55', 'finalize70']);
   const parsed = parseM4MessageInvocation('@@agentMaterializeL2 comandaRestaurante --review --page mesas', 102047);
   assert.deepEqual(parsed, { kind: 'run', project: 102047, module: 'comandaRestaurante', scope: { review: true, pages: ['mesas'] } });
-  if (parsed.kind === 'run') assert.equal(buildM4PlannedSteps(parsed, parsed.scope).at(-1)?.planning?.planId, 'review55');
+  // finalize70 (16/10/2026) closes the run: after review55 when it is planned, after pages50 otherwise.
+  if (parsed.kind === 'run') {
+    const steps = buildM4PlannedSteps(parsed, parsed.scope);
+    assert.deepEqual(steps.slice(-2).map(step => step.planning?.planId), ['review55', 'finalize70']);
+    assert.deepEqual(steps.at(-1)?.planning?.dependsOn, ['review55-done']);
+  }
+  assert.deepEqual(buildM4PlannedSteps({ project: 102047, module: 'x' }).at(-1)?.planning?.dependsOn, ['pages50-done']);
 });
 
 test('the review prompt carries the page file, the design answer, the definition, the template and the declaration', async () => {

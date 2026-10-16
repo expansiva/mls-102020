@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { gateM4Input, m4ContextInputs, type M4GateInput, type M4InputProblem, type M4PageSources } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
+import { gateM4Input, m4ContextInputs, m4RequiredParams, type M4GateInput, type M4InputProblem, type M4PageSources } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
 
 // Real defs of mls-102047/l2/reembolsoDespesas as agentDefsL2 (d2_95) wrote them on 13/10/2026, in the frozen shared
 // structure (no forms, no functions). The earlier fixture (controleEstoque, 30/09) had the old structure.
@@ -225,4 +225,28 @@ test('a variant that needs a new shared member, or names another folder, is left
 test('a page11 file that names a variant folder is refused as the primary page', () => {
   const result = gateM4Input(input(pages => { pages.inicio.desktop = toVariant(pages.inicio.desktop!); }));
   assert.deepEqual(find(result.problems, 'inicio', 'M4_INPUT_DEFS_LOCATION').map(item => item.path), ['desktop:']);
+});
+
+// tarefas (16/10/2026): required params that feed only an action, or come from the session, must not block the page.
+test('a required param gets a note with the inputs it feeds; only the opening load makes it a condition of opening', () => {
+  const page = gateM4Input(input()).parsed.despesas_aprovadas;
+  const shared = structuredClone(page.shared);
+  const contract = structuredClone(page.contract);
+  // colaboradorId is optional in the opening load of despesas_aprovadas; make one required and one that feeds an action
+  shared.entry.params.colaboradorId = { ...shared.entry.params.colaboradorId, required: true };
+  shared.entry.params.despesaId = { ...shared.entry.params.despesaId, required: true };
+  contract.routes = contract.routes.map(route => route.requestId === 'listarDespesasAprovadas'
+    ? { ...route, inputMembers: route.inputMembers.map(member => member.name === 'colaboradorId' ? { ...member, optional: false } : member), jsdoc: { raw: '', input: 'colaboradorId: o colaborador da sessão (vem do contexto); page e pageSize' } }
+    : route.requestId === 'obterDespesaAprovada' ? { ...route, inputMembers: [{ name: 'despesaId', optional: false, type: 'string' }] } : route);
+  const notes = m4RequiredParams({ shared, contract });
+  const byParam = Object.fromEntries(notes.map(item => [item.param, item]));
+  assert.equal(byParam.colaboradorId.opening, true, 'feeds a required input of the opening load (the generator reads the route comment)');
+  assert.match(byParam.colaboradorId.message, /listarDespesasAprovadas\.colaboradorId \(the opening load; the route says: "colaboradorId: o colaborador da sessão \(vem do contexto\)"\)/u);
+  assert.equal(byParam.despesaId.opening, false, 'feeds only an action');
+  assert.match(byParam.despesaId.message, /obterDespesaAprovada\.despesaId \(started by obterDespesaAprovada\)/u);
+  assert.deepEqual(notes.map(item => item.param).sort(), ['colaboradorId', 'despesaId']);
+});
+
+test('a page with no required param has no M4_INPUT_REQUIRED_PARAM note', () => {
+  assert.deepEqual(find(gateM4Input(input()).problems, 'minhas_despesas', 'M4_INPUT_REQUIRED_PARAM'), []);
 });

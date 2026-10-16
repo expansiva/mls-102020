@@ -28,11 +28,12 @@ export const M4_PAGES_AGENT_NAME = 'agentM4Pages' as const;
 export const M4_PAGES_PAGE_AGENT_NAME = 'agentM4PagesPage' as const;
 export const M4_REVIEW_AGENT_NAME = 'agentM4Review' as const;
 export const M4_REVIEW_PAGE_AGENT_NAME = 'agentM4ReviewPage' as const;
+export const M4_FINALIZE_AGENT_NAME = 'agentM4Finalize' as const;
 export const M4_FLOW_ID = 'agentMaterializeL2' as const;
 export const M4_PIPELINE_VERSION = '2026-10-05-materialize-l2-v4-pipeline-v1' as const;
 
-/** Implemented steps, in order. review55 is planned only with --review. tests60 and finalize70 join as they are built. */
-export const M4_FLOW_STEP_IDS = ['entry10', 'input20', 'shared40', 'pages50', 'review55'] as const;
+/** Implemented steps, in order. review55 is planned only with --review. tests60 joins when it is built (before finalize70). */
+export const M4_FLOW_STEP_IDS = ['entry10', 'input20', 'shared40', 'pages50', 'review55', 'finalize70'] as const;
 export type M4StepId = typeof M4_FLOW_STEP_IDS[number];
 
 export const M4_STEP_DEPENDS_ON: Record<M4StepId, readonly string[]> = {
@@ -41,6 +42,8 @@ export const M4_STEP_DEPENDS_ON: Record<M4StepId, readonly string[]> = {
   shared40: ['input20-done'],
   pages50: ['shared40-done'],
   review55: ['pages50-done'],
+  // After review55 when the run plans it (createM4AgentStep).
+  finalize70: ['pages50-done'],
 };
 
 export const M4_STEP_AGENTS: Record<M4StepId, string> = {
@@ -49,6 +52,7 @@ export const M4_STEP_AGENTS: Record<M4StepId, string> = {
   shared40: M4_SHARED_AGENT_NAME,
   pages50: M4_PAGES_AGENT_NAME,
   review55: M4_REVIEW_AGENT_NAME,
+  finalize70: M4_FINALIZE_AGENT_NAME,
 };
 
 export const M4_STEP_TITLES: Record<M4StepId, string> = {
@@ -57,6 +61,7 @@ export const M4_STEP_TITLES: Record<M4StepId, string> = {
   shared40: 'Generate shared classes and pages (one chain per page)',
   pages50: 'Check desktop and mobile pages',
   review55: 'Check the page reviews',
+  finalize70: 'Register the pages in the project config',
 };
 
 /** The steps a run plans: review55 only on --review (Guilherme, 05/10/2026: off by default). */
@@ -218,7 +223,7 @@ export function m4StepIdOf(step: mls.msg.AIAgentStep): M4StepId | '' {
 }
 
 export function createM4AgentStep(stepId: M4StepId, identity: M4RunIdentity, scope: M4RunScope = {}): mls.msg.AIAgentStep {
-  const dependsOn = [...M4_STEP_DEPENDS_ON[stepId]];
+  const dependsOn = stepId === 'finalize70' && scope.review ? ['review55-done'] : [...M4_STEP_DEPENDS_ON[stepId]];
   return {
     type: 'agent',
     stepId: 0,
@@ -282,6 +287,6 @@ export const M4_HELP = [
   'input20 always gates the whole module.',
   'Steps: entry10, input20 (validates the defs of every page and reads the L4 context of each one) and',
   'shared40 (one shared class per accepted page, compiled in the Studio, plus its declaration and findings).',
-  'pages50 (desktop and mobile page per accepted page, compiled in the Studio). tests60 and finalize70',
-  'are planned (TASK-102020-agent-materialize-l2-v4).',
+  'pages50 (desktop and mobile page per accepted page, compiled in the Studio), finalize70 (registers the approved pages in l5/config.json). tests60',
+  'is planned (TASK-102020-agent-materialize-l2-v4).',
 ].join('\n');

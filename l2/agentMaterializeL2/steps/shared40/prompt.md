@@ -109,7 +109,12 @@ The pages can only do what the shared exposes. When the defs describe a behavior
 
 ## Entry params (every page)
 
-- For each param: read `new URLSearchParams(window.location.search).get(name)`. When it is absent, read `localStorage.getItem('<module>.<pageId>.<name>')` inside `try/catch`. The URL wins. Every param is optional.
+- For each param: read `new URLSearchParams(window.location.search).get(name)`. When it is absent, read `localStorage.getItem('<module>.<pageId>.<name>')` inside `try/catch`. The URL wins.
+- **`required: true`** (the notes give, for each one, the request inputs it feeds and what the route says about them):
+  - it is a **condition of opening** only when it feeds a required input of the opening load (`trigger: 'onLoad'`) and the route comment does not say that input comes from the session or the context. Missing → do not call the load: publish `{ code: 'client.preconditionMissing', message: '', details: { params: [...] } }` in the error of that request and set `pageStatus` to `error`;
+  - an input the route comment says comes **from the session or the context** is never read from the URL or localStorage, and is not a condition: send it empty (`''`) and the backend fills it from the session;
+  - a param that feeds only an **action** (a search, opening one record) is required for that call, not for the page: the page opens without it, and the call waits until the value exists (a missing value → `client.requiredMissing`, no call).
+- Every other param is optional.
 - Convert for real: `number` → `Number(raw)`, kept only when finite; `boolean` → `raw === 'true'`. Never cast.
 - Apply the effect: publish the value into the state whose source is `entry.params.<name>`. A filter takes part in the query input of the list it filters; a selection selects (see above); a prefill fills the draft of that form.
 - `persist: true` → every publish of that state writes `localStorage` (and removes the key when the value is `null`), inside `try/catch`.
@@ -122,6 +127,7 @@ The pages can only do what the shared exposes. When the defs describe a behavior
 - **Commands** (`kind: 'cmd'`): the input is **only the input of the write**, from the form draft, or from the context and identity for a button with nothing to type. When a required leaf is empty, do not call: publish `{ code: 'client.requiredMissing', message: '', details: { stateKeys: [...] } }` and set `error`. You may pre-validate a rule of the route the L4 states plainly; the backend still guarantees it. Call inside `runBlockingUiAction(signal => execBff(route, input, { mode: 'blocking', signal }))`, whose `undefined` result means aborted (`client.unexpected`, `details: { name: 'aborted' }`). On success:
   - apply **every output member** where its route comment says it goes, even when no state has it as its source: the record redraws the state that holds that record (and the selection); a row is inserted or updated by `id` in the list that shows it; a record that no longer belongs to a list (its new status is not what the list shows) is removed from it. **Use the returned value, never reload**, unless the route comment says the command reloads queries: then call their methods after it, with the current params, before setting `success`;
   - reset the draft: a draft that edits an existing record (prefilled from it) is **filled again from the record the command returns**, so editing it once more starts from what was saved; only the draft of a new record goes back to empty.
+- **A key the page generates for a submission** (the route comment says an input is generated when the form opens, an idempotency key so that a retry after a network error does not create twice) is neither typed nor from the session. Generate it with `crypto.randomUUID()` when the draft of that command starts (the form opens, or the person clears it), keep it with the draft, send **the same key in every attempt** (also after an error or a timeout), and replace it only after the command succeeds or the draft is cleared.
 - When the output carries `version`, keep it and send it back in the next write of that record. `readonly` fields never go into a command input.
 - The only client error codes are `client.requiredMissing`, `client.preconditionMissing`, `client.selectionInvalid`, `client.snapshotMissing` and `client.unexpected`.
 

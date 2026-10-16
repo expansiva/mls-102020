@@ -20,6 +20,7 @@ import '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4Pages.js';
 import '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4PagesPage.js';
 import '/_102020_/l2/agentMaterializeL2/steps/review55/agentM4Review.js';
 import '/_102020_/l2/agentMaterializeL2/steps/review55/agentM4ReviewPage.js';
+import '/_102020_/l2/agentMaterializeL2/steps/finalize70/agentM4Finalize.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: M4_AGENT_NAME, agentProject: 102020, agentFolder: 'agentMaterializeL2', agentDescription: 'Materialize the L2 frontend from the defs intent and commitments, with the L4 as context', visibility: 'public', beforePromptImplicit, beforePromptStep };

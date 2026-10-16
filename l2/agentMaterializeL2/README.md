@@ -41,6 +41,7 @@ Examples: `@@agentMaterializeL2 comandaRestaurante --page mesas --device mobile`
 | `steps/shared40/` | shared class per page: prompt with the L4, gate, Studio compile, declaration, receipt with findings. See its `readme.md` |
 | `steps/pages50/` | desktop and mobile page per accepted page: design prompt with the L4, gate, Studio compile, receipt. See its `readme.md` |
 | `steps/review55/` | review of each page, only with `--review`: findings with severity in a receipt, report only. See its `readme.md` |
+| `steps/finalize70/` | registers the approved pages of the module in `l5/config.json` (navigation, landings, frontend.pages, languages), from the pages50 receipts, the planning `menu.json` and the L4 module; deterministic. See its `readme.md` |
 
 ## Rules
 

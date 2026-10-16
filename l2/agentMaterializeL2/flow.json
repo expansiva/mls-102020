@@ -137,12 +137,13 @@
     },
     {
       "planId": "finalize70",
-      "status": "planned",
+      "status": "implemented",
       "kind": "deterministic",
       "dependsOn": [
-        "tests60-done"
+        "pages50-done"
       ],
-      "goal": "Module report: pages, findings for the L2 planner, design notes."
+      "goal": "Register the approved pages of the module in mls-<client>/l5/config.json (navigation, landings, frontend.pages, languages), from the pages50 receipts, the planning menu.json and the L4 module; only the frontend fields of the module entry, written only when they change. Depends on review55-done when --review plans it; tests60, when built, comes before it.",
+      "agent": "agentM4Finalize"
     }
   ],
   "chain": "One chain per page (05/10/2026): shared40 dispatches each page shared; an approved shared adds that page desktop/mobile workers at once; an approved page adds its review (with --review). shared40-done is emitted when every chain in scope is settled. pages50 and review55 stay planned as sweepers: they dispatch only what a chain left behind (a resumed run) and never re-apply --force."

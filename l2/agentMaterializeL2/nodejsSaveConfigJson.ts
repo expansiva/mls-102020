@@ -280,6 +280,14 @@ function readPageExport(source: string, name: string): unknown {
   return null;
 }
 
+/** A module whose page11 defs export `definition` as an object (the v2/frozen grammar), not the old text. */
+function hasFrozenPageDefs(clientRoot: string, moduleName: string): boolean {
+  const dir = path.join(clientRoot, 'l2', moduleName, 'web', 'desktop', 'page11');
+  if (!fs.existsSync(dir)) return false;
+  return fs.readdirSync(dir).filter(name => name.endsWith('.defs.ts'))
+    .some(name => /export const definition = \{/u.test(fs.readFileSync(path.join(dir, name), 'utf8')));
+}
+
 function discoverL2Pages(clientRoot: string, moduleName: string, landings: Set<string>): DiscoveredPage[] {
   const web = path.join(clientRoot, 'l2', moduleName, 'web');
   const pages: DiscoveredPage[] = [];
@@ -404,6 +412,10 @@ function tryComposeModuleFrontend(
   l5: L5ProjectJson,
   designSystems: string[],
 ): { ok: true; pageCount: number; apply: (mod: ModuleWithLandings) => void } | { ok: false; reason: string } {
+  // The frozen L2 defs (13/10/2026): their pages are registered by agentMaterializeL2 finalize70 in the Studio. This
+  // composer reads only the old page11 (definition as text plus a pipeline export); composing such a module from the l4
+  // workflows would overwrite what finalize70 wrote. Its config.json entry is kept as it is.
+  if (hasFrozenPageDefs(clientRoot, moduleName)) return { ok: false, reason: 'L2 defs in the frozen structure: the pages are registered by agentMaterializeL2 finalize70' };
   const discovered = discoverPages(clientRoot, moduleName);
   if (discovered.length === 0) return { ok: false, reason: 'no pages discovered from l4 workflows/operations' };
   const pages = discovered.filter(page => {

@@ -243,6 +243,7 @@ function checkPage(page: M4ParsedPage, all: Record<string, M4ParsedPage>, knownP
     const unread = request.returns.filter(key => !Object.values(shared.states).some(state => state.source === `${requestId}.${key}`));
     if (request.kind === 'cmd' && unread.length) note('M4_INPUT_RETURN_UNREAD', `shared:requests.${requestId}.returns`, `Command ${requestId} returns [${unread.join(', ')}], which no state has as its source. Its route comment says where each one goes (a row to insert or update in a list, a record to redraw); apply it there.`);
   }
+  for (const item of m4RequiredParams(page)) note('M4_INPUT_REQUIRED_PARAM', `shared:entry.params.${item.param}`, item.message);
 
   // Names a page uses → the method that serves them (a request or a request trigger).
   const resolve = (ref: string, path: string, what: string) => {
@@ -287,6 +288,40 @@ function checkPage(page: M4ParsedPage, all: Record<string, M4ParsedPage>, knownP
   const desktopIds = Object.keys(page.page11.desktop.organisms).sort().join(', ');
   const mobileIds = Object.keys(page.page11.mobile.organisms).sort().join(', ');
   if (desktopIds !== mobileIds) note('M4_INPUT_DEVICE_ORGANISMS', 'page11:organisms', `Desktop has [${desktopIds}] and mobile has [${mobileIds}]; each device renders its own.`);
+}
+
+/**
+ * The facts of every `required: true` entry param (materializadorL2.md §5: "the page does not open without it"), from the
+ * links the defs declare: the request inputs it feeds, whether that request is the opening load (`trigger: 'onLoad'`) and
+ * the route comment about that input. Whether the param is a condition of opening is the generator's reading
+ * (shared40 prompt, Entry params): an input of an action, or one the route comment says comes from the session, is not.
+ * tarefas (16/10/2026): `termo` feeds only a search, `avisoId` only the opening of one notice, `responsavelId` "vem do
+ * contexto, nunca da tela".
+ */
+export function m4RequiredParams(page: Pick<M4ParsedPage, 'shared' | 'contract'>): Array<{ param: string; opening: boolean; message: string }> {
+  const out: Array<{ param: string; opening: boolean; message: string }> = [];
+  for (const [name, param] of Object.entries(page.shared.entry.params)) {
+    if (!param.required) continue;
+    const feeds: string[] = [];
+    let opening = false;
+    for (const route of page.contract.routes) {
+      const member = route.inputMembers.find(item => item.name === name);
+      if (!member) continue;
+      const trigger = page.shared.requests[route.requestId]?.trigger;
+      const onLoad = trigger === 'onLoad';
+      if (onLoad && !member.optional) opening = true;
+      const said = route.jsdoc?.input?.split(';').map(part => part.trim()).find(part => new RegExp(`(?<![\\w$])${name}(?![\\w$])`, 'u').test(part));
+      feeds.push(`${route.requestId}.${name} (${onLoad ? 'the opening load' : `started by ${trigger ?? 'nothing'}`}${member.optional ? ', optional in the contract' : ''}${said ? `; the route says: "${said}"` : ''})`);
+    }
+    out.push({
+      param: name,
+      opening,
+      message: feeds.length
+        ? `Param ${name} is required. It feeds ${feeds.join(', ')}. It is a condition of opening only when it feeds the opening load and the route does not say it comes from the session or the context; otherwise it is required for the call it feeds, and the page opens without it.`
+        : `Param ${name} is required, but it feeds no request input of the contract: the page opens without it.`,
+    });
+  }
+  return out;
 }
 
 /** The context members of the input of every command a page11 submit intent sends (see M4ContextInput). */
