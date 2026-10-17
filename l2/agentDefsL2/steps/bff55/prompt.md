@@ -21,6 +21,7 @@ Types and origins:
 - types are named shapes reused by several endpoints, such as a record with its lines. A field is a leaf: string,
   number, boolean, a union of literals ('a' | 'b'), or the name of another type; add [] for a list. Nested shapes are
   always a named type.
+- A type description says what the record is, never where or how the page uses it.
 - A leaf with a field origin keeps the field's place in the ontology: in a shape, the path relative to the shape's
   root entity, nested as the ontology nests it; a field of another entity in the same shape sits under that entity's
   name in lowerCamel. The code writes those names from the origin, and the field keeps its ontology type.
@@ -29,6 +30,8 @@ Types and origins:
   total, no cursor). A list that is not paged stays a plain list.
 - Every value leaf names its origin: field with the one Entity.path it carries; aggregate with every Entity.path the
   value is computed from; context for a value that comes from the URL or a selection and fills no stored field.
+- The person who calls is never an input: the server knows who is logged in, fills the creator or the person of
+  their own records with them and filters the records that are theirs. Do not ask the page for that person, in a command or a query.
 - A cmd input leaf that fills a stored field uses field with that field's Entity.path, never context.
 - coverage lists every Entity.path the organisms read, with derived marking a field the server computes. Each one is
   the origin of some output leaf, or is inside an aggregate; a derived field is no exception.
@@ -43,7 +46,8 @@ jsdoc is written for the person and the model that implement the endpoint, in us
 - input: the meaning of each input;
 - processing: the filter, the composition, the computation and the rules it applies, by id and by what they demand;
   a derived field is computed, never stored or recorded by the endpoint;
-- output: what comes back and why the page needs it.
+- output: what comes back: which record, in which state, with what. Say what it is, never what the page does with it
+  (insert, replace, reload, redraw): that is the page's decision.
 
 bindings link the page to its endpoints; the shared and the contract are written from them by code:
 - organisms: for every organism that reads, one or more sources, one for each output key it shows, each as
