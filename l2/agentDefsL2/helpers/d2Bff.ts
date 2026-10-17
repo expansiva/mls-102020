@@ -288,8 +288,12 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   design = paginateD2BffDesign(design);
   // A field leaf of a type or an input keeps its path in the ontology (d2_79): relative to the root entity, or under the
   // other entity's name when it is a join. An output key stays one name (bindings and states point at it).
-  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
+  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
     const field = (leaf: D2BffLeaf): string => (leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '');
+    // A query input uses two leaves of one field as two roles (from/to). They keep the names the answer wrote.
+    const originCounts = new Map<string, number>();
+    if (keepSameOrigin) for (const path of rows.map(field).filter(Boolean)) originCounts.set(path, (originCounts.get(path) ?? 0) + 1);
+    const keepsName = (leaf: D2BffLeaf): boolean => (originCounts.get(field(leaf)) ?? 0) > 1;
     // The root: the entity of the `Entity.id` leaf, the written entity of a command input, else the entity most fields
     // come from (a line without its id still belongs to its own entity; the others are joins).
     const counted = new Map<string, number>();
@@ -306,7 +310,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
       const path = field(leaf);
       if (!path) return leaf;
       const entity = entityOf(path);
-      let name = derivedName(leaf);
+      let name = keepsName(leaf) ? leaf.name : derivedName(leaf);
       if (!nested && (counts.get(name) ?? 0) > 1 && entity !== root) name = `${lowerFirst(entity)}${name[0].toUpperCase()}${name.slice(1)}`;
       const type = d2OntologyLeafType(entitiesOf[entity], path);
       const ref = parseD2BffType(leaf.type);
@@ -315,20 +319,34 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
       return next;
     });
     // The same field twice is one leaf (d2_76); two different leaves under one name cannot be told apart.
+    // A query input is the exception: the two roles of one field stay two leaves.
     const unique: D2BffLeaf[] = [];
     for (const leaf of out) {
+      if (keepsName(leaf)) { unique.push(leaf); continue; }
       const same = unique.find(item => item.name === leaf.name);
       if (!same) { unique.push(leaf); continue; }
       if (JSON.stringify(same.origin) !== JSON.stringify(leaf.origin)) throw new Error(`D2_BFF_FORMAT: ${at}.${leaf.name}: two leaves with different origins carry the same name after the ontology names were applied.`);
     }
     return { rows: unique, renamed };
   };
+  const replaceNames = (text: string, renamed: Map<string, string>): string => {
+    if (!renamed.size) return text;
+    const keys = [...renamed.keys()].sort((a, b) => b.length - a.length);
+    const pattern = new RegExp(`\\b(?:${keys.map(key => key.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|')})\\b`, 'gu');
+    return text.replace(pattern, match => renamed.get(match) ?? match);
+  };
   const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`).rows }));
   const outputs = new Map<string, Map<string, string>>();
   const endpoints = design.endpoints.map(endpoint => {
     const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`, '', false);
     outputs.set(endpoint.id, output.renamed);
-    return { ...endpoint, input: fix(endpoint.input, `endpoints.${endpoint.id}.input`, endpoint.writes ? entityOf(endpoint.writes) : '').rows, output: output.rows };
+    const input = fix(endpoint.input, `endpoints.${endpoint.id}.input`, endpoint.writes ? entityOf(endpoint.writes) : '', true, endpoint.kind === 'qry');
+    return {
+      ...endpoint,
+      input: input.rows,
+      output: output.rows,
+      jsdoc: { ...endpoint.jsdoc, input: replaceNames(endpoint.jsdoc.input, input.renamed), output: replaceNames(endpoint.jsdoc.output, output.renamed) },
+    };
   });
   const ref = (value: string): string => {
     const dot = value.indexOf('.');
