@@ -288,7 +288,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   design = paginateD2BffDesign(design);
   // A field leaf of a type or an input keeps its path in the ontology (d2_79): relative to the root entity, or under the
   // other entity's name when it is a join. An output key stays one name (bindings and states point at it).
-  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountPrefix: string | null = null): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
+  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountChains: string[][] = []): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
     const field = (leaf: D2BffLeaf): string => (leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '');
     // A query input uses two leaves of one field as two roles (from/to). They keep the names the answer wrote.
     const originCounts = new Map<string, number>();
@@ -302,14 +302,23 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const root = rows.map(field).find(path => path.split('.').length === 2 && path.endsWith('.id'))?.split('.')[0] ?? (fallbackRoot || majority);
     const lowerFirst = (value: string): string => `${value[0].toLowerCase()}${value.slice(1)}`;
     const pathName = (path: string): string => { const entity = entityOf(path); const rel = path.slice(entity.length + 1); return entity === root ? rel : `${lowerFirst(entity)}.${rel}`; };
-    // A type mounted on a parent field keeps the path relative to that field (d2_104). One prefix, or none.
+    const fullName = (leaf: D2BffLeaf): string => { const path = field(leaf); return path ? (nested ? pathName(path) : path.split('.').slice(-1)[0]) : leaf.name; };
+    // A type mounted on a parent field keeps the path relative to that field (d2_104, d2_106). For each chain of field
+    // names that mounts the type, the prefix is the longest tail of the chain that every field leaf starts with; the
+    // chains must agree, else nothing is cut. It reads only the names, so an origin on the mounting field does not matter.
+    const named = rows.filter(leaf => field(leaf)).map(fullName);
+    const tailOf = (chain: string[]): string => {
+      for (let start = 0; start < chain.length; start++) {
+        const prefix = `${chain.slice(start).join('.')}.`;
+        if (named.every(name => name.startsWith(prefix) && name.length > prefix.length)) return prefix;
+      }
+      return '';
+    };
+    const tails = new Set(mountChains.map(tailOf));
+    const mountPrefix = named.length && tails.size === 1 ? [...tails][0] : '';
     const derivedName = (leaf: D2BffLeaf): string => {
-      const path = field(leaf);
-      if (!path) return leaf.name;
-      const name = nested ? pathName(path) : path.split('.').slice(-1)[0];
-      if (!mountPrefix || !name.startsWith(mountPrefix)) return name;
-      const rest = name.slice(mountPrefix.length);
-      return rest || name;
+      const name = fullName(leaf);
+      return field(leaf) && mountPrefix && name.startsWith(mountPrefix) ? name.slice(mountPrefix.length) : name;
     };
     const counts = new Map<string, number>();
     for (const leaf of rows) counts.set(derivedName(leaf), (counts.get(derivedName(leaf)) ?? 0) + 1);
@@ -343,43 +352,20 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const pattern = new RegExp(`\\b(?:${keys.map(key => key.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|')})\\b`, 'gu');
     return text.replace(pattern, match => renamed.get(match) ?? match);
   };
-  // Prefix of each type: the field names that mount it (`details.` + `identification.`). A field whose type is a named
-  // type is a mount even with a field origin (d2_105); that prefix is the origin path without the entity. Two different
-  // prefixes, or a cycle, leave the type as written. A type nothing mounts has no prefix. Endpoint outputs stay one name.
-  const mounts: Array<{ parent: string; field: string; child: string; originPrefix: string | null }> = [];
+  // The chains of field names that mount each type, from the outermost type down (d2_106). A cycle stops the chain.
+  const mounts: Array<{ parent: string; field: string; child: string }> = [];
   for (const type of design.types) {
     for (const row of type.fields) {
       const ref = parseD2BffType(row.type);
-      if (ref?.base !== 'ref') continue;
-      const path = row.origin?.kind === 'field' ? row.origin.paths[0] ?? '' : '';
-      if (row.origin && !path) continue;
-      const originPrefix = path ? `${path.slice(entityOf(path).length + 1)}.` : null;
-      mounts.push({ parent: type.name, field: row.name, child: ref.ref, originPrefix });
+      if (ref?.base === 'ref') mounts.push({ parent: type.name, field: row.name, child: ref.ref });
     }
   }
-  const mountOf = new Map<string, string | null>();
-  const pending = new Set<string>();
-  const mountPrefix = (name: string): string | null => {
-    if (mountOf.has(name)) return mountOf.get(name)!;
-    if (pending.has(name)) { mountOf.set(name, null); return null; }
-    pending.add(name);
-    const incoming = mounts.filter(mount => mount.child === name);
-    let value: string | null = '';
-    if (incoming.length) {
-      const candidates = new Set<string>();
-      for (const mount of incoming) {
-        if (mount.originPrefix) { candidates.add(mount.originPrefix); continue; }
-        const parent = mountPrefix(mount.parent);
-        if (parent === null) { value = null; break; }
-        candidates.add(`${parent}${mount.field}.`);
-      }
-      if (value !== null) value = candidates.size === 1 ? [...candidates][0] : null;
-    }
-    pending.delete(name);
-    mountOf.set(name, value);
-    return value;
+  const chainsOf = (name: string, seen: string[] = []): string[][] => {
+    const incoming = mounts.filter(mount => mount.child === name && mount.parent !== name && !seen.includes(mount.parent));
+    if (!incoming.length) return [[]];
+    return incoming.flatMap(mount => chainsOf(mount.parent, [...seen, name]).map(chain => [...chain, mount.field]));
   };
-  const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`, '', true, false, mountPrefix(type.name) || null).rows }));
+  const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`, '', true, false, chainsOf(type.name)).rows }));
   const outputs = new Map<string, Map<string, string>>();
   const endpoints = design.endpoints.map(endpoint => {
     const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`, '', false);

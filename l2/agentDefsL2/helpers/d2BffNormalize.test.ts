@@ -111,3 +111,26 @@ void test('a named type mounted through a field origin drops that origin path, n
   assert.deepEqual(names('MembroNomeDetalhes'), ['identification']);
   assert.deepEqual(names('MembroNome'), ['details']);
 });
+
+void test('d2_106: the mount prefix comes from the chain of field names, with or without an origin on the mounting field', () => {
+  // Shape of the tarefas answer of 17/10 (bff55/responses/inicio_membro-1.json): mounts without origin, and the summary
+  // mounted in a list field whose origin is Tarefa.id.
+  const mount = (name: string, typeName: string): D2BffLeaf => ({ name, type: typeName, origin: null as unknown as D2BffLeaf['origin'] });
+  const nested = normalizeD2BffDesign({
+    types: [
+      type('TarefaResumoDetalhes', [from('aberta', 'boolean', 'Tarefa.details.aberta'), from('atrasada', 'boolean', 'Tarefa.details.atrasada')]),
+      type('TarefaResumo', [from('id', 'string', 'Tarefa.id'), mount('details', 'TarefaResumoDetalhes')]),
+      type('ResumoMinhasTarefas', [from('tarefas', 'TarefaResumo[]', 'Tarefa.id')]),
+      type('MembroIdentificacao', [from('name', 'string', 'MembroEquipe.details.identification.name')]),
+      type('MembroDetalhes', [mount('identification', 'MembroIdentificacao')]),
+      type('MembroRef', [mount('details', 'MembroDetalhes')]),
+      type('TarefaPendencia', [from('id', 'string', 'Tarefa.id'), from('responsavel', 'MembroRef', 'MembroEquipe.details.identification.name'), from('criador', 'MembroRef', 'MembroEquipe.details.identification.name')]),
+    ],
+    endpoints: [qry([{ name: 'resumo', type: 'ResumoMinhasTarefas' }, { name: 'pendencia', type: 'TarefaPendencia' }])],
+    bindings,
+  }, entities);
+  const names = (typeName: string): string[] => nested.types.find(item => item.name === typeName)!.fields.map(item => item.name);
+  assert.deepEqual(names('TarefaResumoDetalhes'), ['aberta', 'atrasada']);
+  assert.deepEqual(names('MembroIdentificacao'), ['name']);
+  assert.deepEqual(names('MembroDetalhes'), ['identification']);
+});
