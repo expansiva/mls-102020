@@ -424,7 +424,7 @@ void test('d2_75: the shared comes from the design by code: entry params, refres
   // rule 8: the selected record survives a reload, from the URL then local storage.
   assert.deepEqual(shared.entry.params.comandaId, { type: 'string', sources: ['url', 'localStorage'], effect: 'select:detalheComanda', persist: true, required: false });
   assert.equal(shared.entry.params.comandaId.required, false);
-  assert.deepEqual(shared.states.selectedComanda, { source: 'entry.params.comandaId', description: 'Comanda pronta para a tela do garçom: cabeçalho, itens e subtotal.', organisms: ['acoesAtendimento', 'detalheComanda', 'lookupAtendimento'] });
+  assert.deepEqual(shared.states.selectedComanda, { source: 'entry.params.comandaId', description: 'the id of the Comanda selected in detalheComanda', organisms: ['acoesAtendimento', 'detalheComanda', 'lookupAtendimento'] });
   // No state takes a function as source; no description is an identifier.
   for (const [id, state] of Object.entries(shared.states)) {
     assert.ok(state.source.startsWith('entry.params.') || design.endpoints.some(item => state.source.startsWith(`${item.id}.`)), id);
@@ -1077,6 +1077,36 @@ void test('d2_100 s1: only an onLoad query gives a filter; page and pageSize are
   assert.equal(params.pageSize, undefined);
   assert.equal(params.termo, undefined);
   assert.deepEqual(Object.entries(params).filter(([, param]) => param.effect.startsWith('filter:')).map(([name]) => name), ['filtro']);
+});
+
+void test('d2_100 s2: navigation carries the id the source reads; selection and list have their own descriptions', async () => {
+  const { out } = await dining();
+  const derive = structuredClone(out.shared.atendimento.derive);
+  const record = 'Registro da lista carregado no formulário de edição.';
+  derive.design.types.push({ name: 'Lista', description: record, fields: [] });
+  derive.design.endpoints.push({
+    id: 'listarListas', kind: 'qry', when: 'onLoad', rules: [], input: [],
+    output: [{ name: 'listas', type: 'Lista[]', origin: { kind: 'field', paths: ['Lista.id'] } }],
+    jsdoc: { purpose: '', input: '', processing: '', output: record },
+  });
+  derive.design.bindings.organisms.push({ organism: 'gradeListas', reads: 'listarListas.listas' });
+  const needs = { reads: ['Lista.id'], edits: [], selects: '', submits: [] };
+  derive.drafts.desktop.organisms.painelLista = needs;
+  derive.drafts.mobile.organisms.painelLista = { ...needs, reads: ['Lista.nome'] };
+  derive.page11.desktop.organisms.painelLista = { kind: 'detail', text: 'Lista.', intents: [] };
+  derive.page11.mobile.organisms.painelLista = { kind: 'detail', text: 'Lista.', intents: [] };
+  const origin = structuredClone(derive.page11.desktop);
+  origin.organisms = { destaquesEquipe: { kind: 'list', text: 'Destaques.', intents: [{ id: 'abrirLista', kind: 'navigate', to: derive.pageId }] } };
+  derive.siblings = [{
+    pageId: 'origem',
+    page11: origin,
+    drafts: [{ organisms: { destaquesEquipe: { reads: ['Lista.nome', 'Lista.id'], edits: [], selects: '', submits: [] } } }],
+  }];
+  const shared = deriveD2Shared(derive);
+  assert.equal(shared.entry.params.listaId?.effect, 'select:painelLista');
+  assert.equal(shared.states.selectedComanda.description, 'the id of the Comanda selected in detalheComanda');
+  assert.notEqual(shared.states.selectedComanda.description, record);
+  assert.equal(shared.states.listas.description, `the list of ${record}`);
 });
 
 void test('d2_92 s2: a required relation target is still the non-optional relation of the write entity', () => {

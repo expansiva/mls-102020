@@ -67,10 +67,9 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
     if (!selected.has(param)) params[param] = { type: 'string', sources: SOURCES, effect: `select:${target}`, persist: true, required: false };
     selected.add(param);
     const stateId = `selected${entity}`;
-    const typeName = 'query' in row.via ? outputType(endpoint(row.via.query), design) : listItemType(row.via.list, design);
     // d2_80: the selecting organism and its target, over every selection that lands in this state.
     const feeds = sortedUnique([...(states[stateId]?.organisms ?? []), row.organism, target]);
-    states[stateId] = { source: `entry.params.${param}`, description: design.types.find(type => type.name === typeName)?.description || leafDescription(endpoint(('query' in row.via ? row.via.query : row.via.list).split('.')[0]), '', design), organisms: feeds };
+    states[stateId] = { source: `entry.params.${param}`, description: `the id of the ${entity} selected in ${row.organism}`, organisms: feeds };
   }
   // Prefill: an id an organism edits may come in the URL. Selection, navigation and filter keep their params.
   for (const [organismId, row] of organisms) {
@@ -144,24 +143,38 @@ function leafDescription(item: D2BffEndpoint | undefined, key: string, design: D
   const leaf = item?.output.find(row => row.name === key);
   const ref = leaf ? parseD2BffType(leaf.type) : null;
   const type = ref?.base === 'ref' ? design.types.find(row => row.name === ref.ref) : undefined;
+  if (ref?.list && type?.description) return `the list of ${type.description}`;
   return type?.description || item?.jsdoc.output || '';
 }
 
-/** A sibling page that navigates here from a selection opens this page with that record's id (rule 8). */
+/** `Entity.id` among an organism's reads. A longer path, or a field that is not the id, does not count. */
+function entityIdRead(reads: string[] | undefined): string {
+  const path = reads?.find(item => item.split('.').length === 2 && item.endsWith('.id'));
+  return path?.split('.')[0] ?? '';
+}
+
+/** A sibling page that navigates here opens this page with the record's id (rule 8). The effect names the organism here that reads that entity. */
 function navigationParams(input: D2SharedDeriveInput): D2SharedV2Definition['entry']['params'] {
   const params: D2SharedV2Definition['entry']['params'] = {};
-  const readEntities = new Set(input.need.reads.map(item => item.entity));
+  const readers = mergedOrganisms(input);
+  const organismFor = (entity: string): string => {
+    for (const [id, row] of readers) if (row.reads.some(path => path.split('.')[0] === entity)) return id;
+    return '';
+  };
   for (const sibling of input.siblings) {
     if (sibling.pageId === input.pageId) continue;
     const draft = (id: string) => sibling.drafts.map(row => row.organisms[id]).find(Boolean);
     for (const [id, organism] of Object.entries(sibling.page11.organisms)) {
       for (const intent of organism.intents) {
         if (intent.kind !== 'navigate' || intent.to !== input.pageId) continue;
-        const selected = draft(id)?.selects;
-        const target = (selected ? draft(selected) : undefined) ?? draft(id);
-        const entity = target?.reads[0]?.split('.')[0] ?? '';
-        if (!entity || !readEntities.has(entity)) continue;
-        params[`${camel(entity)}Id`] = params[`${camel(entity)}Id`] ?? { type: 'string', sources: SOURCES, effect: `select:${entity}`, persist: true, required: false };
+        const source = draft(id);
+        const selected = source?.selects ? draft(source.selects) : undefined;
+        const target = selected ?? source;
+        // The id the source reads, else the id the organism it selects reads, else the first read.
+        const entity = entityIdRead(source?.reads) || entityIdRead(selected?.reads) || target?.reads[0]?.split('.')[0] || '';
+        const reader = organismFor(entity);
+        if (!entity || !reader) continue;
+        params[`${camel(entity)}Id`] = params[`${camel(entity)}Id`] ?? { type: 'string', sources: SOURCES, effect: `select:${reader}`, persist: true, required: false };
       }
     }
   }
