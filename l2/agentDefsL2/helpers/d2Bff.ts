@@ -343,15 +343,18 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const pattern = new RegExp(`\\b(?:${keys.map(key => key.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|')})\\b`, 'gu');
     return text.replace(pattern, match => renamed.get(match) ?? match);
   };
-  // Prefix of each type: the field names that mount it (`details.` + `identification.`). Two different prefixes, or a
-  // cycle, leave the type as written. A type nothing mounts has no prefix. Endpoint outputs stay one name (`nested` false).
-  const mounts: Array<{ parent: string; field: string; child: string }> = [];
+  // Prefix of each type: the field names that mount it (`details.` + `identification.`). A field whose type is a named
+  // type is a mount even with a field origin (d2_105); that prefix is the origin path without the entity. Two different
+  // prefixes, or a cycle, leave the type as written. A type nothing mounts has no prefix. Endpoint outputs stay one name.
+  const mounts: Array<{ parent: string; field: string; child: string; originPrefix: string | null }> = [];
   for (const type of design.types) {
     for (const row of type.fields) {
-      if (row.origin) continue;
       const ref = parseD2BffType(row.type);
       if (ref?.base !== 'ref') continue;
-      mounts.push({ parent: type.name, field: row.name, child: ref.ref });
+      const path = row.origin?.kind === 'field' ? row.origin.paths[0] ?? '' : '';
+      if (row.origin && !path) continue;
+      const originPrefix = path ? `${path.slice(entityOf(path).length + 1)}.` : null;
+      mounts.push({ parent: type.name, field: row.name, child: ref.ref, originPrefix });
     }
   }
   const mountOf = new Map<string, string | null>();
@@ -365,6 +368,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     if (incoming.length) {
       const candidates = new Set<string>();
       for (const mount of incoming) {
+        if (mount.originPrefix) { candidates.add(mount.originPrefix); continue; }
         const parent = mountPrefix(mount.parent);
         if (parent === null) { value = null; break; }
         candidates.add(`${parent}${mount.field}.`);

@@ -78,3 +78,36 @@ void test('a mounted type drops the mount prefix; an unmounted type and two pref
   assert.match(source, /interface ADetails \{[^}]*total: number;/su);
   assert.doesNotMatch(source, /interface ADetails \{[^}]*details:/su);
 });
+
+// Excerpts of tarefas bff55 responses inicio_membro-1.json and inicio_gestor-1.json (102047 9587aaa).
+const from = (name: string, type: string, path: string): D2BffLeaf => ({ name, type, origin: { kind: 'field', paths: [path] } });
+
+void test('a named type mounted through a field origin drops that origin path, not a nested details', () => {
+  const nested = normalizeD2BffDesign({
+    types: [
+      type('TarefaResumoDetalhes', [
+        from('aberta', 'boolean', 'Tarefa.details.aberta'),
+        from('venceHoje', 'boolean', 'Tarefa.details.venceHoje'),
+        from('atrasada', 'boolean', 'Tarefa.details.atrasada'),
+        from('progressoChecklist', 'string', 'Tarefa.details.progressoChecklist'),
+      ]),
+      type('TarefaResumo', [
+        from('id', 'string', 'Tarefa.id'),
+        from('details', 'TarefaResumoDetalhes', 'Tarefa.details'),
+      ]),
+      type('ListaResumoDetalhes', [from('quantidadeTarefasAbertas', 'number', 'Lista.details.quantidadeTarefasAbertas')]),
+      type('ListaResumo', [from('details', 'ListaResumoDetalhes', 'Lista.details')]),
+      type('MembroNomeIdentificacao', [from('name', 'string', 'MembroEquipe.details.identification.name')]),
+      type('MembroNomeDetalhes', [from('identification', 'MembroNomeIdentificacao', 'MembroEquipe.details.identification')]),
+      type('MembroNome', [from('details', 'MembroNomeDetalhes', 'MembroEquipe.details')]),
+    ],
+    endpoints: [qry([{ name: 'row', type: 'TarefaResumo' }])],
+    bindings,
+  }, entities);
+  const names = (typeName: string): string[] => nested.types.find(item => item.name === typeName)!.fields.map(item => item.name);
+  assert.deepEqual(names('TarefaResumoDetalhes'), ['aberta', 'venceHoje', 'atrasada', 'progressoChecklist']);
+  assert.deepEqual(names('ListaResumoDetalhes'), ['quantidadeTarefasAbertas']);
+  assert.deepEqual(names('MembroNomeIdentificacao'), ['name']);
+  assert.deepEqual(names('MembroNomeDetalhes'), ['identification']);
+  assert.deepEqual(names('MembroNome'), ['details']);
+});
