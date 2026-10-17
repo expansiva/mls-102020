@@ -143,8 +143,12 @@ function leafDescription(item: D2BffEndpoint | undefined, key: string, design: D
   const leaf = item?.output.find(row => row.name === key);
   const ref = leaf ? parseD2BffType(leaf.type) : null;
   const type = ref?.base === 'ref' ? design.types.find(row => row.name === ref.ref) : undefined;
-  if (ref?.list && type?.description) return `the list of ${type.description}`;
-  return type?.description || item?.jsdoc.output || '';
+  if (type) {
+    if (ref?.list && type.description) return `the list of ${type.description}`;
+    return type.description || '';
+  }
+  // A scalar key has no type of its own; the response JSDoc describes the whole output.
+  return `the ${key} that ${item?.id ?? ''} returns`;
 }
 
 /** `Entity.id` among an organism's reads. A longer path, or a field that is not the id, does not count. */

@@ -1109,6 +1109,31 @@ void test('d2_100 s2: navigation carries the id the source reads; selection and 
   assert.equal(shared.states.listas.description, `the list of ${record}`);
 });
 
+void test('d2_100 s3: a scalar output without a named type does not inherit the response description', async () => {
+  const { out } = await dining();
+  const derive = structuredClone(out.shared.atendimento.derive);
+  const itemText = 'Uma despesa pendente.';
+  const whole = 'A resposta inteira do servidor, com totais e a lista.';
+  derive.design.types.push({ name: 'Item', description: itemText, fields: [] });
+  derive.design.endpoints.push({
+    id: 'listarPendentes', kind: 'qry', when: 'onLoad', rules: [], input: [],
+    output: [
+      { name: 'total', type: 'number', origin: { kind: 'field', paths: ['Item.id'] } },
+      { name: 'itens', type: 'Item[]', origin: { kind: 'field', paths: ['Item.id'] } },
+    ],
+    jsdoc: { purpose: '', input: '', processing: '', output: whole },
+  });
+  derive.design.bindings.organisms.push(
+    { organism: 'totalPendentes', reads: 'listarPendentes.total' },
+    { organism: 'listaPendentes', reads: 'listarPendentes.itens' },
+  );
+  const shared = deriveD2Shared(derive);
+  const bySource = (source: string) => Object.values(shared.states).find(state => state.source === source);
+  assert.equal(bySource('listarPendentes.total')?.description, 'the total that listarPendentes returns');
+  assert.notEqual(bySource('listarPendentes.total')?.description, whole);
+  assert.equal(bySource('listarPendentes.itens')?.description, `the list of ${itemText}`);
+});
+
 void test('d2_92 s2: a required relation target is still the non-optional relation of the write entity', () => {
   const entity = { relationships: { participante: { via: 'Inscricao.participanteId', to: 'Participante', required: true }, itens: { via: 'ItemComanda.inscricaoId', to: 'ItemComanda', required: true } } };
   assert.deepEqual(d2RequiredRelationTargets(entity as never, 'Inscricao'), [{ via: 'Inscricao.participanteId', to: 'Participante' }]);
