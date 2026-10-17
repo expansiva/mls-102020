@@ -36,7 +36,7 @@ import { buildD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_1
 import { deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
 import { d2RequiredRelationTargets } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 import { approveD2BffUnit, bffDesignInfo, bffReceiptInfo, bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, readApprovedD2Bff, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
-import { buildD2BffDesign, d2CoverageObligation, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { buildD2BffDesign, d2CoverageObligation, normalizeD2BffDesign, type D2BffDesign, type D2BffEndpoint, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { d2ToolPayload } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
@@ -430,13 +430,14 @@ void test('d2_75: the shared comes from the design by code: entry params, refres
     assert.ok(state.source.startsWith('entry.params.') || design.endpoints.some(item => state.source.startsWith(`${item.id}.`)), id);
     assert.doesNotMatch(state.description, /^[a-z][A-Za-z0-9]*$/u, id);
   }
-  const requiredFilter = design.endpoints.filter(item => item.kind === 'qry').flatMap(item => item.input).find(leaf => {
+  // d2_100: buscarItemCardapio.name is an interaction query, so it is not an entry param.
+  assert.equal(shared.entry.params.name, undefined);
+  const requiredFilter = design.endpoints.filter(item => item.kind === 'qry' && item.when === 'onLoad').flatMap(item => item.input).find(leaf => {
     const name = leaf.name.split('.').pop() ?? '';
     const param = shared.entry.params[name];
-    return name !== 'page' && leaf.optional !== true && param?.effect.startsWith('filter:');
+    return name !== 'page' && name !== 'pageSize' && leaf.optional !== true && param?.effect.startsWith('filter:');
   });
-  if (!requiredFilter) assert.fail('a required filter leaf');
-  assert.equal(shared.entry.params[requiredFilter.name.split('.').pop()!].required, true);
+  if (requiredFilter) assert.equal(shared.entry.params[requiredFilter.name.split('.').pop()!].required, true);
   assert.deepEqual(shared.rules, [...new Set(design.endpoints.flatMap(item => item.rules))].sort());
   for (const journey of shared.journeys) assert.equal('functions' in journey, false);
   // requests, rules and access are A's.
@@ -886,7 +887,7 @@ void test('d2_78: every endpoint has the destination A declared, transcribed by 
   const shared = stock.sharedDefs.produtos;
   // The selected record keeps select: even with a filter of the same page; filters come only from queries an organism reads.
   assert.equal(shared.entry.params.produtoId.effect, 'select:detalheProduto');
-  assert.deepEqual(Object.entries(shared.entry.params).filter(([, param]) => param.effect.startsWith('filter:')).map(([name, param]) => `${name}=${param.effect}`), ['name=filter:saldosResumo', 'page=filter:saldosResumo']);
+  assert.deepEqual(Object.entries(shared.entry.params).filter(([, param]) => param.effect.startsWith('filter:')).map(([name, param]) => `${name}=${param.effect}`), ['name=filter:saldosResumo']);
 
   // A command without a declared destination is refused in B, with the path.
   const answer = readPack('stock').json<RawDesign & { bindings: { updates: Array<{ endpoint: string }> } }>('answers/bff55/produtos.json');
@@ -1046,6 +1047,36 @@ void test('d2_82 s3: a create-only form does not ask the backend to feed the fie
   }
   const control = refusalOf(() => d2BffApproved({ ...pacientes, drafts }, clinicR2Answer('pacientes-2.json')));
   assert.match(control, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
+});
+
+void test('d2_100 s1: only an onLoad query gives a filter; page and pageSize are not params', async () => {
+  const { out } = await dining();
+  const derive = out.shared.atendimento.derive;
+  const design = structuredClone(derive.design);
+  const qry = (id: string, when: 'onLoad' | 'interaction', names: Array<{ name: string; type: string }>): D2BffEndpoint => ({
+    id, kind: 'qry', when, rules: [],
+    input: names.map(leaf => ({ name: leaf.name, type: leaf.type, origin: { kind: 'field', paths: [`Entidade.details.${leaf.name}`] } })),
+    output: [{ name: 'lista', type: 'string', origin: { kind: 'field', paths: ['Entidade.id'] } }],
+    jsdoc: { purpose: '', input: '', processing: '', output: '' },
+  });
+  design.endpoints = [
+    qry('abrir', 'onLoad', [{ name: 'filtro', type: 'string' }, { name: 'page', type: 'number' }, { name: 'pageSize', type: 'number' }]),
+    qry('buscar', 'interaction', [{ name: 'termo', type: 'string' }]),
+  ];
+  design.bindings = {
+    ...design.bindings,
+    organisms: [{ organism: 'lista', reads: 'abrir.lista' }, { organism: 'busca', reads: 'buscar.lista' }],
+    selections: [],
+    updates: [],
+  };
+  const params = deriveD2Shared({ ...derive, design }).entry.params;
+  assert.equal(params.filtro?.effect, 'filter:lista');
+  assert.equal(params.filtro?.persist, true);
+  assert.equal(params.filtro?.required, true);
+  assert.equal(params.page, undefined);
+  assert.equal(params.pageSize, undefined);
+  assert.equal(params.termo, undefined);
+  assert.deepEqual(Object.entries(params).filter(([, param]) => param.effect.startsWith('filter:')).map(([name]) => name), ['filtro']);
 });
 
 void test('d2_92 s2: a required relation target is still the non-optional relation of the write entity', () => {

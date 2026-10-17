@@ -168,11 +168,11 @@ function navigationParams(input: D2SharedDeriveInput): D2SharedV2Definition['ent
   return params;
 }
 
-/** The inputs of the page queries that filter or page what the page shows survive a reload (rule 8). */
+/** The inputs of the onLoad queries that filter what the page shows survive a reload (rule 8). page and pageSize do not. */
 function filterParams(input: D2SharedDeriveInput): D2SharedV2Definition['entry']['params'] {
   const params: D2SharedV2Definition['entry']['params'] = {};
   const readerOf = (ref: string): string | undefined => input.design.bindings.organisms.find(row => row.reads === ref)?.organism;
-  for (const item of input.design.endpoints.filter(row => row.kind === 'qry')) {
+  for (const item of input.design.endpoints.filter(row => row.kind === 'qry' && row.when === 'onLoad')) {
     // The organism that reads what the query brings: its own output, or the state it updates. No reader, no filter.
     const target = input.design.bindings.organisms.find(row => row.reads.split('.')[0] === item.id)?.organism
       ?? input.design.bindings.updates.filter(row => row.endpoint === item.id).map(row => readerOf(row.state)).find(Boolean);
@@ -182,9 +182,9 @@ function filterParams(input: D2SharedDeriveInput): D2SharedV2Definition['entry']
       if (path.split('.').length === 2 && path.endsWith('.id')) continue; // the selected id is the selection's param
       // An entry param is one URL name: the last segment of a nested input (d2_79).
       const name = leaf.name.split('.').slice(-1)[0];
-      if (name === 'pageSize' || params[name]) continue;
+      if (name === 'page' || name === 'pageSize' || params[name]) continue;
       const ref = parseD2BffType(leaf.type);
-      params[name] = { type: ref?.base === 'number' || ref?.base === 'boolean' ? ref.base : 'string', sources: SOURCES, effect: `filter:${target}`, persist: true, required: name !== 'page' && leaf.optional !== true };
+      params[name] = { type: ref?.base === 'number' || ref?.base === 'boolean' ? ref.base : 'string', sources: SOURCES, effect: `filter:${target}`, persist: true, required: leaf.optional !== true };
     }
   }
   return params;
