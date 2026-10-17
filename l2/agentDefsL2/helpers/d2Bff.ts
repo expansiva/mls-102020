@@ -288,7 +288,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   design = paginateD2BffDesign(design);
   // A field leaf of a type or an input keeps its path in the ontology (d2_79): relative to the root entity, or under the
   // other entity's name when it is a join. An output key stays one name (bindings and states point at it).
-  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
+  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountPrefix: string | null = null): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
     const field = (leaf: D2BffLeaf): string => (leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '');
     // A query input uses two leaves of one field as two roles (from/to). They keep the names the answer wrote.
     const originCounts = new Map<string, number>();
@@ -302,7 +302,15 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const root = rows.map(field).find(path => path.split('.').length === 2 && path.endsWith('.id'))?.split('.')[0] ?? (fallbackRoot || majority);
     const lowerFirst = (value: string): string => `${value[0].toLowerCase()}${value.slice(1)}`;
     const pathName = (path: string): string => { const entity = entityOf(path); const rel = path.slice(entity.length + 1); return entity === root ? rel : `${lowerFirst(entity)}.${rel}`; };
-    const derivedName = (leaf: D2BffLeaf): string => { const path = field(leaf); return path ? (nested ? pathName(path) : path.split('.').slice(-1)[0]) : leaf.name; };
+    // A type mounted on a parent field keeps the path relative to that field (d2_104). One prefix, or none.
+    const derivedName = (leaf: D2BffLeaf): string => {
+      const path = field(leaf);
+      if (!path) return leaf.name;
+      const name = nested ? pathName(path) : path.split('.').slice(-1)[0];
+      if (!mountPrefix || !name.startsWith(mountPrefix)) return name;
+      const rest = name.slice(mountPrefix.length);
+      return rest || name;
+    };
     const counts = new Map<string, number>();
     for (const leaf of rows) counts.set(derivedName(leaf), (counts.get(derivedName(leaf)) ?? 0) + 1);
     const renamed = new Map<string, string>();
@@ -335,7 +343,39 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const pattern = new RegExp(`\\b(?:${keys.map(key => key.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|')})\\b`, 'gu');
     return text.replace(pattern, match => renamed.get(match) ?? match);
   };
-  const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`).rows }));
+  // Prefix of each type: the field names that mount it (`details.` + `identification.`). Two different prefixes, or a
+  // cycle, leave the type as written. A type nothing mounts has no prefix. Endpoint outputs stay one name (`nested` false).
+  const mounts: Array<{ parent: string; field: string; child: string }> = [];
+  for (const type of design.types) {
+    for (const row of type.fields) {
+      if (row.origin) continue;
+      const ref = parseD2BffType(row.type);
+      if (ref?.base !== 'ref') continue;
+      mounts.push({ parent: type.name, field: row.name, child: ref.ref });
+    }
+  }
+  const mountOf = new Map<string, string | null>();
+  const pending = new Set<string>();
+  const mountPrefix = (name: string): string | null => {
+    if (mountOf.has(name)) return mountOf.get(name)!;
+    if (pending.has(name)) { mountOf.set(name, null); return null; }
+    pending.add(name);
+    const incoming = mounts.filter(mount => mount.child === name);
+    let value: string | null = '';
+    if (incoming.length) {
+      const candidates = new Set<string>();
+      for (const mount of incoming) {
+        const parent = mountPrefix(mount.parent);
+        if (parent === null) { value = null; break; }
+        candidates.add(`${parent}${mount.field}.`);
+      }
+      if (value !== null) value = candidates.size === 1 ? [...candidates][0] : null;
+    }
+    pending.delete(name);
+    mountOf.set(name, value);
+    return value;
+  };
+  const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`, '', true, false, mountPrefix(type.name) || null).rows }));
   const outputs = new Map<string, Map<string, string>>();
   const endpoints = design.endpoints.map(endpoint => {
     const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`, '', false);
