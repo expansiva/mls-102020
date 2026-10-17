@@ -308,10 +308,10 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const lowerFirst = (value: string): string => `${value[0].toLowerCase()}${value.slice(1)}`;
     const pathName = (path: string): string => { const entity = entityOf(path); const rel = path.slice(entity.length + 1); return entity === root ? rel : `${lowerFirst(entity)}.${rel}`; };
     const fullName = (leaf: D2BffLeaf): string => { const path = field(leaf); return path ? (nested ? pathName(path) : path.split('.').slice(-1)[0]) : leaf.name; };
-    // A type mounted on a parent field keeps the path relative to that field (d2_104, d2_106). For each chain of field
-    // names that mounts the type, the prefix is the longest tail of the chain that every field leaf starts with; the
-    // chains must agree, else nothing is cut. It reads only the names, so an origin on the mounting field does not matter.
-    const named = rows.filter(leaf => field(leaf)).map(fullName);
+    // A type mounted on a parent field keeps the path relative to that field (d2_104, d2_106, d2_110). For each chain of
+    // field names that mounts the type, the prefix is the longest tail of the chain that every root-entity field leaf
+    // starts with; the chains must agree, else nothing is cut. Join leaves (another entity) do not vote and are not cut.
+    const named = rows.filter(leaf => field(leaf) && entityOf(field(leaf)) === root).map(fullName);
     const tailOf = (chain: string[]): string => {
       for (let start = 0; start < chain.length; start++) {
         const prefix = `${chain.slice(start).join('.')}.`;
@@ -323,7 +323,8 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const mountPrefix = named.length && tails.size === 1 ? [...tails][0] : '';
     const derivedName = (leaf: D2BffLeaf): string => {
       const name = fullName(leaf);
-      return field(leaf) && mountPrefix && name.startsWith(mountPrefix) ? name.slice(mountPrefix.length) : name;
+      const path = field(leaf);
+      return path && entityOf(path) === root && mountPrefix && name.startsWith(mountPrefix) ? name.slice(mountPrefix.length) : name;
     };
     const counts = new Map<string, number>();
     for (const leaf of rows) counts.set(derivedName(leaf), (counts.get(derivedName(leaf)) ?? 0) + 1);
@@ -357,12 +358,19 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const pattern = new RegExp(`\\b(?:${keys.map(key => key.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|')})\\b`, 'gu');
     return text.replace(pattern, match => renamed.get(match) ?? match);
   };
-  // The chains of field names that mount each type, from the outermost type down (d2_106). A cycle stops the chain.
+  // The chains of field names that mount each type, from the outermost type or endpoint leaf down (d2_106, d2_110).
+  // A cycle stops the chain. An endpoint leaf is a root of the chain (parent is not a type).
   const mounts: Array<{ parent: string; field: string; child: string }> = [];
   for (const type of design.types) {
     for (const row of type.fields) {
       const ref = parseD2BffType(row.type);
       if (ref?.base === 'ref') mounts.push({ parent: type.name, field: row.name, child: ref.ref });
+    }
+  }
+  for (const endpoint of design.endpoints) {
+    for (const row of [...endpoint.input, ...endpoint.output]) {
+      const ref = parseD2BffType(row.type);
+      if (ref?.base === 'ref') mounts.push({ parent: `#${endpoint.id}`, field: row.name, child: ref.ref });
     }
   }
   const chainsOf = (name: string, seen: string[] = []): string[][] => {

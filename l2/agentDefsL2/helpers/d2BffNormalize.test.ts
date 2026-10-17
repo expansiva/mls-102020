@@ -1,10 +1,11 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2BffNormalize.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
-import { d2OntologyLeafType, normalizeD2BffDesign, type D2BffDesign, type D2BffEndpoint, type D2BffLeaf, type D2BffType } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { buildD2BffDesign, d2OntologyLeafType, normalizeD2BffDesign, type D2BffDesign, type D2BffEndpoint, type D2BffLeaf, type D2BffType } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2ContractFromBff } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
 import { renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 
@@ -133,6 +134,70 @@ void test('d2_106: the mount prefix comes from the chain of field names, with or
   assert.deepEqual(names('TarefaResumoDetalhes'), ['aberta', 'atrasada']);
   assert.deepEqual(names('MembroIdentificacao'), ['name']);
   assert.deepEqual(names('MembroDetalhes'), ['identification']);
+});
+
+void test('d2_110: a named type mounted on an endpoint leaf drops the mount prefix; a join leaf does not vote', () => {
+  const nested = normalizeD2BffDesign({
+    types: [
+      type('TarefaDescricaoDetails', [from('descricao', 'string', 'Tarefa.details.descricao')]),
+      type('AvisoTarefa', [
+        from('id', 'string', 'Aviso.details.id'),
+        from('prazo', 'string', 'Aviso.details.prazo'),
+        from('titulo', 'string', 'Tarefa.titulo'),
+      ]),
+      type('AvisoDetalhes', [{ name: 'details', type: 'AvisoTarefa' }]),
+    ],
+    endpoints: [{
+      ...qry([{ name: 'row', type: 'AvisoDetalhes' }]),
+      input: [{ name: 'details', type: 'TarefaDescricaoDetails' }],
+    }],
+    bindings,
+  }, entities);
+  const names = (typeName: string): string[] => nested.types.find(item => item.name === typeName)!.fields.map(item => item.name);
+  assert.deepEqual(names('TarefaDescricaoDetails'), ['descricao']);
+  assert.deepEqual(names('AvisoTarefa'), ['id', 'prazo', 'tarefa.titulo']);
+});
+
+void test('d2_110: the three real tarefas bff55 answers have no mounted type repeating its mount field', () => {
+  const files = [
+    'd2_110_734e360_minhas_tarefas-1.json',
+    'd2_110_9587aaa_minhas_tarefas-1.json',
+    'd2_110_ffa4a28_minhas_tarefas-1.json',
+    'd2_110_ffa4a28_meus_avisos-1.json',
+  ];
+  for (const file of files) {
+    const envelope = JSON.parse(readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8')) as { raw: { result: { arguments: unknown } } };
+    const design = normalizeD2BffDesign(buildD2BffDesign(envelope.raw.result.arguments), entities);
+    const source = renderD2ContractV2(
+      { project: 1, module: 'tarefas', pageId: file.includes('avisos') ? 'meus_avisos' : 'minhas_tarefas' },
+      buildD2ContractFromBff({
+        module: 'tarefas', pageId: file.includes('avisos') ? 'meus_avisos' : 'minhas_tarefas', design,
+        access: { actors: ['clerk'], grants: ['manage'], scope: 'organization' },
+        entities, userLanguage: 'en',
+      }),
+    );
+    const mountFields = new Map<string, Set<string>>();
+    const add = (child: string, field: string): void => {
+      const set = mountFields.get(child) ?? new Set<string>();
+      set.add(field);
+      mountFields.set(child, set);
+    };
+    for (const row of design.types) for (const leaf of row.fields) {
+      const ref = leaf.type.replace(/\[\]$/u, '');
+      if (design.types.some(item => item.name === ref)) add(ref, leaf.name);
+    }
+    for (const endpoint of design.endpoints) for (const leaf of [...endpoint.input, ...endpoint.output]) {
+      const ref = leaf.type.replace(/\[\]$/u, '');
+      if (design.types.some(item => item.name === ref)) add(ref, leaf.name);
+    }
+    for (const type of design.types) {
+      for (const field of mountFields.get(type.name) ?? []) {
+        assert.equal(type.fields.some(leaf => leaf.name === field || leaf.name.startsWith(`${field}.`)), false, `${file} ${type.name} keeps ${field}`);
+      }
+    }
+    assert.doesNotMatch(source, /interface TarefaDescricaoDetails \{[^}]*details:/su, file);
+    assert.doesNotMatch(source, /interface TarefaMotivoDetails \{[^}]*details:/su, file);
+  }
 });
 
 void test('d2_107: an L4 enum written as plain strings gives the same values as one written as { value, title }', () => {
