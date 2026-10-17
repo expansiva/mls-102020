@@ -75,6 +75,11 @@ export const D2_BFF_UPDATE_MODES: readonly D2BffUpdateMode[] = ['replace', 'appe
 export interface D2BffDesign { types: D2BffType[]; endpoints: D2BffEndpoint[]; bindings: D2BffBindings }
 export interface D2BffIssue { code: string; path: string; message: string }
 
+/** An L4 enum value is a plain string or `{ value, title }` (`Ns5OntologyValueV3`); both name the same value. */
+export function d2EnumValue(item: string | { value: string }): string {
+  return typeof item === 'string' ? item : item.value;
+}
+
 export interface D2BffTypeRef { base: 'string' | 'number' | 'boolean' | 'enum' | 'ref'; values: string[]; ref: string; list: boolean }
 
 const PATH = /^[A-Z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+$/u;
@@ -442,7 +447,7 @@ export function paginateD2BffDesign(design: D2BffDesign): D2BffDesign {
 export function d2OntologyLeafType(entity: Ns5OntologyAnyEntity | undefined, path: string): D2BffTypeRef | null {
   const field = fieldAt(entity, path);
   if (!field || field.fields) return null;
-  if (field.type === 'enum' && field.values?.length) return { base: 'enum', values: field.values.map(item => item.value), ref: '', list: false };
+  if (field.type === 'enum' && field.values?.length) return { base: 'enum', values: field.values.map(d2EnumValue), ref: '', list: false };
   if (field.type === 'boolean') return { base: 'boolean', values: [], ref: '', list: false };
   if (field.type === 'integer' || field.type === 'number' || field.type === 'decimal') return { base: 'number', values: [], ref: '', list: false };
   return { base: 'string', values: [], ref: '', list: false };
@@ -641,7 +646,7 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
       const ref = parseD2BffType(leaf.type);
       if (ref?.base === 'enum' && leaf.origin?.kind === 'field') {
         const field = fieldAt(context.entities[entityOf(leaf.origin.paths[0])], leaf.origin.paths[0]);
-        const values = field?.type === 'enum' ? (field.values ?? []).map(item => item.value) : null;
+        const values = field?.type === 'enum' ? (field.values ?? []).map(d2EnumValue) : null;
         if (!values) add('D2_BFF_ENUM', at, `${leaf.origin.paths[0]} is not an enum in L4.`);
         else {
           const extra = ref.values.filter(item => !values.includes(item));
@@ -698,7 +703,7 @@ export function d2BffL4Slice(entities: Record<string, Ns5OntologyAnyEntity>, rul
         if (field.fields) { walk(field.fields, path); continue; }
         fields.push({
           path, type: field.type ?? '', ...(field.required ? { required: true } : {}), ...(field.derived ? { derived: true } : {}),
-          ...(field.values?.length ? { values: field.values.map(item => item.value) } : {}),
+          ...(field.values?.length ? { values: field.values.map(d2EnumValue) } : {}),
           ...(field.title ? { title: field.title } : {}), ...(field.description ? { description: field.description } : {}),
         });
       }

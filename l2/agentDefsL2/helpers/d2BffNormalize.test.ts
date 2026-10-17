@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
-import { normalizeD2BffDesign, type D2BffDesign, type D2BffEndpoint, type D2BffLeaf, type D2BffType } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { d2OntologyLeafType, normalizeD2BffDesign, type D2BffDesign, type D2BffEndpoint, type D2BffLeaf, type D2BffType } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2ContractFromBff } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
 import { renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 
@@ -133,4 +133,11 @@ void test('d2_106: the mount prefix comes from the chain of field names, with or
   assert.deepEqual(names('TarefaResumoDetalhes'), ['aberta', 'atrasada']);
   assert.deepEqual(names('MembroIdentificacao'), ['name']);
   assert.deepEqual(names('MembroDetalhes'), ['identification']);
+});
+
+void test('d2_107: an L4 enum written as plain strings gives the same values as one written as { value, title }', () => {
+  // inicio (17/10): PessoaOrganizacao.details.identification.status is ["Active", ...]; Empresa's status is [{ value, title }].
+  const role = (values: unknown[]) => ({ record: { fields: { details: { type: 'object', fields: { status: { type: 'enum', values } } } } } }) as unknown as Ns5OntologyAnyEntity;
+  assert.deepEqual(d2OntologyLeafType(role(['Active', 'Inactive']), 'Pessoa.details.status')?.values, ['Active', 'Inactive']);
+  assert.deepEqual(d2OntologyLeafType(role([{ value: 'Active', title: 'Ativa' }, { value: 'Inactive' }]), 'Pessoa.details.status')?.values, ['Active', 'Inactive']);
 });

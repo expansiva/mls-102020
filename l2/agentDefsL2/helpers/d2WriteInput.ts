@@ -52,7 +52,7 @@ export function d2CreateRequiredInput(entity: Ns5OntologyAnyEntity | undefined, 
       const path = `${prefix}.${key}`;
       if (field.fields) { walk(field.fields, path); continue; }
       if (!field.required || field.derived) continue;
-      if (field.type === 'enum' && states.size && [...states].every(state => (field.values ?? []).some(item => item.value === state))) continue;
+      if (field.type === 'enum' && states.size && [...states].every(state => (field.values ?? []).some(item => (typeof item === 'string' ? item : item.value) === state))) continue;
       if (sequence && field.unique && field.type === 'integer') continue;
       if (foreignKeys.has(path)) continue;
       out.push(path);
