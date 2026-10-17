@@ -8,8 +8,8 @@ Decide how many endpoints there are, the shape of each output, paging, filters a
 app: transfer and performance. Load what the page shows when it opens in one call, already in the shape the page uses:
 a header with its lines, an indicator already computed, a list already filtered by the situation the intent names.
 Fetch on demand what the person searches or selects. Page a list only when it can grow beyond what one screen needs.
-A command returns what the page redraws after it (the updated record with its lines and totals), so the page needs no
-second call. An indicator is computed in the endpoint: the output is the number, never a raw list for the page to sum.
+A command returns the record it changed, in its new state, with its lines and totals. An indicator is computed in the
+endpoint: the output is the number, never a raw list for the page to sum.
 
 Kinds and triggers:
 - qry runs onLoad or on interaction; cmd runs on a submit intent and its when is that intent id.
