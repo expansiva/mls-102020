@@ -13,7 +13,7 @@
 
 import { registerStudioEditTool, currentEditHost, type IStudioEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { readDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
-import { saveToDraft } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
+import { afterDraftSave, saveToDraft } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { resetAuraSeed, seedActiveHeader, seedAuraStateFromHost } from '/_102020_/l2/aura/studio/studioAuraSeed.js';
 import {
@@ -174,10 +174,10 @@ class DraftAutoSave implements IDraftAutoSave {
         batch,
         autosaveMessage(batch),
         (clean, msg) => mls.stor.setContents(clean, msg),
-        (file) => mls.stor.localStor.setContent(file, { content: null }),
+        (file) => afterDraftSave(file),
       );
       for (const file of batch) {
-        if (file.hasError && file.status !== 'deleted') continue;
+        if (file.status === 'deleted' || file.hasError) continue;
         moveCrcBaseline(file);
       }
       publishPanel({

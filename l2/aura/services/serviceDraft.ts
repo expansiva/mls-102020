@@ -6,6 +6,7 @@ import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/
 import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
 import { isVmDriver, readDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
 import {
+    afterDraftSave,
     branchForSlug,
     collectEditedFiles,
     discard,
@@ -636,7 +637,7 @@ export class ServiceDraft102020 extends ServiceBase {
                 files,
                 comment,
                 (clean, text) => mls.stor.setContents(clean, text),
-                (file) => mls.stor.localStor.setContent(file, { content: null }),
+                (file) => afterDraftSave(file),
             );
             this._blocked = saved.blocked;
             if (saved.blocked.length > 0) {

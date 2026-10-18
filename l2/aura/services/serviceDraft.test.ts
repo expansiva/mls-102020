@@ -122,7 +122,7 @@ test('auto-save sends through saveToDraft, not setContents on its own', () => {
     const send = TOOL.slice(sendAt, TOOL.indexOf(');', sendAt) + 2);
     assert.match(send, /autosaveMessage\(batch\)/);
     assert.match(send, /\(clean, msg\) => mls\.stor\.setContents\(clean, msg\)/);
-    assert.match(send, /mls\.stor\.localStor\.setContent\(file, \{ content: null \}\)/);
+    assert.match(send, /\(file\) => afterDraftSave\(file\)/);
     const outside = TOOL.slice(0, sendAt) + TOOL.slice(sendAt + send.length);
     assert.doesNotMatch(outside, /mls\.stor\.setContents\(/);
 });
