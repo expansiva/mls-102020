@@ -18,6 +18,7 @@ import {
     saveDefaultDraft,
     saveToDraft,
     slugForBranch,
+    syncWithPublished,
     viewDiff,
     type FetchImpl,
     type IDraftWaitResult,
@@ -79,6 +80,8 @@ const message_en = {
     autoSaveWaiting: 'Auto-save: on · no send yet · {pending} pending',
     autoSaveOff: 'Auto-save: off',
     autoSaveFailed: 'not saved: {reason}',
+    syncPublished: 'Bring in published changes',
+    syncConflict: 'Conflicts with the published version in: {files}. Nothing was changed.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -133,6 +136,8 @@ const messages: Record<string, MessageType> = {
         autoSaveWaiting: 'Auto-save: ligado · ainda sem envio · {pending} pendentes',
         autoSaveOff: 'Auto-save: desligado',
         autoSaveFailed: 'não salvo: {reason}',
+        syncPublished: 'Trazer o publicado',
+        syncConflict: 'Conflito com o publicado em: {files}. Nada foi alterado.',
     },
     es: {
         svcTitle: 'Borrador',
@@ -184,6 +189,8 @@ const messages: Record<string, MessageType> = {
         autoSaveWaiting: 'Auto-save: activo · todavía sin envío · {pending} pendientes',
         autoSaveOff: 'Auto-save: apagado',
         autoSaveFailed: 'no guardado: {reason}',
+        syncPublished: 'Traer lo publicado',
+        syncConflict: 'Conflicto con lo publicado en: {files}. No se cambió nada.',
     },
 };
 /// **collab_i18n_end**
@@ -451,6 +458,9 @@ export class ServiceDraft102020 extends ServiceBase {
                     <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${this.msg.publish}</button>
                     <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${this.msg.discard}</button>
                     <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>
+                    ${current && current.behind > 0
+                        ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSyncPublished(); }}>${this.msg.syncPublished}</button>`
+                        : nothing}
                 </div>
             </div>
         `;
@@ -795,6 +805,25 @@ export class ServiceDraft102020 extends ServiceBase {
         } catch (err) {
             console.error('[serviceDraft] discard failed:', err);
             this._error = err instanceof Error ? err.message : String(err);
+            this._phase = 'error';
+        }
+    }
+
+    private async _onSyncPublished(): Promise<void> {
+        const project = this._projectId;
+        if (!project || !this._slug || !isVmDriver(this._driver)) return;
+        try {
+            await syncWithPublished({
+                fetchImpl,
+                reload: () => location.reload(),
+            }, project, this._slug);
+        } catch (err) {
+            console.error('[serviceDraft] draft sync failed:', err);
+            const message = err instanceof Error ? err.message : String(err);
+            const conflictPrefix = 'DRAFT_CONFLICT: ';
+            this._error = message.startsWith(conflictPrefix)
+                ? this.msg.syncConflict.replace('{files}', message.slice(conflictPrefix.length))
+                : message;
             this._phase = 'error';
         }
     }

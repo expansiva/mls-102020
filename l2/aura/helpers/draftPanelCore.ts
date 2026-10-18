@@ -381,6 +381,30 @@ export async function discard(
   effects.reload();
 }
 
+/** `DRAFT_CONFLICT: <files>` — the panel turns this into `syncConflict`. */
+export async function syncWithPublished(
+  effects: IDiscardEffects,
+  project: number,
+  slug: string,
+): Promise<void> {
+  const result = await callExec(effects.fetchImpl, 'draftSync', { project, draft: slug });
+  if (!result.ok) {
+    if (result.code === 'DRAFT_CONFLICT') {
+      return fail(`DRAFT_CONFLICT: ${(result.files ?? []).join(', ')}`);
+    }
+    return fail(result.code);
+  }
+  if (
+    result.status === 'fast_forwarded'
+    || result.status === 'merged'
+    || result.status === 'up_to_date'
+  ) {
+    effects.reload();
+    return;
+  }
+  return fail(result.status ?? 'draftSync failed');
+}
+
 /**
  * Dirty files of one project: `inLocalStorage` or `status === 'deleted'`, and `project !== 0`.
  * Same filter as serviceSave's save list — not the localDB prefix scan.

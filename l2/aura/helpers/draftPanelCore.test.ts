@@ -15,6 +15,7 @@ import {
   saveDefaultDraft,
   saveToDraft,
   slugForBranch,
+  syncWithPublished,
   viewDiff,
   type FetchImpl,
   type IDraftWaitResult,
@@ -192,6 +193,47 @@ test('discard reloads only after discardDraft succeeds', async () => {
     /BAD_DRAFT/,
   );
   assert.deepEqual(refused, []);
+});
+
+test('syncWithPublished reloads on merged and rejects DRAFT_CONFLICT with the files', async () => {
+  for (const status of ['fast_forwarded', 'merged', 'up_to_date']) {
+    const calls: string[] = [];
+    await syncWithPublished({
+      fetchImpl: async (_input, init) => {
+        calls.push('draftSync');
+        const body = JSON.parse(init.body) as { action: string; project: number; draft: string };
+        assert.equal(body.action, 'draftSync');
+        assert.equal(body.project, 102047);
+        assert.equal(body.draft, 'team-102047');
+        return jsonResponse({ statusCode: 200, status });
+      },
+      reload: () => { calls.push('reload'); },
+    }, 102047, 'team-102047');
+    assert.deepEqual(calls, ['draftSync', 'reload']);
+  }
+
+  const refused: string[] = [];
+  await assert.rejects(
+    () => syncWithPublished({
+      fetchImpl: async () => jsonResponse(
+        { statusCode: 409, code: 'DRAFT_CONFLICT', files: ['l2/a.ts'] },
+        409,
+      ),
+      reload: () => { refused.push('reload'); },
+    }, 102047, 'team-102047'),
+    (err: unknown) => err instanceof Error && err.message.includes('l2/a.ts'),
+  );
+  assert.deepEqual(refused, []);
+
+  const otherCode: string[] = [];
+  await assert.rejects(
+    () => syncWithPublished({
+      fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'BAD_DRAFT' }, 400),
+      reload: () => { otherCode.push('reload'); },
+    }, 102047, 'team-102047'),
+    (err: unknown) => err instanceof Error && err.message === 'BAD_DRAFT',
+  );
+  assert.deepEqual(otherCode, []);
 });
 
 test('collectEditedFiles keeps the project dirty files; saveToDraft writes only the clean ones', async () => {
