@@ -1,8 +1,9 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/draftPanelCore.ts" enhancement="_blank" />
-// Pure decisions for the Studio draft panel. No Lit, and no read of window, document, or mls:
+// Pure decisions for the Studio draft panel. No Lit, and no read of window or document.
 // fetch, the release wait, reload, the cookie write, setContents, saveL5File, and the stor
 // snapshot all come in as arguments. `listLocalFiles` is the caller's injection — its return
-// value is `storFiles` here.
+// value is `storFiles` here. `afterDraftSave` is the one default that calls `mls`, the same
+// cleanup as serviceSave.afterUpdate; tests pass their own deps.
 //
 // Branch slugs mirror the server (cbeDraft.parseDraftSlug). The first `_` of a user slug is `@`
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
@@ -511,4 +512,60 @@ export async function saveToDraft<T extends IPanelStorFile>(
   }
   for (const file of clean) await clearLocal(file);
   return { blocked };
+}
+
+/** What `afterDraftSave` asks the caller to clear. The default talks to `mls`; tests pass fakes. */
+export interface IAfterDraftSaveDeps {
+  setLocal: (file: IPanelStorFile, content: null) => unknown;
+  setCache: (file: IPanelStorFile, content: null) => unknown;
+  deleteModels: (file: IPanelStorFile) => unknown;
+  removeFromFiles: (file: IPanelStorFile) => unknown;
+}
+
+/** The panel file is a subset of `IFileInfo`. The default deps only run on a real stor file. */
+function asStorFile(file: IPanelStorFile): mls.stor.IFileInfo {
+  if (
+    file.level === undefined
+    || file.shortName === undefined
+    || file.folder === undefined
+    || file.extension === undefined
+  ) {
+    return fail('afterDraftSave: file is missing level, shortName, folder, or extension');
+  }
+  return file as mls.stor.IFileInfo;
+}
+
+const defaultAfterSaveDeps: IAfterDraftSaveDeps = {
+  setLocal: (file) => mls.stor.localStor.setContent(asStorFile(file), { contentType: 'string', content: null }),
+  setCache: (file, content) => mls.stor.cache.setContent(asStorFile(file), content),
+  deleteModels: (file) => {
+    const info = asStorFile(file);
+    return mls.editor.deleteModels(info.project, info.shortName, info.folder, true, info.level);
+  },
+  removeFromFiles: (file) => {
+    const info = asStorFile(file);
+    const key = mls.stor.getKeyToFiles(info.project, info.level, info.shortName, info.folder, info.extension);
+    delete mls.stor.files[key];
+  },
+};
+
+/**
+ * Post-save for one draft file, same cleanup as `serviceSave.afterUpdate`.
+ * `inLocalStorage` goes false. A deletion clears local, cache, models, and the index.
+ * Anything else clears local and returns to `nochange`.
+ */
+export async function afterDraftSave(
+  file: IPanelStorFile,
+  deps: IAfterDraftSaveDeps = defaultAfterSaveDeps,
+): Promise<void> {
+  file.inLocalStorage = false;
+  if (file.status === 'deleted') {
+    await deps.setLocal(file, null);
+    await deps.setCache(file, null);
+    await deps.deleteModels(file);
+    deps.removeFromFiles(file);
+    return;
+  }
+  await deps.setLocal(file, null);
+  file.status = 'nochange';
 }

@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  afterDraftSave,
   branchForSlug,
   callExec,
   collectEditedFiles,
@@ -583,4 +584,53 @@ test('panelModel: draft block is current.files, empty when current is null; publ
     release: null,
   });
   assert.deepEqual(noRelease.published, { count: 1, files: ['l2/a.ts'], release: null });
+});
+
+test('afterDraftSave clears a deleted file out of the browser and resets a changed file', async () => {
+  const deleted = {
+    project: 102047,
+    status: 'deleted',
+    inLocalStorage: true as boolean | undefined,
+    level: 2,
+    folder: 'aura',
+    shortName: 'gone',
+    extension: '.ts',
+  };
+  const untouched = { project: 102047, shortName: 'keep' };
+  const storFiles: Record<string, IPanelStorFile | undefined> = { gone: deleted, keep: untouched };
+  const calls: string[] = [];
+  await afterDraftSave(deleted, {
+    setLocal: async (file, content) => { calls.push(`setLocal:${file.shortName}:${String(content)}`); },
+    setCache: async (file, content) => { calls.push(`setCache:${file.shortName}:${String(content)}`); },
+    deleteModels: (file) => { calls.push(`deleteModels:${file.shortName}`); },
+    removeFromFiles: (file) => {
+      calls.push(`removeFromFiles:${file.shortName}`);
+      delete storFiles[file.shortName ?? ''];
+    },
+  });
+  assert.equal(deleted.inLocalStorage, false);
+  assert.deepEqual(calls, [
+    'setLocal:gone:null',
+    'setCache:gone:null',
+    'deleteModels:gone',
+    'removeFromFiles:gone',
+  ]);
+  assert.deepEqual(collectEditedFiles(storFiles, 102047), []);
+
+  const changed = {
+    project: 102047,
+    status: 'changed',
+    inLocalStorage: true as boolean | undefined,
+    shortName: 'a',
+  };
+  const changedCalls: string[] = [];
+  await afterDraftSave(changed, {
+    setLocal: async (file, content) => { changedCalls.push(`setLocal:${file.shortName}:${String(content)}`); },
+    setCache: async () => { changedCalls.push('setCache'); },
+    deleteModels: () => { changedCalls.push('deleteModels'); },
+    removeFromFiles: () => { changedCalls.push('removeFromFiles'); },
+  });
+  assert.deepEqual(changedCalls, ['setLocal:a:null']);
+  assert.equal(changed.status, 'nochange');
+  assert.equal(changed.inLocalStorage, false);
 });
