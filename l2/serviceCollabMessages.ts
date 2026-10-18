@@ -22,7 +22,6 @@ import '/_102020_/l2/pluginFindTask.js';
 const message_pt = {
     loading: 'Carregando...',
     crm: 'CRM',
-    tasks: 'Tasks',
     docs: 'Docs',
     connect: 'Conectar',
     alertMsgTitle: 'Ative as notificações',
@@ -35,7 +34,6 @@ const message_pt = {
 const message_en = {
     loading: 'Loading...',
     crm: 'CRM',
-    tasks: 'Tasks',
     docs: 'Docs',
     connect: 'Connect',
     alertMsgTitle: 'Enable notifications',
@@ -111,7 +109,6 @@ export class ServiceCollabMessages extends ServiceBase {
             selected: ETabs.Loading,
             options: [
                 { text: this.msg.crm, icon: 'f095' },
-                { text: this.msg.tasks, icon: 'f0ae' },
                 { text: this.msg.connect, icon: 'f0c1' },
                 { text: this.msg.moments, icon: 'f1ea' },
                 { text: this.msg.apps, icon: 'f58d' },
@@ -220,7 +217,7 @@ export class ServiceCollabMessages extends ServiceBase {
         this.changeDisplayMenu(true);
         if (this.isFirstEnter) {
             this.isFirstEnter = false;
-            const lastActive = ETabs[loadLastTab() as ITabType];
+            const lastActive = ETabs[loadLastTab() as ITabType] ?? ETabs.CRM;
             this.menu.setTabActive(lastActive);
         }
 
@@ -264,9 +261,6 @@ export class ServiceCollabMessages extends ServiceBase {
             case 'CRM':
                 name = 'collab-messages-chat-102025';
                 break;
-            case 'TASK':
-                name = 'collab-messages-tasks-102025';
-                break;
             case 'APPS':
                 name = 'collab-messages-apps-102025';
                 break;
@@ -298,12 +292,11 @@ export class ServiceCollabMessages extends ServiceBase {
 
 enum ETabs {
     'CRM' = 0,
-    'TASK' = 1,
-    'CONNECT' = 2,
-    'MOMENTS' = 3,
-    'APPS' = 4,
-    'Add' = 5,
-    'Loading' = 6,
+    'CONNECT' = 1,
+    'MOMENTS' = 2,
+    'APPS' = 3,
+    'Add' = 4,
+    'Loading' = 5,
 }
-type ITabType = 'CRM' | 'TASK' | 'MOMENTS' | 'CONNECT' | 'APPS' | 'Add' | 'Loading';
+type ITabType = 'CRM' | 'MOMENTS' | 'CONNECT' | 'APPS' | 'Add' | 'Loading';
 type IScenery = 'tabs' | 'settings' | 'findTask'
