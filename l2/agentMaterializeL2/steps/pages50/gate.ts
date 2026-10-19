@@ -316,8 +316,8 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
     if (!/@change=\$\{[\s\S]{0,240}?\bthis\.setScenario\s*\(/u.test(code)) push('M4_PAGE_SCENARY', 'The host @change must call this.setScenario(e.detail.value).');
     // `change` of a molecule inside a scene bubbles (composed) to the host: unguarded, a Tab out of
     // ml-number-input (change on blur) set the scene to the typed number and went back (produtos, 02/10/2026).
-    else if (!/@change=\$\{[\s\S]{0,240}?\be\.target\s*===\s*e\.currentTarget[\s\S]{0,80}?\bthis\.setScenario\s*\(/u.test(code)) {
-      issues.push({ code: 'M4_PAGE_SCENARY_BUBBLE', severity: 'error', always: true, message: "The host @change must ignore the change events that bubble from the molecules inside its scenes: @change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) this.setScenario(e.detail.value); }}." });
+    else if (!/@change=\$\{[\s\S]{0,240}?\b([A-Za-z_$][\w$]*)\.target\s*===\s*\1\.currentTarget[\s\S]{0,80}?\bthis\.setScenario\s*\(/u.test(code)) {
+      issues.push({ code: 'M4_PAGE_SCENARY_BUBBLE', severity: 'error', always: true, message: "The host @change must ignore the change events that bubble from the molecules inside its scenes: @change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) this.setScenario(e.detail.value); }} (any parameter name; keep the other statements of the handler inside the guard)." });
     }
   } else if (/<Scene\b/u.test(code)) {
     push('M4_PAGE_SCENARY', `<Scene> only exists inside <${M4_SCENARY_TAG}>.`);

@@ -199,6 +199,17 @@ test('scenes: a default computed in a local variable is refused, and the same ex
   assert.ok(!gateM4PageSource(inside, mobileTarget()).some(item => item.code === 'M4_PAGE_SCENARY_CUSTOM'));
 });
 
+test('scenes: the host guard may name its parameter freely and keep other statements (d2_118, tarefas desktop listas)', () => {
+  const named = mobileReference.replace(
+    '@change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) this.setScenario(e.detail.value); }}',
+    "@change=${(event: CustomEvent<{ value: string }>) => {\n  if (event.target === event.currentTarget) {\n    this.setScenario(event.detail.value);\n    if (event.detail.value === 'base') this.selectProduto(null);\n  }\n}}",
+  );
+  assert.notEqual(named, mobileReference);
+  assert.ok(!gateM4PageSource(named, mobileTarget()).some(item => item.code === 'M4_PAGE_SCENARY_BUBBLE'));
+  const mixed = named.replace('event.target === event.currentTarget', 'event.target === e.currentTarget');
+  assert.ok(gateM4PageSource(mixed, mobileTarget()).some(item => item.code === 'M4_PAGE_SCENARY_BUBBLE'));
+});
+
 test('views switch only through ml-scenary: hand-made switching is refused even with the gate off (02/10)', () => {
   // the Studio answer of 02/10: views rendered by a condition on this.scenary, without the host
   const handMade = reference.replace(

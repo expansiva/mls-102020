@@ -32,7 +32,7 @@ You fix ONE TypeScript file that the Studio refused: the **page** of one device 
 
 - **M4_PAGE_ANY "The page uses `any`"**: give each helper parameter the row type the shared declares (`import type { ProdutoLoad } from '<shared module>'`) and read the nested paths of that type (`item.details.identification.name`, not `item.name`). Then fix every TS error the real type reveals.
 
-- **M4_PAGE_SCENARY_BUBBLE**: replace the host handler with `@change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) this.setScenario(e.detail.value); }}`. Change nothing else.
+- **M4_PAGE_SCENARY_BUBBLE**: replace the host handler with `@change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) this.setScenario(e.detail.value); }}`. If the handler does more than `setScenario` (for example `if (e.detail.value === '<view without the record>') this.select<X>(null);`), keep those statements inside the guard. Change nothing else.
 - **M4_PAGE_OWN_EVENT_DROPPED**: in the handler named in the error, remove the `e.target`/`e.currentTarget` check and keep what it does with `e.detail` (the molecule's event is always its own). Change nothing else; the host of the scenes keeps its guard.
 
 - **M4_PAGE_SCENARY_CUSTOM "The page switches views by hand"**: the views are rendered by a condition on `this.scenary` (or `this.setScenario` is called with no host). Keep the same views, and move them into the scene host. If the page computes the default view from its selection (`this.scenary || (this.selected<X> !== null ? … : …)`), move that whole expression into `.value=${…}` and keep the condition; do not replace it with the first view.
