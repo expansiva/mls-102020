@@ -173,6 +173,10 @@ export function gateM4SharedSource(source: string, target: M4SharedTarget): M4Sh
       if (code.includes(`'${storageKey}'`) || code.includes(`"${storageKey}"`) || code.includes(`\`${storageKey}\``)) push('M4_SHARED_ENTRY_PARAM', `Entry param ${name} lives only in the URL and must not use localStorage.`);
     } else if ((param.sources.includes('localStorage') || param.persist) && !code.includes('localStorage')) push('M4_SHARED_ENTRY_PARAM', `Entry param ${name} must use localStorage.`);
   }
+  if (Object.keys(target.shared.entry.params).length > 0
+    && (!/\baddEventListener\(\s*['"`]popstate['"`]/u.test(code) || !/\bremoveEventListener\(\s*['"`]popstate['"`]/u.test(code))) {
+    push('M4_SHARED_ENTRY_PARAM', 'Entry params must be applied again when the person comes back to the page through the history (popstate): add the listener in connectedCallback and remove it in disconnectedCallback.');
+  }
 
   // A navigate intent of page11 (no navigation function since 13/10/2026): its method changes page with auraNavigate.
   for (const nav of target.navigations ?? []) {

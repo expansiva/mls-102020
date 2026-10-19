@@ -174,7 +174,7 @@ test('publish must type the value by the member (fechamento 05/10: value: unknow
 
 test('a fresh visit: connectedCallback must reset statuses, errors and the scene (06/10)', () => {
   assert.ok(!codes(reference).includes('M4_SHARED_VISIT_RESET'));
-  const stale = reference.replace('    this.resetVisit();\n', '');
+  const stale = reference.replace('    this.resetVisit();\n    subscribe([...STATE_KEYS], this);', '    subscribe([...STATE_KEYS], this);');
   assert.notEqual(stale, reference);
   assert.ok(codes(stale).includes('M4_SHARED_VISIT_RESET'));
 });
@@ -232,6 +232,20 @@ test('within a visit, every setter, selection and scene change resets the comman
   assert.match(issues[0].message, /^setProdutoCadastro changes what the commands act on .*: cadastrarProdutoStatus, cadastrarProdutoError/u);
   // a private helper is not a page entry point, and a bare call is not a method
   assert.ok(!m4SharedUiMethods('class X {\n  private helper(): void {}\n  run(): void {\n    helper(1);\n  }\n}', { shared: { requests: {} } }).includes('helper'));
+});
+
+test('entry params are applied again when the person comes back through the history', () => {
+  assert.ok(!codes(reference).includes('M4_SHARED_ENTRY_PARAM'));
+  const bare = reference
+    .replace("    window.addEventListener('popstate', this.onPopState);\n", '')
+    .replace("    window.removeEventListener('popstate', this.onPopState);\n", '');
+  assert.notEqual(bare, reference);
+  const issues = gateM4SharedSource(bare, target()).filter(item => item.code === 'M4_SHARED_ENTRY_PARAM' && item.message.includes('popstate'));
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].message, 'Entry params must be applied again when the person comes back to the page through the history (popstate): add the listener in connectedCallback and remove it in disconnectedCallback.');
+  const empty = target();
+  empty.shared = { ...empty.shared, entry: { ...empty.shared.entry, params: {} } };
+  assert.ok(!gateM4SharedSource(bare, empty).some(item => item.message.includes('popstate')));
 });
 
 test('a param whose sources are only url is published with replaceState and refused when it uses localStorage', () => {
