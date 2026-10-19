@@ -2,7 +2,7 @@
 
 // pages50, one page × device: context and prompt for the LLM, then approval of its answer.
 // The page sees the shared only through the declaration shared40 saved (web/shared/<pageId>Dts.txt).
-// Approval = gate → write web/<device>/<genome>/<pageId>.ts → Studio compile → receipt. The genome is the page folder:
+// Approval = normalize a molecule tag that carries the project number → gate → write web/<device>/<genome>/<pageId>.ts → Studio compile → receipt. The genome is the page folder:
 // page11, or a UX variant such as page21 (14/10/2026) that has its own page11 defs and reuses the page's shared. The receipt holds
 // the hash of the whole prompt context: any change in the declaration, page11, template, tokens, molecule
 // contracts, locales or prompt regenerates the page; an unchanged context reuses it with no LLM call.
@@ -17,7 +17,7 @@ import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shar
 import { parseL2Contract } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
 import { m4OwnedFile, type M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
-import { m4DefsInfo, moleculeIndexInfo, templateInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
+import { loadMoleculeCatalog, m4DefsInfo, moleculeIndexInfo, templateInfo, type M4InputPort } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
 import { m4SharedReuseBlocker, readM4Snapshot, sharedDeclarationInfo, sharedSourceInfo, storedHash, studioSharedPort, type M4SharedPort } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { m4SharedClassName } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
 import {
@@ -284,9 +284,38 @@ export async function buildM4PageRepairPrompt(context: M4PageContext, repair: { 
   return { systemPrompt: await port.read(pageRepairPromptInfo), humanPrompt: parts.join('\n') };
 }
 
+/** `groupentertext--ml-enter-text-102040` → the tag without the project number, when that form is a molecule. */
+const SUFFIXED_MOLECULE = /\b(group[a-z0-9]*--ml-[a-z][a-z0-9-]*)-(\d+)\b/gu;
+
+/**
+ * The page LLM sometimes names a molecule with the project number (the convention of this project's own
+ * elements). Before the gate, a `group…--ml-…-<digits>` whose form without the suffix is in the molecule
+ * index becomes that form, in the tag and in its import. One report line per tag; never a refusal.
+ * A suffix whose bare tag is not indexed is left for the gate.
+ */
+export async function normalizeSuffixedMoleculeTags(source: string, port: M4PagePort): Promise<{ text: string; lines: string[] }> {
+  const found = [...source.matchAll(SUFFIXED_MOLECULE)].map(match => ({ base: match[1], full: `${match[1]}-${match[2]}` }));
+  const bases = [...new Set(found.map(item => item.base))];
+  if (!bases.length) return { text: source, lines: [] };
+  const catalog: M4InputPort = { exists: port.exists, read: port.read, readJson: port.readJson, listDefs: (project, folder, level) => port.listDefs(project, folder, level ?? 2) };
+  const listed = await loadMoleculeCatalog(bases, catalog);
+  let text = source;
+  const lines: string[] = [];
+  for (const full of [...new Set(found.map(item => item.full))].sort()) {
+    const base = full.replace(/-\d+$/u, '');
+    if (!listed(base)) continue;
+    text = text.split(m4MoleculeImport(full)).join(m4MoleculeImport(base));
+    text = text.split(full).join(base);
+    lines.push(`${full} -> ${base}`);
+  }
+  return { text, lines };
+}
+
 export async function approveM4Page(context: M4PageContext, source: unknown, attempt: number, port: M4PagePort = studioPagePort, design: unknown = null): Promise<M4PageReceipt> {
   if (typeof source !== 'string' || !source.trim()) throw new Error('M4_PAGE_EMPTY: submitPageTs.source must be the whole file.');
-  const text = source.replace(/\r\n/gu, '\n').replace(/\n*$/u, '\n');
+  const raw = source.replace(/\r\n/gu, '\n').replace(/\n*$/u, '\n');
+  const normalized = await normalizeSuffixedMoleculeTags(raw, port);
+  const text = normalized.text;
   const issues = gateM4PageSource(text, context.target);
   // While the gate is not enforced, nothing here refuses: every issue goes to the receipt.
   const errors = issues.filter(item => item.severity === 'error');
@@ -302,7 +331,10 @@ export async function approveM4Page(context: M4PageContext, source: unknown, att
     ...(context.genome === L2_PRIMARY_GENOME ? {} : { genome: context.genome }),
     contextHash: context.contextHash, sourcePath: displayPath(info), sourceHash: await storedHash(await port.read(info)), attempt,
     design: m4PageDesign(design),
-    advisories: issues.filter(item => !M4_PAGE_GATE_ENFORCED || item.severity === 'advisory').map(item => ({ code: item.code, message: `${item.severity === 'error' ? '[contract] ' : ''}${item.message}` })),
+    advisories: [
+      ...normalized.lines.map(message => ({ code: 'M4_PAGE_MOLECULE_SUFFIX', message })),
+      ...issues.filter(item => !M4_PAGE_GATE_ENFORCED || item.severity === 'advisory').map(item => ({ code: item.code, message: `${item.severity === 'error' ? '[contract] ' : ''}${item.message}` })),
+    ],
   };
   await port.writeJson(pageReceiptInfo(context.identity, context.pageId, context.device, context.genome), receipt);
   return receipt;

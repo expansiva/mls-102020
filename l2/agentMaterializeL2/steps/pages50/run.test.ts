@@ -174,6 +174,21 @@ test('a page waits for its shared: no receipt, no context', async () => {
   await assert.rejects(buildM4PageContext(identity, 'produtos', 'desktop', port), /M4_PAGE_SHARED_NOT_READY/u);
 });
 
+test('a molecule tag with the project suffix is rewritten to the indexed tag, and its import, and recorded', async () => {
+  const port = await studio();
+  const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
+  const source = `${pageRef.source
+    .replace("import '/_102040_/l2/molecules/groupentertext/ml-enter-text.js';", "import '/_102040_/l2/molecules/groupentertext/ml-enter-text-102040.js';")
+    .replaceAll('groupentertext--ml-enter-text', 'groupentertext--ml-enter-text-102040')}\nimport '/_102040_/l2/molecules/groupentertext/ml-not-listed-999.js';\n`;
+  const receipt = await approveM4Page(context, source, 1, port);
+  const written = port.files.get('102047/l2/controleEstoque/web/desktop/page11/produtos.ts') ?? '';
+  assert.equal(written.includes('groupentertext--ml-enter-text-102040'), false);
+  assert.equal(written.includes("import '/_102040_/l2/molecules/groupentertext/ml-enter-text.js';"), true);
+  assert.equal(written.includes('ml-enter-text-102040'), false);
+  assert.equal(written.includes('ml-not-listed-999'), true);
+  assert.deepEqual(receipt.advisories.filter(item => item.code === 'M4_PAGE_MOLECULE_SUFFIX').map(item => item.message), ['groupentertext--ml-enter-text-102040 -> groupentertext--ml-enter-text']);
+});
+
 test('a gate refusal writes nothing; a compile error leaves no receipt; environment failures are told apart', async () => {
   const port = await studio();
   const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
