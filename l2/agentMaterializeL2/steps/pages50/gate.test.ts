@@ -186,6 +186,19 @@ test('scenes: the default may follow the selection, and leaving the record view 
   assert.ok(!codes.includes('M4_PAGE_SCENARY_BUBBLE'));
 });
 
+test('scenes: a default computed in a local variable is refused, and the same expression inside .value passes (d2_118 s1)', () => {
+  const local = `const inicial = this.scenary || (this.selectedLista !== null ? 'editar' : 'fechado');\n${mobileReference}`;
+  const issues = gateM4PageSource(local, mobileTarget()).filter(item => item.code === 'M4_PAGE_SCENARY_CUSTOM');
+  assert.ok(issues.length >= 1 && issues.every(item => item.always === true));
+  assert.match(issues[0].message, /this\.selected/u);
+  const inside = mobileReference.replace(
+    ".value=${this.scenary || 'base'}",
+    ".value=${this.scenary || (this.selectedLista !== null ? 'editar' : 'fechado')}",
+  );
+  assert.notEqual(inside, mobileReference);
+  assert.ok(!gateM4PageSource(inside, mobileTarget()).some(item => item.code === 'M4_PAGE_SCENARY_CUSTOM'));
+});
+
 test('views switch only through ml-scenary: hand-made switching is refused even with the gate off (02/10)', () => {
   // the Studio answer of 02/10: views rendered by a condition on this.scenary, without the host
   const handMade = reference.replace(

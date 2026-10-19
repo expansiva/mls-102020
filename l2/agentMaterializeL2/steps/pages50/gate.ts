@@ -297,7 +297,7 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   // ml-scenary). Enforced even while the rest of the gate is off.
   const scenaryReads = code.replace(/\.value=\$\{\s*this\.scenary\b/gu, '').match(/\bthis\.scenary\b/gu)?.length ?? 0;
   if (scenaryReads > 0) {
-    issues.push({ code: 'M4_PAGE_SCENARY_CUSTOM', severity: 'error', always: true, message: `The page switches views by hand (this.scenary is read outside the host's .value). Views switch only through <${M4_SCENARY_TAG}>: wrap each view in a <Scene value="…" title=…>, bind .value=\${this.scenary || '<first>'} and @change → this.setScenario(e.detail.value), import '${M4_SCENARY_IMPORT}', and remove the conditional rendering.` });
+    issues.push({ code: 'M4_PAGE_SCENARY_CUSTOM', severity: 'error', always: true, message: `The page switches views by hand (this.scenary is read outside the host's .value). Views switch only through <${M4_SCENARY_TAG}>: wrap each view in a <Scene value="…" title=…>, bind the default inside the host's .value itself, never in a local variable or a getter: .value=\${this.scenary || '<first>'}, or, when the page already chooses the default by its selection, keep that condition there: .value=\${this.scenary || (this.selected<X> !== null ? '<view of the record>' : '<first>')}, and @change → this.setScenario(e.detail.value), import '${M4_SCENARY_IMPORT}', and remove the conditional rendering.` });
   }
   if (hosts === 0 && /\bthis\.setScenario\s*\(/u.test(code)) {
     issues.push({ code: 'M4_PAGE_SCENARY_CUSTOM', severity: 'error', always: true, message: `The page calls this.setScenario(…) but has no <${M4_SCENARY_TAG}>: views switch only through the scene host. Put the views in <Scene> elements inside it.` });

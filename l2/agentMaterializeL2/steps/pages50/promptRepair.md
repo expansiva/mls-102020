@@ -35,7 +35,7 @@ You fix ONE TypeScript file that the Studio refused: the **page** of one device 
 - **M4_PAGE_SCENARY_BUBBLE**: replace the host handler with `@change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) this.setScenario(e.detail.value); }}`. Change nothing else.
 - **M4_PAGE_OWN_EVENT_DROPPED**: in the handler named in the error, remove the `e.target`/`e.currentTarget` check and keep what it does with `e.detail` (the molecule's event is always its own). Change nothing else; the host of the scenes keeps its guard.
 
-- **M4_PAGE_SCENARY_CUSTOM "The page switches views by hand"**: the views are rendered by a condition on `this.scenary` (or `this.setScenario` is called with no host). Keep the same views, and move them into the scene host:
+- **M4_PAGE_SCENARY_CUSTOM "The page switches views by hand"**: the views are rendered by a condition on `this.scenary` (or `this.setScenario` is called with no host). Keep the same views, and move them into the scene host. If the page computes the default view from its selection (`this.scenary || (this.selected<X> !== null ? … : …)`), move that whole expression into `.value=${…}` and keep the condition; do not replace it with the first view.
   ```ts
   import '/_102020_/l2/molecules/ml-scenary.js';
   html`<molecules--ml-scenary-102020 mode="scenary" .value=${this.scenary || '<first view>'} backLabel=${this.msg['scene.back']}
