@@ -172,6 +172,20 @@ test('scenes: when used, the host must be imported and bound to the shared state
   assert.deepEqual(mobileCodes(mobileReference.replace("title=${this.msg['scene.detalhe']}", 'title="Produto"')), ['M4_PAGE_TEXT']);
 });
 
+test('scenes: the default may follow the selection, and leaving the record view may clear it (d2_117 s2)', () => {
+  const withSelection = mobileReference
+    .replace(".value=${this.scenary || 'base'}", ".value=${this.scenary || (this.selectedProduto !== null ? 'detalhe' : 'base')}")
+    .replace(
+      '@change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) this.setScenario(e.detail.value); }}',
+      "@change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) { this.setScenario(e.detail.value); if (e.detail.value === 'base') this.selectProduto(null); } }}",
+    );
+  assert.notEqual(withSelection, mobileReference);
+  const codes = gateM4PageSource(withSelection, mobileTarget()).map(item => item.code);
+  assert.ok(!codes.includes('M4_PAGE_SCENARY_CUSTOM'));
+  assert.ok(!codes.includes('M4_PAGE_SCENARY'));
+  assert.ok(!codes.includes('M4_PAGE_SCENARY_BUBBLE'));
+});
+
 test('views switch only through ml-scenary: hand-made switching is refused even with the gate off (02/10)', () => {
   // the Studio answer of 02/10: views rendered by a condition on this.scenary, without the host
   const handMade = reference.replace(
