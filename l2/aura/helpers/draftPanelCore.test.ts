@@ -607,6 +607,7 @@ test('afterDraftSave clears a deleted file out of the browser and resets a chang
       calls.push(`removeFromFiles:${file.shortName}`);
       delete storFiles[file.shortName ?? ''];
     },
+    resetRenameOrigin: () => { calls.push('resetRenameOrigin'); },
   });
   assert.equal(deleted.inLocalStorage, false);
   assert.deepEqual(calls, [
@@ -629,8 +630,29 @@ test('afterDraftSave clears a deleted file out of the browser and resets a chang
     setCache: async () => { changedCalls.push('setCache'); },
     deleteModels: () => { changedCalls.push('deleteModels'); },
     removeFromFiles: () => { changedCalls.push('removeFromFiles'); },
+    resetRenameOrigin: () => { changedCalls.push('resetRenameOrigin'); },
   });
   assert.deepEqual(changedCalls, ['setLocal:a:null']);
   assert.equal(changed.status, 'nochange');
   assert.equal(changed.inLocalStorage, false);
+});
+
+test('afterDraftSave resets the origin of a renamed file and returns it to nochange', async () => {
+  const renamed = {
+    project: 102047,
+    status: 'renamed',
+    inLocalStorage: true as boolean | undefined,
+    shortName: 'card',
+  };
+  const calls: string[] = [];
+  await afterDraftSave(renamed, {
+    setLocal: async (file, content) => { calls.push(`setLocal:${file.shortName}:${String(content)}`); },
+    setCache: async () => { calls.push('setCache'); },
+    deleteModels: () => { calls.push('deleteModels'); },
+    removeFromFiles: () => { calls.push('removeFromFiles'); },
+    resetRenameOrigin: (file) => { calls.push(`resetRenameOrigin:${file.shortName}`); },
+  });
+  assert.deepEqual(calls, ['resetRenameOrigin:card', 'setLocal:card:null']);
+  assert.equal(renamed.status, 'nochange');
+  assert.equal(renamed.inLocalStorage, false);
 });

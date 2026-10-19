@@ -520,6 +520,7 @@ export interface IAfterDraftSaveDeps {
   setCache: (file: IPanelStorFile, content: null) => unknown;
   deleteModels: (file: IPanelStorFile) => unknown;
   removeFromFiles: (file: IPanelStorFile) => unknown;
+  resetRenameOrigin: (file: IPanelStorFile) => unknown;
 }
 
 /** The panel file is a subset of `IFileInfo`. The default deps only run on a real stor file. */
@@ -547,11 +548,23 @@ const defaultAfterSaveDeps: IAfterDraftSaveDeps = {
     const key = mls.stor.getKeyToFiles(info.project, info.level, info.shortName, info.folder, info.extension);
     delete mls.stor.files[key];
   },
+  resetRenameOrigin: (file) => {
+    if (file.shortName === undefined || file.folder === undefined) {
+      console.warn('afterDraftSave: renamed file is missing shortName or folder');
+      return;
+    }
+    const mmodel: mls.editor.IModels | undefined = mls.editor.getModels(file.project, file.shortName, file.folder);
+    if (!mmodel || !mmodel.ts) return;
+    mmodel.ts.originalProject = undefined;
+    mmodel.ts.originalShortName = undefined;
+    mmodel.ts.originalCRC = mls.common.crc.crc32(mmodel.ts.model.getValue()).toString(16);
+  },
 };
 
 /**
  * Post-save for one draft file, same cleanup as `serviceSave.afterUpdate`.
  * `inLocalStorage` goes false. A deletion clears local, cache, models, and the index.
+ * A renamed file resets the model origin, then clears local and returns to `nochange`.
  * Anything else clears local and returns to `nochange`.
  */
 export async function afterDraftSave(
@@ -566,6 +579,7 @@ export async function afterDraftSave(
     deps.removeFromFiles(file);
     return;
   }
+  if (file.status === 'renamed') await deps.resetRenameOrigin(file);
   await deps.setLocal(file, null);
   file.status = 'nochange';
 }
