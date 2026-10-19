@@ -64,7 +64,7 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
     if (!entity) continue;
     const param = `${camel(entity)}Id`;
     const target = organisms.get(row.organism)?.selects || row.organism;
-    if (!selected.has(param)) params[param] = { type: 'string', sources: SOURCES, effect: `select:${target}`, persist: true, required: false };
+    if (!selected.has(param)) params[param] = { type: 'string', sources: SOURCES, effect: `select:${target}`, persist: false, required: false };
     selected.add(param);
     const stateId = `selected${entity}`;
     // d2_80: the selecting organism and its target, over every selection that lands in this state.
@@ -178,7 +178,7 @@ function navigationParams(input: D2SharedDeriveInput): D2SharedV2Definition['ent
         const entity = entityIdRead(source?.reads) || entityIdRead(selected?.reads) || target?.reads[0]?.split('.')[0] || '';
         const reader = organismFor(entity);
         if (!entity || !reader) continue;
-        params[`${camel(entity)}Id`] = params[`${camel(entity)}Id`] ?? { type: 'string', sources: SOURCES, effect: `select:${reader}`, persist: true, required: false };
+        params[`${camel(entity)}Id`] = params[`${camel(entity)}Id`] ?? { type: 'string', sources: SOURCES, effect: `select:${reader}`, persist: false, required: false };
       }
     }
   }

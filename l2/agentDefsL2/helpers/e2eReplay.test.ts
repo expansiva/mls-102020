@@ -421,8 +421,8 @@ void test('d2_75: the shared comes from the design by code: entry params, refres
   assert.ok(outcomes.every(item => item.result === 'ok'), JSON.stringify(outcomes.filter(item => item.result !== 'ok')));
   const shared = out.sharedDefs.atendimento;
   const design = out.designs.atendimento;
-  // rule 8: the selected record survives a reload, from the URL then local storage.
-  assert.deepEqual(shared.entry.params.comandaId, { type: 'string', sources: ['url', 'localStorage'], effect: 'select:detalheComanda', persist: true, required: false });
+  // d2_115: the selection is read from the URL and is not written back (persist: false). Filters still persist.
+  assert.deepEqual(shared.entry.params.comandaId, { type: 'string', sources: ['url', 'localStorage'], effect: 'select:detalheComanda', persist: false, required: false });
   assert.equal(shared.entry.params.comandaId.required, false);
   assert.deepEqual(shared.states.selectedComanda, { source: 'entry.params.comandaId', description: 'the id of the Comanda selected in detalheComanda', organisms: ['acoesAtendimento', 'detalheComanda', 'lookupAtendimento'] });
   // No state takes a function as source; no description is an identifier.
@@ -887,6 +887,9 @@ void test('d2_78: every endpoint has the destination A declared, transcribed by 
   const shared = stock.sharedDefs.produtos;
   // The selected record keeps select: even with a filter of the same page; filters come only from queries an organism reads.
   assert.equal(shared.entry.params.produtoId.effect, 'select:detalheProduto');
+  // d2_115: a selection and an opening filter on the same design. The selection is not stored; the filter is.
+  assert.equal(shared.entry.params.produtoId.persist, false);
+  assert.equal(Object.values(shared.entry.params).find(param => param.effect === 'filter:saldosResumo')?.persist, true);
   assert.deepEqual(Object.entries(shared.entry.params).filter(([, param]) => param.effect.startsWith('filter:')).map(([name, param]) => `${name}=${param.effect}`), ['name=filter:saldosResumo']);
 
   // A command without a declared destination is refused in B, with the path.
@@ -1104,6 +1107,8 @@ void test('d2_100 s2: navigation carries the id the source reads; selection and 
   }];
   const shared = deriveD2Shared(derive);
   assert.equal(shared.entry.params.listaId?.effect, 'select:painelLista');
+  // d2_115: navigation is a selection carried by the URL and is not written back.
+  assert.equal(shared.entry.params.listaId?.persist, false);
   assert.equal(shared.states.selectedComanda.description, 'the id of the Comanda selected in detalheComanda');
   assert.notEqual(shared.states.selectedComanda.description, record);
   assert.equal(shared.states.listas.description, `the list of ${record}`);
