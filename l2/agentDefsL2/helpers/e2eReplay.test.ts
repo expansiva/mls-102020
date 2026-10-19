@@ -421,8 +421,8 @@ void test('d2_75: the shared comes from the design by code: entry params, refres
   assert.ok(outcomes.every(item => item.result === 'ok'), JSON.stringify(outcomes.filter(item => item.result !== 'ok')));
   const shared = out.sharedDefs.atendimento;
   const design = out.designs.atendimento;
-  // d2_115: the selection is read from the URL and is not written back (persist: false). Filters still persist.
-  assert.deepEqual(shared.entry.params.comandaId, { type: 'string', sources: ['url', 'localStorage'], effect: 'select:detalheComanda', persist: false, required: false });
+  // d2_116: the selection lives only in the URL. Filters still persist in url+localStorage.
+  assert.deepEqual(shared.entry.params.comandaId, { type: 'string', sources: ['url'], effect: 'select:detalheComanda', persist: false, required: false });
   assert.equal(shared.entry.params.comandaId.required, false);
   assert.deepEqual(shared.states.selectedComanda, { source: 'entry.params.comandaId', description: 'the id of the Comanda selected in detalheComanda', organisms: ['acoesAtendimento', 'detalheComanda', 'lookupAtendimento'] });
   // No state takes a function as source; no description is an identifier.
@@ -887,8 +887,10 @@ void test('d2_78: every endpoint has the destination A declared, transcribed by 
   const shared = stock.sharedDefs.produtos;
   // The selected record keeps select: even with a filter of the same page; filters come only from queries an organism reads.
   assert.equal(shared.entry.params.produtoId.effect, 'select:detalheProduto');
-  // d2_115: a selection and an opening filter on the same design. The selection is not stored; the filter is.
+  // d2_116: a selection and an opening filter on the same design. The selection is URL-only; the filter persists.
+  assert.deepEqual(shared.entry.params.produtoId.sources, ['url']);
   assert.equal(shared.entry.params.produtoId.persist, false);
+  assert.deepEqual(Object.values(shared.entry.params).find(param => param.effect === 'filter:saldosResumo')?.sources, ['url', 'localStorage']);
   assert.equal(Object.values(shared.entry.params).find(param => param.effect === 'filter:saldosResumo')?.persist, true);
   assert.deepEqual(Object.entries(shared.entry.params).filter(([, param]) => param.effect.startsWith('filter:')).map(([name, param]) => `${name}=${param.effect}`), ['name=filter:saldosResumo']);
 
@@ -1074,6 +1076,7 @@ void test('d2_100 s1: only an onLoad query gives a filter; page and pageSize are
   };
   const params = deriveD2Shared({ ...derive, design }).entry.params;
   assert.equal(params.filtro?.effect, 'filter:lista');
+  assert.deepEqual(params.filtro?.sources, ['url', 'localStorage']);
   assert.equal(params.filtro?.persist, true);
   assert.equal(params.filtro?.required, true);
   assert.equal(params.page, undefined);
@@ -1107,7 +1110,8 @@ void test('d2_100 s2: navigation carries the id the source reads; selection and 
   }];
   const shared = deriveD2Shared(derive);
   assert.equal(shared.entry.params.listaId?.effect, 'select:painelLista');
-  // d2_115: navigation is a selection carried by the URL and is not written back.
+  // d2_116: navigation is a selection that lives only in the URL.
+  assert.deepEqual(shared.entry.params.listaId?.sources, ['url']);
   assert.equal(shared.entry.params.listaId?.persist, false);
   assert.equal(shared.states.selectedComanda.description, 'the id of the Comanda selected in detalheComanda');
   assert.notEqual(shared.states.selectedComanda.description, record);

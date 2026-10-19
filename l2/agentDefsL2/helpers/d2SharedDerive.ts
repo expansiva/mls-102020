@@ -29,6 +29,7 @@ export interface D2SharedDeriveInput {
 const camel = (value: string): string => (value ? value[0].toLowerCase() + value.slice(1) : value);
 const pascal = (value: string): string => (value ? value[0].toUpperCase() + value.slice(1) : value);
 const SOURCES: Array<'url' | 'localStorage'> = ['url', 'localStorage'];
+const URL_SOURCES: Array<'url'> = ['url'];
 const sortedUnique = (ids: string[]): string[] => [...new Set(ids)].sort();
 
 export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition {
@@ -64,7 +65,7 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
     if (!entity) continue;
     const param = `${camel(entity)}Id`;
     const target = organisms.get(row.organism)?.selects || row.organism;
-    if (!selected.has(param)) params[param] = { type: 'string', sources: SOURCES, effect: `select:${target}`, persist: false, required: false };
+    if (!selected.has(param)) params[param] = { type: 'string', sources: URL_SOURCES, effect: `select:${target}`, persist: false, required: false };
     selected.add(param);
     const stateId = `selected${entity}`;
     // d2_80: the selecting organism and its target, over every selection that lands in this state.
@@ -178,7 +179,7 @@ function navigationParams(input: D2SharedDeriveInput): D2SharedV2Definition['ent
         const entity = entityIdRead(source?.reads) || entityIdRead(selected?.reads) || target?.reads[0]?.split('.')[0] || '';
         const reader = organismFor(entity);
         if (!entity || !reader) continue;
-        params[`${camel(entity)}Id`] = params[`${camel(entity)}Id`] ?? { type: 'string', sources: SOURCES, effect: `select:${reader}`, persist: false, required: false };
+        params[`${camel(entity)}Id`] = params[`${camel(entity)}Id`] ?? { type: 'string', sources: URL_SOURCES, effect: `select:${reader}`, persist: false, required: false };
       }
     }
   }
