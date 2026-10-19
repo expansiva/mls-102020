@@ -9,6 +9,7 @@
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
 
 import { buildDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
+import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
 const SLUG_BODY = /^[a-z0-9_.-]{1,64}$/;
@@ -379,6 +380,12 @@ export async function discard(
   const result = await callExec(effects.fetchImpl, 'discardDraft', { project, draft: slug });
   if (!result.ok) return fail(result.code);
   if (result.status !== 'discarded') return fail(result.status ?? 'discard failed');
+  try {
+    await forgetStaleDraftL2(project, slug, new Set<string>());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[draftPanel]', `forgetStaleDraftL2: ${message}`);
+  }
   effects.reload();
 }
 
