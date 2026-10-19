@@ -233,3 +233,24 @@ test('within a visit, every setter, selection and scene change resets the comman
   // a private helper is not a page entry point, and a bare call is not a method
   assert.ok(!m4SharedUiMethods('class X {\n  private helper(): void {}\n  run(): void {\n    helper(1);\n  }\n}', { shared: { requests: {} } }).includes('helper'));
 });
+
+test('a param whose sources are only url is published with replaceState and refused when it uses localStorage', () => {
+  const base = target();
+  const [name, param] = Object.entries(base.shared.entry.params)[0];
+  const urlOnly = {
+    ...base,
+    shared: {
+      ...base.shared,
+      entry: { ...base.shared.entry, params: { ...base.shared.entry.params, [name]: { ...param, sources: ['url'] as const, persist: false } } },
+    },
+  };
+  const storageKey = `${base.module}.${base.pageId}.${name}`;
+  const replaceState = "history.replaceState(null, '', window.location.pathname);";
+  const accepted = reference.split(`'${storageKey}'`).join("'other.param'").replace('private publish<', `${replaceState}\n  private publish<`);
+  assert.notEqual(accepted, reference);
+  assert.deepEqual(gateM4SharedSource(accepted, urlOnly), []);
+  const stored = reference.replace('URLSearchParams(window.location.search)', `URLSearchParams(window.location.search); window.localStorage.getItem('${storageKey}')`);
+  const issues = gateM4SharedSource(stored, urlOnly);
+  assert.ok(issues.some(item => item.code === 'M4_SHARED_ENTRY_PARAM' && item.message.includes(name) && item.message.includes('localStorage')));
+  assert.ok(issues.some(item => item.code === 'M4_SHARED_ENTRY_PARAM' && item.message.includes('replaceState')));
+});

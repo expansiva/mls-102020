@@ -107,7 +107,10 @@ export function gateM4SharedSource(source: string, target: M4SharedTarget): M4Sh
   if (nonNull) push('M4_SHARED_NON_NULL', `The shared uses the non-null assertion \`!\` ${nonNull}×; guard the null instead (if (!x) return; or x?.field ?? fallback).`);
 
   // Seen in the Studio run of 01/10: navigation by window.location.assign, a full reload outside the shell.
+  // A param whose sources are only `url` updates the query with history.replaceState (d2_116); that call is not navigation.
+  const urlOnlyParam = Object.values(target.shared.entry.params).some(param => param.sources.length > 0 && param.sources.every(source => source === 'url'));
   for (const match of code.matchAll(/\b(?:window\.)?location\.(?:assign|replace)\s*\(|\b(?:window\.)?location(?:\.href)?\s*=(?!=)|\bhistory\.(?:pushState|replaceState)\s*\(/gu)) {
+    if (urlOnlyParam && /\bhistory\.replaceState\s*\(/u.test(match[0])) continue;
     push('M4_SHARED_LOCATION', `${match[0].trim()} is refused: the app is a single-page shell. Replace it with auraNavigate(href, { basePath: '/${target.module}' }) and import { auraNavigate } from '/_102033_/l2/shared/layout/auraNavigate.js'.`);
   }
   for (const requestId of Object.keys(target.shared.requests)) {
@@ -163,7 +166,12 @@ export function gateM4SharedSource(source: string, target: M4SharedTarget): M4Sh
   for (const [name, param] of Object.entries(target.shared.entry.params)) {
     if (!code.includes(`'${name}'`) && !code.includes(`"${name}"`)) push('M4_SHARED_ENTRY_PARAM', `Entry param ${name} is never read by name.`);
     if (param.sources.includes('url') && !code.includes('URLSearchParams')) push('M4_SHARED_ENTRY_PARAM', 'Entry params must be read from the URL with URLSearchParams.');
-    if ((param.sources.includes('localStorage') || param.persist) && !code.includes('localStorage')) push('M4_SHARED_ENTRY_PARAM', `Entry param ${name} must use localStorage.`);
+    const urlOnly = param.sources.length > 0 && param.sources.every(source => source === 'url');
+    if (urlOnly) {
+      if (!/\bhistory\.replaceState\s*\(/u.test(code)) push('M4_SHARED_ENTRY_PARAM', `Entry param ${name} lives only in the URL: every publish of its state must update the query with history.replaceState.`);
+      const storageKey = `${routePrefix}${name}`;
+      if (code.includes(`'${storageKey}'`) || code.includes(`"${storageKey}"`) || code.includes(`\`${storageKey}\``)) push('M4_SHARED_ENTRY_PARAM', `Entry param ${name} lives only in the URL and must not use localStorage.`);
+    } else if ((param.sources.includes('localStorage') || param.persist) && !code.includes('localStorage')) push('M4_SHARED_ENTRY_PARAM', `Entry param ${name} must use localStorage.`);
   }
 
   // A navigate intent of page11 (no navigation function since 13/10/2026): its method changes page with auraNavigate.

@@ -109,7 +109,7 @@ The pages can only do what the shared exposes. When the defs describe a behavior
 
 ## Entry params (every page)
 
-- For each param: read `new URLSearchParams(window.location.search).get(name)`. When it is absent, read `localStorage.getItem('<module>.<pageId>.<name>')` inside `try/catch`. The URL wins.
+- For each param: read `new URLSearchParams(window.location.search).get(name)`. When it is absent and the param's `sources` include `localStorage`, read `localStorage.getItem('<module>.<pageId>.<name>')` inside `try/catch`. The URL wins.
 - **`required: true`** (the notes give, for each one, the request inputs it feeds and what the route says about them):
   - it is a **condition of opening** only when it feeds a required input of the opening load (`trigger: 'onLoad'`) and the route comment does not say that input comes from the session or the context. Missing → do not call the load: publish `{ code: 'client.preconditionMissing', message: '', details: { params: [...] } }` in the error of that request and set `pageStatus` to `error`;
   - an input the route comment says comes **from the session or the context** is never read from the URL or localStorage, and is not a condition: send it empty (`''`) and the backend fills it from the session;
@@ -118,6 +118,7 @@ The pages can only do what the shared exposes. When the defs describe a behavior
 - Convert for real: `number` → `Number(raw)`, kept only when finite; `boolean` → `raw === 'true'`. Never cast.
 - Apply the effect: publish the value into the state whose source is `entry.params.<name>`. A filter takes part in the query input of the list it filters; a selection selects (see above); a prefill fills the draft of that form.
 - `persist: true` → every publish of that state writes `localStorage` (and removes the key when the value is `null`), inside `try/catch`.
+- A param whose sources are only `url` lives in the URL: every publish of its state updates the query with `history.replaceState` (removes the name when the value is `null`), never `localStorage`.
 
 ## Requests
 
@@ -134,7 +135,7 @@ The pages can only do what the shared exposes. When the defs describe a behavior
 ## Navigations
 
 - **Every navigate intent** is a public method named exactly the intent id. It takes what the person picks for it (the row they open) and carries it into the entry params of the target page (listed under Navigations): only values this page holds that mean the same thing there (the record the person picked → the param that selects it on the target). A navigation that carries nothing just opens the page. Refuse with `client.preconditionMissing` when a value it must carry is null. Otherwise call `auraNavigate('/<module>/<target>?<param>=<encodeURIComponent(value)>&…', { basePath: '/<module>' })`.
-  - `auraNavigate` (imported from `/_102033_/l2/shared/layout/auraNavigate.js`) is the **only** way to change page. `window.location.assign`, `location.href = …`, `location.replace` and `history.pushState`/`replaceState` are refused. Reading `window.location.search` for entry params is fine.
+  - `auraNavigate` (imported from `/_102033_/l2/shared/layout/auraNavigate.js`) is the **only** way to change page. `window.location.assign`, `location.href = …`, `location.replace` and `history.pushState`/`replaceState` are refused, except the `history.replaceState` that keeps a URL-only param in the query (Entry params), which does not change page. Reading `window.location.search` for entry params is fine.
   - The exact shape:
     ```ts
     auraNavigate(`/<module>/<target>?<param>=${encodeURIComponent(value)}`, { basePath: '/<module>' });
