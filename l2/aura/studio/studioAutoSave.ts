@@ -28,7 +28,7 @@ export function buildAutoSaveStorFile(file: IAutoSaveStorFile): IAutoSaveStorFil
 const SOURCE_LEVELS: ReadonlySet<number> = new Set([1, 2, 3]);
 
 /**
- * Site-project files that should go to the draft: l1–l3, dirty, no compile error.
+ * Site-project files that should go to the draft: l1–l3, dirty, no compile error, unless it is a deletion (nothing is sent but the delete).
  * `.defs.ts` and `.test.ts` stay (they are source). `.d.ts` does not.
  */
 export function pendingFiles<T extends IAutoSaveStorFile>(storFiles: readonly T[], projectId: number): T[] {
@@ -36,7 +36,7 @@ export function pendingFiles<T extends IAutoSaveStorFile>(storFiles: readonly T[
   for (const file of storFiles) {
     if (file.project !== projectId) continue;
     if (file.status === 'nochange') continue;
-    if (file.hasError !== false) continue;
+    if (file.hasError !== false && file.status !== 'deleted') continue;
     if (!SOURCE_LEVELS.has(file.level)) continue;
     if (isDeclaration(file)) continue;
     pending.push(file);

@@ -28,6 +28,7 @@ test('pending files are dirty l1–l3 of this project, including defs and tests'
   const keepTest = file({ shortName: 'order', extension: '.test.ts', level: 2, folder: 'aura' });
   const keepLess = file({ shortName: 'order', extension: '.less', level: 3, status: 'new' });
   const keepDeleted = file({ shortName: 'gone', status: 'deleted', folder: '' });
+  const keepDeletedWithError = file({ shortName: 'goneBroken', status: 'deleted', hasError: true, folder: '' });
   const error = file({ shortName: 'broken', hasError: true });
   const clean = file({ shortName: 'clean', status: 'nochange' });
   const otherProject = file({ shortName: 'other', project: 8 });
@@ -37,10 +38,11 @@ test('pending files are dirty l1–l3 of this project, including defs and tests'
 
   const pending = pendingFiles([
     keepTs, error, clean, otherProject, declaration, keepDefs, keepTest, keepLess,
-    declarationViaShortName, level4, keepDeleted,
+    declarationViaShortName, level4, keepDeleted, keepDeletedWithError,
   ], 7);
 
-  assert.deepEqual(pending, [keepTs, keepDefs, keepTest, keepLess, keepDeleted]);
+  assert.deepEqual(pending, [keepTs, keepDefs, keepTest, keepLess, keepDeleted, keepDeletedWithError]);
+  assert.equal(pending.includes(error), false);
 });
 
 test('the auto-save comment names every file', () => {
