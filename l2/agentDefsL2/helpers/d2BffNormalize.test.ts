@@ -200,6 +200,33 @@ void test('d2_110: the three real tarefas bff55 answers have no mounted type rep
   }
 });
 
+void test('d2_120: distinct leaves of one object field stay distinct, with the answer name and type', () => {
+  const envelope = JSON.parse(readFileSync(new URL('./fixtures/d2_120_my_access_completion-1.json', import.meta.url), 'utf8')) as { raw: { result: { arguments: unknown } } };
+  const member = {
+    record: { fields: { id: { type: 'string' }, details: { type: 'object', fields: { person: { type: 'object', fields: { privacyConsent: { type: 'object' } } } } } } },
+  } as unknown as Ns5OntologyAnyEntity;
+  const design = normalizeD2BffDesign(buildD2BffDesign(envelope.raw.result.arguments), { ...entities, Member: member }, 'My_access_completionContracts');
+  const consent = design.types.find(item => item.name === 'PrivacyConsent')!;
+  assert.deepEqual(consent.fields.map(item => `${item.name}:${item.type}`), [
+    'textId:string',
+    'textVersion:string',
+    'acceptedAt:string',
+    'channel:string',
+    'valid:boolean',
+  ]);
+  const source = renderD2ContractV2(
+    { project: 102056, module: 'onboarding', pageId: 'my_access_completion' },
+    buildD2ContractFromBff({
+      module: 'onboarding', pageId: 'my_access_completion', design,
+      access: { actors: ['member'], grants: ['use'], scope: 'organization' },
+      entities: { ...entities, Member: member }, userLanguage: 'en',
+    }),
+  );
+  const iface = /export interface PrivacyConsent \{([\s\S]*?)\n\}/u.exec(source)?.[1] ?? '';
+  assert.match(iface, /textId: string;/u);
+  assert.doesNotMatch(iface, /privacyConsent: \{/u);
+});
+
 void test('d2_107: an L4 enum written as plain strings gives the same values as one written as { value, title }', () => {
   // inicio (17/10): PessoaOrganizacao.details.identification.status is ["Active", ...]; Empresa's status is [{ value, title }].
   const role = (values: unknown[]) => ({ record: { fields: { details: { type: 'object', fields: { status: { type: 'enum', values } } } } } }) as unknown as Ns5OntologyAnyEntity;
