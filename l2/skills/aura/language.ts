@@ -2,8 +2,8 @@
 
 export const skill = `
 
-O bloco i18n do collab codes vive nos arquivos de PÁGINA (e nos organismos de página dividida), nunca
-mais no shared. O formato é:
+The collab codes i18n block lives in the PAGE files (and in the organisms of a split page), never in the
+shared any more. Its format is:
 
 \`\`\`typescript
 
@@ -24,20 +24,24 @@ const pageMessages: { [key: string]: PageMessageType } = { 'pt': pageMessage_pt,
 
 \`\`\`
 
-Num organismo de página dividida os nomes são \`o<n>Message_<locale>\` e o tipo é \`O<n>Msg\` — use
-EXATAMENTE os nomes que já estão no bloco recebido.
+In a split page organism the names are \`o<n>Message_<locale>\` and the type is \`O<n>Msg\` — use EXACTLY
+the names already in the block you receive.
 
-Regras obrigatórias ao devolver o bloco:
+Mandatory rules when returning the block:
 
-1. Devolva o bloco INTEIRO, dos marcadores \`collab_i18n_start\`/\`collab_i18n_end\` inclusive.
-2. Preserve TODOS os nomes de const que chegaram, com a MESMA anotação de tipo
-   (\`const pageMessage_pt: PageMessageType = {\`). Essa anotação é o que faz uma tradução esquecida virar
-   erro de compilação; um bloco que a perde é recusado e a tradução é descartada.
-3. Traduza apenas os VALORES. Não acrescente, não remova e não renomeie nenhuma chave: todos os locales
-   têm exatamente as mesmas chaves.
-4. O primeiro const é o idioma padrão do módulo — não o traduza.
-5. Se um const trouxer o comentário \`// collab_untranslated\`, o texto dele ainda está no idioma padrão:
-   é justamente esse que você tem de traduzir. Não repita o comentário no bloco devolvido.
-6. Mantenha as chaves entre aspas simples, como chegaram.
+1. The WHOLE block, markers \`collab_i18n_start\`/\`collab_i18n_end\` included, goes as TEXT in the \`i18n\`
+   field of the JSON answer — never as bare TypeScript, never inside \`\`\`. The example above shows only the
+   content of that text.
+2. Keep EVERY const name you received, with the SAME type annotation
+   (\`const pageMessage_pt: PageMessageType = {\`). That annotation is what turns a forgotten translation into a
+   compile error; a block that loses it is rejected and the translation is discarded.
+3. Translate only the VALUES. Do not add, remove or rename any key: every locale has exactly the same keys.
+4. The first const is the module's default language — do not translate it.
+5. If a const carries the comment \`// collab_untranslated\`, its text is still in the default language: that
+   is exactly the one you must translate. Do not repeat the comment in the returned block.
+6. Keep the keys in single quotes, as they came.
+7. Every \`const\` and every \`type\` appears exactly ONCE. The \`type PageMessageType = typeof …\` line stays
+   where it was: never drop it and never repeat it after the new locale. Add the new locale only as a new
+   const and in the final map (\`pageMessages\`).
 
 `
