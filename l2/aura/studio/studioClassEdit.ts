@@ -375,6 +375,25 @@ export function utilityOptions(
   span = 2,
   roles: readonly string[] = [],
   resolve?: (cssVar: string) => string,
+  channel: ClassChannel = 'class',
+): IUtilityOptions {
+  // A class that tells the PARENT how to place the element acts on a molecule's tag and does nothing
+  // inside it (see fitsChannel). It is SHOWN — it is in the source, and it can be removed — but it
+  // gets no neighbours there.
+  if (!fitsChannel(token, channel)) {
+    return { kind: 'none', options: [], reason: { id: 'reason.dataClassItemProp' } };
+  }
+  const options = familyOptions(token, span, roles, resolve);
+  if (channel === 'class') return options;
+  return { ...options, options: options.options.filter((option) => splitUtilities(option).every((part) => fitsChannel(part, channel))) };
+}
+
+/** The neighbours of a token inside its own family — utilityOptions before the channel has a say. */
+function familyOptions(
+  token: IUtilityToken,
+  span: number,
+  roles: readonly string[],
+  resolve?: (cssVar: string) => string,
 ): IUtilityOptions {
   if (token.arbitrary) {
     // `var(--role, #hex)` is the shape the generator emits: the vocabulary is the design system's
@@ -3094,6 +3113,154 @@ export function diffLiterals(before: string, after: string): IStyleDiff {
   };
 }
 
+// --- The channel: `class`, or a molecule's `data-class` (TASK-102020-picker-molecule-data-class) ---
+//
+// A molecule does not read the `class` of its host. It reads `data-class` (the `cssClass` of
+// moleculeBase) and applies it to its INNER root, the box the user actually sees; the host is an
+// inline wrapper where width, background and padding land on nothing visible. Measured on the 102047
+// on 2026-10-21: 144 `data-class` against ~12 `class` on molecule tags, and 150 of the 151 molecules of
+// the 102040 apply `cssClass`.
+//
+// What may go through `data-class`: EVERYTHING, except what places the element in its parent (below).
+// An earlier version also held the looks back (colour, padding, border) on the grounds that they may
+// lose to the variant; the user rejected it on 2026-10-21 — not every group has variants that set
+// those, and the picker must not decide that for them.
+//
+// What does NOT go is what places the element INSIDE ITS PARENT (`col-span`, `self`, `order`, `flex-1`): when the
+// parent is flex or grid, the item is the molecule's TAG, and the inner box's parent is that tag.
+// Measured on the 102047 + 102050 (2026-10-21): 365 of the 713 molecules sit in a flex or grid parent.
+// Those classes belong to the tag's own `class`, which the picker edits as a second section — the two
+// attributes are two boxes, and both are legitimate (27 tags of the 102047 carry a `class`).
+
+/** Which attribute of the selected element the picker reads and writes. */
+export type ClassChannel = 'class' | 'data-class';
+
+/**
+ * The channel of an element: `data-class` for a molecule, `class` for everything else.
+ *
+ * A molecule is a custom element that is not the page itself — the same rule the owner chain uses to
+ * tell a component from markup. `hasCssClass` is the runtime's answer when the tag is defined: a custom
+ * element that does not declare `cssClass` (no moleculeBase underneath) does not read `data-class`
+ * either, and sending the edit there would write into nothing. Undefined (not upgraded yet) trusts the
+ * tag.
+ */
+export function classChannelOf(tag: string, pageTag: string | null, hasCssClass?: boolean): ClassChannel {
+  const name = tag.toLowerCase();
+  if (!name.includes('-') || pageTag === null || name === pageTag.toLowerCase()) return 'class';
+  return hasCssClass === false ? 'class' : 'data-class';
+}
+
+/**
+ * The place properties that are a question to the PARENT — where a flex or grid item goes. On a
+ * molecule the item is the tag, so through `data-class` they do nothing.
+ */
+const ITEM_PROPERTIES = new Set(['prop.colSpan', 'prop.rowSpan', 'prop.order', 'prop.flexGrow', 'prop.self']);
+
+/** Whether a PROPERTY is part of the `data-class` vocabulary: anything that does not answer to the parent. */
+function propertyFitsDataClass(property: string): boolean {
+  return !ITEM_PROPERTIES.has(property);
+}
+
+/**
+ * Whether a class does what it promises through the channel.
+ *
+ * Everything does through `class`. Through `data-class` everything too, except a class that answers
+ * to the parent (ITEM_PROPERTIES) — read by category first, so an entrance or a cascade
+ * (`starting:…`, `[&>*]:…`) is motion and always fits, whatever property it carries.
+ */
+export function fitsChannel(token: IUtilityToken, channel: ClassChannel): boolean {
+  if (channel === 'class') return true;
+  if (styleCategory(token) === 'animation') return true;
+  return propertyFitsDataClass(utilityLabel(token).property ?? '');
+}
+
+/** The classes of a literal that travel through the channel, in source order. */
+export function channelClasses(literal: string | null, channel: ClassChannel): string[] {
+  if (!literal) return [];
+  return splitUtilities(literal).filter((token) => fitsChannel(token, channel)).map((token) => token.raw);
+}
+
+export interface IChannelPaste {
+  /** The target's attribute after the paste. */
+  literal: string;
+  /** Classes of the source the channel does not carry — what the console says was left out. */
+  dropped: string[];
+}
+
+/**
+ * pasteStyle, for a target that has a channel.
+ *
+ * Into a plain element everything travels (pasting FROM a molecule included). Into a molecule's inside
+ * everything but the parent-facing classes (fitsChannel), which would do nothing there; it is still a
+ * REPLACE, so the target's own such classes go as well — the same answer the paste gives everywhere.
+ */
+export function pasteStyleInto(target: string, source: string, channel: ClassChannel): IChannelPaste {
+  if (channel === 'class') return { literal: pasteStyle(target, source), dropped: [] };
+  const dropped = splitUtilities(source).filter((token) => !fitsChannel(token, channel)).map((token) => token.raw);
+  return { literal: pasteStyle(target, source, [], dropped), dropped };
+}
+
+/**
+ * What a molecule's `data-class` is in the source, for the element the structural anchor resolved.
+ *
+ * `literal` — editable, and it says what the screen shows; `insert` — absent, the first write adds it;
+ * `computed` — a binding, whole (`data-class=${…}`) or mixed into the quotes, which this module never
+ * rewrites; `mismatch` — the file says something other than the screen, so the anchor found another
+ * element and the caller keeps looking.
+ */
+export type DataClassSource =
+  | { kind: 'literal'; start: number; end: number }
+  | { kind: 'insert'; at: number }
+  | { kind: 'computed'; reason: IMessageRef }
+  | { kind: 'mismatch' };
+
+export function readDataClass(source: string, element: ITemplateElement, onScreen: string): DataClassSource {
+  const declared = findAttributeValue(source, element.openStart, 'data-class');
+  if (declared.kind === 'expression' || (declared.kind === 'literal' && declared.value.includes('${'))) {
+    return { kind: 'computed', reason: { id: 'reason.dataClassComputed' } };
+  }
+  if (declared.kind === 'literal') {
+    return declared.value === onScreen ? { kind: 'literal', start: declared.start, end: declared.end } : { kind: 'mismatch' };
+  }
+  return onScreen ? { kind: 'mismatch' } : { kind: 'insert', at: element.insertAt };
+}
+
+/** Where a write lands: the literal's span, or — for `insert` — the point where the attribute goes in. */
+export interface IChannelMatch {
+  startOffset: number;
+  endOffset: number;
+  insert?: boolean;
+}
+
+/**
+ * The source after writing `to` into the channel's attribute, and where the new literal starts.
+ *
+ * One splice for both channels: an insertion carries the attribute's own syntax, a replacement is just
+ * the literal, and an empty result takes the whole attribute out (classAttrSpan) instead of leaving
+ * `class=""` or `data-class=""` behind.
+ */
+export function spliceChannel(
+  source: string,
+  match: IChannelMatch,
+  attribute: ClassChannel,
+  to: string,
+): { source: string; literalOffset: number } {
+  let { startOffset, endOffset } = match;
+  let written = match.insert ? ` ${attribute}="${to}"` : to;
+  if (!to && !match.insert) {
+    const span = classAttrSpan(source, match.startOffset, match.endOffset, attribute);
+    if (span) {
+      startOffset = span.start;
+      endOffset = span.end;
+      written = '';
+    }
+  }
+  return {
+    source: source.slice(0, startOffset) + written + source.slice(endOffset),
+    literalOffset: match.insert ? startOffset + ` ${attribute}="`.length : startOffset,
+  };
+}
+
 // --- Adding a property the element does not have (TASK-102033-picker-add-property) ---
 //
 // Until here the picker was a MODIFIER: it could swap `p-3` for `p-4`, but it could not put padding on
@@ -3199,6 +3366,8 @@ function conflictsWith(property: string): readonly string[] {
 export interface IAddContext {
   /** Element children — `space-y` has nothing to space without them. */
   childCount: number;
+  /** The attribute the class goes into; a molecule's `data-class` narrows the catalog (fitsChannel). */
+  channel?: ClassChannel;
 }
 
 const DISPLAY_FLEX = ['flex', 'inline-flex', 'grid', 'inline-grid'];
@@ -3228,7 +3397,9 @@ export function addableProperties(literal: string, context: IAddContext): IAddab
       .filter((property): property is string => Boolean(property)),
   );
 
+  const channel = context.channel ?? 'class';
   return ADDABLE.filter((entry) => {
+    if (channel === 'data-class' && !propertyFitsDataClass(entry.property)) return false;
     if (present.has(entry.property)) return false;
     if (conflictsWith(entry.property).some((other) => present.has(other))) return false;
     return meets(entry.requires, literal, context);
@@ -3250,11 +3421,16 @@ export function addableProperty(property: string): IAddableProperty | undefined 
  *
  * Null when the text around the literal is not the attribute this expects; the caller then clears the
  * literal and leaves the rest alone, which is always safe.
+ *
+ * `attribute` is the channel's name (`data-class` on a molecule). The name has to stand on its own:
+ * `class` must not match the tail of `data-class`, or emptying a molecule's attribute would leave a
+ * `data-` behind.
  */
 export function classAttrSpan(
   source: string,
   literalStart: number,
   literalEnd: number,
+  attribute: ClassChannel = 'class',
 ): { start: number; end: number } | null {
   let at = literalStart - 1;
   if (source[at] !== '"' && source[at] !== "'") return null;
@@ -3263,8 +3439,9 @@ export function classAttrSpan(
   if (source[at] !== '=') return null;
   at -= 1;
   while (at >= 0 && /\s/u.test(source[at])) at -= 1;
-  if (source.slice(at - 4, at + 1) !== 'class') return null;
-  at -= 5;
+  if (source.slice(at - attribute.length + 1, at + 1) !== attribute) return null;
+  at -= attribute.length;
+  if (at >= 0 && /[\w.?@:-]/u.test(source[at])) return null;
   // The separator before the attribute goes too, or the tag is left with a double space. Only spaces
   // and tabs: eating a newline would pull the next attribute up into this line.
   while (at >= 0 && /[^\S\n]/u.test(source[at])) at -= 1;
@@ -3592,6 +3769,22 @@ export type IAttributeSource =
  * not match `data-title` and `aria-label` does not match `data-aria-label`.
  */
 export function readAttribute(source: string, openStart: number, attribute: string): IAttributeSource {
+  const found = findAttributeValue(source, openStart, attribute);
+  return found.kind === 'literal' ? { kind: 'literal', value: found.value } : found;
+}
+
+/**
+ * readAttribute, with WHERE the quoted value sits in `source` — what a write needs.
+ *
+ * `start` is the first character past the opening quote and `end` the closing quote, the same
+ * convention as `IClassAttrMatch`, so a molecule's `data-class` is spliced exactly like a `class`.
+ */
+export type IAttributeLocation =
+  | { kind: 'expression'; expression: string }
+  | { kind: 'literal'; value: string; start: number; end: number }
+  | { kind: 'absent' };
+
+export function findAttributeValue(source: string, openStart: number, attribute: string): IAttributeLocation {
   if (openStart < 0 || openStart >= source.length || source[openStart] !== '<') return { kind: 'absent' };
   const end = findOpenTagEnd(source, openStart + 1);
   const openTag = source.slice(openStart, end + 1);
@@ -3619,7 +3812,7 @@ export function readAttribute(source: string, openStart: number, attribute: stri
   if (value.startsWith('${') && skipExpression(value, 0) === value.length) {
     return { kind: 'expression', expression: value.slice(2, -1).trim() };
   }
-  return { kind: 'literal', value };
+  return { kind: 'literal', value, start: openStart + at + 1, end: openStart + closing };
 }
 
 /**

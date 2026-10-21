@@ -69,6 +69,38 @@ function styledClasses(LESS: string): string[] {
     .filter((name) => !CONTEXT.has(name));
 }
 
+/**
+ * The calls through which a panel decides its vocabulary (TASK-102020-picker-molecule-data-class).
+ *
+ * The rules live in studioClassEdit; what each panel may get wrong is forgetting to pass the channel —
+ * and then a molecule would be offered a background in one panel and not in the other.
+ */
+const CHANNEL_CALLS = [
+  'utilityOptions(token, 2, this.dsRoles, (cssVar) => this.resolveVar(cssVar), side.channel)',
+  'addableProperties(side.literal, { childCount: this.target?.childCount ?? 0, channel: side.channel })',
+  'pasteStyleInto(this.literal, clip.literal, this.channel).literal',
+  'pasteStyleInto(this.literal, clip.literal, this.channel);',
+  "side.channel === 'data-class'",
+  // A molecule: two sections, the inside and the tag.
+  '${this.renderSection(inner)}',
+  '${this.renderSection(this.tagSide)}',
+  // What goes out names its attribute.
+  'detail: { literal, what, attribute: side.channel }',
+  '{ literal, attribute: side.channel }',
+];
+
+test('both panels decide the vocabulary with the same core calls, and pass the channel to each', () => {
+  for (const panel of PANELS) {
+    const TS = code(`${panel}.ts`);
+    for (const call of CHANNEL_CALLS) assert.ok(TS.includes(call), `${panel}: ${call}`);
+    // No vocabulary call left without the section's channel.
+    const bareOptions = [...TS.matchAll(/utilityOptions\(token, 2,[^\n]*\)/gu)].filter((match) => !match[0].includes('side.channel'));
+    assert.deepEqual(bareOptions.map((match) => match[0]), [], panel);
+    const barePaste = [...TS.matchAll(/= pasteStyle\(this\.literal, clip\.literal\)/gu)];
+    assert.equal(barePaste.length, 0, `${panel}: the paste that writes goes through the channel`);
+  }
+});
+
 for (const panel of PANELS) {
   const TS = code(`${panel}.ts`);
   const LESS = code(`${panel}.less`);

@@ -8,6 +8,7 @@ import test from 'node:test';
 const EDITOR = readFileSync(new URL('studioEditor.ts', import.meta.url), 'utf8');
 const TARGET = readFileSync(new URL('studioEditTarget.ts', import.meta.url), 'utf8');
 const PANEL = readFileSync(new URL('classPickerPanel.ts', import.meta.url), 'utf8');
+const CORE = readFileSync(new URL('studioClassEdit.ts', import.meta.url), 'utf8');
 /** The panel's looks moved out of the component when it went light DOM (classPickerPanel.less). */
 const PANEL_CSS = readFileSync(new URL('classPickerPanel.less', import.meta.url), 'utf8');
 
@@ -110,9 +111,10 @@ test('a preview never outlives the moment it is showing', () => {
     return EDITOR.slice(start, EDITOR.indexOf('\n  }', start));
   };
 
-  // Reading the class attribute has to happen with no preview applied.
+  // Reading the class attribute — and a molecule's `data-class` — has to happen with no preview applied.
   const show = inside('async showClassPanel');
   assert.ok(show.indexOf('previewAnimation(null)') < show.indexOf("getAttribute('class')"), 'cancel BEFORE reading');
+  assert.ok(show.indexOf('previewAnimation(null)') < show.indexOf("getAttribute('data-class')"), 'both attributes');
   // Closing the panel cannot leave a preview on the element.
   assert.ok(inside('hideClassPanel').includes('previewAnimation(null)'));
   // And the cancel must not depend on the panel state that may already be gone.
@@ -196,13 +198,45 @@ test('an element with no class can be given one — and never a second', () => {
   // first write inserts the attribute.
   assert.match(EDITOR, /\| \{ kind: 'insert'; path: IDomPathStep\[\] \}/u);
 
-  const locate = EDITOR.slice(EDITOR.indexOf("if (anchor.kind === 'insert')"));
-  const body = locate.slice(0, locate.indexOf('\n    }'));
+  // locateLiteral has an insertion per channel; the `class` one is the one that reads the scan's literal.
+  const locateAt = EDITOR.indexOf('private locateLiteral(');
+  const inserts: string[] = [];
+  for (let at = EDITOR.indexOf("if (anchor.kind === 'insert')", locateAt); at >= 0 && inserts.length < 2;
+    at = EDITOR.indexOf("if (anchor.kind === 'insert')", at + 1)) {
+    const locate = EDITOR.slice(at);
+    inserts.push(locate.slice(0, locate.indexOf('\n    }')));
+  }
+  const body = inserts.find((entry) => entry.includes('resolved.element.literal')) ?? '';
   assert.ok(body.includes('resolved.element.literal !== null'), 'a class that appeared meanwhile aborts');
   assert.ok(body.includes('resolved.element.classComputed'), 'and so does a computed one');
+  // A molecule's `data-class` the same way: one that appeared meanwhile (literal or binding) aborts.
+  const molecule = inserts.find((entry) => entry.includes('declared.kind')) ?? '';
+  assert.ok(molecule.includes("if (declared.kind !== 'insert') return null;"), 'a data-class that appeared meanwhile aborts');
 
-  // The write carries the attribute syntax only for an insertion.
-  assert.ok(EDITOR.includes('match.insert ? ` class="${to}"` : to'));
+  // The write carries the attribute syntax only for an insertion — the channel's own name, in the one
+  // splice both channels share.
+  assert.ok(codeLines(EDITOR).some((line) => line.includes('spliceChannel(source, match, attribute, to)')));
+  assert.ok(CORE.includes('match.insert ? ` ${attribute}="${to}"` : to'));
+});
+
+test('a molecule has two sides — its tag class and its inner data-class — and every write names one', () => {
+  // TASK-102020-picker-molecule-data-class: the tag is the box the parent lays out, data-class the box
+  // the user sees. Both are resolved for a molecule, and nothing writes without saying which.
+  const show = EDITOR.slice(EDITOR.indexOf('private async showClassPanel'));
+  const flow = show.slice(0, show.indexOf('\n  }\n'));
+  assert.ok(flow.includes('await this.resolveClassAnchor(el, literal, state);'), 'the tag is resolved as always');
+  assert.ok(flow.includes('if (inner) await this.resolveDataClassAnchor(el, inner.literal, inner);'), 'and the inside too');
+
+  assert.ok(EDITOR.includes("this.applyLiteralChange(e.detail.literal, e.detail.what, e.detail.attribute ?? 'class')"));
+  const apply = EDITOR.slice(EDITOR.indexOf('private async applyLiteralChange'));
+  assert.ok(apply.slice(0, apply.indexOf('\n  }')).includes('sideOf(state, attribute)'), 'the write reads the side it was asked for');
+  const write = EDITOR.slice(EDITOR.indexOf('private async writeLiteral'));
+  const body = write.slice(0, write.indexOf('\n  }'));
+  assert.ok(body.includes('sideOf(state, attribute)'));
+  assert.ok(body.includes('attribute,'), 'the history step carries the attribute, so undo writes the same one');
+  // The animations act on the box the user sees.
+  const animation = EDITOR.slice(EDITOR.indexOf('private previewAnimation'));
+  assert.ok(animation.slice(0, animation.indexOf('\n  }')).includes('mainChannel(state)'));
 });
 
 test('undo walks the same write as any other edit, and the shortcut stays contained', () => {

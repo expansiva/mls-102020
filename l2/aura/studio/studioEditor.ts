@@ -76,8 +76,10 @@ import {
   activeAnimations,
   applyAnimationOption,
   NOT_LOCATED,
-  classAttrSpan,
+  classChannelOf,
   deepestAt,
+  readDataClass,
+  spliceChannel,
   editScope,
   describeMissingLiteral,
   findClassAttrs,
@@ -93,6 +95,7 @@ import {
   scanTemplateTree,
   selectableChain,
   splitUtilities,
+  type ClassChannel,
   type IDomPathStep,
   pickRestored,
   type IRestorePosition,
@@ -198,6 +201,27 @@ type ClassAnchor =
  * Copied, not passed through: the projection keeps every value it is handed, and the anchor here is
  * still the live one this editor will use for its own next write.
  */
+/**
+ * Sets the channel's attribute on a live element — or removes it, for null.
+ *
+ * The one DOM writer of the picker's classes, so `class` and a molecule's `data-class` can never be
+ * written two different ways.
+ */
+function setChannel(el: HTMLElement, attribute: ClassChannel, value: string | null): void {
+  if (value === null) el.removeAttribute(attribute);
+  else el.setAttribute(attribute, value);
+}
+
+/** The side of the selection an attribute names: the element itself for `class`, the inner box for `data-class`. */
+function sideOf(state: IClassPanelState, attribute: ClassChannel): IChannelSide | null {
+  return attribute === 'class' ? state : state.inner;
+}
+
+/** The box the user SEES — where the animations and the copy/paste act: a molecule's inner one. */
+function mainChannel(state: IClassPanelState): ClassChannel {
+  return state.inner ? 'data-class' : 'class';
+}
+
 function anchorPathOf(anchor: ClassAnchor | null): IDomPathStep[] | null {
   if (!anchor || anchor.kind === 'occurrence') return null;
   return [...anchor.path];
@@ -220,6 +244,8 @@ type EditStep =
   | {
     kind: 'class';
     file: IStudioEditTarget;
+    /** Which attribute the edit wrote — undo and redo write the same one (a molecule's `data-class`). */
+    attribute: ClassChannel;
     anchorBefore: ClassAnchor;
     anchorAfter: ClassAnchor;
     before: string;
@@ -375,6 +401,22 @@ interface IAdoptState {
 /** The answer of a resolution: the state, or the reason there is none. */
 type AdoptResolution = { ok: true; state: IAdoptState } | { ok: false; reason: IMessageRef };
 
+/**
+ * One attribute of the selection the picker can write: its literal and where it is in the source.
+ *
+ * IClassPanelState IS one (the `class` side); a molecule adds the `data-class` side as `inner`.
+ */
+interface IChannelSide {
+  literal: string;
+  /** File that receives the edit, or null when nothing was resolved. */
+  file: IStudioEditTarget | null;
+  /** Null while the attribute could not be located. */
+  anchor: ClassAnchor | null;
+  warning?: IMessageRef;
+  /** Why this side cannot be edited — it is read-only while this is set. */
+  refusal?: IMessageRef;
+}
+
 interface IClassPanelState {
   el: HTMLElement;
   /**
@@ -386,6 +428,17 @@ interface IClassPanelState {
   levels: HTMLElement[];
   /** The element's class attribute, exactly as authored — what has to be found in the source. */
   literal: string;
+  /**
+   * The molecule's INNER box, through its `data-class` — null for anything that is not a molecule
+   * (TASK-102020-picker-molecule-data-class).
+   *
+   * A second side and not a replacement: the tag's own `class` (the fields above) is the box the
+   * PARENT lays out — the flex or grid item, the `block` that lets a width apply — and `data-class` is
+   * the box the user sees. Both are legitimate, and the panel edits them as two sections. The fields
+   * above stay the ELEMENT's identity for everything else (text attributes, moves, the published
+   * selection).
+   */
+  inner: IChannelSide | null;
   /** Text attributes of the selection, resolved against this screen's catalogs. */
   texts: IAttrText[];
   tokens: IUtilityToken[];
@@ -500,6 +553,8 @@ export class StudioEditor {
    * like a class that is not in the source.
    */
   private previewEl: HTMLElement | null = null;
+  /** The attribute the preview changed — put back on the same channel it was taken from. */
+  private previewAttribute: ClassChannel = 'class';
   private previewRestore: string | null = null;
   private previewTimer: number | null = null;
   /** True while an edit is being written: the DOM must not be touched by anything else meanwhile. */
@@ -1719,7 +1774,7 @@ export class StudioEditor {
   }
 
   private onPickerApply = (e: CustomEvent<IPickerApply>): void => {
-    void this.applyLiteralChange(e.detail.literal, e.detail.what);
+    void this.applyLiteralChange(e.detail.literal, e.detail.what, e.detail.attribute ?? 'class');
   };
 
   private onPickerPreview = (e: CustomEvent<IPickerPreview | null>): void => {
@@ -1731,7 +1786,7 @@ export class StudioEditor {
     // A paste asks for a whole class attribute; an animation asks for one option, which the editor
     // still has to turn into a literal (and replay, when it is an entrance).
     if (detail.literal !== undefined) {
-      this.previewLiteral(detail.literal);
+      this.previewLiteral(detail.literal, undefined, detail.attribute ?? 'class');
       return;
     }
     this.previewAnimation(detail.option ?? null);
@@ -1847,6 +1902,10 @@ export class StudioEditor {
     }
 
     const literal = el.getAttribute('class') ?? '';
+    // A molecule has a second box to edit: the inner one, through `data-class`.
+    const inner: IChannelSide | null = this.classChannelOf(el) === 'data-class'
+      ? { literal: el.getAttribute('data-class') ?? '', file: null, anchor: null }
+      : null;
     const state: IClassPanelState = {
       el,
       // Recomputed for every selection, deliberately: a re-render (the scenario panel writing a
@@ -1854,6 +1913,7 @@ export class StudioEditor {
       // would offer elements that are no longer in the document.
       levels: this.selectionLevels(el),
       literal,
+      inner,
       texts: [],
       tokens: splitUtilities(literal),
       file: null,
@@ -1883,6 +1943,7 @@ export class StudioEditor {
     // The reason the resolution failed is kept from refreshTarget and shown as it is.
     if (!this.target) {
       state.refusal = this.targetFailure ?? { id: 'reason.noTargetFile' };
+      if (inner) inner.refusal = state.refusal;
       show();
       return;
     }
@@ -1892,14 +1953,17 @@ export class StudioEditor {
     const ancestorProject = this.foreignProjectOfAncestor(el);
     if (ancestorProject !== null) {
       state.refusal = editScope(`${ancestorProject}`, ancestorProject).refusal;
+      if (inner) inner.refusal = state.refusal;
       show();
       return;
     }
 
     // Which file, and where in it — structural first, counting as the fallback. An element with NO
     // class attribute goes through here too: it is editable now that the panel can ADD a property,
-    // anchored by position alone, and the first write inserts the attribute.
+    // anchored by position alone, and the first write inserts the attribute. A molecule's inner box
+    // is found by position only (resolveDataClassAnchor).
     await this.resolveClassAnchor(el, literal, state);
+    if (inner) await this.resolveDataClassAnchor(el, inner.literal, inner);
     // The text of an attribute is a different edit with the same address (the catalog key), so it is
     // resolved here too — and it does NOT depend on the class anchor: an element whose class literal
     // could not be located can still have a `title` that is perfectly editable.
@@ -1959,6 +2023,57 @@ export class StudioEditor {
     if (!anchor || anchor.kind === 'occurrence') return undefined;
     const resolved = resolveStructuralAnchor(scanTemplateTree(src), anchor.path);
     return resolved.ok ? { start: resolved.element.openStart, end: resolved.element.end } : undefined;
+  }
+
+  /**
+   * Whether this element has a molecule's inner box to edit (TASK-102020-picker-molecule-data-class).
+   *
+   * A molecule reads `data-class` and applies it to its inner root; its tag's own `class` stays on
+   * the tag, the box its parent lays out. The runtime is asked only when the tag is defined: a custom
+   * element with no `cssClass` does not read `data-class`.
+   */
+  private classChannelOf(el: HTMLElement): ClassChannel {
+    const tag = el.tagName.toLowerCase();
+    const defined = typeof customElements !== 'undefined' && Boolean(customElements.get(tag));
+    return classChannelOf(tag, this.pageTag(), defined ? 'cssClass' in el : undefined);
+  }
+
+  /**
+   * Where a molecule's `data-class` is in the source — by POSITION, and only by position.
+   *
+   * The structural anchor names the element; the attribute is then read off its open tag. Counting
+   * (the `occurrence` fallback of `class`) is not offered: it addresses a `class="…"` literal, and
+   * without a position there is no telling which tag a `data-class` belongs to — the panel stays
+   * read-only instead.
+   *
+   * Three answers, like `class`: a literal (edit it), a binding (read-only, with the reason) and none
+   * at all (the first write inserts ` data-class="…"`).
+   */
+  private async resolveDataClassAnchor(el: HTMLElement, literal: string, state: IChannelSide): Promise<void> {
+    const path = this.domPathOf(el);
+    const candidates = await this.resolveCandidates();
+
+    for (const candidate of path.length ? candidates : []) {
+      const source = candidate.model.model.getValue();
+      const resolved = resolveStructuralAnchor(scanTemplateTree(source), path);
+      if (!resolved.ok) continue;
+      const declared = readDataClass(source, resolved.element, literal);
+
+      // A binding is an expression of the page, and this module never rewrites an expression.
+      if (declared.kind === 'computed') {
+        state.file = candidate;
+        state.refusal = declared.reason;
+        return;
+      }
+      // What the screen shows has to be what the file says, or the anchor found another element.
+      if (declared.kind === 'mismatch') continue;
+
+      state.file = candidate;
+      state.anchor = declared.kind === 'literal' ? { kind: 'structural', path } : { kind: 'insert', path };
+      state.warning = resolved.renders > 1 ? repeatedRenderWarning(resolved.renders) : undefined;
+      return;
+    }
+    state.refusal = NOT_LOCATED;
   }
 
   /** The element of the page's source the selection IS, when its position resolved it. */
@@ -2142,8 +2257,26 @@ export class StudioEditor {
     file: IStudioEditTarget,
     literal: string,
     anchor: ClassAnchor,
+    attribute: ClassChannel,
   ): { startOffset: number; endOffset: number; insert?: boolean } | null {
     const source = file.model.model.getValue();
+
+    // A molecule's channel: the element by position, then the attribute off its open tag.
+    if (attribute === 'data-class') {
+      if (anchor.kind === 'occurrence') return null;
+      const resolved = resolveStructuralAnchor(scanTemplateTree(source), anchor.path);
+      if (!resolved.ok) return null;
+      // `literal` is what the file must hold right now ('' for an insertion): one that appeared since
+      // the panel opened — a second attribute would be `data-class` twice — or changed reads as a
+      // mismatch, and the write is refused.
+      const declared = readDataClass(source, resolved.element, literal);
+      if (anchor.kind === 'insert') {
+        if (declared.kind !== 'insert') return null;
+        return { startOffset: declared.at, endOffset: declared.at, insert: true };
+      }
+      if (declared.kind !== 'literal') return null;
+      return { startOffset: declared.start, endOffset: declared.end };
+    }
 
     if (anchor.kind === 'insert') {
       const resolved = resolveStructuralAnchor(scanTemplateTree(source), anchor.path);
@@ -2344,8 +2477,19 @@ export class StudioEditor {
     // RENDER, not cached for the session: a stale role list would offer tokens that are gone.
     this.dsRoles = readDesignSystemRoles(document.getElementById('ds-tokens')?.textContent ?? '');
 
+    const inner = state.inner;
     const target: IPickerTarget = {
       tag: state.el.tagName.toLowerCase(),
+      // The molecule's inner box, as data — the second section of the classes tab.
+      inner: inner
+        ? {
+          literal: inner.literal,
+          editable: !inner.refusal && Boolean(inner.file) && inner.anchor !== null,
+          refusal: inner.refusal,
+          warning: inner.warning,
+          canRemoveLast: inner.anchor?.kind !== 'occurrence',
+        }
+        : undefined,
       // DATA, never the nodes: the panel gets a tag, a literal and the index that points back into
       // `state.levels`, which is the only place the elements themselves live.
       levels: state.levels.map((node, index) => ({
@@ -2519,12 +2663,15 @@ export class StudioEditor {
       this.previewLiteral(null);
       return;
     }
+    // The animations tab works on the box the user SEES: a molecule's inner one.
+    const attribute = mainChannel(state);
+    const literal = sideOf(state, attribute)?.literal ?? '';
     // Already on the element: there is nothing to show that is not already showing.
-    if (activeAnimations(state.literal).includes(optionId)) {
+    if (activeAnimations(literal).includes(optionId)) {
       this.previewLiteral(null);
       return;
     }
-    this.previewLiteral(applyAnimationOption(state.literal, optionId, readAnimationState(state.literal)), 1500);
+    this.previewLiteral(applyAnimationOption(literal, optionId, readAnimationState(literal)), 1500, attribute);
   }
 
   /**
@@ -2535,24 +2682,28 @@ export class StudioEditor {
    * paste needs: the result stays on screen while the pointer is on the button and the eyes are on
    * the summary, instead of vanishing mid-read.
    */
-  private previewLiteral(literal: string | null, timeout?: number): void {
+  private previewLiteral(literal: string | null, timeout?: number, attribute: ClassChannel = 'class'): void {
     // Cancel first, ALWAYS — even with no panel state left. This is the undo of the previous preview.
     if (this.previewTimer !== null) {
       clearTimeout(this.previewTimer);
       this.previewTimer = null;
     }
-    if (this.previewEl && this.previewRestore !== null) {
-      this.previewEl.setAttribute('class', this.previewRestore);
-    }
+    // Put back exactly what was there — an attribute that was ABSENT is removed again, never left as
+    // `=""`: an empty attribute changes how the element is anchored (and, on a molecule, what
+    // `cssClass` reads).
+    if (this.previewEl) setChannel(this.previewEl, this.previewAttribute, this.previewRestore);
     this.previewEl = null;
     this.previewRestore = null;
 
     const state = this.classPanel;
     if (!literal || !state || this.applying) return;
 
+    // On a molecule's inner box this is `data-class`: an attribute the molecule observes (`cssClass`),
+    // so setting it re-renders the inner root — the box that actually shows the change.
     this.previewEl = state.el;
-    this.previewRestore = state.el.getAttribute('class') ?? '';
-    state.el.setAttribute('class', literal);
+    this.previewAttribute = attribute;
+    this.previewRestore = state.el.getAttribute(attribute);
+    state.el.setAttribute(attribute, literal);
     // An entrance has to be REPLAYED to be seen: the element is already rendered, and
     // `@starting-style` only applies on a first render.
     if (this.hasEntrance(literal)) this.replayEntrance(state.el);
@@ -2630,11 +2781,13 @@ export class StudioEditor {
    * bookkeeping, and any failure puts the old attribute back, so the screen never claims an edit that
    * did not land.
    */
-  private async applyLiteralChange(newLiteral: string, what: string): Promise<void> {
+  private async applyLiteralChange(newLiteral: string, what: string, attribute: ClassChannel): Promise<void> {
     const state = this.classPanel;
-    if (!state || !state.file || !state.anchor) return;
-    const { el, literal } = state;
-    if (newLiteral === literal) return;
+    // The side the panel named: the tag's `class`, or a molecule's inner `data-class`.
+    const side = state ? sideOf(state, attribute) : null;
+    if (!state || !side?.file || !side.anchor) return;
+    const { el } = state;
+    if (newLiteral === side.literal) return;
 
     // One edit at a time. A second click during the write would compute its change from the SAME
     // starting literal and overwrite the first one — silently reverting a change the user just made.
@@ -2644,7 +2797,7 @@ export class StudioEditor {
     }
     this.applying = true;
     try {
-      await this.writeLiteral(state, newLiteral, what);
+      await this.writeLiteral(state, attribute, newLiteral, what);
     } finally {
       this.applying = false;
     }
@@ -2653,8 +2806,11 @@ export class StudioEditor {
   }
 
   /** The write itself. Split out so `applying` covers all of it, including the failure paths. */
-  private async writeLiteral(state: IClassPanelState, newLiteral: string, what: string): Promise<void> {
-    const { el, literal, file, anchor } = state;
+  private async writeLiteral(state: IClassPanelState, attribute: ClassChannel, newLiteral: string, what: string): Promise<void> {
+    const side = sideOf(state, attribute);
+    if (!side) return;
+    const { el } = state;
+    const { literal, file, anchor } = side;
     if (!file || !anchor) return;
 
     // A re-render (or a navigation) can drop the element after the panel was built. Writing the
@@ -2666,13 +2822,14 @@ export class StudioEditor {
     }
 
     const result = await this.writeClassLiteral({
-      file, anchor, el, from: literal, to: newLiteral, what, warning: state.warning,
+      file, attribute, anchor, el, from: literal, to: newLiteral, what, warning: side.warning,
     });
     if (!result.ok) return;
 
     this.history.push({
       kind: 'class',
       file,
+      attribute,
       anchorBefore: anchor,
       anchorAfter: this.reverseAnchor(anchor, newLiteral, result.occurrence),
       before: literal,
@@ -2692,6 +2849,8 @@ export class StudioEditor {
    */
   private async writeClassLiteral(write: {
     file: IStudioEditTarget;
+    /** `class`, or a molecule's `data-class` — the DOM, the source and the removal all follow it. */
+    attribute: ClassChannel;
     anchor: ClassAnchor;
     el: HTMLElement | null;
     /** What the source must hold right now — revalidated, never assumed. */
@@ -2700,7 +2859,7 @@ export class StudioEditor {
     what: string;
     warning?: IMessageRef;
   }): Promise<{ ok: boolean; occurrence: number }> {
-    const { file, anchor, from, to, what } = write;
+    const { file, attribute, anchor, from, to, what } = write;
     const el = write.el?.isConnected ? write.el : null;
     const failed = { ok: false, occurrence: -1 };
 
@@ -2709,18 +2868,16 @@ export class StudioEditor {
 
     if (el) {
       // Nothing left means no attribute at all, in the DOM as in the source (see classAttrSpan).
-      if (to) el.setAttribute('class', to);
-      else el.removeAttribute('class');
+      setChannel(el, attribute, to || null);
       if (this.hasEntrance(to)) this.replayEntrance(el);
       this.drawSelection();
     }
 
     const source = file.model.model.getValue();
-    const match = this.locateLiteral(file, from, anchor);
+    const match = this.locateLiteral(file, from, anchor, attribute);
     if (!match) {
       if (el) {
-        if (from) el.setAttribute('class', from);
-        else el.removeAttribute('class');
+        setChannel(el, attribute, from || null);
         this.flashError(el);
       }
       this.setStatus(t('status.stale'));
@@ -2728,23 +2885,13 @@ export class StudioEditor {
     }
 
     // An insertion carries the attribute's own syntax; a replacement is just the literal; and an
-    // empty result takes the whole attribute out instead of leaving `class=""` behind.
-    let { startOffset, endOffset } = match;
-    let written = match.insert ? ` class="${to}"` : to;
-    if (!to && !match.insert) {
-      const span = classAttrSpan(source, match.startOffset, match.endOffset);
-      if (span) {
-        startOffset = span.start;
-        endOffset = span.end;
-        written = '';
-      }
-    }
-    const newSource = source.slice(0, startOffset) + written + source.slice(endOffset);
+    // empty result takes the whole attribute out instead of leaving `class=""` behind (spliceChannel).
+    const { source: newSource, literalOffset } = spliceChannel(source, match, attribute, to);
     await this.commitSource(file, newSource, what, write.warning);
 
     // Where the new literal ended up, so the reverse step can find it by counting as well.
-    const literalOffset = match.insert ? startOffset + ' class="'.length : startOffset;
-    const occurrence = to
+    // Only `class` is ever found by counting; a `data-class` is found by position alone.
+    const occurrence = to && attribute === 'class'
       ? findClassAttrs(newSource, to).findIndex((attr) => attr.startOffset === literalOffset)
       : -1;
     return { ok: true, occurrence };
@@ -3638,6 +3785,7 @@ export class StudioEditor {
       const el = step.el.deref() ?? null;
       const result = await this.writeClassLiteral({
         file: step.file,
+        attribute: step.attribute,
         anchor: undoing ? step.anchorAfter : step.anchorBefore,
         el,
         from,

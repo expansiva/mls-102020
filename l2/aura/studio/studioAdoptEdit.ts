@@ -367,6 +367,10 @@ export function ownText(shape: IElementShape): string {
  * the css wins. Carrying a background here would promise a look that silently does not happen.
  */
 export function carriedClasses(literal: string | null): string[] {
+  // Its own rule, deliberately not the picker's data-class vocabulary (fitsChannel): the picker leaves
+  // motion in and the parent-facing classes (`self-end`, `col-span`) out, because it can write those
+  // to the tag's `class`. The adoption writes one attribute only, so dropping them would lose the
+  // element's place in silence.
   if (!literal) return [];
   return splitUtilities(literal)
     .filter((token) => {

@@ -4,6 +4,13 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   ANIMATION_GROUPS,
+  channelClasses,
+  classChannelOf,
+  findAttributeValue,
+  fitsChannel,
+  pasteStyleInto,
+  readDataClass,
+  spliceChannel,
   pickRestored,
   type IRestorePosition,
   CASCADE_MAX_CHILDREN,
@@ -2873,4 +2880,191 @@ test('an ancestor with another tag is a different position, whatever the ranks s
     siblingIndex: 1,
   };
   assert.equal(pickRestored([elsewhere], HEADER.button(OLD_TAG)), -1);
+});
+
+// --- A molecule's data-class (TASK-102020-picker-molecule-data-class) ---
+//
+// The two buttons are verbatim from mls-102047/l2/agendaClinica/web/desktop/page11/consultas.ts
+// (lines 56 and 64 on 2026-10-21): "Hoje" has no data-class, "Mais consultas" has `data-class="mt-3"`.
+
+const AGENDA = [
+  'render() {',
+  '  return html`<section class="p-4">',
+  '<grouptriggeraction--ml-button-group @action=${() => this.carregarAgenda()}><grouptriggeraction--ml-button-standard data-variant="secondary"><Label>${this.msg.hoje}</Label></grouptriggeraction--ml-button-standard></grouptriggeraction--ml-button-group>',
+  '${this.agenda?.hasMore ? html`<grouptriggeraction--ml-button-standard data-variant="secondary" size="sm" data-class="mt-3" .loading=${this.carregarMaisAgendaStatus === \'loading\'} @action=${() => this.carregarMaisAgenda()}><Label>${this.msg.maisConsultas}</Label></grouptriggeraction--ml-button-standard>` : \'\'}',
+  '</section>`;',
+  '}',
+].join('\n');
+
+const BUTTON = 'grouptriggeraction--ml-button-standard';
+
+/** The two buttons of AGENDA, in source order: [Hoje, Mais consultas]. */
+function agendaButtons(source: string) {
+  return scanTemplateTree(source).elements.filter((element) => element.tag === BUTTON);
+}
+
+/** Count of `class="` that is NOT the tail of `data-class="`. */
+function plainClassAttrs(source: string): number {
+  return [...source.matchAll(/(?<![\w-])class="/gu)].length;
+}
+
+test('a molecule is edited through data-class; a plain element and the page itself through class', () => {
+  assert.equal(classChannelOf('div', 'page-x'), 'class');
+  assert.equal(classChannelOf(BUTTON, 'agenda-clinica--consultas-102047'), 'data-class');
+  assert.equal(classChannelOf('AGENDA-CLINICA--CONSULTAS-102047', 'agenda-clinica--consultas-102047'), 'class', 'the page is not a molecule');
+  assert.equal(classChannelOf(BUTTON, null), 'class', 'nothing is a molecule while the page is unknown');
+  // A defined custom element with no `cssClass` (no moleculeBase) does not read data-class either.
+  assert.equal(classChannelOf('x-widget', 'page-x', false), 'class');
+  assert.equal(classChannelOf('x-widget', 'page-x', true), 'data-class');
+});
+
+test('a molecule with data-class="mt-3": the panel reads mt-3, and mt-4 rewrites ONLY the data-class', () => {
+  const [, more] = agendaButtons(AGENDA);
+  const read = readDataClass(AGENDA, more, 'mt-3');
+  assert.equal(read.kind, 'literal');
+  if (read.kind !== 'literal') return;
+  assert.equal(AGENDA.slice(read.start, read.end), 'mt-3');
+
+  const written = spliceChannel(AGENDA, { startOffset: read.start, endOffset: read.end }, 'data-class', 'mt-4');
+  assert.equal(written.source, AGENDA.replace('data-class="mt-3"', 'data-class="mt-4"'));
+  assert.equal(plainClassAttrs(written.source), plainClassAttrs(AGENDA), 'no class attribute created or touched');
+  assert.equal(written.source.slice(written.literalOffset, written.literalOffset + 4), 'mt-4');
+});
+
+test('a molecule with no data-class: the first write inserts data-class and never class', () => {
+  const [today] = agendaButtons(AGENDA);
+  const read = readDataClass(AGENDA, today, '');
+  assert.equal(read.kind, 'insert');
+  if (read.kind !== 'insert') return;
+
+  const written = spliceChannel(AGENDA, { startOffset: read.at, endOffset: read.at, insert: true }, 'data-class', 'w-full');
+  assert.ok(written.source.includes(`<${BUTTON} data-class="w-full" data-variant="secondary">`));
+  assert.equal(plainClassAttrs(written.source), plainClassAttrs(AGENDA));
+  assert.equal(written.source.slice(written.literalOffset, written.literalOffset + 'w-full'.length), 'w-full');
+
+  // Once it exists it is found like any other literal — and a second insertion is refused.
+  const [after] = agendaButtons(written.source);
+  assert.equal(readDataClass(written.source, after, 'w-full').kind, 'literal');
+  assert.equal(readDataClass(written.source, after, '').kind, 'mismatch', 'never data-class twice');
+});
+
+test('removing the last token takes the whole data-class out, never data-class=""', () => {
+  const [, more] = agendaButtons(AGENDA);
+  const read = readDataClass(AGENDA, more, 'mt-3');
+  if (read.kind !== 'literal') assert.fail('the literal resolves');
+  const written = spliceChannel(AGENDA, { startOffset: read.start, endOffset: read.end }, 'data-class', '');
+  assert.equal(written.source, AGENDA.replace(' data-class="mt-3"', ''));
+  assert.equal(written.source.includes('data-class=""'), false);
+  assert.equal(written.source.includes(' data- '), false);
+
+  // And the element with no attribute is reachable again by position: the next write inserts.
+  const [, gone] = agendaButtons(written.source);
+  assert.equal(readDataClass(written.source, gone, '').kind, 'insert');
+});
+
+test('data-class=${…} is read-only, with the reason', () => {
+  for (const attribute of ['data-class=${this.extra}', 'data-class="${this.extra}"', 'data-class="mt-2 ${this.extra}"']) {
+    const source = `render() { return html\`<${BUTTON} ${attribute}><Label>x</Label></${BUTTON}>\`; }`;
+    const [element] = agendaButtons(source);
+    const read = readDataClass(source, element, 'mt-2');
+    assert.equal(read.kind, 'computed', attribute);
+    if (read.kind === 'computed') assert.equal(read.reason.id, 'reason.dataClassComputed');
+  }
+});
+
+test('undoing a data-class write puts the data-class back, not the class', () => {
+  // A host that carries BOTH: the undo must not wander into the `class`.
+  const source = `render() { return html\`<${BUTTON} class="p-2" data-class="mt-3"><Label>x</Label></${BUTTON}>\`; }`;
+  const forward = (() => {
+    const read = readDataClass(source, agendaButtons(source)[0], 'mt-3');
+    if (read.kind !== 'literal') assert.fail('forward resolves');
+    return spliceChannel(source, { startOffset: read.start, endOffset: read.end }, 'data-class', 'mt-4 w-full');
+  })();
+  // The undo finds what the edit WROTE, by the same position, and writes the old value back.
+  const read = readDataClass(forward.source, agendaButtons(forward.source)[0], 'mt-4 w-full');
+  if (read.kind !== 'literal') assert.fail('the undo finds what was written');
+  const back = spliceChannel(forward.source, { startOffset: read.start, endOffset: read.end }, 'data-class', 'mt-3');
+  assert.equal(back.source, source, 'byte for byte');
+  assert.ok(forward.source.includes('class="p-2"'), 'the host class never moved');
+
+  // An edit that CREATED the attribute is undone by removing it.
+  const [today] = agendaButtons(AGENDA);
+  const insert = readDataClass(AGENDA, today, '');
+  if (insert.kind !== 'insert') assert.fail('insert resolves');
+  const created = spliceChannel(AGENDA, { startOffset: insert.at, endOffset: insert.at, insert: true }, 'data-class', 'mt-2');
+  const written = readDataClass(created.source, agendaButtons(created.source)[0], 'mt-2');
+  if (written.kind !== 'literal') assert.fail('the created attribute resolves');
+  assert.equal(spliceChannel(created.source, { startOffset: written.start, endOffset: written.end }, 'data-class', '').source, AGENDA);
+});
+
+test('the class attribute span never eats the tail of a data-class', () => {
+  const source = '<x-a data-class="mt-3"></x-a>';
+  const start = source.indexOf('mt-3');
+  assert.equal(classAttrSpan(source, start, start + 4), null, '`class` is not the end of `data-class`');
+  assert.deepEqual(classAttrSpan(source, start, start + 4, 'data-class'), { start: 4, end: start + 5 });
+});
+
+test('findAttributeValue gives the offsets of the quoted value, and the same answers as readAttribute', () => {
+  const source = '<x-a title=${msg.t} data-class="mt-3 w-full" aria-label="${msg.a}"></x-a>';
+  const found = findAttributeValue(source, 0, 'data-class');
+  assert.equal(found.kind, 'literal');
+  if (found.kind === 'literal') assert.equal(source.slice(found.start, found.end), 'mt-3 w-full');
+  assert.equal(findAttributeValue(source, 0, 'class').kind, 'absent', 'data-class is not class');
+  for (const name of ['title', 'aria-label', 'data-class', 'alt']) {
+    const location = findAttributeValue(source, 0, name);
+    const plain = location.kind === 'literal' ? { kind: 'literal', value: location.value } : location;
+    assert.deepEqual(readAttribute(source, 0, name), plain, name);
+  }
+});
+
+test('through data-class: everything but what places the molecule in its parent', () => {
+  const fits = (raw: string) => fitsChannel(splitUtilities(raw)[0], 'data-class');
+  for (const raw of ['w-full', 'mt-3', '-mx-2', 'md:w-1/2', 'max-w-6xl', 'min-w-[16rem]', 'mb-4']) {
+    assert.equal(fits(raw), true, raw);
+  }
+  // The looks too: not every group has variants that set them, and the picker does not decide that.
+  for (const raw of ['px-3', 'p-2', 'bg-[var(--surface,#fff)]', 'rounded-md', 'text-sm', 'border', 'shadow-sm', 'flex', 'gap-4', 'italic']) {
+    assert.equal(fits(raw), true, raw);
+  }
+  // What places the element IN ITS PARENT acts on the tag (the flex/grid item), never inside it.
+  for (const raw of ['col-span-2', 'row-span-2', 'self-end', 'order-2', 'flex-1']) {
+    assert.equal(fits(raw), false, raw);
+    assert.equal(utilityOptions(splitUtilities(raw)[0], 2, [], undefined, 'data-class').reason?.id, 'reason.dataClassItemProp', raw);
+    assert.equal(fitsChannel(splitUtilities(raw)[0], 'class'), true, `${raw} through the tag`);
+  }
+  // Motion as well, entrances and cascades included.
+  for (const raw of ['animate-pulse', 'transition', 'duration-200', 'starting:opacity-0', 'starting:w-0', '[&>*:nth-child(2)]:delay-150']) {
+    assert.equal(fits(raw), true, raw);
+  }
+  // Everything goes through class, as before.
+  assert.equal(fitsChannel(splitUtilities('px-3')[0], 'class'), true);
+
+  // A token that fits gets exactly the neighbours it gets on a plain element.
+  for (const raw of ['mt-3', 'px-3', 'rounded-md']) {
+    assert.deepEqual(utilityOptions(splitUtilities(raw)[0], 2, [], undefined, 'data-class'), utilityOptions(splitUtilities(raw)[0]), raw);
+  }
+});
+
+test('the "+" of a molecule inside offers the same catalog as a plain element', () => {
+  // None of the "+" entries answers to the parent, so the inside loses nothing.
+  const context = { childCount: 3 };
+  for (const literal of ['', 'w-full', 'flex px-3']) {
+    assert.deepEqual(
+      addableProperties(literal, { ...context, channel: 'data-class' }).map((entry) => entry.property),
+      addableProperties(literal, { ...context, channel: 'class' }).map((entry) => entry.property),
+      literal,
+    );
+  }
+});
+
+test('pasting into a molecule inside leaves out only the parent-facing classes, and names them', () => {
+  const button = 'w-full mt-2 px-3 py-2 rounded-md bg-[var(--primary,#2563eb)] text-sm animate-pulse';
+  const into = pasteStyleInto('mt-3 bg-red-500', `${button} flex-1 self-end`, 'data-class');
+  assert.equal(into.literal, button, 'the looks and the motion travel');
+  assert.deepEqual(into.dropped, ['flex-1', 'self-end']);
+
+  // From a molecule (or anything) into a plain element: everything, exactly the paste of before.
+  const plain = pasteStyleInto('p-4', 'mt-3 w-full', 'class');
+  assert.deepEqual(plain, { literal: pasteStyle('p-4', 'mt-3 w-full'), dropped: [] });
+  assert.deepEqual(channelClasses(button, 'class'), splitUtilities(button).map((token) => token.raw));
 });

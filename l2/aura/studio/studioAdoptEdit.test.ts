@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { readAttributes, scanTemplateTree } from '/_102020_/l2/aura/studio/studioClassEdit.js';
+import { channelClasses, readAttributes, scanTemplateTree } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import {
   ADOPT_STALE,
   ADOPT_UNCLOSED,
@@ -251,6 +251,13 @@ test('only the classes that hold the element in PLACE travel', () => {
   // contract is explicit that a `data-class` background does not beat the variant.
   assert.equal(carriedClasses(literal).includes('px-3'), false);
   assert.equal(carriedClasses(null).length, 0);
+  // NOT the picker's data-class vocabulary (TASK-102020-picker-molecule-data-class): the picker takes
+  // everything inside except `self-end` (it writes that one to the tag's class); the adoption has one
+  // attribute only, keeps the place and leaves the raw control's looks to the molecule.
+  const moving = `${literal} transition-colors duration-150 animate-pulse`;
+  assert.deepEqual(carriedClasses(moving), ['w-full', 'mt-4', 'self-end']);
+  assert.equal(channelClasses(moving, 'data-class').includes('self-end'), false);
+  assert.ok(channelClasses(moving, 'data-class').includes('px-3'));
 });
 
 test('the design-system role is read from the token, never from the class name', () => {

@@ -53,6 +53,7 @@ import {
   newRoleOptions,
   pasteCategories,
   pasteStyle,
+  pasteStyleInto,
   readAnimationCustom,
   readAnimationState,
   readCascade,
@@ -69,6 +70,7 @@ import {
   utilityOptions,
   type AddGroup,
   type AnimationScreen,
+  type ClassChannel,
   type AnimationStateKey,
   type IAddableProperty,
   type ITypedValueSpec,
@@ -106,6 +108,11 @@ const HEAD_TAG_MAX = 16;
 /** A label cut to fit, with the ellipsis that says it was cut. The full text goes in a tooltip. */
 function ellipsize(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/** Which row an open input belongs to: a molecule has two sections, and token indexes repeat across them. */
+function sideKey(side: IPickerSide, token: IUtilityToken): string {
+  return `${side.channel}:${token.index}`;
 }
 
 /**
@@ -175,10 +182,41 @@ export interface IPickerTextEdit {
   value: string;
 }
 
+/** A molecule's `data-class`: its literal and whether it can be written. */
+export interface IPickerInner {
+  literal: string;
+  editable: boolean;
+  refusal?: IMessageRef;
+  warning?: IMessageRef;
+  /** Same meaning as IPickerTarget.canRemoveLast, for this attribute. */
+  canRemoveLast: boolean;
+}
+
+/**
+ * One section of the classes tab: which attribute, what it holds, whether it writes.
+ *
+ * Captured by every handler of the section — two sections render at once, so "the" literal of the
+ * panel is not enough to know where a click lands.
+ */
+export interface IPickerSide {
+  channel: ClassChannel;
+  literal: string;
+  editable: boolean;
+  canRemoveLast: boolean;
+}
+
 /** What the editor knows about the selection and the panel needs to render it. */
 export interface IPickerTarget {
   /** Tag of the selected element, for the header. */
   tag: string;
+  /**
+   * A molecule's INNER box, through its `data-class` — absent for anything that is not a molecule
+   * (TASK-102020-picker-molecule-data-class).
+   *
+   * The classes tab then has two sections: the tag (`literal`, the box the parent lays out) and the
+   * inside (this, the box the user sees). The animations tab and copy/paste act on this one.
+   */
+  inner?: IPickerInner;
   /**
    * The chain from the page's own element down to the selection, root-first.
    *
@@ -302,6 +340,8 @@ export interface IPickerAdopt {
 /** What the panel asks the editor to write. */
 export interface IPickerApply {
   literal: string;
+  /** Which attribute the literal is for; `class` when absent. */
+  attribute?: ClassChannel;
   /** Already-translated description for the status line (it mixes class names and words). */
   what: string;
 }
@@ -312,6 +352,8 @@ export interface IPickerPreview {
   option?: string;
   /** A whole class attribute — what a paste would produce. Held while the pointer stays. */
   literal?: string;
+  /** Which attribute `literal` goes into; `class` when absent. */
+  attribute?: ClassChannel;
 }
 
 /**
@@ -351,7 +393,7 @@ export class ClassPickerPanel extends StateLitElement {
   /** Group whose "custom value" input is open. */
   @state() private customEditing: string | null = null;
   /** Token index whose role palette is expanded. */
-  @state() private roleEditing: number | null = null;
+  @state() private roleEditing: string | null = null;
   /**
    * Switches flipped before anything was applied.
    *
@@ -368,8 +410,10 @@ export class ClassPickerPanel extends StateLitElement {
   @state() private addGroup: AddGroup | null = null;
   /** Property whose design-system palette is open in the "+" (colour does not seed a value). */
   @state() private addColor: string | null = null;
+  /** Which section's "+" is open — a molecule has two (its tag and its inside). */
+  @state() private addChannel: ClassChannel = 'class';
   /** Token index whose typed-value input is open. */
-  @state() private typedEditing: number | null = null;
+  @state() private typedEditing: string | null = null;
   /** State keys the scenario panel is currently simulating — see renderScenarioBadge. */
   @state() private simulatedKeys: string[] = [];
   /** Which catalog key the user chose for an ambiguous attribute text, by attribute. */
@@ -435,7 +479,8 @@ export class ClassPickerPanel extends StateLitElement {
     // A new selection drops what belonged to the previous one: a switch nobody applied yet, and any
     // expanded list, which would otherwise open on an element that never asked for it.
     const previous = changed.get('target') as IPickerTarget | undefined;
-    if (changed.has('target') && previous && previous.literal !== this.target?.literal) {
+    if (changed.has('target') && previous
+      && (previous.literal !== this.target?.literal || previous.inner?.literal !== this.target?.inner?.literal)) {
       this.customEditing = null;
       this.typedEditing = null;
       // The "+" is answered by what the element already has, and that just changed.
@@ -804,13 +849,29 @@ export class ClassPickerPanel extends StateLitElement {
    * difference here is the line that says there is nothing yet.
    */
   private renderClasses() {
-    const tokens = splitUtilities(this.target?.literal ?? '');
+    const inner = this.innerSide;
+    if (!inner) return html`<div class="acp-rows">${this.renderSection(this.tagSide)}</div>`;
+    // A molecule: the inside first (the box the user sees, where most edits go), then the tag (the
+    // box its parent lays out). Each section says which attribute it writes.
+    const refusal = this.target?.inner?.refusal;
+    const warning = this.target?.inner?.warning;
     return html`<div class="acp-rows">
-      ${tokens.length
-    ? tokens.map((token) => this.renderClassBlock(token))
-    : html`<div class="acp-block acp-readonly"><span class="acp-reason">${t('panel.noClasses')}</span></div>`}
-      ${this.renderAdd()}
+      <div class="acp-section" title=${t('panel.sectionInnerTitle')}>${t('panel.sectionInner')}</div>
+      ${refusal ? html`<div class="acp-note acp-refusal">${tr(refusal)}</div>` : nothing}
+      ${warning ? html`<div class="acp-note acp-warning">${tr(warning)}</div>` : nothing}
+      ${this.renderSection(inner)}
+      <div class="acp-section" title=${t('panel.sectionTagTitle')}>${t('panel.sectionTag')}</div>
+      ${this.renderSection(this.tagSide)}
     </div>`;
+  }
+
+  /** One attribute's rows and its "+". */
+  private renderSection(side: IPickerSide) {
+    const tokens = splitUtilities(side.literal);
+    return html`${tokens.length
+    ? tokens.map((token) => this.renderClassBlock(token, side))
+    : html`<div class="acp-block acp-readonly"><span class="acp-reason">${t('panel.noClasses')}</span></div>`}
+      ${this.renderAdd(side)}`;
   }
 
   /**
@@ -820,8 +881,8 @@ export class ClassPickerPanel extends StateLitElement {
    * written, "background colour" says what the row does. The class itself is the tooltip, and it stays
    * the label when there is no honest name for the family — showing the class beats inventing a name.
    */
-  private renderClassBlock(token: IUtilityToken) {
-    const options = utilityOptions(token, 2, this.dsRoles, (cssVar) => this.resolveVar(cssVar));
+  private renderClassBlock(token: IUtilityToken, side: IPickerSide) {
+    const options = utilityOptions(token, 2, this.dsRoles, (cssVar) => this.resolveVar(cssVar), side.channel);
     const label = utilityLabel(token);
     const text = label.property
       ? [t(label.property), ...label.variants.map((part) => (part.id ? t(part.id, part.params) : part.raw ?? ''))].join(' · ')
@@ -829,17 +890,17 @@ export class ClassPickerPanel extends StateLitElement {
 
     const head = html`<span class="acp-head-row">
       <span class="acp-label" title=${token.raw}>${text}</span>
-      ${this.removeButton(token, text)}
+      ${this.removeButton(token, text, side)}
     </span>`;
 
     if (options.kind === 'none') {
       return html`<div class="acp-block acp-readonly">${head}<span class="acp-reason">${tr(options.reason)}</span></div>`;
     }
     if (options.kind === 'role') {
-      return html`<div class="acp-block">${head}${this.renderRolePicker(token, options.options)}</div>`;
+      return html`<div class="acp-block">${head}${this.renderRolePicker(token, options.options, side)}</div>`;
     }
 
-    const editable = this.target?.editable ?? false;
+    const editable = side.editable;
     const typed = typedValueSpec(token, options.kind);
     return html`<div class="acp-block">${head}<span class="acp-chips">${options.options.map((option) => {
       const isCurrent = option === token.raw;
@@ -850,9 +911,9 @@ export class ClassPickerPanel extends StateLitElement {
         class="acp-chip ${isCurrent ? 'acp-current' : ''} ${jitOnly ? 'acp-jit' : ''}"
         title=${jitOnly ? `${option} — ${t('panel.publishNote')}` : option}
         ?disabled=${!editable || isCurrent}
-        @click=${() => this.applyLiteral(replaceUtility(this.literal, token.raw, option, token.index), `${token.raw} → ${option}`)}
+        @click=${() => this.applyLiteral(replaceUtility(side.literal, token.raw, option, token.index), `${token.raw} → ${option}`, side)}
       >${option.split(':').pop() ?? option}${jitOnly ? html`<span class="acp-star">*</span>` : nothing}</button>`;
-    })}${typed ? this.renderTypedValue(token, typed) : nothing}</span></div>`;
+    })}${typed ? this.renderTypedValue(token, typed, side) : nothing}</span></div>`;
   }
 
   /**
@@ -863,16 +924,17 @@ export class ClassPickerPanel extends StateLitElement {
    * out, and the panel comes back offering the "+". The one exception is an element the editor could
    * only find by COUNTING its literal — there the literal is the address (see canRemoveLast).
    */
-  private removeButton(token: IUtilityToken, name: string) {
-    const editable = this.target?.editable ?? false;
-    const stranded = splitUtilities(this.literal).length <= 1 && !(this.target?.canRemoveLast ?? false);
+  private removeButton(token: IUtilityToken, name: string, side: IPickerSide) {
+    const editable = side.editable;
+    const stranded = splitUtilities(side.literal).length <= 1 && !side.canRemoveLast;
     return html`<button type="button" class="acp-remove" ?disabled=${!editable || stranded}
       title=${stranded ? t('panel.removeLast') : t('panel.removeProperty')}
-      @mouseenter=${() => { if (!stranded) this.previewLiteral(removeUtility(this.literal, token.raw)); }}
+      @mouseenter=${() => { if (!stranded) this.previewLiteral(removeUtility(side.literal, token.raw), side); }}
       @mouseleave=${() => this.previewLiteral(null)}
       @click=${() => this.applyLiteral(
-    removeUtility(this.literal, token.raw),
+    removeUtility(side.literal, token.raw),
     t('status.propertyRemoved', { property: name }),
+    side,
   )}>&times;</button>`;
   }
 
@@ -883,24 +945,24 @@ export class ClassPickerPanel extends StateLitElement {
    * the scale is the way back) — what was missing was the way in. Gated by the family AND by the kind,
    * so the colour side of `text-*` never gets a px input.
    */
-  private renderTypedValue(token: IUtilityToken, spec: ITypedValueSpec) {
-    const editable = this.target?.editable ?? false;
+  private renderTypedValue(token: IUtilityToken, spec: ITypedValueSpec, side: IPickerSide) {
+    const editable = side.editable;
 
-    if (this.typedEditing === token.index) {
+    if (this.typedEditing === sideKey(side, token)) {
       const current = readTypedValue(token);
       return html`<span class="acp-custom">
         <input type="number" min=${spec.min} max=${spec.max} .value=${current === null ? '' : String(current)}
           placeholder=${`${spec.min}–${spec.max}`}
-          @keydown=${this.onTypedKeydown}>
+          @keydown=${(e: KeyboardEvent) => this.onTypedKeydown(e, token, spec, side)}>
         <span class="acp-unit">${spec.unit}</span>
-        <button type="button" class="acp-chip" @click=${() => this.commitTyped(token, spec)}>${t('panel.customApply')}</button>
+        <button type="button" class="acp-chip" @click=${() => this.commitTyped(token, spec, side)}>${t('panel.customApply')}</button>
         <button type="button" class="acp-link" @click=${() => { this.typedEditing = null; }}>${t('panel.customCancel')}</button>
       </span>`;
     }
 
     return html`<button type="button" class="acp-chip acp-more" ?disabled=${!editable}
       title=${t('panel.typedOpen', { unit: spec.unit, min: spec.min, max: spec.max })}
-      @click=${() => { this.typedEditing = token.index; this.focusTypedSoon(); }}>…</button>`;
+      @click=${() => { this.typedEditing = sideKey(side, token); this.focusTypedSoon(); }}>…</button>`;
   }
 
   /**
@@ -911,18 +973,24 @@ export class ClassPickerPanel extends StateLitElement {
    * value the project uses most; colour is the exception (no concentration to call a default), and it
    * opens the design-system palette instead of guessing.
    */
-  private renderAdd() {
-    const editable = this.target?.editable ?? false;
-    const options = addableProperties(this.literal, { childCount: this.target?.childCount ?? 0 });
+  private renderAdd(side: IPickerSide) {
+    const editable = side.editable;
+    const options = addableProperties(side.literal, { childCount: this.target?.childCount ?? 0, channel: side.channel });
+
+    // Inside a molecule the parent-facing classes do not work, and the "+" says where they go instead.
+    const channelHint = side.channel === 'data-class'
+      ? html`<small class="acp-hint">${t('panel.addChannelHint')}</small>`
+      : nothing;
 
     if (!options.length) {
       return html`<div class="acp-block acp-add acp-readonly">
         <span class="acp-label">${t('panel.addProperty')}</span>
         <span class="acp-reason">${t('panel.addNothing')}</span>
+        ${channelHint}
       </div>`;
     }
 
-    if (this.addColor) {
+    if (this.addColor && this.addChannel === side.channel) {
       const entry = addableProperty(this.addColor);
       const roles = entry?.family ? newRoleOptions(entry.family, this.dsRoles, (cssVar) => this.resolveVar(cssVar)) : [];
       return html`<div class="acp-block acp-add">
@@ -932,20 +1000,20 @@ export class ClassPickerPanel extends StateLitElement {
         </span>
         ${roles.length
     ? html`<span class="acp-role-list">${roles.map((option) => html`<button type="button" class="acp-role-item"
-            @click=${() => this.addSeed(this.addColor ?? '', option)}>${this.roleRow(option)}</button>`)}</span>`
+            @click=${() => this.addSeed(this.addColor ?? '', option, side)}>${this.roleRow(option)}</button>`)}</span>`
     : html`<span class="acp-reason">${t('reason.noDsTokens')}</span>`}
         <small class="acp-hint">${t('panel.addColor')}</small>
       </div>`;
     }
 
-    if (this.addGroup) {
+    if (this.addGroup && this.addChannel === side.channel) {
       const group = this.addGroup;
       return html`<div class="acp-block acp-add">
         <span class="acp-head-row">
           <span class="acp-label">${t('panel.addPick')} · ${t(`group.${group}`)}</span>
           <button type="button" class="acp-link" @click=${() => { this.addGroup = null; }}>${t('panel.customCancel')}</button>
         </span>
-        <span class="acp-chips">${options.filter((entry) => entry.group === group).map((entry) => this.addChip(entry))}</span>
+        <span class="acp-chips">${options.filter((entry) => entry.group === group).map((entry) => this.addChip(entry, side))}</span>
       </div>`;
     }
 
@@ -955,12 +1023,13 @@ export class ClassPickerPanel extends StateLitElement {
     return html`<div class="acp-block acp-add">
       <span class="acp-label" title=${t('panel.addTitle')}>${t('panel.addProperty')}</span>
       <span class="acp-chips">${groups.map((group) => html`<button type="button" class="acp-chip" ?disabled=${!editable}
-        @click=${() => { this.addGroup = group; }}>${t(`group.${group}`)}</button>`)}</span>
+        @click=${() => { this.addGroup = group; this.addChannel = side.channel; }}>${t(`group.${group}`)}</button>`)}</span>
+      ${channelHint}
     </div>`;
   }
 
-  private addChip(entry: IAddableProperty) {
-    const editable = this.target?.editable ?? false;
+  private addChip(entry: IAddableProperty, side: IPickerSide) {
+    const editable = side.editable;
     const seed = entry.seed;
     // Same rule as every other chip: a class with no rule in the built css is marked, never silent.
     const jitOnly = Boolean(seed) && !this.builtClasses.has(seed ?? '');
@@ -969,16 +1038,19 @@ export class ClassPickerPanel extends StateLitElement {
       : t('panel.addColor');
 
     return html`<button type="button" class="acp-chip ${jitOnly ? 'acp-jit' : ''}" ?disabled=${!editable} title=${title}
-      @mouseenter=${() => { if (seed) this.previewLiteral(addUtility(this.literal, seed)); }}
+      @mouseenter=${() => { if (seed) this.previewLiteral(addUtility(side.literal, seed), side); }}
       @mouseleave=${() => this.previewLiteral(null)}
-      @click=${() => { if (seed) this.addSeed(entry.property, seed); else this.addColor = entry.property; }}
+      @click=${() => {
+        if (seed) this.addSeed(entry.property, seed, side);
+        else { this.addColor = entry.property; this.addChannel = side.channel; }
+      }}
     >${t(entry.property)}${jitOnly ? html`<span class="acp-star">*</span>` : nothing}</button>`;
   }
 
-  private addSeed(property: string, cls: string): void {
+  private addSeed(property: string, cls: string, side: IPickerSide): void {
     this.addGroup = null;
     this.addColor = null;
-    this.applyLiteral(addUtility(this.literal, cls), t('status.propertyAdded', { property: t(property) }));
+    this.applyLiteral(addUtility(side.literal, cls), t('status.propertyAdded', { property: t(property) }), side);
   }
 
   /**
@@ -1006,8 +1078,8 @@ export class ClassPickerPanel extends StateLitElement {
    */
   private renderPasteIcon() {
     const clip = this.clipboard;
-    const editable = this.target?.editable ?? false;
-    const result = clip ? pasteStyle(this.literal, clip.literal) : '';
+    const editable = this.mainSide.editable;
+    const result = clip ? pasteStyleInto(this.literal, clip.literal, this.channel).literal : '';
     const nothingToDo = !clip || !editable || result === this.literal;
 
     return html`<button type="button" class="acp-icon" ?disabled=${nothingToDo}
@@ -1020,9 +1092,10 @@ export class ClassPickerPanel extends StateLitElement {
   private onPaste(): void {
     const clip = this.clipboard;
     if (!clip) return;
-    const result = pasteStyle(this.literal, clip.literal);
+    // Into a molecule only the channel's vocabulary travels; what stayed behind goes to the console.
+    const { literal: result, dropped } = pasteStyleInto(this.literal, clip.literal, this.channel);
     if (result === this.literal) return;
-    this.logPaste(clip, result);
+    this.logPaste(clip, result, dropped);
     this.applyLiteral(result, t('status.pasted', { tag: clip.tag }));
   }
 
@@ -1035,12 +1108,15 @@ export class ClassPickerPanel extends StateLitElement {
    * `looksOnly` brings colour/border/radius/shadow/typography only, `keepingPlace` holds this
    * element's own width/position/span instead of taking the source's.
    */
-  private logPaste(clip: IStyleClipboard, result: string): void {
+  private logPaste(clip: IStyleClipboard, result: string, dropped: string[]): void {
     const diff = diffLiterals(this.literal, result);
     console.info('[picker] paste', {
       from: clip.tag,
+      into: this.channel,
       adds: diff.added,
       removes: diff.removed,
+      // Not carried by a molecule's `data-class` (place and outer margins only).
+      outsideChannel: dropped,
       // Not in the built css: works here, reaches the client on the next publish.
       jitOnly: diff.added.filter((cls) => !this.builtClasses.has(cls)),
       place: classesInCategories(result, ['place']),
@@ -1074,16 +1150,16 @@ export class ClassPickerPanel extends StateLitElement {
    * to paint the whole row. It expands INLINE because the panel scrolls — a positioned popup would be
    * clipped by its own container.
    */
-  private renderRolePicker(token: IUtilityToken, options: string[]) {
+  private renderRolePicker(token: IUtilityToken, options: string[], side: IPickerSide) {
     const current = options[0];
-    const open = this.roleEditing === token.index;
-    const editable = this.target?.editable ?? false;
+    const open = this.roleEditing === sideKey(side, token);
+    const editable = side.editable;
 
     const row = (option: string) => this.roleRow(option);
 
     return html`<span class="acp-chips">
       <button type="button" class="acp-role-btn" title=${t('panel.roleTitle')} ?disabled=${!editable}
-        @click=${() => { this.roleEditing = open ? null : token.index; }}>
+        @click=${() => { this.roleEditing = open ? null : sideKey(side, token); }}>
         ${row(current)}<span>${open ? '▴' : '▾'}</span>
       </button>
       ${open ? html`<span class="acp-role-list">${options.map((option) => {
@@ -1093,7 +1169,7 @@ export class ClassPickerPanel extends StateLitElement {
         return html`<button type="button" class="acp-role-item ${isCurrent ? 'acp-current' : ''}"
           @click=${() => {
     this.roleEditing = null;
-    this.applyLiteral(replaceUtility(this.literal, token.raw, option, token.index), `${roleLabel(token.raw)} → ${roleLabel(option)}`);
+    this.applyLiteral(replaceUtility(side.literal, token.raw, option, token.index), `${roleLabel(token.raw)} → ${roleLabel(option)}`, side);
   }}>${row(option)}${isCurrent ? html`<span>✓</span>` : nothing}</button>`;
       })}</span>` : nothing}
     </span>`;
@@ -1293,7 +1369,7 @@ export class ClassPickerPanel extends StateLitElement {
 
   private renderAnimations() {
     const spec = animationScreen(this.screen);
-    const editable = this.target?.editable ?? false;
+    const editable = this.mainSide.editable;
     const state = this.animationState();
     const activeOptions = new Set(activeAnimations(this.literal));
     const activeGroups = new Set(activeAnimationGroups(this.literal));
@@ -1381,7 +1457,7 @@ export class ClassPickerPanel extends StateLitElement {
    */
   private renderCascade() {
     const children = this.target?.childCount ?? 0;
-    const editable = this.target?.editable ?? false;
+    const editable = this.mainSide.editable;
     if (children < 2) {
       return html`<div class="acp-block acp-readonly">
         <span class="acp-label">${t('panel.cascadeTitle')}</span>
@@ -1410,7 +1486,7 @@ export class ClassPickerPanel extends StateLitElement {
   private renderCustom(group: IAnimationGroup) {
     const spec = group.custom;
     if (!spec) return nothing;
-    const editable = this.target?.editable ?? false;
+    const editable = this.mainSide.editable;
     const typed = readAnimationCustom(this.literal, group.id);
 
     if (this.customEditing === group.id) {
@@ -1458,8 +1534,36 @@ export class ClassPickerPanel extends StateLitElement {
 
   // ─── State and intents ─────────────────────────────────────────────────────
 
+  /** The tag's own `class` — the only section of anything that is not a molecule. */
+  private get tagSide(): IPickerSide {
+    const target = this.target;
+    return {
+      channel: 'class',
+      literal: target?.literal ?? '',
+      editable: target?.editable ?? false,
+      canRemoveLast: target?.canRemoveLast ?? false,
+    };
+  }
+
+  /** A molecule's inside, through its `data-class`; null for anything else. */
+  private get innerSide(): IPickerSide | null {
+    const inner = this.target?.inner;
+    if (!inner) return null;
+    return { channel: 'data-class', literal: inner.literal, editable: inner.editable, canRemoveLast: inner.canRemoveLast };
+  }
+
+  /** The box the user SEES: the animations tab, copy and paste act on it — a molecule's inside. */
+  private get mainSide(): IPickerSide {
+    return this.innerSide ?? this.tagSide;
+  }
+
   private get literal(): string {
-    return this.target?.literal ?? '';
+    return this.mainSide.literal;
+  }
+
+  /** The attribute of the main side — what the paste writes into. */
+  private get channel(): ClassChannel {
+    return this.mainSide.channel;
   }
 
   /** The animation state of the selection, plus the switches flipped before anything was applied. */
@@ -1519,32 +1623,30 @@ export class ClassPickerPanel extends StateLitElement {
     this.applyLiteral(result.literal, `${t(group?.title ?? '')} ${result.value}${group?.custom?.unit ?? ''}`);
   }
 
-  private commitTyped(token: IUtilityToken, spec: ITypedValueSpec): void {
+  private commitTyped(token: IUtilityToken, spec: ITypedValueSpec, side: IPickerSide): void {
     const input = this.renderRoot.querySelector('input[type="number"]') as HTMLInputElement | null;
     if (!input) return;
     if (input.value.trim() === '' || !Number.isFinite(Number(input.value))) {
       this.status(t('status.needNumber'));
       return;
     }
-    const next = applyTypedValue(this.literal, token, Number(input.value), spec);
+    const next = applyTypedValue(side.literal, token, Number(input.value), spec);
     this.typedEditing = null;
-    this.applyLiteral(next, `${token.raw} → ${splitUtilities(next)[token.index]?.raw ?? ''}`);
+    this.applyLiteral(next, `${token.raw} → ${splitUtilities(next)[token.index]?.raw ?? ''}`, side);
   }
 
   /** Enter applies, Escape cancels — contained, exactly like the animations input. */
-  private onTypedKeydown = (e: KeyboardEvent): void => {
+  private onTypedKeydown(e: KeyboardEvent, token: IUtilityToken, spec: ITypedValueSpec, side: IPickerSide): void {
     e.stopPropagation();
     if (e.key === 'Enter') {
       e.preventDefault();
-      const token = splitUtilities(this.literal).find((candidate) => candidate.index === this.typedEditing);
-      const spec = token ? typedValueSpec(token, utilityOptions(token).kind) : null;
-      if (token && spec) this.commitTyped(token, spec);
+      this.commitTyped(token, spec, side);
     }
     if (e.key === 'Escape') {
       e.preventDefault();
       this.typedEditing = null;
     }
-  };
+  }
 
   private focusTypedSoon(): void {
     void this.updateComplete.then(() => {
@@ -1578,11 +1680,11 @@ export class ClassPickerPanel extends StateLitElement {
     });
   }
 
-  private applyLiteral(literal: string, what: string): void {
-    if (literal === this.literal) return;
+  private applyLiteral(literal: string, what: string, side: IPickerSide = this.mainSide): void {
+    if (literal === side.literal) return;
     this.preview(null);
     this.dispatchEvent(new CustomEvent<IPickerApply>('picker-apply', {
-      detail: { literal, what },
+      detail: { literal, what, attribute: side.channel },
       bubbles: true,
       composed: true,
     }));
@@ -1595,8 +1697,8 @@ export class ClassPickerPanel extends StateLitElement {
   }
 
   /** The other kind of preview: a whole class attribute, which is what a paste produces. */
-  private previewLiteral(literal: string | null): void {
-    this.emitPreview(literal === null || literal === this.literal ? null : { literal });
+  private previewLiteral(literal: string | null, side: IPickerSide = this.mainSide): void {
+    this.emitPreview(literal === null || literal === side.literal ? null : { literal, attribute: side.channel });
   }
 
   private emitPreview(detail: IPickerPreview | null): void {

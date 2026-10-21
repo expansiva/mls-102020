@@ -193,6 +193,10 @@ const message_pt = {
   'reason.mixedClass': 'as classes deste elemento misturam texto fixo e código — o picker não reescreve'
     + ' expressão',
   'reason.classComputed': 'a classe deste elemento é montada no código (class=${…}) — dá para editar só na fonte',
+  'reason.dataClassComputed': 'as classes desta molécula são montadas no código (data-class=${…}) — dá para editar'
+    + ' só na fonte',
+  'reason.dataClassItemProp': 'isto posiciona a molécula dentro do pai e só funciona na tag — use a seção da'
+    + ' tag; dá para remover',
   'reason.noDsTokens': 'nenhum token do design system carregado nesta sessão',
   'reason.noRoleForFamily': 'nenhum papel do design system serve para {family}',
   'reason.moleculeShared': 'este elemento vem de uma molécula (projeto {project}), compartilhada por'
@@ -329,6 +333,12 @@ const message_pt = {
   'panel.addTitle': 'acrescentar uma propriedade que este elemento ainda não tem',
   'panel.addPick': 'Qual propriedade',
   'panel.addNothing': 'este elemento já tem tudo que sei acrescentar',
+  'panel.addChannelHint': 'a posição no pai (col-span, flex-1, self, order) não funciona por dentro — vai na tag',
+  'panel.sectionInner': 'Por dentro (data-class)',
+  'panel.sectionInnerTitle': 'a caixa que aparece na tela: a molécula aplica o data-class no elemento de dentro',
+  'panel.sectionTag': 'Na tag (class)',
+  'panel.sectionTagTitle': 'a própria tag da molécula, a caixa que o pai organiza: block, col-span, flex-1,'
+    + ' self, margens; por padrão ela é inline, e largura e margem vertical só pegam com block',
   'panel.addColor': 'escolha o papel do design system para começar',
   'panel.removeProperty': 'remover esta propriedade',
   'panel.removeLast': 'a última classe deste elemento não pode sair: não consegui localizá-lo pela'
@@ -824,6 +834,10 @@ const message_en: typeof message_pt = {
   'reason.mixedClass': "this element's classes mix fixed text and code — the picker does not rewrite"
     + ' an expression',
   'reason.classComputed': 'this element builds its class in code (class=${…}) — it can only be edited at the source',
+  'reason.dataClassComputed': 'this molecule builds its classes in code (data-class=${…}) — they can only be edited'
+    + ' at the source',
+  'reason.dataClassItemProp': 'this places the molecule inside its parent and only works on the tag — use the'
+    + ' tag section; it can be removed',
   'reason.noDsTokens': 'no design system tokens loaded in this session',
   'reason.noRoleForFamily': 'no design system role fits {family}',
   'reason.moleculeShared': 'this element comes from a molecule (project {project}), shared by several'
@@ -955,6 +969,12 @@ const message_en: typeof message_pt = {
   'panel.addTitle': 'add a property this element does not have yet',
   'panel.addPick': 'Which property',
   'panel.addNothing': 'this element already has everything I know how to add',
+  'panel.addChannelHint': 'the place in the parent (col-span, flex-1, self, order) does not work inside — it goes on the tag',
+  'panel.sectionInner': 'Inside (data-class)',
+  'panel.sectionInnerTitle': 'the box you see: the molecule applies data-class to its inner element',
+  'panel.sectionTag': 'On the tag (class)',
+  'panel.sectionTagTitle': 'the molecule\'s own tag, the box its parent lays out: block, col-span, flex-1, self,'
+    + ' margins; it is inline by default, so width and vertical margin only take with block',
   'panel.addColor': 'pick the design-system role to start from',
   'panel.removeProperty': 'remove this property',
   'panel.removeLast': 'the last class of this element cannot go: it could not be located by its'
