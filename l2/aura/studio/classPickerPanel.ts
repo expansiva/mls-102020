@@ -80,6 +80,7 @@ import {
   type IUtilityToken,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { isCoreElementTag } from '/_102020_/l2/aura/studio/studioAdoptEdit.js';
+import type { IMoleculePropRow, PropValue } from '/_102020_/l2/aura/studio/studioMoleculeProps.js';
 import { t, tr, type IMessageRef } from '/_102020_/l2/aura/studio/studioMessages.js';
 import { onDockedClassPickerChange, setClassPickerMode } from '/_102020_/l2/aura/studio/classPickerDock.js';
 
@@ -108,6 +109,11 @@ const HEAD_TAG_MAX = 16;
 /** A label cut to fit, with the ellipsis that says it was cut. The full text goes in a tooltip. */
 function ellipsize(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/** A configuration value in a sentence: `—` when there is none. */
+function propText(value: PropValue | null): string {
+  return value === null || value === '' ? '—' : String(value);
 }
 
 /** Which row an open input belongs to: a molecule has two sections, and token indexes repeat across them. */
@@ -337,6 +343,30 @@ export interface IPickerAdopt {
   noneReason?: IMessageRef;
 }
 
+/**
+ * The Properties tab, as the editor answers it (TASK-102020-picker-molecule-properties).
+ *
+ * Absent until the tab is opened: the group's configuration is a module of its own, and the molecule's
+ * `.defs.ts` is what names the group.
+ */
+export interface IPickerProps {
+  loading: boolean;
+  group?: string;
+  /** The rows, already decided by studioMoleculeProps — the panel only renders them. */
+  rows: IMoleculePropRow[];
+  /** Why the tab is empty (no group found, nothing editable). */
+  why?: IMessageRef;
+  /** Why nothing here writes (the element is not located, it lives in another project's file). */
+  refusal?: IMessageRef;
+}
+
+/** What the panel asks the editor to write into a molecule's configuration attribute. */
+export interface IPickerPropEdit {
+  attribute: string;
+  /** Null goes back to the default — the attribute leaves the source. */
+  value: PropValue | null;
+}
+
 /** What the panel asks the editor to write. */
 export interface IPickerApply {
   literal: string;
@@ -387,8 +417,10 @@ export class ClassPickerPanel extends StateLitElement {
    * before anything is written, that the tag exists and loads.
    */
   @property({ attribute: false }) adoptPreview: HTMLElement | null = null;
+  /** The Properties tab's answer; absent until the tab is opened. */
+  @property({ attribute: false }) props?: IPickerProps;
 
-  @state() private tab: 'classes' | 'animations' | 'info' | 'molecules' = 'classes';
+  @state() private tab: 'classes' | 'animations' | 'info' | 'molecules' | 'props' = 'classes';
   @state() private screen: AnimationScreen = 'root';
   /** Group whose "custom value" input is open. */
   @state() private customEditing: string | null = null;
@@ -420,6 +452,8 @@ export class ClassPickerPanel extends StateLitElement {
   @state() private textKeys: Record<string, string> = {};
   /** Last value asked for per attribute — the guard against Enter and blur writing twice. */
   private lastSent: Record<string, string> = {};
+  /** Same guard, for the fields of the Properties tab, by attribute. */
+  private propSent: Record<string, string> = {};
   /**
    * The remove button, armed by the first click.
    *
@@ -499,6 +533,11 @@ export class ClassPickerPanel extends StateLitElement {
     // The tab the selection just left has to stop being the open one: a molecule has no Molecules
     // tab, and staying on it would show a panel with no tab highlighted.
     if (changed.has('target') && this.tab === 'molecules' && !this.isCoreElement) this.tab = 'classes';
+    // The Properties tab, the same two rules the other way round: it asks again for a new molecule,
+    // and it is not there for anything that is not one.
+    if (changed.has('target') && this.tab === 'props' && !this.isMolecule) this.tab = 'classes';
+    if (changed.has('target') && this.tab === 'props' && !this.props) this.openTab('props');
+    if (changed.has('target') && previous?.tag !== this.target?.tag) this.propSent = {};
     // The arming never survives a render: whatever else changed, the second click has to be a
     // deliberate second click on the same element.
     if (changed.has('target')) this.confirmRemove = false;
@@ -554,12 +593,14 @@ export class ClassPickerPanel extends StateLitElement {
         ${this.tabButton('classes', 'panel.tabClasses')}
         ${this.tabButton('animations', 'panel.tabAnimations')}
         ${this.isCoreElement ? this.tabButton('molecules', 'panel.tabMolecules') : nothing}
+        ${this.isMolecule ? this.tabButton('props', 'panel.tabProps') : nothing}
         ${this.tabButton('info', 'panel.tabInfo')}
       </div>
-      ${target.refusal ? html`<div class="acp-note acp-refusal">${tr(target.refusal)}</div>` : nothing}
-      ${target.warning ? html`<div class="acp-note acp-warning">${tr(target.warning)}</div>` : nothing}
+      ${target.refusal && this.tab !== 'props' ? html`<div class="acp-note acp-refusal">${tr(target.refusal)}</div>` : nothing}
+      ${target.warning && this.tab !== 'props' ? html`<div class="acp-note acp-warning">${tr(target.warning)}</div>` : nothing}
       ${this.tab === 'animations' ? this.renderAnimations() : nothing}
       ${this.tab === 'molecules' ? this.renderMolecules() : nothing}
+      ${this.tab === 'props' ? this.renderProps() : nothing}
       ${this.tab === 'info' ? this.renderInfo() : nothing}
       ${this.tab === 'classes' ? this.renderClasses() : nothing}
     `;
@@ -792,7 +833,7 @@ export class ClassPickerPanel extends StateLitElement {
     >${direction === 'undo' ? '\u21B6' : '\u21B7'}</button>`;
   }
 
-  private tabButton(id: 'classes' | 'animations' | 'info' | 'molecules', label: string) {
+  private tabButton(id: 'classes' | 'animations' | 'info' | 'molecules' | 'props', label: string) {
     return html`<button type="button" class="acp-tab ${this.tab === id ? 'acp-active' : ''}"
       @click=${() => { this.tab = id; this.preview(null); this.openTab(id); }}>${t(label)}</button>`;
   }
@@ -817,9 +858,118 @@ export class ClassPickerPanel extends StateLitElement {
    * `.defs.ts` through collabImport. It is cached afterwards, but the first read has to be paid by
    * someone who asked for it.
    */
-  private openTab(id: 'classes' | 'animations' | 'info' | 'molecules'): void {
+  private openTab(id: 'classes' | 'animations' | 'info' | 'molecules' | 'props'): void {
+    // The Properties tab is paid the same way: the group's configuration is read when it is asked for.
+    if (id === 'props') this.dispatchEvent(new CustomEvent('picker-props-open', { bubbles: true, composed: true }));
     if (id !== 'molecules') return;
     this.dispatchEvent(new CustomEvent('picker-adopt-open', { bubbles: true, composed: true }));
+  }
+
+  /** Whether the selection is a molecule — the one thing with configuration attributes to edit. */
+  private get isMolecule(): boolean {
+    return Boolean(this.target?.inner);
+  }
+
+  // ─── Properties tab (TASK-102020-picker-molecule-properties) ───────────────
+
+  /**
+   * The molecule's configuration attributes, one control per type.
+   *
+   * Everything here was decided by studioMoleculeProps: which rows, which values, which are read-only
+   * and why. The tab renders and emits `picker-prop` — the docked panel does exactly the same.
+   */
+  private renderProps() {
+    const props = this.props;
+    if (!props || props.loading) {
+      return html`<div class="acp-rows"><div class="acp-block">
+        <span class="acp-reason">${t('panel.propsLoading')}</span></div></div>`;
+    }
+    const editable = !props.refusal;
+    return html`
+      ${props.refusal ? html`<div class="acp-note acp-refusal">${tr(props.refusal)}</div>` : nothing}
+      <div class="acp-rows">
+        ${props.rows.length
+    ? props.rows.map((row) => this.renderPropRow(row, editable))
+    : html`<div class="acp-block"><span class="acp-reason">${tr(props.why)
+      || t('panel.propsNone', { group: props.group ?? '' })}</span></div>`}
+      </div>`;
+  }
+
+  private renderPropRow(row: IMoleculePropRow, editable: boolean) {
+    const head = html`<span class="acp-label" title=${row.attribute}>${row.label}</span>`;
+    if (row.source === 'expression') {
+      return html`<div class="acp-block acp-readonly">${head}<span class="acp-reason">${tr(row.reason)}</span></div>`;
+    }
+    return html`<div class="acp-block ${editable ? '' : 'acp-readonly'}">${head}
+      ${this.renderPropControl(row, editable)}
+      ${row.source === 'absent'
+    ? html`<span class="acp-reason">${t('panel.propDefault', { value: propText(row.default) })}</span>`
+    : editable && row.type !== 'enum' && row.type !== 'boolean'
+      ? html`<button type="button" class="acp-link" title=${t('panel.propResetHint')}
+          @click=${() => this.emitProp(row, null)}>${t('panel.propReset', { value: propText(row.default) })}</button>`
+      : nothing}
+    </div>`;
+  }
+
+  /** Chips for a closed list, a switch for a boolean, a field for the rest. */
+  private renderPropControl(row: IMoleculePropRow, editable: boolean) {
+    if (row.type === 'enum') {
+      return html`<span class="acp-chips">${(row.values ?? []).map((value) => html`<button type="button"
+        class="acp-chip ${value === String(row.value) ? 'acp-current' : ''}"
+        title=${value === String(row.default) ? t('panel.propIsDefault') : value}
+        ?disabled=${!editable || value === String(row.value)}
+        @click=${() => this.emitProp(row, value)}>${value}${value === String(row.default)
+  ? html`<span class="acp-star">*</span>` : nothing}</button>`)}</span>`;
+    }
+    if (row.type === 'boolean') {
+      return html`<label class="acp-switch"><input type="checkbox" .checked=${row.value === true}
+        ?disabled=${!editable}
+        @change=${(e: Event) => this.emitProp(row, (e.target as HTMLInputElement).checked)}>
+        ${row.value === true ? t('panel.propOn') : t('panel.propOff')}</label>`;
+    }
+    const listId = `acp-props-${row.attribute}`;
+    return html`<input class="acp-text-input" type=${row.type === 'number' ? 'number' : 'text'}
+        .value=${row.value === null ? '' : String(row.value)}
+        min=${row.min ?? nothing} max=${row.max ?? nothing}
+        list=${row.examples?.length ? listId : nothing}
+        ?disabled=${!editable}
+        @keydown=${(e: KeyboardEvent) => this.onPropKeydown(e, row)}
+        @blur=${(e: Event) => this.commitProp(row, e.target as HTMLInputElement)}>
+      ${row.examples?.length
+    ? html`<datalist id=${listId}>${row.examples.map((example) => html`<option value=${example}></option>`)}</datalist>`
+    : nothing}`;
+  }
+
+  /** Enter applies, Escape gives up — the same contract as every other field of this panel. */
+  private onPropKeydown = (e: KeyboardEvent, row: IMoleculePropRow): void => {
+    e.stopPropagation();
+    const input = e.target as HTMLInputElement;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.commitProp(row, input);
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      input.value = row.value === null ? '' : String(row.value);
+      input.blur();
+    }
+  };
+
+  /** A field's value, once — `propSent` is the same guard as the text fields' (Enter, then blur). */
+  private commitProp(row: IMoleculePropRow, input: HTMLInputElement): void {
+    const value = input.value.trim();
+    const current = row.value === null ? '' : String(row.value);
+    if (value === current || value === this.propSent[row.attribute]) return;
+    this.propSent[row.attribute] = value;
+    this.emitProp(row, value === '' ? null : value);
+  }
+
+  private emitProp(row: IMoleculePropRow, value: PropValue | null): void {
+    this.dispatchEvent(new CustomEvent<IPickerPropEdit>('picker-prop', {
+      detail: { attribute: row.attribute, value },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   /**

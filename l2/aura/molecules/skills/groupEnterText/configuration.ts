@@ -38,6 +38,7 @@ export const configuration: readonly IMoleculeConfigProp[] = [
     type: 'enum',
     values: ['text', 'email', 'password', 'search', 'url', 'tel'],
     default: 'text',
+    defaults: { 'groupentertext--ml-password-strength-input': 'password' },
     only: [
       'groupentertext--ml-cpf-input',
       'groupentertext--ml-enter-text',
@@ -57,6 +58,7 @@ export const configuration: readonly IMoleculeConfigProp[] = [
     property: 'mask',
     type: 'text',
     default: '',
+    defaults: { 'groupentertext--ml-cpf-input': '###.###.###-##' },
     examples: ['(##) #####-####', '###.###.###-##', '##.###.###/####-##'],
   },
   { property: 'maxLength', attribute: 'max-length', type: 'number', default: null, min: 0 },

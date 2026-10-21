@@ -2368,16 +2368,112 @@ export interface ITemplateTree {
  */
 const BLOCK_KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'catch', 'do', 'else', 'return', 'with']);
 
-/** Method declarations of a source, as ranges, so each template knows who returns it. */
+/**
+ * The name a MODULE-level function is filed under, so it never collides with a method of the same
+ * name: `chip(…)` and `this.chip(…)` are different functions.
+ */
+const MODULE_FN = 'fn:';
+
+/**
+ * Method declarations of a source, as ranges, so each template knows who returns it — plus the
+ * functions declared at the TOP of the module (`function chip(…) {`, `const row = (…) => html`…``),
+ * filed under `fn:<name>`.
+ *
+ * Parameters may hold ONE level of parentheses: `renderError(title, err, retry: () => void)` did not
+ * match the old `\([^)]*\)`, the method was invisible, and its templates were filed under whatever
+ * method came before it (102047/tarefas/meus_avisos mobile, 2026-10-21).
+ *
+ * The module-level shapes count only at brace depth 0: the same `const x = (…) =>` inside a method is
+ * a local, and a range opened there would split the method in two — the phantom-range defect again.
+ */
 function methodRanges(source: string): { name: string; start: number; end: number }[] {
   const ranges: { name: string; start: number; end: number }[] = [];
-  const pattern = /(?:^|\n)[ \t]*(?:public |private |protected |static |async |override )*([a-zA-Z_$][\w$]*)\s*\([^)]*\)\s*(?::[^{;=]+)?\{/gu;
+  const params = String.raw`\((?:[^()]|\([^()]*\))*\)`;
+  const pattern = new RegExp(String.raw`(?:^|\n)[ \t]*(?:public |private |protected |static |async |override )*([a-zA-Z_$][\w$]*)\s*${params}\s*(?::[^{;=]+)?\{`, 'gu');
   for (const match of source.matchAll(pattern)) {
     if (BLOCK_KEYWORDS.has(match[1])) continue;
     ranges.push({ name: match[1], start: match.index ?? 0, end: source.length });
   }
+
+  const depthAt = braceDepths(source);
+  const moduleLevel = new RegExp(String.raw`(?:^|\n)(?:export\s+)?(?:(?:async\s+)?function\s+([a-zA-Z_$][\w$]*)\s*\(|(?:const|let)\s+([a-zA-Z_$][\w$]*)\s*(?::[^=\n]+)?=\s*(?:async\s+)?(?:function\b|${params}\s*(?::[^=\n]+)?=>|[a-zA-Z_$][\w$]*\s*=>))`, 'gu');
+  for (const match of source.matchAll(moduleLevel)) {
+    const start = match.index ?? 0;
+    if (depthAt(start + (match[0].startsWith('\n') ? 1 : 0)) !== 0) continue;
+    ranges.push({ name: `${MODULE_FN}${match[1] ?? match[2]}`, start, end: source.length });
+  }
+
+  ranges.sort((a, b) => a.start - b.start);
   for (let i = 0; i < ranges.length - 1; i += 1) ranges[i].end = ranges[i + 1].start;
   return ranges;
+}
+
+/**
+ * The brace depth at any offset, skipping strings, template literals and comments — so a `{` inside
+ * markup, a handler or a `// it's` does not move it.
+ */
+function braceDepths(source: string): (offset: number) => number {
+  const depths = new Int32Array(source.length + 1);
+  let depth = 0;
+  let i = 0;
+  const fill = (to: number): void => {
+    for (let k = i; k < to && k < depths.length; k += 1) depths[k] = depth;
+  };
+  while (i < source.length) {
+    const ch = source[i];
+    let next = i + 1;
+    if (ch === '/' && source[i + 1] === '/') {
+      next = source.indexOf('\n', i);
+      if (next < 0) next = source.length;
+    } else if (ch === '/' && source[i + 1] === '*') {
+      next = source.indexOf('*/', i + 2);
+      next = next < 0 ? source.length : next + 2;
+    } else if (ch === '"' || ch === "'") {
+      next = i + 1;
+      while (next < source.length && source[next] !== ch && source[next] !== '\n') next += source[next] === '\\' ? 2 : 1;
+      next += 1;
+    } else if (ch === '`') {
+      next = i + 1;
+      while (next < source.length) {
+        if (source[next] === '\\') { next += 2; continue; }
+        if (source[next] === '$' && source[next + 1] === '{') { next = skipExpression(source, next); continue; }
+        if (source[next] === '`') { next += 1; break; }
+        next += 1;
+      }
+    } else if (ch === '{') {
+      fill(i + 1);
+      depth += 1;
+      i += 1;
+      continue;
+    } else if (ch === '}') {
+      depth = Math.max(0, depth - 1);
+    }
+    fill(next);
+    i = next;
+  }
+  fill(depths.length);
+  return (offset) => depths[Math.max(0, Math.min(offset, depths.length - 1))];
+}
+
+/**
+ * Every call that may render a template: `this.x(` (a method) and `x(` for a function declared at the
+ * top of the module (`fn:x`). The declaration itself is not a call.
+ */
+function templateCallMatches(
+  source: string,
+  ranges: { name: string; start: number; end: number }[],
+): { method: string; at: number }[] {
+  const found: { method: string; at: number }[] = [];
+  for (const match of source.matchAll(/this\.([a-zA-Z_$][\w$]*)\s*\(/gu)) found.push({ method: match[1], at: match.index ?? 0 });
+
+  const moduleFns = [...new Set(ranges.filter((range) => range.name.startsWith(MODULE_FN)).map((range) => range.name.slice(MODULE_FN.length)))];
+  if (moduleFns.length) {
+    const names = moduleFns.map((name) => name.replace(/\$/gu, '\\$')).join('|');
+    for (const match of source.matchAll(new RegExp(`(?<![\\w$.])(?<!function\\s+)(${names})\\s*\\(`, 'gu'))) {
+      found.push({ method: `${MODULE_FN}${match[1]}`, at: match.index ?? 0 });
+    }
+  }
+  return found.sort((a, b) => a.at - b.at);
 }
 
 function methodAt(ranges: { name: string; start: number; end: number }[], offset: number): string {
@@ -2414,14 +2510,260 @@ export function scanTemplateTree(source: string): ITemplateTree {
     rootsByMethod.set(method, list);
   }
 
-  for (const call of findTemplateCalls(source, elements)) {
-    for (const root of rootsByMethod.get(call.method) ?? []) {
+  // A template held in a variable is mounted where the variable is interpolated, not where the method
+  // returns: it stops being a root of its method — unless the method returns the variable itself.
+  const variables = findTemplateVariables(source, ranges, elements);
+  const delegations = findReturnDelegations(source, ranges, elements);
+  for (const variable of variables) {
+    if (variable.returned) {
+      const targets = delegations.get(variable.method) ?? new Set<string>();
+      for (const target of variable.methods) targets.add(target);
+      delegations.set(variable.method, targets);
+      continue;
+    }
+    const own = rootsByMethod.get(variable.method);
+    if (own) rootsByMethod.set(variable.method, own.filter((root) => !variable.roots.includes(root)));
+  }
+
+  const rootsOf = withDelegatedRoots(rootsByMethod, delegations);
+
+  for (const call of findTemplateCalls(source, elements, ranges)) {
+    for (const root of rootsOf(call.method)) {
       if (root === call.parent) continue; // a method rendering itself would be a cycle
       links.push({ parent: call.parent, root, order: call.order, expression: call.expression });
     }
   }
 
+  for (const variable of variables) {
+    const roots = [...variable.roots];
+    for (const method of variable.methods) for (const root of rootsOf(method)) if (!roots.includes(root)) roots.push(root);
+    for (const use of variable.uses) {
+      // What a variable holds depends on which assignment ran: its templates are ALTERNATIVES at the
+      // `${name}`, never something that always renders — hence the expression, even for one of them.
+      for (const root of roots) {
+        if (root === use.parent) continue;
+        links.push({ parent: use.parent, root, order: use.at, expression: use.at });
+      }
+    }
+  }
+
   return { elements, links };
+}
+
+/** A local variable that holds markup: what is assigned to it, and where it is interpolated. */
+interface ITemplateVariable {
+  method: string;
+  name: string;
+  /** Template roots written in place on the right-hand side (`body = html`<div>…``). */
+  roots: number[];
+  /** Methods called on the right-hand side (`body = this.renderBoard(…)`). */
+  methods: string[];
+  /** `${name}` inside markup of the same method: the element holding it, and the offset of the `${`. */
+  uses: { parent: number; at: number }[];
+  /** `return name;` — then the method renders what the variable holds, wherever it is called. */
+  returned: boolean;
+}
+
+/**
+ * `let body; if (…) body = this.renderError(); else body = html`<div>…`;` … `${body}`.
+ *
+ * The other shape the generator uses to pick a screen state (102047/reembolsoDespesas/inicio,
+ * inicio_responsavel, despesas_da_equipe, 2026-10-21). Neither half was linked: the called method's
+ * template stayed an orphan, and a template written in place was taken as a root of its METHOD — so
+ * it was mounted next to what the method returns instead of inside the element holding `${body}`.
+ *
+ * Read per method and by name. Only what sits at the TOP of the right-hand side counts — the call
+ * or template itself, or either arm of a ternary; one inside an argument is placed by the callee.
+ */
+function findTemplateVariables(
+  source: string,
+  ranges: { name: string; start: number; end: number }[],
+  elements: ITemplateElement[],
+): ITemplateVariable[] {
+  const inMarkup = (at: number): boolean => elements.some((element) => element.openStart < at && at < element.end);
+  const moduleFns = new Set(ranges.filter((range) => range.name.startsWith(MODULE_FN)).map((range) => range.name.slice(MODULE_FN.length)));
+  const byKey = new Map<string, ITemplateVariable>();
+  const variable = (method: string, name: string): ITemplateVariable => {
+    const key = `${method}\u0000${name}`;
+    let found = byKey.get(key);
+    if (!found) {
+      found = { method, name, roots: [], methods: [], uses: [], returned: false };
+      byKey.set(key, found);
+    }
+    return found;
+  };
+
+  for (const match of source.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=(?![=>])/gu)) {
+    const at = match.index ?? 0;
+    if (inMarkup(at)) continue;
+    const method = methodAt(ranges, at);
+    if (!method) continue;
+
+    const rhs = scanStatement(source, at + match[0].length, moduleFns);
+    const roots = elements
+      .map((element, index) => ({ element, index }))
+      .filter(({ element }) => element.parent === -1
+        && rhs.templates.some((template) => template.depth === 0 && template.start < element.openStart && element.openStart < template.end))
+      .map(({ index }) => index);
+    const methods = rhs.calls.filter((call) => call.depth === 0).map((call) => call.name);
+    if (!roots.length && !methods.length) continue;
+
+    const entry = variable(method, match[1]);
+    for (const root of roots) if (!entry.roots.includes(root)) entry.roots.push(root);
+    for (const name of methods) if (!entry.methods.includes(name)) entry.methods.push(name);
+  }
+
+  for (const entry of byKey.values()) {
+    const range = ranges.find((candidate) => candidate.name === entry.method);
+    if (!range) continue;
+    const name = entry.name.replace(/\$/gu, '\\$');
+    for (const use of source.matchAll(new RegExp(`\\$\\{\\s*${name}\\s*\\}`, 'gu'))) {
+      const at = use.index ?? 0;
+      if (methodAt(ranges, at) !== entry.method) continue;
+      let parent = -1;
+      for (const [index, element] of elements.entries()) {
+        if (element.openStart < at && at < element.end) parent = index;
+      }
+      if (parent !== -1) entry.uses.push({ parent, at });
+    }
+    for (const ret of source.matchAll(new RegExp(`\\breturn\\s+${name}\\s*;`, 'gu'))) {
+      if (methodAt(ranges, ret.index ?? 0) === entry.method) entry.returned = true;
+    }
+  }
+
+  return [...byKey.values()].filter((entry) => entry.uses.length || entry.returned);
+}
+
+/**
+ * The right-hand side of an assignment, up to the `;` (or the `}`) that ends the statement: the
+ * templates and `this.x(` calls in it, each with its parenthesis depth. Strings and template literals
+ * are skipped whole, so a `;` inside markup or a handler does not end the statement early.
+ */
+function scanStatement(source: string, from: number, moduleFns: ReadonlySet<string> = new Set()): {
+  templates: { start: number; end: number; depth: number }[];
+  calls: { name: string; depth: number }[];
+} {
+  const templates: { start: number; end: number; depth: number }[] = [];
+  const calls: { name: string; depth: number }[] = [];
+  let depth = 0;
+  let i = from;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"' || ch === "'") {
+      i += 1;
+      while (i < source.length && source[i] !== ch) i += source[i] === '\\' ? 2 : 1;
+      i += 1;
+      continue;
+    }
+    if (ch === '`') {
+      const start = i;
+      i += 1;
+      while (i < source.length) {
+        if (source[i] === '\\') { i += 2; continue; }
+        if (source[i] === '$' && source[i + 1] === '{') { i = skipExpression(source, i); continue; }
+        if (source[i] === '`') { i += 1; break; }
+        i += 1;
+      }
+      templates.push({ start, end: i, depth });
+      continue;
+    }
+    if (ch === '(' || ch === '[' || ch === '{') { depth += 1; i += 1; continue; }
+    if (ch === ')' || ch === ']' || ch === '}') {
+      if (depth === 0) break;
+      depth -= 1;
+      i += 1;
+      continue;
+    }
+    if (ch === ';' && depth === 0) break;
+    if (/[a-zA-Z_$]/u.test(ch) && !/[\w$.]/u.test(source[i - 1] ?? '')) {
+      const word = /^(?:this\.)?([a-zA-Z_$][\w$]*)/u.exec(source.slice(i, i + 80));
+      if (word) {
+        const after = source.slice(i + word[0].length, i + word[0].length + 8);
+        if (/^\s*\(/u.test(after)) {
+          if (word[0].startsWith('this.')) calls.push({ name: word[1], depth });
+          else if (moduleFns.has(word[1])) calls.push({ name: `${MODULE_FN}${word[1]}`, depth });
+        }
+        i += word[0].length;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return { templates, calls };
+}
+
+/**
+ * `return this.renderDesk();` — a method that hands back ANOTHER method's template.
+ *
+ * `findTemplateCalls` reads calls inside markup only, and rightly so: a call in plain code says
+ * nothing about where its result lands. A `return` is the exception — whatever the callee renders is
+ * exactly what this method renders, at the same place. Missing it left the delegated template an
+ * orphan root, and every element under it unaddressable (102047/tarefas/meus_avisos, 2026-10-21:
+ * `renderBody` ends in `return this.renderDesk();`, which is the whole screen in its normal state).
+ * Measured then: 18 of the 91 pages of the 102047 delegate this way.
+ *
+ * Only a call at the TOP of the returned expression counts — `return this.a()` and either arm of
+ * `return ok ? this.a() : this.b()`. One nested in an argument (`return this.wrap(this.a())`) is
+ * placed by `wrap`, not here, and linking it would invent nesting.
+ */
+function findReturnDelegations(
+  source: string,
+  ranges: { name: string; start: number; end: number }[],
+  elements: ITemplateElement[],
+): Map<string, Set<string>> {
+  const delegations = new Map<string, Set<string>>();
+
+  for (const match of templateCallMatches(source, ranges)) {
+    const at = match.at;
+    // Inside markup it is a template call, which findTemplateCalls already handles.
+    if (elements.some((element) => element.openStart < at && at < element.end)) continue;
+
+    const method = methodAt(ranges, at);
+    if (!method) continue;
+    const range = ranges.find((candidate) => candidate.name === method && at >= candidate.start && at < candidate.end);
+    const returnAt = source.lastIndexOf('return', at);
+    if (!range || returnAt < range.start || !/\breturn\b/u.test(source.slice(Math.max(0, returnAt - 1), returnAt + 7))) continue;
+
+    // Still the same statement, and not inside an argument: no `;` in between, and no parenthesis
+    // left open — except the one that wraps the whole expression (`return (\n ok ? … : this.b()\n)`).
+    const between = source.slice(returnAt + 'return'.length, at);
+    if (between.includes(';')) continue;
+    let depth = 0;
+    for (const char of between) {
+      if (char === '(') depth += 1;
+      if (char === ')') depth -= 1;
+    }
+    const wrapped = between.trimStart().startsWith('(');
+    if (depth !== (wrapped ? 1 : 0)) continue;
+
+    const targets = delegations.get(method) ?? new Set<string>();
+    targets.add(match.method);
+    delegations.set(method, targets);
+  }
+
+  return delegations;
+}
+
+/**
+ * The roots a call to `method` mounts: its own templates plus those of every method it returns,
+ * followed transitively. A cycle (`a` returns `b`, `b` returns `a`) stops at the second visit.
+ */
+function withDelegatedRoots(
+  own: Map<string, number[]>,
+  delegations: Map<string, Set<string>>,
+): (method: string) => number[] {
+  return (method) => {
+    const roots: number[] = [];
+    const seen = new Set<string>();
+    const visit = (name: string): void => {
+      if (seen.has(name)) return;
+      seen.add(name);
+      for (const root of own.get(name) ?? []) if (!roots.includes(root)) roots.push(root);
+      for (const target of delegations.get(name) ?? []) visit(target);
+    };
+    visit(method);
+    return roots;
+  };
 }
 
 /** Every `${...}` of a source, as a range. `skipExpression` is what makes the end trustworthy. */
@@ -2451,12 +2793,13 @@ function expressionRanges(source: string): { start: number; end: number }[] {
 function findTemplateCalls(
   source: string,
   elements: ITemplateElement[],
+  ranges: { name: string; start: number; end: number }[],
 ): { method: string; parent: number; order: number; expression: number }[] {
   const calls: { method: string; parent: number; order: number; expression: number }[] = [];
   const expressions = expressionRanges(source);
 
-  for (const match of source.matchAll(/this\.([a-zA-Z_$][\w$]*)\s*\(/gu)) {
-    const at = match.index ?? 0;
+  for (const match of templateCallMatches(source, ranges)) {
+    const at = match.at;
     // Innermost element whose span contains the call — the scan produces parents before children, so
     // the last match in array order is the innermost.
     let parent = -1;
@@ -2466,7 +2809,7 @@ function findTemplateCalls(
 
     // `${` right before the call: the old shape, and the only one that always renders.
     if (/\$\{\s*$/u.test(source.slice(Math.max(0, at - 16), at))) {
-      calls.push({ method: match[1], parent, order: at, expression: -1 });
+      calls.push({ method: match.method, parent, order: at, expression: -1 });
       continue;
     }
 
@@ -2476,7 +2819,7 @@ function findTemplateCalls(
       if (range.start < at && at < range.end && range.start > expression) expression = range.start;
     }
     if (expression === -1) continue; // inside markup but not inside a `${…}`: nothing to mount
-    calls.push({ method: match[1], parent, order: at, expression });
+    calls.push({ method: match.method, parent, order: at, expression });
   }
 
   return calls;
@@ -3833,6 +4176,13 @@ export interface IOpenTagAttribute {
   /** Lit's binding prefix is part of the name on purpose: `@click` and `click` are different things. */
   name: string;
   value: IAttributeValue;
+  /**
+   * Where the whole attribute sits in the source — name to the end of its value, the separator before
+   * it excluded. What a write needs to replace or remove one attribute without touching its
+   * neighbours (TASK-102020-picker-molecule-properties).
+   */
+  start: number;
+  end: number;
 }
 
 /**
@@ -3866,13 +4216,14 @@ export function readAttributes(source: string, openStart: number): IOpenTagAttri
     const found = name.exec(openTag.slice(i));
     if (!found) { i += 1; continue; }
     const attribute = found[1];
+    const start = openStart + i;
     i += attribute.length;
 
     // Between the name and its `=` there may be spaces; without an `=` the attribute is bare.
     let after = i;
     while (after < openTag.length && /\s/u.test(openTag[after])) after += 1;
     if (openTag[after] !== '=') {
-      attributes.push({ name: attribute, value: { kind: 'bare' } });
+      attributes.push({ name: attribute, value: { kind: 'bare' }, start, end: openStart + i });
       continue;
     }
     after += 1;
@@ -3883,6 +4234,8 @@ export function readAttributes(source: string, openStart: number): IOpenTagAttri
       attributes.push({
         name: attribute,
         value: { kind: 'expression', expression: openTag.slice(after + 2, close - 1).trim() },
+        start,
+        end: openStart + close,
       });
       i = close;
       continue;
@@ -3898,6 +4251,8 @@ export function readAttributes(source: string, openStart: number): IOpenTagAttri
         value: value.startsWith('${') && skipExpression(value, 0) === value.length
           ? { kind: 'expression', expression: value.slice(2, -1).trim() }
           : { kind: 'literal', value },
+        start,
+        end: openStart + closing + 1,
       });
       i = closing + 1;
       continue;
@@ -3907,7 +4262,12 @@ export function readAttributes(source: string, openStart: number): IOpenTagAttri
     // read it anyway rather than losing the rest of the tag.
     let plain = after;
     while (plain < openTag.length && !/[\s>]/u.test(openTag[plain])) plain += 1;
-    attributes.push({ name: attribute, value: { kind: 'literal', value: openTag.slice(after, plain) } });
+    attributes.push({
+      name: attribute,
+      value: { kind: 'literal', value: openTag.slice(after, plain) },
+      start,
+      end: openStart + plain,
+    });
     i = plain;
   }
 

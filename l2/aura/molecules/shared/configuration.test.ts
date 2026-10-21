@@ -25,16 +25,66 @@ const MOLECULES_ROOT = join(HERE, '..', '..', '..', '..', '..', 'mls-102040', 'l
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-function camelToKebab(s: string): string {
-  return s.replace(/([A-Z])/g, (c) => `-${c.toLowerCase()}`);
+/**
+ * Attribute name for a prop: the `attribute` field if set, else Lit's rule — the property name
+ * LOWERCASED, never kebab-cased. `@propertyDataSource({ type: String }) inputType` observes
+ * `inputtype`; reading it as `input-type` is how a molecule that ignores the group's attribute went
+ * unnoticed (TASK-102020-picker-molecule-properties).
+ */
+function attrOf(prop: IMoleculeConfigProp): string {
+  return (prop.attribute ?? prop.property).toLowerCase();
 }
 
-/** Attribute name for a prop: `attribute` field if set, else camelCase→kebab of `property`. */
-function attrOf(prop: IMoleculeConfigProp): string {
-  if (prop.attribute) return prop.attribute;
-  if (prop.property.startsWith('data-')) return prop.property;
-  return camelToKebab(prop.property);
+/**
+ * Every `@propertyDataSource` of a molecule's source, with the attribute Lit observes for it — what
+ * `elementProperties` would say at runtime, read as text.
+ */
+function declaredAttributes(text: string): Map<string, string> {
+  const declared = new Map<string, string>();
+  const decl = /@propertyDataSource\((\{[^}]*\})?\)\s*(?:(?:public|private|protected|declare|override|readonly)\s+)*(\w+)/gu;
+  for (const match of text.matchAll(decl)) {
+    const attribute = /attribute:\s*['"]([^'"]+)['"]/u.exec(match[1] ?? '')?.[1];
+    declared.set(match[2], (attribute ?? match[2]).toLowerCase());
+  }
+  return declared;
 }
+
+/**
+ * The default each `@propertyDataSource` field is initialised with, when it is a plain literal
+ * (`= 'md'`, `= 0`, `= false`). Anything else (an array, a call, no initialiser) is left out: there is
+ * nothing to compare.
+ */
+function declaredDefaults(text: string): Map<string, string | number | boolean> {
+  const defaults = new Map<string, string | number | boolean>();
+  const decl = /@propertyDataSource\((?:\{[^}]*\})?\)\s*(?:(?:public|private|protected|declare|override|readonly)\s+)*(\w+)\s*[!?]?\s*(?::\s*[^=;\n]+?)?\s*=\s*([^;\n]+?)\s*;/gu;
+  for (const match of text.matchAll(decl)) {
+    const raw = match[2];
+    const quoted = /^(['"])(.*)\1$/u.exec(raw);
+    if (quoted) defaults.set(match[1], quoted[2]);
+    else if (raw === 'true' || raw === 'false') defaults.set(match[1], raw === 'true');
+    else if (/^-?\d+(\.\d+)?$/u.test(raw)) defaults.set(match[1], Number(raw));
+  }
+  return defaults;
+}
+
+/** The tag of a molecule of a group's folder: `grouptriggeraction--ml-button-standard`. */
+function tagOf(group: string, name: string): string {
+  return `${group.toLowerCase()}--${name}`;
+}
+
+/**
+ * Molecules that read a configured property under ANOTHER attribute than their group's, measured on
+ * 2026-10-21. The picker writes the attribute the registered class observes (reconcileWithRuntime),
+ * so these work there — but a page or an agent following the group's contract writes an attribute the
+ * molecule ignores. Listed so a NEW divergence breaks the guard; each one is checked to still be one.
+ */
+const KNOWN_ATTRIBUTE_DIVERGENCES: Record<string, string> = {
+  'groupEnterText/ml-enter-text.inputType': 'inputtype',
+  'groupEnterTimeInterval/ml-work-shift-interval.hour12': 'hour-12',
+  'groupEnterTimeInterval/ml-enter-time-interval.minTime': 'mintime',
+  'groupEnterTimeInterval/ml-enter-time-interval.maxTime': 'maxtime',
+  'groupTriggerAction/ml-kebab-action-trigger.iconPosition': 'iconposition',
+};
 
 /** Load the configuration from a group's `configuration.ts` (text-parsed, no eval). */
 function loadGroupConfig(group: string): readonly IMoleculeConfigProp[] | null {
@@ -164,7 +214,7 @@ for (const group of GROUPS) {
 
     for (const prop of config) {
       const attr = attrOf(prop);
-      // Accept either the camelCase property name or the kebab attribute name in any table row.
+      // Accept either the camelCase property name or the attribute name in any table row.
       const mentioned = contract.includes(`\`${prop.property}\``) || contract.includes(`\`${attr}\``);
       assert.ok(
         mentioned,
@@ -229,6 +279,93 @@ for (const group of GROUPS) {
     }
   });
 }
+
+// ─── guard 6: the molecule observes the attribute the configuration writes ──────
+
+for (const group of GROUPS) {
+  test(`${group}: molecules observe the configured attribute`, () => {
+    const config = loadGroupConfig(group);
+    if (!config || config.length === 0) return;
+    for (const mol of moleculeSources(group)) {
+      const declared = declaredAttributes(mol.text);
+      for (const prop of config) {
+        // A data-* is read with getAttribute (guard 5); and a molecule outside `only` never reads it.
+        if (prop.property.startsWith('data-')) continue;
+        if (prop.only && !prop.only.some((tag) => tag.endsWith(`--${mol.name}`))) continue;
+        const observed = declared.get(prop.property);
+        if (observed === undefined) continue; // presence is guard 5's question
+        const key = `${group}/${mol.name}.${prop.property}`;
+        const known = KNOWN_ATTRIBUTE_DIVERGENCES[key];
+        if (known !== undefined) {
+          assert.equal(observed, known, `${key}: the known divergence changed — update the list`);
+          continue;
+        }
+        assert.equal(
+          observed,
+          attrOf(prop),
+          `${key}: the molecule observes '${observed}', the configuration writes '${attrOf(prop)}'`,
+        );
+      }
+    }
+  });
+}
+
+// ─── guard 7: the default the picker shows is the one the molecule uses ─────────
+//
+// The picker says "not written — the default applies: X" and "back to the default" REMOVES the
+// attribute. Both are only true if X is what the molecule falls back to — so a molecule whose own
+// default differs from its group's declares it in `defaults[tag]`.
+
+for (const group of GROUPS) {
+  test(`${group}: each molecule's default is the configured one`, () => {
+    const config = loadGroupConfig(group);
+    if (!config || config.length === 0) return;
+    for (const mol of moleculeSources(group)) {
+      const tag = tagOf(group, mol.name);
+      const declared = declaredDefaults(mol.text);
+      for (const prop of config) {
+        if (prop.only && !prop.only.includes(tag)) continue;
+        if (!declared.has(prop.property)) continue;
+        const configured = prop.defaults && tag in prop.defaults ? prop.defaults[tag] : prop.default;
+        if (configured === null) continue;
+        assert.equal(
+          declared.get(prop.property),
+          configured,
+          `${tag}.${prop.property}: the molecule defaults to ${JSON.stringify(declared.get(prop.property))}, `
+          + `the configuration says ${JSON.stringify(configured)} — set defaults['${tag}']`,
+        );
+      }
+    }
+  });
+
+  test(`${group}: per-tag defaults name real molecules and differ from the group's`, () => {
+    const config = loadGroupConfig(group);
+    if (!config) return;
+    const tags = new Set(moleculeSources(group).map((mol) => tagOf(group, mol.name)));
+    for (const prop of config) {
+      for (const [tag, value] of Object.entries(prop.defaults ?? {})) {
+        assert.ok(tags.has(tag), `${group}.${prop.property}: defaults names '${tag}', not a molecule of the group`);
+        assert.ok(!prop.only || prop.only.includes(tag), `${group}.${prop.property}: defaults['${tag}'] is outside only`);
+        assert.notEqual(value, prop.default, `${group}.${prop.property}: defaults['${tag}'] repeats the group's default`);
+        if (prop.type === 'enum' && value !== null) {
+          assert.ok(prop.values?.includes(value as string), `${group}.${prop.property}: defaults['${tag}'] not in values`);
+        }
+      }
+    }
+  });
+}
+
+test('every known attribute divergence is still a divergence', () => {
+  for (const [key, observed] of Object.entries(KNOWN_ATTRIBUTE_DIVERGENCES)) {
+    const [where, property] = key.split('.');
+    const [group, name] = where.split('/');
+    const mol = moleculeSources(group).find((entry) => entry.name === name);
+    assert.ok(mol, `${key}: molecule not found`);
+    assert.equal(declaredAttributes(mol.text).get(property), observed, `${key}: fixed? remove it from the list`);
+    const prop = loadGroupConfig(group)?.find((entry) => entry.property === property);
+    assert.ok(prop && attrOf(prop) !== observed, `${key}: no longer divergent — remove it from the list`);
+  }
+});
 
 // ─── specific cases from the task's problem table ─────────────────────────────
 

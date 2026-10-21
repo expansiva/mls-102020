@@ -23,6 +23,12 @@ export interface IMoleculeConfigProp {
   values?: readonly string[];
   /** What the molecule uses when the attribute is absent. `null` = no default. */
   default: string | number | boolean | null;
+  /**
+   * The default of a molecule that differs from the group's, by tag: `ml-enter-money-br` uses `BRL`
+   * where its group uses `USD`. Absent = every tag uses `default`. Guarded against each molecule's
+   * own declaration in `configuration.test.ts`.
+   */
+  defaults?: Readonly<Record<string, string | number | boolean | null>>;
   /** `text` only: suggestions for the editor field — NOT a restriction (`autocomplete`, `mask`). */
   examples?: readonly string[];
   /** `number` only. */
@@ -46,12 +52,20 @@ export async function loadGroupConfiguration(group: string): Promise<readonly IM
 }
 
 /**
- * Filters a configuration list to only the entries visible from a given molecule tag.
- * An entry with no `only` constraint is always included.
+ * Filters a configuration list to only the entries visible from a given molecule tag, each with the
+ * default THAT tag uses (`defaults[tag]` when declared). An entry with no `only` constraint is always
+ * included.
  */
 export function configurationFor(
   tag: string,
   list: readonly IMoleculeConfigProp[],
 ): readonly IMoleculeConfigProp[] {
-  return list.filter((prop) => !prop.only || prop.only.includes(tag));
+  return list
+    .filter((prop) => !prop.only || prop.only.includes(tag))
+    .map((prop) => (prop.defaults && tag in prop.defaults ? { ...prop, default: prop.defaults[tag] } : prop));
+}
+
+/** The default a given tag uses for a property: its own when declared, the group's otherwise. */
+export function defaultFor(prop: IMoleculeConfigProp, tag: string): IMoleculeConfigProp['default'] {
+  return prop.defaults && tag in prop.defaults ? prop.defaults[tag] : prop.default;
 }

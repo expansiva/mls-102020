@@ -48,9 +48,29 @@ import {
   type IPickerAdopt,
   type IPickerApply,
   type IPickerPreview,
+  type IPickerPropEdit,
+  type IPickerProps,
   type IPickerTarget,
   type IPickerTextEdit,
 } from '/_102020_/l2/aura/studio/classPickerPanel.js';
+import {
+  declaredAttributes,
+  findPropAttribute,
+  moleculePropsSchema,
+  planPropWrite,
+  PROPS_NO_GROUP,
+  propAttribute,
+  reconcileWithRuntime,
+  splicePropAttribute,
+  writeOfCurrent,
+  type IMoleculePropRow,
+  type PropWrite,
+} from '/_102020_/l2/aura/studio/studioMoleculeProps.js';
+import {
+  configurationFor,
+  loadGroupConfiguration,
+  type IMoleculeConfigProp,
+} from '/_102020_/l2/aura/molecules/shared/configuration.js';
 import { getClassPickerMode, onDockedClassPickerChange, type IClassPickerSink } from '/_102020_/l2/aura/studio/classPickerDock.js';
 import {
   ADOPT_NO_TARGET,
@@ -61,7 +81,7 @@ import {
   type IAdoptTarget,
   type IElementShape,
 } from '/_102020_/l2/aura/studio/studioAdoptEdit.js';
-import { adoptOffer, type IAdoptOffer, type IAdoptOption } from '/_102020_/l2/aura/studio/studioAdoptCatalog.js';
+import { adoptOffer, moleculeGroupOf, type IAdoptOffer, type IAdoptOption } from '/_102020_/l2/aura/studio/studioAdoptCatalog.js';
 import { resolveRulesForPage } from '/_102020_/l2/aura/helpers/dsMatch/resolveRulesForPage.js';
 import type { ResolvedLayoutRules } from '/_102020_/l2/aura/helpers/dsMatch/types.js';
 import {
@@ -212,6 +232,39 @@ function setChannel(el: HTMLElement, attribute: ClassChannel, value: string | nu
   else el.setAttribute(attribute, value);
 }
 
+/**
+ * A configuration attribute on the LIVE molecule (TASK-102020-picker-molecule-properties).
+ *
+ * Setting the attribute is enough for a Lit property — `attributeChangedCallback` runs the setter. Two
+ * cases need more. A REMOVAL hands the setter `null`, which is not the default the molecule declares,
+ * so the default is assigned back to the property. A `data-*` is not observed at all (the molecule
+ * reads it with `getAttribute` while rendering), so the molecule is asked to render again.
+ */
+function setLiveProp(el: HTMLElement, prop: IMoleculeConfigProp, write: PropWrite): void {
+  const attribute = propAttribute(prop);
+  const live = el as HTMLElement & Record<string, unknown> & { requestUpdate?: () => void };
+  if (write.kind === 'remove') {
+    el.removeAttribute(attribute);
+    if (!prop.property.startsWith('data-') && prop.default !== null) live[prop.property] = prop.default;
+  } else {
+    el.setAttribute(attribute, write.kind === 'bare' ? '' : write.text);
+  }
+  live.requestUpdate?.();
+}
+
+/** Two writes that leave the same attribute in the source. */
+function samePropWrite(a: PropWrite, b: PropWrite): boolean {
+  if (a.kind !== b.kind) return false;
+  return a.kind !== 'set' || a.text === (b as { text: string }).text;
+}
+
+/** The status line of a write: `size="sm"`, `required`, or the attribute going back to its default. */
+function describePropWrite(prop: IMoleculeConfigProp, write: PropWrite): string {
+  const attribute = propAttribute(prop);
+  if (write.kind === 'remove') return t('status.propDefault', { attribute });
+  return write.kind === 'bare' ? attribute : `${attribute}="${write.text}"`;
+}
+
 /** The side of the selection an attribute names: the element itself for `class`, the inner box for `data-class`. */
 function sideOf(state: IClassPanelState, attribute: ClassChannel): IChannelSide | null {
   return attribute === 'class' ? state : state.inner;
@@ -334,6 +387,23 @@ type EditStep =
     el: WeakRef<HTMLElement>;
   }
   | {
+    /**
+     * A molecule's configuration attribute (TASK-102020-picker-molecule-properties).
+     *
+     * Both directions are WRITES (`size="sm"`, bare, removed) and each is also the revalidation of the
+     * other: the undo only runs when the open tag still says what the forward write left.
+     */
+    kind: 'prop';
+    file: IStudioEditTarget;
+    path: IDomPathStep[];
+    tag: string;
+    prop: IMoleculeConfigProp;
+    before: PropWrite;
+    after: PropWrite;
+    what: string;
+    el: WeakRef<HTMLElement>;
+  }
+  | {
     kind: 'move';
     file: IStudioEditTarget;
     /**
@@ -395,6 +465,24 @@ interface IAdoptState {
   option: IAdoptOption;
   markup?: string;
   imports: string[];
+  refusal?: IMessageRef;
+}
+
+/**
+ * What the Properties tab knows about the selection (TASK-102020-picker-molecule-properties).
+ *
+ * `file` and `path` are where the molecule's open tag is; the rows are re-read from that file after
+ * every write, and the write itself re-resolves the path — nothing here is an offset.
+ */
+interface IPropsState {
+  el: HTMLElement;
+  loading: boolean;
+  group: string | null;
+  configuration: readonly IMoleculeConfigProp[];
+  rows: IMoleculePropRow[];
+  file: IStudioEditTarget | null;
+  path: IDomPathStep[];
+  why?: IMessageRef;
   refusal?: IMessageRef;
 }
 
@@ -541,6 +629,13 @@ export class StudioEditor {
   private adoptReason: IMessageRef | null = null;
   /** The molecule MOUNTED for the preview — a real element, built by importing the real module. */
   private adoptPreviewEl: HTMLElement | null = null;
+  /**
+   * The Properties tab's answer (TASK-102020-picker-molecule-properties), for ONE element.
+   *
+   * Null means nobody asked — the panel asks when the tab opens, like the Molecules tab. The element
+   * is part of the answer so a stale one is never shown for another selection.
+   */
+  private props: IPropsState | null = null;
   /** Classes with a rule in the BUILT css, read once per selection (the sheet does not change mid-session). */
   private builtClasses: Set<string> | null = null;
   /** Design system roles, read from the injected `#ds-tokens` css — the vocabulary for arbitrary values. */
@@ -1741,6 +1836,8 @@ export class StudioEditor {
     method('picker-adopt-select', this.onPickerAdoptSelect as EventListener);
     method('picker-adopt-preview', this.onPickerAdoptPreview);
     method('picker-adopt', this.onPickerAdopt);
+    method('picker-props-open', this.onPickerPropsOpen);
+    method('picker-prop', this.onPickerProp as EventListener);
   }
 
   /**
@@ -1766,6 +1863,7 @@ export class StudioEditor {
     // the source, and the next selection would say exactly that.
     this.previewAnimation(null);
     this.classPanel = null;
+    this.props = null;
     // The docked one is never hidden — with no target it shows its own empty state.
     if (this.dockedPanelEl) this.dockedPanelEl.target = undefined;
     if (!this.classPanelEl) return;
@@ -1858,6 +1956,15 @@ export class StudioEditor {
     void this.adoptSelected();
   };
 
+  /** The Properties tab was opened, or the selection changed while it was open. */
+  private onPickerPropsOpen = (): void => {
+    void this.loadProps();
+  };
+
+  private onPickerProp = (e: CustomEvent<IPickerPropEdit>): void => {
+    void this.applyProp(e.detail.attribute, e.detail.value);
+  };
+
   private onPickerDuplicate = (): void => {
     void this.duplicateSelected();
   };
@@ -1900,6 +2007,8 @@ export class StudioEditor {
       this.adoptChoice = null;
       this.adoptPreviewEl = null;
     }
+    // Same rule for the Properties tab: its rows are about one molecule.
+    if (this.props && this.props.el !== el) this.props = null;
 
     const literal = el.getAttribute('class') ?? '';
     // A molecule has a second box to edit: the inner one, through `data-class`.
@@ -2529,6 +2638,7 @@ export class StudioEditor {
     panel.target = target;
     panel.adopt = this.adoptProjection();
     panel.adoptPreview = this.adoptPreviewEl;
+    panel.props = this.propsProjection();
     if (panel === floating) panel.hidden = false;
     // Only measurable once it is showing — and its size depends on what the selection carries.
     this.positionChrome();
@@ -2566,6 +2676,219 @@ export class StudioEditor {
       refusal: state.refusal,
       markup: state.markup,
     };
+  }
+
+  /** The Properties tab as DATA; absent while nobody asked. */
+  private propsProjection(): IPickerProps | undefined {
+    const props = this.props;
+    if (!props || props.el !== this.classPanel?.el) return undefined;
+    if (props.loading) return { loading: true, rows: [] };
+    return {
+      loading: false,
+      group: props.group ?? undefined,
+      rows: props.rows.map((row) => ({ ...row })),
+      why: props.why,
+      refusal: props.refusal,
+    };
+  }
+
+  // --- A molecule's configuration attributes (TASK-102020-picker-molecule-properties) ---
+
+  /**
+   * Answers the Properties tab: the group of the selected molecule, its configuration, and what the
+   * source writes for each entry.
+   *
+   * Interruptible like loadAdopt — the answer is dropped when it comes back for an element that is no
+   * longer selected.
+   */
+  private async loadProps(): Promise<void> {
+    const el = this.selectedEl;
+    const state = this.classPanel;
+    if (!el?.isConnected || state?.el !== el || !state.inner) return;
+    if (this.props?.el === el && this.props.loading) return;
+
+    const props: IPropsState = {
+      el, loading: true, group: null, configuration: [], rows: [], file: null, path: [],
+    };
+    this.props = props;
+    this.renderClassPanel();
+
+    const tag = el.tagName.toLowerCase();
+    props.group = await moleculeGroupOf(tag);
+    // The group's configuration, for THIS tag (its `only`, its own defaults) and as the REGISTERED
+    // class reads it: what it does not declare is dropped, and an attribute it reads under another
+    // name is written under its name. Resolved once here, so the write — and the default a removal
+    // puts back on the live element — use the same entry the row shows.
+    if (props.group) {
+      props.configuration = reconcileWithRuntime(
+        configurationFor(tag, await loadGroupConfiguration(props.group)),
+        this.declaredProperties(tag),
+      );
+    }
+    if (this.props !== props || this.selectedEl !== el) return;
+
+    if (!props.group) props.why = PROPS_NO_GROUP;
+    await this.locateProps(props);
+    if (this.props !== props) return;
+    this.readPropRows(props);
+    props.loading = false;
+    this.renderClassPanel();
+  }
+
+  /**
+   * Which file holds the molecule's open tag, by POSITION — the same structural anchor every other
+   * write of this editor uses. The two refusals that are not about the attribute come first: no page
+   * file at all, and markup that lives in another project's molecule.
+   */
+  private async locateProps(props: IPropsState): Promise<void> {
+    const el = props.el;
+    if (!this.target) {
+      props.refusal = this.targetFailure ?? { id: 'reason.noTargetFile' };
+      return;
+    }
+    const ancestorProject = this.foreignProjectOfAncestor(el);
+    if (ancestorProject !== null) {
+      props.refusal = editScope(`${ancestorProject}`, ancestorProject).refusal;
+      return;
+    }
+    const path = this.domPathOf(el);
+    const tag = el.tagName.toLowerCase();
+    for (const candidate of path.length ? await this.resolveCandidates() : []) {
+      const resolved = resolveStructuralAnchor(scanTemplateTree(candidate.model.model.getValue()), path);
+      if (!resolved.ok || resolved.element.tag.toLowerCase() !== tag) continue;
+      props.file = candidate;
+      props.path = path;
+      return;
+    }
+    props.refusal = NOT_LOCATED;
+  }
+
+  /** The rows, from the file as it is NOW — after every write, the source is what the tab shows. */
+  private readPropRows(props: IPropsState): void {
+    const tag = props.el.tagName.toLowerCase();
+    const element = props.file ? this.resolvePropElement(props.file, props.path, tag) : null;
+    const source = props.file?.model.model.getValue() ?? '';
+    props.rows = moleculePropsSchema({
+      tag,
+      configuration: props.configuration,
+      attributes: element ? readAttributes(source, element.openStart) : [],
+    });
+    if (props.file && !element) props.refusal = NOT_LOCATED;
+  }
+
+  /**
+   * What the registered class declares — the runtime's confirmation of the configuration.
+   *
+   * Null when the tag is not defined (not upgraded yet): then the configuration is trusted as it is.
+   */
+  private declaredProperties(tag: string): Map<string, string | false> | null {
+    if (typeof customElements === 'undefined') return null;
+    const ctor = customElements.get(tag) as (CustomElementConstructor & {
+      elementProperties?: Map<PropertyKey, { attribute?: unknown } | undefined>;
+    }) | undefined;
+    return ctor?.elementProperties ? declaredAttributes(ctor.elementProperties) : null;
+  }
+
+  /** The molecule's element in a file, by position, and only when the tag there is the same tag. */
+  private resolvePropElement(file: IStudioEditTarget, path: IDomPathStep[], tag: string): ITemplateElement | null {
+    const resolved = resolveStructuralAnchor(scanTemplateTree(file.model.model.getValue()), path);
+    return resolved.ok && resolved.element.tag.toLowerCase() === tag ? resolved.element : null;
+  }
+
+  /**
+   * Writes one configuration attribute: the live element first, then the source.
+   *
+   * The attribute must be one the tab OFFERED: the panel is chrome, and a name it was never given is
+   * an attribute nobody chose.
+   */
+  private async applyProp(attribute: string, value: IPickerPropEdit['value']): Promise<void> {
+    const props = this.props;
+    const state = this.classPanel;
+    if (!props || props.loading || !state || props.el !== state.el || !props.file || props.refusal) return;
+    const row = props.rows.find((entry) => entry.attribute === attribute);
+    const prop = props.configuration.find((entry) => propAttribute(entry) === attribute);
+    if (!row || !prop || row.source === 'expression') return;
+
+    const plan = planPropWrite(row, value);
+    if (!plan.ok) {
+      this.setStatus(tr(plan.reason));
+      return;
+    }
+    const el = props.el;
+    if (!el.isConnected) {
+      this.hideClassPanel();
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    const what = describePropWrite(prop, plan.write);
+    this.applying = true;
+    try {
+      const result = await this.writeProp({
+        file: props.file, path: props.path, tag: el.tagName.toLowerCase(), prop, el, to: plan.write, what,
+      });
+      if (result.ok) {
+        this.history.push({
+          kind: 'prop',
+          file: props.file,
+          path: [...props.path],
+          tag: el.tagName.toLowerCase(),
+          prop,
+          before: result.before,
+          after: plan.write,
+          what,
+          el: new WeakRef(el),
+        });
+      }
+    } finally {
+      this.applying = false;
+    }
+
+    // The file changed: the rows are read from it again, and the panel re-anchored like after any edit.
+    if (this.props === props) this.readPropRows(props);
+    await this.showClassPanel(el);
+  }
+
+  /**
+   * The ONE place a configuration attribute is written — for a gesture and for an undo.
+   *
+   * `from`, when given, is what the open tag must say right now (an undo checks that the forward write
+   * is still there); `before` comes back so the forward write can be undone.
+   */
+  private async writeProp(write: {
+    file: IStudioEditTarget;
+    path: IDomPathStep[];
+    tag: string;
+    prop: IMoleculeConfigProp;
+    el: HTMLElement | null;
+    from?: PropWrite;
+    to: PropWrite;
+    what: string;
+  }): Promise<{ ok: true; before: PropWrite } | { ok: false }> {
+    const { file, path, tag, prop, to, what } = write;
+    const el = write.el?.isConnected ? write.el : null;
+    const source = file.model.model.getValue();
+    const element = this.resolvePropElement(file, path, tag);
+    const before = element ? writeOfCurrent(findPropAttribute(readAttributes(source, element.openStart), prop)) : null;
+    if (!element || !before || (write.from && !samePropWrite(before, write.from))) {
+      if (el) this.flashError(el);
+      this.setStatus(t('status.stale'));
+      return { ok: false };
+    }
+
+    const spliced = splicePropAttribute(source, element, prop, to);
+    if (!spliced.ok) {
+      this.setStatus(tr(spliced.reason));
+      return { ok: false };
+    }
+
+    if (el) setLiveProp(el, prop, to);
+    await this.commitSource(file, spliced.source, what);
+    return { ok: true, before };
   }
 
   /**
@@ -3800,6 +4123,25 @@ export class StudioEditor {
     if (step.kind === 'slice') return this.applySliceStep(step, direction);
 
     if (step.kind === 'adopt') return this.applyAdoptStep(step, direction);
+
+    if (step.kind === 'prop') {
+      // The same writer, the other way round — and only when the open tag still says what the step
+      // left there.
+      const el = step.el.deref() ?? null;
+      const result = await this.writeProp({
+        file: step.file,
+        path: step.path,
+        tag: step.tag,
+        prop: step.prop,
+        el,
+        from: undoing ? step.after : step.before,
+        to: undoing ? step.before : step.after,
+        what,
+      });
+      if (result.ok && this.props?.el === el) this.readPropRows(this.props);
+      if (result.ok && !el?.isConnected) this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
+      return result.ok;
+    }
 
     if (step.kind === 'move') {
       // The EXACT inverse splice, not the opposite move: re-planning would restore the order but not

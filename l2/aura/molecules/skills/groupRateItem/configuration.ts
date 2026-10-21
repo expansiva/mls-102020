@@ -10,7 +10,7 @@ export const group = 'groupRateItem';
 // - `min`/`max`: decide the rating scale at design time (e.g. 1–5 stars) — in.
 // - `step`: fractional ratings (e.g. 0.5 for half-star) — in.
 export const configuration: readonly IMoleculeConfigProp[] = [
-  { property: 'min', type: 'number', default: 0 },
+  { property: 'min', type: 'number', default: 0, defaults: { 'grouprateitem--ml-csat-rating': 1 } },
   { property: 'max', type: 'number', default: 5 },
   { property: 'step', type: 'number', default: 1, min: 0 },
 ] as const;

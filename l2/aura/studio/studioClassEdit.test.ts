@@ -2526,24 +2526,36 @@ test('an unconditional call still counts as markup that always renders', () => {
   assert.equal(second.ok && second.element.literal, 'body');
 });
 
-test('a call in plain code is not a mount point', () => {
-  // `const body = this.renderForm();` says nothing about where the result lands. Inventing a parent
-  // for it would invent nesting, which is worse than leaving the helper unlinked.
+test('a call in plain code is a mount point only where its variable is interpolated', () => {
+  // `const extra = this.renderForm();` on its own says nothing about where the result lands, and
+  // inventing a parent would invent nesting. The `${extra}` is what says it (2026-10-21: the
+  // generator picks screen states this way) — so the link goes there, as a conditional, and nowhere
+  // else.
   const source = [
     'class X {',
     '  render() {',
     '    const extra = this.renderForm();',
+    '    const unused = this.renderNote();',
     '    return html`<section class="wrap">${extra}</section>`;',
     '  }',
     '  renderForm() {',
     '    return html`<div class="form">f</div>`;',
     '  }',
+    '  renderNote() {',
+    '    return html`<p class="note">n</p>`;',
+    '  }',
     '}',
   ].join('\n');
 
   const tree = scanTemplateTree(source);
+  const wrap = tree.elements.findIndex((element) => element.literal === 'wrap');
   const form = tree.elements.findIndex((element) => element.literal === 'form');
-  assert.equal(tree.links.some((link) => link.root === form), false);
+  const note = tree.elements.findIndex((element) => element.literal === 'note');
+  const links = tree.links.filter((link) => link.root === form);
+  assert.equal(links.length, 1);
+  assert.equal(links[0].parent, wrap);
+  // Never interpolated: still nothing to mount.
+  assert.equal(tree.links.some((link) => link.root === note), false);
 });
 
 test('the block keywords are named, and `render` is not among them', () => {
@@ -3067,4 +3079,260 @@ test('pasting into a molecule inside leaves out only the parent-facing classes, 
   const plain = pasteStyleInto('p-4', 'mt-3 w-full', 'class');
   assert.deepEqual(plain, { literal: pasteStyle('p-4', 'mt-3 w-full'), dropped: [] });
   assert.deepEqual(channelClasses(button, 'class'), splitUtilities(button).map((token) => token.raw));
+});
+
+// ── `return this.renderX()` — a method that hands back another method's template ─────────────────
+//
+// 102047/tarefas/meus_avisos (2026-10-21): `renderBody` ends in `return this.renderDesk();`, which is
+// the whole screen in its normal state. The call is plain code, so it was never linked: `renderDesk`
+// stayed an orphan root and every element under it was "not located" — the molecules with no `class`
+// (no literal to count) first of all.
+
+/** The shape of meus_avisos: a page root, a body with early returns, and the delegated desk. */
+const DELEGATED_DESK = [
+  'class X {',
+  '  renderNotice() {',
+  '    return html`<div class="notice"><groupviewmetric--ml-metric-card><Label>a</Label></groupviewmetric--ml-metric-card><groupviewmetric--ml-metric-card><Label>b</Label></groupviewmetric--ml-metric-card></div>`;',
+  '  }',
+  '  renderDesk() {',
+  '    return html`<div class="desk"><section class="card">${this.renderNotice()}</section></div>`;',
+  '  }',
+  '  renderBody() {',
+  "    if (this.pageStatus === 'loading') {",
+  '      return html`<p class="loading">…</p>`;',
+  '    }',
+  "    if (this.pageStatus === 'empty') {",
+  '      return html`<div class="empty">nada</div>`;',
+  '    }',
+  '    return this.renderDesk();',
+  '  }',
+  '  render() {',
+  '    return html`<main class="page"><header class="head">t</header>${this.renderBody()}</main>`;',
+  '  }',
+  '}',
+].join('\n');
+
+test('a helper RETURNED by another method is linked where that method is called', () => {
+  const tree = scanTemplateTree(DELEGATED_DESK);
+  const desk = tree.elements.findIndex((element) => element.literal === 'desk');
+  const main = tree.elements.findIndex((element) => element.literal === 'page');
+  // Mounted at `${this.renderBody()}`, next to the body's own early-return templates.
+  assert.ok(tree.links.some((link) => link.root === desk && link.parent === main), 'renderDesk hangs under <main>');
+});
+
+test('a molecule with no class, under the delegated template, resolves — the meus_avisos case', () => {
+  const tree = scanTemplateTree(DELEGATED_DESK);
+  const resolved = resolveStructuralAnchor(tree, [
+    step('main', 'page', { index: 0, count: 1 }),
+    step('div', 'desk', { index: 0, count: 1 }),
+    step('section', 'card', { index: 0, count: 1 }),
+    step('div', 'notice', { index: 0, count: 1 }),
+    step('groupviewmetric--ml-metric-card', null, { index: 1, count: 2, literalIndex: 1, literalCount: 2 }),
+  ]);
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.ok && resolved.element.tag, 'groupviewmetric--ml-metric-card');
+  // The SECOND card, not the first: the index still decides between same-tag siblings.
+  const cards = tree.elements.map((element, index) => ({ element, index }))
+    .filter(({ element }) => element.tag === 'groupviewmetric--ml-metric-card');
+  assert.equal(resolved.ok && resolved.element, cards[1].element);
+});
+
+test('both arms of a returned ternary are linked, and so is a chain of delegations', () => {
+  const source = [
+    'class X {',
+    '  renderA() { return html`<div class="a">a</div>`; }',
+    '  renderB() { return html`<div class="b">b</div>`; }',
+    '  renderPick() { return this.ok ? this.renderA() : this.renderB(); }',
+    '  renderOuter() { return (',
+    '    this.renderPick()',
+    '  ); }',
+    '  render() { return html`<main class="page">${this.renderOuter()}</main>`; }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  const main = tree.elements.findIndex((element) => element.literal === 'page');
+  for (const literal of ['a', 'b']) {
+    const root = tree.elements.findIndex((element) => element.literal === literal);
+    assert.ok(tree.links.some((link) => link.root === root && link.parent === main), `${literal} reaches <main>`);
+  }
+});
+
+test('a call nested in an argument of the return is NOT linked by the return', () => {
+  // `wrap` decides where its argument lands; linking `renderInner` under the caller would invent a
+  // nesting the DOM does not have.
+  const source = [
+    'class X {',
+    '  renderInner() { return html`<span class="inner">x</span>`; }',
+    '  wrap(content: unknown) { return html`<div class="wrap">${content}</div>`; }',
+    '  renderBody() { return this.wrap(this.renderInner()); }',
+    '  render() { return html`<main class="page">${this.renderBody()}</main>`; }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  const main = tree.elements.findIndex((element) => element.literal === 'page');
+  const inner = tree.elements.findIndex((element) => element.literal === 'inner');
+  const wrap = tree.elements.findIndex((element) => element.literal === 'wrap');
+  assert.ok(tree.links.some((link) => link.root === wrap && link.parent === main), 'wrap is what renders there');
+  assert.equal(tree.links.some((link) => link.root === inner && link.parent === main), false);
+});
+
+test('methods that return each other do not loop', () => {
+  const source = [
+    'class X {',
+    '  renderA() { if (this.x) return html`<div class="a">a</div>`; return this.renderB(); }',
+    '  renderB() { return this.renderA(); }',
+    '  render() { return html`<main class="page">${this.renderB()}</main>`; }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  const a = tree.elements.findIndex((element) => element.literal === 'a');
+  assert.equal(tree.links.filter((link) => link.root === a).length, 1);
+});
+
+// ── `body = this.renderX()` / `body = html`…`` … `${body}` — markup held in a variable ─────────────
+//
+// 102047/reembolsoDespesas/inicio, inicio_responsavel, despesas_da_equipe (2026-10-21): the screen
+// state is picked into a local and interpolated later. The called method's template stayed an orphan,
+// and a template written in place was taken as a root of its METHOD — mounted next to what the method
+// returns instead of inside the element holding `${body}`.
+
+const VARIABLE_BODY = [
+  'class X {',
+  '  renderError() { return html`<div class="error">erro</div>`; }',
+  '  renderBoard(items: unknown[]) { return html`<div class="board"><groupviewdata--ml-card-grid></groupviewdata--ml-card-grid></div>`; }',
+  '  render() {',
+  '    let body;',
+  "    if (this.status === 'error') body = this.renderError();",
+  "    else if (this.status === 'empty') body = html`<div class=\"empty\"><span class=\"hint\">nada; ainda</span></div>`;",
+  '    else body = this.renderBoard(this.items);',
+  '    return html`<main class="page"><section class="box">${this.renderHeader()}${body}</section></main>`;',
+  '  }',
+  '  renderHeader() { return html`<header class="head">t</header>`; }',
+  '}',
+].join('\n');
+
+test('every template a variable may hold is mounted where the variable is interpolated', () => {
+  const tree = scanTemplateTree(VARIABLE_BODY);
+  const box = tree.elements.findIndex((element) => element.literal === 'box');
+  for (const literal of ['error', 'empty', 'board']) {
+    const root = tree.elements.findIndex((element) => element.literal === literal);
+    const link = tree.links.find((candidate) => candidate.root === root && candidate.parent === box);
+    assert.ok(link, `${literal} hangs under the section holding \${body}`);
+    // Alternatives, never "always renders": which one is there depends on the assignment that ran.
+    assert.ok(link.expression >= 0, `${literal} is conditional`);
+  }
+  // The template written in place is NOT a root of `render` any more — it is not what render returns.
+  const empty = tree.elements.findIndex((element) => element.literal === 'empty');
+  assert.equal(tree.links.filter((link) => link.root === empty).length, 1);
+});
+
+test('a molecule inside a template picked through a variable resolves', () => {
+  const tree = scanTemplateTree(VARIABLE_BODY);
+  const resolved = resolveStructuralAnchor(tree, [
+    step('main', 'page', { index: 0, count: 1 }),
+    step('section', 'box', { index: 0, count: 1 }),
+    step('div', 'board', { index: 0, count: 1 }),
+    step('groupviewdata--ml-card-grid', null, { index: 0, count: 1 }),
+  ]);
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.ok && resolved.element.tag, 'groupviewdata--ml-card-grid');
+});
+
+test('a variable the method RETURNS makes its templates the method\'s own', () => {
+  const source = [
+    'class X {',
+    '  renderPanel() {',
+    '    const content = this.ready ? html`<div class="ready">ok</div>` : this.renderWait();',
+    '    return content;',
+    '  }',
+    '  renderWait() { return html`<div class="wait">…</div>`; }',
+    '  render() { return html`<main class="page">${this.renderPanel()}</main>`; }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  const main = tree.elements.findIndex((element) => element.literal === 'page');
+  for (const literal of ['ready', 'wait']) {
+    const root = tree.elements.findIndex((element) => element.literal === literal);
+    assert.ok(tree.links.some((link) => link.root === root && link.parent === main), `${literal} reaches <main>`);
+  }
+});
+
+test('a template passed as an ARGUMENT is not taken as the value of the variable', () => {
+  const source = [
+    'class X {',
+    '  wrap(content: unknown) { return html`<div class="wrap">${content}</div>`; }',
+    '  render() {',
+    '    const body = this.wrap(html`<span class="inner">x</span>`);',
+    '    return html`<main class="page">${body}</main>`;',
+    '  }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  const main = tree.elements.findIndex((element) => element.literal === 'page');
+  const inner = tree.elements.findIndex((element) => element.literal === 'inner');
+  const wrap = tree.elements.findIndex((element) => element.literal === 'wrap');
+  assert.ok(tree.links.some((link) => link.root === wrap && link.parent === main), 'wrap is what lands in <main>');
+  assert.equal(tree.links.some((link) => link.root === inner && link.parent === main), false);
+});
+
+// ── Templates of MODULE functions, and methods whose parameters hold parentheses ─────────────────
+//
+// 102047/inicio/empresa (`const row = (…) => html`…``), pessoas_organizacao (`function chip(…)`) and
+// tarefas/meus_avisos mobile (`renderError(…, retry: () => void)`), 2026-10-21. The first two are
+// called without `this.`; the third did not match the method pattern at all, so its templates were
+// filed under the method before it — and mounted at THAT method's calls.
+
+const MODULE_FUNCTIONS = [
+  "const row = (label: string, value: unknown) => html`<div class=\"row\"><dt>${label}</dt><dd>${value}</dd></div>`;",
+  'function chip(label: string) {',
+  '  return html`<span class="chip">${label}</span>`;',
+  '}',
+  'export class X {',
+  '  renderFirst() { return html`<p class="first">1</p>`; }',
+  '  renderError(title: string, retry: () => void) {',
+  '    return html`<div class="error">${title}<button class="retry" @click=${retry}>ok</button></div>`;',
+  '  }',
+  '  render() {',
+  '    return html`<main class="page"><dl class="list">${this.ok ? row(this.msg.a, chip(this.msg.b)) : nothing}${row(this.msg.c, 1)}</dl><section class="box">${this.renderError(this.msg.t, () => this.retry())}</section></main>`;',
+  '  }',
+  '}',
+].join('\n');
+
+test('a module function called without `this.` is linked at its calls', () => {
+  const tree = scanTemplateTree(MODULE_FUNCTIONS);
+  const list = tree.elements.findIndex((element) => element.literal === 'list');
+  const row = tree.elements.findIndex((element) => element.literal === 'row');
+  const rowLinks = tree.links.filter((link) => link.root === row);
+  // Two calls: one inside a ternary (conditional), one bare (always renders).
+  assert.equal(rowLinks.length, 2);
+  assert.ok(rowLinks.every((link) => link.parent === list));
+  assert.deepEqual(rowLinks.map((link) => link.expression >= 0).sort(), [false, true]);
+});
+
+test('a method whose parameter is a function type is still a method', () => {
+  const tree = scanTemplateTree(MODULE_FUNCTIONS);
+  const box = tree.elements.findIndex((element) => element.literal === 'box');
+  const error = tree.elements.findIndex((element) => element.literal === 'error');
+  const first = tree.elements.findIndex((element) => element.literal === 'first');
+  // Mounted where renderError is called — not filed under renderFirst, which nobody calls.
+  assert.ok(tree.links.some((link) => link.root === error && link.parent === box));
+  assert.equal(tree.links.some((link) => link.root === first), false);
+});
+
+test('a local arrow function inside a method does not split the method', () => {
+  // Only the TOP of the module counts: the same `const x = (…) =>` inside a method is a local, and
+  // a range opened there would steal the templates after it — the phantom-range defect again.
+  const source = [
+    'export class X {',
+    '  renderList() {',
+    '    const label = (s: string) => s.toUpperCase();',
+    '    return html`<ul class="list"><li class="item">${label(this.a)}</li></ul>`;',
+    '  }',
+    '  render() { return html`<main class="page">${this.renderList()}</main>`; }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  const main = tree.elements.findIndex((element) => element.literal === 'page');
+  const list = tree.elements.findIndex((element) => element.literal === 'list');
+  assert.ok(tree.links.some((link) => link.root === list && link.parent === main));
 });

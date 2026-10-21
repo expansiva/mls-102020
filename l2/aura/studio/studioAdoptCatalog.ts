@@ -86,6 +86,44 @@ async function ensureProjectsLoaded(): Promise<void> {
   }
 }
 
+/**
+ * A molecule's group, read once per tag. Only answers are kept: a failure may be a file list that had
+ * not loaded yet, and caching it would leave the tab empty for the rest of the session.
+ */
+const groupCache = new Map<string, string>();
+
+/**
+ * The GROUP a molecule belongs to — `groupTriggerAction` — from the `group` its `.defs.ts` exports
+ * (TASK-102020-picker-molecule-properties).
+ *
+ * Not from the tag's prefix: `grouptriggeraction` lost the capitals the skills folder has, and the
+ * folder is what `loadGroupConfiguration` needs. One `.defs.ts`, not the 155 of the catalog: the
+ * Properties tab asks about one molecule.
+ */
+export async function moleculeGroupOf(tag: string): Promise<string | null> {
+  const cached = groupCache.get(tag);
+  if (cached !== undefined) return cached;
+
+  const at = tag.indexOf('--');
+  let group: string | null = null;
+  if (at > 0) {
+    await ensureProjectsLoaded();
+    try {
+      const module = await collabImport({
+        project: MOLECULES_PROJECT,
+        folder: `molecules/${tag.slice(0, at)}`,
+        shortName: tag.slice(at + 2),
+        extension: '.defs.ts',
+      }) as { group?: unknown } | null;
+      group = typeof module?.group === 'string' && module.group ? module.group : null;
+    } catch (error) {
+      console.warn(`[studioMoleculeProps] could not read the .defs.ts of <${tag}>`, error);
+    }
+  }
+  if (group) groupCache.set(tag, group);
+  return group;
+}
+
 /** The molecule's module path, from DATA: project and folder, never a convention. */
 export function importPathOf(entry: MoleculeCatalogEntry): string {
   return `/_${entry.project}_/l2/${entry.folder}/${entry.variant}.js`;

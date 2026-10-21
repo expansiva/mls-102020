@@ -19,6 +19,7 @@
 
 import type {
   IPickerAdopt,
+  IPickerProps,
   IPickerTarget,
 } from '/_102020_/l2/aura/studio/classPickerPanel.js';
 
@@ -31,6 +32,8 @@ export interface IClassPickerSink extends HTMLElement {
   jitLive: boolean;
   adopt?: IPickerAdopt;
   adoptPreview: HTMLElement | null;
+  /** The Properties tab's answer; absent until the tab is opened. */
+  props?: IPickerProps;
 }
 
 export type ClassPickerMode = 'docked' | 'floating';

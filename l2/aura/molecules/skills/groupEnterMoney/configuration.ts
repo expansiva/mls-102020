@@ -14,10 +14,19 @@ export const group = 'groupEnterMoney';
 // - `min`/`max`: validation bounds set at design time (e.g. positive only) — in, nullable.
 // - `showSymbol`: display the currency symbol — in.
 export const configuration: readonly IMoleculeConfigProp[] = [
-  { property: 'currency', type: 'text', default: 'USD', examples: ['USD', 'BRL', 'EUR', 'JPY', 'GBP'] },
-  { property: 'locale', type: 'text', default: '', examples: ['en-US', 'pt-BR', 'de-DE', 'ja-JP'] },
+  {
+    property: 'currency', type: 'text', default: 'USD', examples: ['USD', 'BRL', 'EUR', 'JPY', 'GBP'],
+    defaults: { 'groupentermoney--ml-enter-money-br': 'BRL' },
+  },
+  {
+    property: 'locale', type: 'text', default: '', examples: ['en-US', 'pt-BR', 'de-DE', 'ja-JP'],
+    defaults: { 'groupentermoney--ml-enter-money-br': 'pt-BR' },
+  },
   { property: 'decimals', type: 'number', default: 2, min: 0 },
   { property: 'min', type: 'number', default: null },
   { property: 'max', type: 'number', default: null },
-  { property: 'showSymbol', attribute: 'show-symbol', type: 'boolean', default: true },
+  {
+    property: 'showSymbol', attribute: 'show-symbol', type: 'boolean', default: true,
+    defaults: { 'groupentermoney--ml-enter-money-br': false },
+  },
 ] as const;

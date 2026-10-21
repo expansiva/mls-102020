@@ -101,6 +101,25 @@ test('both panels decide the vocabulary with the same core calls, and pass the c
   }
 });
 
+/**
+ * The Properties tab (TASK-102020-picker-molecule-properties) is the same block in both panels: the
+ * rows come decided by studioMoleculeProps, and each panel only renders them and emits.
+ */
+test('both panels render the Properties tab the same way, and neither decides what is written', () => {
+  const block = (TS: string): string => TS.slice(TS.indexOf('private renderProps()'), TS.indexOf('private emitProp('));
+  const [floating, docked] = PANELS.map((panel) => code(`${panel}.ts`));
+  assert.ok(block(floating).length > 200, 'the floating panel has the tab');
+  assert.equal(block(docked), block(floating), 'the two copies of the tab drifted apart');
+  for (const [panel, TS] of [[PANELS[0], floating], [PANELS[1], docked]]) {
+    assert.ok(TS.includes("'picker-props-open'"), `${panel}: the tab asks when it opens`);
+    assert.ok(TS.includes("'picker-prop'"), `${panel}: the tab emits the write`);
+    assert.ok(TS.includes("this.tabButton('props', 'panel.tabProps')"), `${panel}: the tab button`);
+    for (const decision of ['planPropWrite', 'splicePropAttribute', 'moleculePropsSchema']) {
+      assert.ok(!TS.includes(decision), `${panel}: ${decision} is the editor's, not the panel's`);
+    }
+  }
+});
+
 for (const panel of PANELS) {
   const TS = code(`${panel}.ts`);
   const LESS = code(`${panel}.less`);

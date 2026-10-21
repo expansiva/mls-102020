@@ -15,7 +15,8 @@ export const configuration: readonly IMoleculeConfigProp[] = [
     property: 'variant',
     type: 'enum',
     values: ['dropdown', 'radio', 'segmented', 'list', 'table'],
-    default: 'dropdown',
+    // The only molecule that reads it is the table one, so its default IS the group's.
+    default: 'table',
     only: ['groupselectone--ml-table-single-select'],
   },
   // Only list/dropdown-style implementations expose a search field; non-searchable
@@ -24,6 +25,7 @@ export const configuration: readonly IMoleculeConfigProp[] = [
     property: 'searchable',
     type: 'boolean',
     default: false,
+    defaults: { 'groupselectone--ml-select-one-autocomplete': true },
     only: [
       'groupselectone--ml-card-selector',
       'groupselectone--ml-dial-select',
