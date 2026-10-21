@@ -55,6 +55,7 @@ component (root)
 | \`size\` | \`string\` | \`'md'\` | \`@propertyDataSource\` | Button size: \`'xs'\`, \`'sm'\`, \`'md'\`, \`'lg'\` |
 | \`type\` | \`string\` | \`'button'\` | \`@propertyDataSource\` | HTML button type: \`'button'\`, \`'submit'\`, \`'reset'\` |
 | \`iconPosition\` | \`string\` | \`'start'\` | \`@propertyDataSource\` | Icon placement: \`'start'\` (before label) or \`'end'\` (after label) |
+| \`data-variant\` | \`string\` | \`'primary'\` | (attribute) | Visual variant read by \`ml-button-standard\`: \`'primary'\`, \`'secondary'\`, \`'danger'\`, \`'ghost'\`, \`'link'\`. Maps to the molecule's own CSS class (e.g. \`ml-button-primary\`). Only \`ml-button-standard\` reads it. |
 
 ### 3.2 States
 
