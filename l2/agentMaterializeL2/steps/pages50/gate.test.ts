@@ -94,6 +94,16 @@ test('i18n: the names are the contract, not the exact declaration text (moviment
   assert.match(gateM4PageSource(missingMsg, target()).find(item => item.code === 'M4_PAGE_I18N')!.message, /private msg: PageMessageType = pageMessage_<default locale>/u);
 });
 
+test('i18n: the type and the map sit inside the block, where agentAddLanguage rewrites (tarefas, 20/10)', () => {
+  const declarations = "type PageMessageType = typeof pageMessage_pt_br;\nconst pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br };\n";
+  const outside = reference.replace(`${declarations}/// **collab_i18n_end**\n`, `/// **collab_i18n_end**\n${declarations}`);
+  assert.notEqual(outside, reference);
+  assert.deepEqual(codes(outside), ['M4_PAGE_I18N']);
+  assert.match(gateM4PageSource(outside, target()).find(item => item.code === 'M4_PAGE_I18N')!.message, /type PageMessageType and const pageMessages must sit inside the catalogue block/u);
+  const mapOnly = reference.replace(`const pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br };\n/// **collab_i18n_end**\n`, `/// **collab_i18n_end**\nconst pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br };\n`);
+  assert.match(gateM4PageSource(mapOnly, target()).find(item => item.code === 'M4_PAGE_I18N')!.message, /^const pageMessages must sit inside/u);
+});
+
 test('colors only through design tokens with theme-free fallbacks', () => {
   assert.deepEqual(codes(reference.replace('bg-[var(--surface-bg,transparent)] p-4', 'bg-white p-4')), ['M4_PAGE_STYLE']);
   assert.deepEqual(codes(reference.replace('bg-[var(--surface-bg,transparent)] p-4', 'bg-[var(--surface-bg,#ffffff)] p-4')), ['M4_PAGE_STYLE', 'M4_PAGE_TOKEN']);

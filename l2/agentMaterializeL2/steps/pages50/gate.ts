@@ -364,6 +364,16 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   if (!/^[ \t]*(?:(?:private|protected|public|readonly)\s+)*msg\s*[!?]?\s*[:=]/mu.test(code)) push('M4_PAGE_I18N', 'Declare the catalogue field in the class: private msg: PageMessageType = pageMessage_<default locale>;');
   if (!/\brender\s*\(\s*\)\s*(?::[^{]+)?\{\s*this\.msg\s*=\s*pageMessages\[\s*this\.getMessageKey\(\s*pageMessages\s*\)\s*\]\s*;/u.test(code)) push('M4_PAGE_I18N', 'The first statement of render() must be this.msg = pageMessages[this.getMessageKey(pageMessages)];');
   if (start >= 0 && end > start && /\bas\s+const\b/u.test(text.slice(start, end))) push('M4_PAGE_I18N', 'Never as const on a catalogue.');
+  // agentAddLanguage/agentRemoveLanguage rewrite only what is between the markers (20/10/2026: 12 of 65 pages of 102047
+  // declared the type and the map after the end marker, so a new locale never reached pageMessages).
+  if (start >= 0 && end > start) {
+    const block = text.slice(start, end);
+    const outside = [
+      /\btype\s+PageMessageType\b/u.test(code) && !/\btype\s+PageMessageType\b/u.test(block) ? 'type PageMessageType' : '',
+      /\b(?:const|let)\s+pageMessages\b/u.test(code) && !/\b(?:const|let)\s+pageMessages\b/u.test(block) ? 'const pageMessages' : '',
+    ].filter(Boolean);
+    if (outside.length) push('M4_PAGE_I18N', `${outside.join(' and ')} must sit inside the catalogue block, before /// **collab_i18n_end** (agentAddLanguage rewrites only what is between the markers).`);
+  }
 
   // Visible literal text outside the catalogue.
   const body = start >= 0 && end > start ? code.replace(stripComments(text.slice(start, end)), '') : code;
