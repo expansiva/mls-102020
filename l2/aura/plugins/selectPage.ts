@@ -496,6 +496,20 @@ export class PluginSelectPage extends StateLitElement {
                 </div>
             </div>
             ${page.exists ? this._renderDsVersionPanel(page) : this._renderMissingPanel(page)}
+            ${page.exists ? this._renderClassPicker() : nothing}
+        `;
+    }
+
+    // The class picker DOCKED here (pageClassPickerPanel) — a second take on the floating one, kept
+    // side by side while we compare. While it is connected the studio editor feeds it AND the floating
+    // panel, so both are active on the same selection. Loaded lazily: it pulls the studio's editing core, which this plugin otherwise
+    // never needs.
+    private _renderClassPicker() {
+        void import('/_102020_/l2/aura/studio/pageClassPickerPanel.js');
+        return html`
+            <div class="border-t border-gray-200 dark:border-gray-800 pt-3">
+                <aura--studio--page-class-picker-102020></aura--studio--page-class-picker-102020>
+            </div>
         `;
     }
 

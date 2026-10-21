@@ -79,6 +79,7 @@ import {
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { isCoreElementTag } from '/_102020_/l2/aura/studio/studioAdoptEdit.js';
 import { t, tr, type IMessageRef } from '/_102020_/l2/aura/studio/studioMessages.js';
+import { onDockedClassPickerChange, setClassPickerMode } from '/_102020_/l2/aura/studio/classPickerDock.js';
 
 export const CLASS_PICKER_TAG = 'aura--studio--class-picker-102020';
 
@@ -393,13 +394,23 @@ export class ClassPickerPanel extends StateLitElement {
 
   private static readonly SCENARIO_KEY = 'aura.scenario.simulated';
 
+  /**
+   * Whether the picker docked in the Pages plugin is on screen — the only case where there is
+   * somewhere to go back to (pageClassPickerPanel sent the editing here with its own button).
+   */
+  @state() private canDock = false;
+  private unsubDock: (() => void) | null = null;
+
   connectedCallback(): void {
     super.connectedCallback();
     this.readScenario();
     subscribe(ClassPickerPanel.SCENARIO_KEY, this);
+    this.unsubDock = onDockedClassPickerChange((panel) => { this.canDock = panel !== null; });
   }
 
   disconnectedCallback(): void {
+    this.unsubDock?.();
+    this.unsubDock = null;
     unsubscribe(ClassPickerPanel.SCENARIO_KEY, this);
     super.disconnectedCallback();
   }
@@ -488,6 +499,8 @@ export class ClassPickerPanel extends StateLitElement {
         ${this.renderCopyIcon()}
         ${this.renderPasteIcon()}
         <span class="acp-spacer"></span>
+        ${this.canDock ? html`<button type="button" class="acp-icon" title=${t('panel.dockReturn')}
+          @click=${this.onDockReturn}>\u2199</button>` : nothing}
         <button type="button" class="acp-close" title=${t('panel.close')} @click=${this.onClose}>&times;</button>
       </div>
       ${this.renderChain(target)}
@@ -1597,6 +1610,12 @@ export class ClassPickerPanel extends StateLitElement {
   private status(message: string): void {
     this.dispatchEvent(new CustomEvent('picker-status', { detail: message, bubbles: true, composed: true }));
   }
+
+  /** Back to the Pages panel: the editor moves the selection there as soon as the mode changes. */
+  private onDockReturn = (): void => {
+    this.preview(null);
+    setClassPickerMode('docked');
+  };
 
   private onClose = (): void => {
     this.preview(null);

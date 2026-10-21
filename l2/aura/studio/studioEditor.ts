@@ -48,8 +48,10 @@ import {
   type IPickerAdopt,
   type IPickerApply,
   type IPickerPreview,
+  type IPickerTarget,
   type IPickerTextEdit,
 } from '/_102020_/l2/aura/studio/classPickerPanel.js';
+import { getClassPickerMode, onDockedClassPickerChange, type IClassPickerSink } from '/_102020_/l2/aura/studio/classPickerDock.js';
 import {
   ADOPT_NO_TARGET,
   composeAdopt,
@@ -460,6 +462,15 @@ export class StudioEditor {
 
   /** The class picker (TASK-102033-class-picker): panel element + what the current selection resolved to. */
   private classPanelEl: ClassPickerPanel | null = null;
+  /**
+   * The picker DOCKED in the Pages plugin (pageClassPickerPanel), when one is on screen.
+   *
+   * Only one picker is active at a time: this one while it is on screen and the mode is 'docked', the
+   * floating one otherwise (the dock has a button that switches — see classPickerDock). Both answer to
+   * the same `picker-*` listeners.
+   */
+  private dockedPanelEl: IClassPickerSink | null = null;
+  private unsubDock: (() => void) | null = null;
   private classPanel: IClassPanelState | null = null;
   /** The Molecules tab's answer; null once it was asked and nothing candidates. */
   private adopt: IAdoptState | null = null;
@@ -514,6 +525,7 @@ export class StudioEditor {
     this.createOverlay();
     this.createStatusEl();
     this.createClassPanel();
+    this.unsubDock = onDockedClassPickerChange((panel) => this.setDockedPanel(panel));
     // The target is resolved when the editor is armed (setMode), not here: attaching while `off`
     // must not build a Monaco model nobody asked for.
     this.watchHost(host);
@@ -598,6 +610,14 @@ export class StudioEditor {
     }
     this.statusEl?.remove();
     this.statusEl = null;
+    this.unsubDock?.();
+    this.unsubDock = null;
+    if (this.dockedPanelEl) {
+      // The dock outlives the editor (it belongs to the side panel): it is emptied, not removed.
+      this.wirePanel(this.dockedPanelEl, false);
+      this.dockedPanelEl.target = undefined;
+      this.dockedPanelEl = null;
+    }
     this.classPanelEl?.remove();
     this.classPanelEl = null;
     this.classPanel = null;
@@ -1640,25 +1660,50 @@ export class StudioEditor {
     if (this.classPanelEl) return;
     this.classPanelEl = document.createElement(CLASS_PICKER_TAG) as ClassPickerPanel;
     this.classPanelEl.hidden = true;
-    this.classPanelEl.addEventListener('picker-apply', this.onPickerApply as EventListener);
-    this.classPanelEl.addEventListener('picker-preview', this.onPickerPreview as EventListener);
-    this.classPanelEl.addEventListener('picker-status', this.onPickerStatus as EventListener);
-    this.classPanelEl.addEventListener('picker-close', this.onPickerClose);
-    this.classPanelEl.addEventListener('picker-undo', this.onPickerUndo);
-    this.classPanelEl.addEventListener('picker-redo', this.onPickerRedo);
-    this.classPanelEl.addEventListener('picker-move-up', this.onPickerMoveUp);
-    this.classPanelEl.addEventListener('picker-move-down', this.onPickerMoveDown);
-    this.classPanelEl.addEventListener('picker-duplicate', this.onPickerDuplicate);
-    this.classPanelEl.addEventListener('picker-remove', this.onPickerRemove);
-    this.classPanelEl.addEventListener('picker-text', this.onPickerText as EventListener);
-    this.classPanelEl.addEventListener('picker-level', this.onPickerLevel as EventListener);
-    this.classPanelEl.addEventListener('picker-level-hover', this.onPickerLevelHover as EventListener);
-    this.classPanelEl.addEventListener('picker-adopt-open', this.onPickerAdoptOpen);
-    this.classPanelEl.addEventListener('picker-adopt-select', this.onPickerAdoptSelect as EventListener);
-    this.classPanelEl.addEventListener('picker-adopt-preview', this.onPickerAdoptPreview);
-    this.classPanelEl.addEventListener('picker-adopt', this.onPickerAdopt);
+    this.wirePanel(this.classPanelEl, true);
     // Same layer as the marking and the toast — see createStatusEl.
     document.body.appendChild(this.classPanelEl);
+  }
+
+  /** The same listeners on either panel — the floating one and the docked one speak the same events. */
+  private wirePanel(panel: HTMLElement, on: boolean): void {
+    const method = (on ? panel.addEventListener : panel.removeEventListener).bind(panel) as
+      (type: string, listener: EventListener) => void;
+    method('picker-apply', this.onPickerApply as EventListener);
+    method('picker-preview', this.onPickerPreview as EventListener);
+    method('picker-status', this.onPickerStatus as EventListener);
+    method('picker-close', this.onPickerClose);
+    method('picker-undo', this.onPickerUndo);
+    method('picker-redo', this.onPickerRedo);
+    method('picker-move-up', this.onPickerMoveUp);
+    method('picker-move-down', this.onPickerMoveDown);
+    method('picker-duplicate', this.onPickerDuplicate);
+    method('picker-remove', this.onPickerRemove);
+    method('picker-text', this.onPickerText as EventListener);
+    method('picker-level', this.onPickerLevel as EventListener);
+    method('picker-level-hover', this.onPickerLevelHover as EventListener);
+    method('picker-adopt-open', this.onPickerAdoptOpen);
+    method('picker-adopt-select', this.onPickerAdoptSelect as EventListener);
+    method('picker-adopt-preview', this.onPickerAdoptPreview);
+    method('picker-adopt', this.onPickerAdopt);
+  }
+
+  /**
+   * A docked picker arrived or left, or the mode switched (see classPickerDock).
+   *
+   * The current selection is re-rendered right away into whichever picker is now the active one, so
+   * switching mid-selection loses nothing.
+   */
+  private setDockedPanel(panel: IClassPickerSink | null): void {
+    if (panel !== this.dockedPanelEl) {
+      if (this.dockedPanelEl) {
+        this.wirePanel(this.dockedPanelEl, false);
+        this.dockedPanelEl.target = undefined;
+      }
+      this.dockedPanelEl = panel;
+      if (panel) this.wirePanel(panel, true);
+    }
+    this.renderClassPanel();
   }
 
   private hideClassPanel(): void {
@@ -1666,6 +1711,8 @@ export class StudioEditor {
     // the source, and the next selection would say exactly that.
     this.previewAnimation(null);
     this.classPanel = null;
+    // The docked one is never hidden — with no target it shows its own empty state.
+    if (this.dockedPanelEl) this.dockedPanelEl.target = undefined;
     if (!this.classPanelEl) return;
     this.classPanelEl.hidden = true;
     this.classPanelEl.target = undefined;
@@ -2267,11 +2314,21 @@ export class StudioEditor {
 
   /** Feeds the component: what is selected, and what the vocabulary needs to be honest about. */
   private renderClassPanel(): void {
-    const panel = this.classPanelEl;
+    const floating = this.classPanelEl;
+    const docked = this.dockedPanelEl;
+    // One picker at a time: the dock when it is on screen and chosen, the floating one otherwise.
+    const useDock = docked !== null && getClassPickerMode() === 'docked';
+    const panel: IClassPickerSink | null = useDock ? docked : floating;
+    const idle: IClassPickerSink | null = useDock ? floating : docked;
     const state = this.classPanel;
+    if (idle) {
+      if (idle === floating) idle.hidden = true;
+      idle.target = undefined;
+      idle.adoptPreview = null;
+    }
     if (!panel) return;
     if (!state || this.mode === 'off' || this.overlayHidden) {
-      panel.hidden = true;
+      if (panel === floating) panel.hidden = true;
       panel.target = undefined;
       return;
     }
@@ -2287,11 +2344,7 @@ export class StudioEditor {
     // RENDER, not cached for the session: a stale role list would offer tokens that are gone.
     this.dsRoles = readDesignSystemRoles(document.getElementById('ds-tokens')?.textContent ?? '');
 
-    panel.builtClasses = this.builtClasses;
-    panel.dsRoles = this.dsRoles;
-    panel.jitLive = isStudioTailwindLive();
-    panel.resolveVar = (cssVar: string) => this.resolveCssVar(cssVar);
-    panel.target = {
+    const target: IPickerTarget = {
       tag: state.el.tagName.toLowerCase(),
       // DATA, never the nodes: the panel gets a tag, a literal and the index that points back into
       // `state.levels`, which is the only place the elements themselves live.
@@ -2325,9 +2378,14 @@ export class StudioEditor {
       removeReason: slice.remove,
       duplicateNotes: slice.notes,
     };
+    panel.builtClasses = this.builtClasses;
+    panel.dsRoles = this.dsRoles;
+    panel.jitLive = isStudioTailwindLive();
+    panel.resolveVar = (cssVar: string) => this.resolveCssVar(cssVar);
+    panel.target = target;
     panel.adopt = this.adoptProjection();
     panel.adoptPreview = this.adoptPreviewEl;
-    panel.hidden = false;
+    if (panel === floating) panel.hidden = false;
     // Only measurable once it is showing — and its size depends on what the selection carries.
     this.positionChrome();
   }

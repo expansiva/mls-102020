@@ -1,0 +1,285 @@
+/// <mls fileReference="_102020_/l2/aura/studio/pageClassPickerPanel.less" enhancement="_102027_/l2/enhancementStyle"/>
+// The DOCKED picker's looks (pageClassPickerPanel), derived from classPickerPanel.less.
+//
+// The rules that are not taste are the same as there: every class carries the `acp-` prefix (same
+// document as the client page, and the Tailwind JIT scans it), and NO BACKTICK AND NO DOLLAR-BRACE in a
+// block comment (the compiled css goes inside a JS template literal).
+//
+// What changes is the home: this lives in the studio's side panel, not over the app region. So it is
+// in the flow (no fixed position, no own scroll) and it wears the side panel's palette, light and
+// dark, as tokens on the host — the rules below only ever name the tokens.
+
+aura--studio--page-class-picker-102020 {
+  & {
+    --pcp-bg: #ffffff;
+    --pcp-surface: #f9fafb;
+    --pcp-border: #e5e7eb;
+    --pcp-border-soft: #f3f4f6;
+    --pcp-border-strong: #d1d5db;
+    --pcp-strong: #111827;
+    --pcp-text: #374151;
+    --pcp-muted: #6b7280;
+    --pcp-faint: #9ca3af;
+    --pcp-link: #4f46e5;
+    --pcp-accent: #6366f1;
+    --pcp-accent-soft: rgba(99,102,241,0.18);
+    --pcp-accent-faint: rgba(99,102,241,0.10);
+    --pcp-input-bg: #ffffff;
+    --pcp-code-bg: #f3f4f6;
+    --pcp-warn-bg: #fffbeb;
+    --pcp-warn-border: #fde68a;
+    --pcp-warn-text: #b45309;
+    --pcp-err-bg: #fef2f2;
+    --pcp-err-text: #b91c1c;
+
+    display: block;
+    background: var(--pcp-bg); color: var(--pcp-text);
+    border: 1px solid var(--pcp-border);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 12px;
+  }
+  .dark & {
+    --pcp-bg: #030712;
+    --pcp-surface: rgba(17,24,39,0.5);
+    --pcp-border: #1f2937;
+    --pcp-border-soft: #111827;
+    --pcp-border-strong: #374151;
+    --pcp-strong: #f3f4f6;
+    --pcp-text: #d1d5db;
+    --pcp-muted: #9ca3af;
+    --pcp-faint: #6b7280;
+    --pcp-link: #818cf8;
+    --pcp-accent: #6366f1;
+    --pcp-accent-soft: rgba(99,102,241,0.30);
+    --pcp-accent-faint: rgba(99,102,241,0.15);
+    --pcp-input-bg: #111827;
+    --pcp-code-bg: #111827;
+    --pcp-warn-bg: rgba(120,53,15,0.15);
+    --pcp-warn-border: rgba(180,83,9,0.4);
+    --pcp-warn-text: #fbbf24;
+    --pcp-err-bg: rgba(127,29,29,0.2);
+    --pcp-err-text: #fca5a5;
+  }
+
+  /* Nothing selected: the panel stays, and says what to do. */
+  .acp-empty-state { display: block; padding: 12px; background: var(--pcp-surface); }
+  /* Editing went to the floating panel: one line saying so, and the way back. */
+  .acp-floating-state { display: flex; align-items: center; gap: 8px; }
+  .acp-floating-state .acp-reason { flex: 1 1 auto; margin-top: 0; }
+
+  /* The actions, on a row of their own under the tag (the floating panel packs both in one). */
+  .acp-toolbar {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--pcp-border-soft);
+    background: var(--pcp-surface);
+  }
+  .acp-toolbar-sep { width: 1px; height: 14px; background: var(--pcp-border); }
+
+  .acp-scenario {
+    flex: 0 0 auto; font-size: 10px; padding: 1px 5px; border-radius: 3px;
+    background: var(--pcp-warn-bg); color: var(--pcp-warn-text);
+    border: 1px solid var(--pcp-warn-border);
+  }
+
+  .acp-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--pcp-border);
+    background: var(--pcp-bg);
+  }
+  /* The character cut happens in the component; this is what keeps a long name from pushing the row
+     apart anyway: a count of characters cannot know how wide the glyphs are. min-width 0 is what lets
+     a flex item shrink below its content at all. */
+  .acp-tag {
+    font-family: monospace; color: var(--pcp-link);
+    flex: 0 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* Pushes only what comes AFTER it to the right (the close). The actions stay together on the
+     left, in the order they are used: undo, redo, copy, paste. */
+  .acp-spacer { flex: 1 1 auto; }
+
+  .acp-icon {
+    flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
+    color: var(--pcp-muted); font-size: 14px; line-height: 1; padding: 0 3px;
+  }
+  .acp-icon:hover:not([disabled]) { color: var(--pcp-strong); }
+  .acp-icon[disabled] { opacity: 0.3; cursor: default; }
+
+  .acp-info-row { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+  .acp-info-label { flex: 0 0 96px; color: var(--pcp-muted); font-size: 11px; }
+  .acp-info-value {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: monospace; font-size: 11px; color: var(--pcp-text);
+  }
+  .acp-close { background: transparent; border: 0; color: var(--pcp-muted); font-size: 16px; line-height: 1; cursor: pointer; }
+  .acp-history {
+    flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
+    color: var(--pcp-muted); font-size: 14px; line-height: 1; padding: 0 2px;
+  }
+  .acp-history:hover:not([disabled]) { color: var(--pcp-strong); }
+  .acp-history[disabled] { opacity: 0.3; cursor: default; }
+  /* Duplicating a node that draws N elements, or a slice that carries an id: the tooltip says what,
+     this says THAT there is something to read before clicking (TASK-102020-duplicate-remove). */
+  .acp-history.acp-noted { color: var(--pcp-warn-text); }
+  /* The remove button, armed by the first click. The second one writes. */
+  .acp-history.acp-danger { color: var(--pcp-err-text); background: var(--pcp-err-bg); border-radius: 3px; }
+
+  .acp-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--pcp-border); }
+  .acp-tab {
+    background: transparent; border: 0; cursor: pointer; color: var(--pcp-muted); font-size: 12px;
+    padding: 4px 8px; border-radius: 4px 4px 0 0; border-bottom: 2px solid transparent;
+  }
+  .acp-tab:hover { color: var(--pcp-text); }
+  .acp-tab.acp-active { color: var(--pcp-strong); border-bottom-color: var(--pcp-accent); }
+
+  .acp-note { padding: 6px 10px; border-bottom: 1px solid var(--pcp-border-soft); color: var(--pcp-text); line-height: 1.35; }
+  .acp-note.acp-warning { background: var(--pcp-warn-bg); color: var(--pcp-warn-text); }
+  .acp-note.acp-refusal { background: var(--pcp-err-bg); color: var(--pcp-err-text); }
+
+  /* One group has to read as one group: the room below the chips is what separates it from the
+     next label, and the rule is only there to help — space does the work. */
+  .acp-rows { padding: 4px 4px 10px; }
+  .acp-block { display: block; padding: 9px 6px; }
+  .acp-block + .acp-block { border-top: 1px solid var(--pcp-border-soft); }
+  .acp-block.acp-readonly { opacity: 0.75; }
+  .acp-label {
+    display: block; margin-bottom: 6px; color: var(--pcp-muted); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .acp-reason { display: block; margin-top: 4px; color: var(--pcp-muted); line-height: 1.3; }
+  .acp-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+
+  /* The "+" is not another property of the element: it is the end of the list. */
+  .acp-block.acp-add { margin-top: 6px; border-top-color: var(--pcp-border); }
+
+
+  .acp-chip {
+    font-family: monospace; font-size: 11px; padding: 2px 6px; cursor: pointer;
+    color: var(--pcp-text); background: var(--pcp-border-soft);
+    border: 1px solid var(--pcp-border); border-radius: 3px;
+  }
+  .acp-chip:hover:not([disabled]) { background: var(--pcp-accent-soft); }
+  .acp-chip.acp-current { background: var(--pcp-accent); border-color: var(--pcp-accent); color: #fff; cursor: default; }
+  .acp-chip[disabled]:not(.acp-current) { opacity: 0.45; cursor: not-allowed; }
+  .acp-chip.acp-jit { border-style: dashed; }
+  .acp-chip.acp-more { letter-spacing: 1px; padding: 2px 8px; }
+  .acp-star { color: var(--pcp-warn-text); }
+
+  /* The selection's ancestors (TASK-102020-ancestor-breadcrumb). One row that SCROLLS instead of
+     wrapping: the deepest real page is 9 levels, and a wrapping breadcrumb would push the tabs down
+     by two lines on the pages that need it most. The editor keeps it scrolled to the end, so what is
+     cut is the left side — the outer wrappers — and never the current element. */
+  .acp-chain {
+    display: flex; align-items: center; gap: 4px;
+    padding: 5px 10px; overflow-x: auto; scrollbar-width: none;
+    border-bottom: 1px solid var(--pcp-border-soft);
+  }
+  .acp-chain::-webkit-scrollbar { display: none; }
+  .acp-chain-sep { flex: 0 0 auto; color: var(--pcp-faint); }
+  .acp-chain-item {
+    flex: 0 0 auto; padding: 0; background: transparent; border: 0; cursor: pointer;
+    font-family: monospace; font-size: 11px; color: var(--pcp-link); white-space: nowrap;
+  }
+  .acp-chain-item:hover { text-decoration: underline; }
+  /* Where the selection is: the same blue as the current chip, so "here" reads the same everywhere. */
+  .acp-chain-now {
+    flex: 0 0 auto; font-family: monospace; font-size: 11px; color: var(--pcp-strong); white-space: nowrap;
+    border-bottom: 1px solid var(--pcp-accent);
+  }
+
+  /* The text that lives in an attribute (TASK-102020-attribute-text): one row per attribute, above
+     the tabs. It is not a class and it is not a tab — it is what this element SAYS, and the only
+     place it can be shown, because a placeholder has no box on screen to point at. */
+  .acp-texts { padding: 6px 10px; border-bottom: 1px solid var(--pcp-border-soft); }
+  .acp-text { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 3px 0; }
+  .acp-text.acp-readonly { opacity: 0.75; }
+  .acp-text-label {
+    flex: 0 0 96px; color: var(--pcp-muted); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .acp-text-input {
+    flex: 1 1 120px; min-width: 0; padding: 2px 4px; font-family: inherit; font-size: 11px;
+    color: var(--pcp-text); background: var(--pcp-input-bg);
+    border: 1px solid var(--pcp-border-strong); border-radius: 3px;
+  }
+  .acp-text-input:focus { outline: 1px solid var(--pcp-accent); }
+
+  .acp-crumb { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--pcp-border-soft); }
+  .acp-here { color: var(--pcp-strong); }
+  .acp-link { background: transparent; border: 0; cursor: pointer; color: var(--pcp-link); font-size: 12px; padding: 0; }
+  .acp-link:hover { text-decoration: underline; }
+  .acp-advanced { display: block; margin: 6px 6px 2px; }
+
+  .acp-switch { display: flex; align-items: center; gap: 6px; padding: 8px 6px 2px; color: var(--pcp-muted); cursor: pointer; }
+  .acp-switch input { cursor: pointer; }
+  .acp-hint { display: block; padding: 0 8px 6px 24px; color: var(--pcp-muted); font-size: 10px; line-height: 1.4; }
+
+  .acp-custom { display: inline-flex; align-items: center; gap: 4px; }
+  .acp-custom input {
+    width: 68px; padding: 2px 4px; font-family: monospace; font-size: 11px;
+    color: var(--pcp-text); background: var(--pcp-input-bg);
+    border: 1px solid var(--pcp-border-strong); border-radius: 3px;
+  }
+  .acp-unit { color: var(--pcp-muted); font-size: 11px; }
+
+  /* The role palette: a swatch, the name, the value — expanded inline. */
+  .acp-swatch {
+    flex: 0 0 auto; width: 12px; height: 12px; border-radius: 2px;
+    /* The border is what makes #ffffff visible on a dark panel. */
+    border: 1px solid var(--pcp-border-strong);
+  }
+  .acp-swatch.acp-empty {
+    border-style: dashed;
+    background: repeating-linear-gradient(45deg, transparent, transparent 3px, var(--pcp-border-strong) 3px, var(--pcp-border-strong) 4px);
+  }
+  .acp-role-btn, .acp-role-item {
+    display: flex; align-items: center; gap: 6px; width: 100%;
+    padding: 3px 6px; cursor: pointer; text-align: left;
+    font-family: inherit; font-size: 11px; color: var(--pcp-text);
+    background: var(--pcp-border-soft);
+    border: 1px solid var(--pcp-border); border-radius: 3px;
+  }
+  .acp-role-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+  .acp-role-item { background: transparent; border-color: transparent; border-radius: 0; }
+  .acp-role-item:hover { background: var(--pcp-accent-soft); }
+  .acp-role-item.acp-current { background: var(--pcp-accent-faint); }
+  .acp-role-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acp-role-value { flex: 0 0 auto; font-family: monospace; color: var(--pcp-muted); }
+  .acp-head-row { display: flex; align-items: baseline; gap: 6px; }
+  .acp-head-row .acp-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acp-remove {
+    flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
+    color: var(--pcp-muted); font-size: 13px; line-height: 1; padding: 0 2px;
+  }
+  .acp-remove:hover:not([disabled]) { color: var(--pcp-err-text); }
+  .acp-remove[disabled] { opacity: 0.3; cursor: not-allowed; }
+
+  .acp-role-list {
+    display: block; width: 100%; margin-top: 2px; max-height: 190px; overflow: auto;
+    border: 1px solid var(--pcp-border); border-radius: 3px; background: var(--pcp-input-bg);
+  }
+
+  // ── Molecules tab (TASK-102020-adopt-molecules) ───────────────────────────
+  // The stage is the one area of this chrome that is LIGHT, and deliberately: what is mounted there
+  // is the real molecule, coloured by the page's own tokens, and judging it against a dark panel
+  // would say nothing about how it will look on the page.
+  .acp-adopt-group { font-family: monospace; color: var(--pcp-link); }
+  .acp-adopt-replaces { color: var(--pcp-warn-text); cursor: default; }
+  .acp-adopt-markup {
+    display: block; margin-top: 4px; padding: 6px; border-radius: 3px;
+    background: var(--pcp-code-bg); color: var(--pcp-muted); font-family: monospace; font-size: 10px;
+    line-height: 1.4; white-space: pre-wrap; word-break: break-all;
+    max-height: 96px; overflow: auto;
+  }
+  .acp-adopt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .acp-adopt-go { background: var(--pcp-accent-soft); border-color: var(--pcp-accent); }
+  .acp-adopt-go:hover:not([disabled]) { background: var(--pcp-accent); color: #fff; }
+  .acp-adopt-stage {
+    display: block; margin: 6px; padding: 10px; border-radius: 4px;
+    background: #ffffff; color: #0f172a; border: 1px solid var(--pcp-border);
+  }
+  .acp-adopt-stage .acp-label { color: #64748b; }
+}
