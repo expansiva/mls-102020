@@ -3,6 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as skilli18n } from '/_102020_/l2/skills/aura/language.js';
 import { waitModelIdle } from '/_102027_/l2/libModel.js';
+import { stepFileReference, unflattenBlock } from '/_102020_/l2/aura/agentManageLanguages/helpers/addLanguageCore.js';
 
 export function createAgent(): IAgentAsync {
     return {
@@ -101,7 +102,8 @@ async function afterPromptStep(
     let intents: mls.msg.AgentIntent[] = [];
 
     const output: Output = payload;
-    intents = await processOutput(context, output.result.i18n, output.result.fileReference);
+    // The file comes from the step's own args; the model's echo is only a fallback.
+    intents = await processOutput(context, output.result.i18n, stepFileReference(step.prompt, payload));
 
     const updateStatus: mls.msg.AgentIntentUpdateStatus = {
         type: 'update-status',
@@ -219,7 +221,10 @@ async function processOutput(context: mls.msg.ExecutionContext, newi18n: string,
     const modelTS = await files.ts.getOrCreateModel();
     if (!modelTS) throw new Error(`[geti18nByFile] invalid models`);
     const source = modelTS.model.getValue();
-    const newValue = replaceI18nBlock(source, newi18n)
+    // The model has been seen escaping the line breaks twice; one line would turn the block into a comment.
+    const block = unflattenBlock(newi18n);
+    if (!block.includes('\n')) throw new Error('[processOutput] the returned block has no line breaks');
+    const newValue = replaceI18nBlock(source, block)
     const paramsTs = { ...fileInfo, content: newValue, versionRef: new Date().toISOString(), extension: ".ts" };
     await updateStorFile(paramsTs);
     return [];
@@ -256,14 +261,22 @@ async function updateStorFile(params: { project: number, shortName: string, leve
 const system1 = `
 <!-- modelType: general -->
 
+You must return ONLY a valid JSON object. No preamble, no markdown fences. Start with { and end with }
+
 You are an agent responsible for removing an existing i18n new language, following the established standard.
 
 {{ skillLanguage }}
 
 ## Output format
-You must return the object strictly as JSON
-[[OutputSection]]
+Return exactly this JSON shape — "type" is always the literal "flexible":
 
+{"type":"flexible","result":{"i18n":"/// **collab_i18n_start**\\n...\\n/// **collab_i18n_end**","fileReference":"<the File Reference from the prompt>"}}
+
+- "i18n" is a JSON string holding the whole block, encoded ONCE by the normal JSON rules: once parsed, it must contain the block's real line breaks. Never escape twice.
+- "fileReference" is copied unchanged from the prompt.
+- Never answer with the TypeScript block itself, and never wrap the JSON in \`\`\`.
+
+[[OutputSection]]
 `
 
 //#region OutputSection

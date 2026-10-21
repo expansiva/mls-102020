@@ -4,9 +4,9 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as skilli18n } from '/_102020_/l2/skills/aura/language.js';
 import { waitModelIdle } from '/_102027_/l2/libModel.js';
 import {
-    applyTranslatedI18nBlock, decideQueue, extractI18nBlock,
-    isPageCatalogueFileName, isPageCatalogueFolder,
+    applyTranslatedI18nBlock, collectPending, extractI18nBlock, stepFileReference,
 } from '/_102020_/l2/aura/agentManageLanguages/helpers/addLanguageCore.js';
+import { readCurrentSource, readModulePageSources } from '/_102020_/l2/aura/agentManageLanguages/helpers/moduleLanguageScan.js';
 
 export function createAgent(): IAgentAsync {
     return {
@@ -109,7 +109,8 @@ async function afterPromptStep(
     let intents: mls.msg.AgentIntent[] = [];
 
     const output: Output = payload;
-    intents = await processOutput(context, output.result.i18n, output.result.fileReference);
+    // The file comes from the step's own args; the model's echo is only a fallback.
+    intents = await processOutput(context, output.result.i18n, stepFileReference(step.prompt, payload));
 
     const updateStatus: mls.msg.AgentIntentUpdateStatus = {
         type: 'update-status',
@@ -136,38 +137,13 @@ async function getPaths(
     // Languages are per module — never translate the whole project by accident.
     if (!moduleName) throw new Error(`[getPaths] moduleName is required`);
 
-    const result: { languages: string[], fileReference: string }[] = [];
-    const requested = languages.map(lang => lang.code);
-    const counters = { scanned: 0, queued: 0, complete: 0, noCatalogue: 0 };
-
     // The catalogue lives in the PAGES now (and in the organisms of a split page, which share the page
     // folders). The shared no longer emits one, so scanning it would queue nothing at all.
-    const pageFiles = Object.values(mls.stor.files).filter((f: mls.stor.IFileInfo) =>
-        f.project === project &&
-        isPageCatalogueFolder(f.folder, moduleName) &&
-        isPageCatalogueFileName(f.shortName, f.extension)
-    );
+    const pages = await readModulePageSources(project, moduleName);
+    const scan = collectPending(pages, languages.map(lang => lang.code), force);
 
-    for (const storFile of pageFiles as mls.stor.IFileInfo[]) {
-        // getContent, not getOrCreateModel: this walks ~100 files per module and a model per file is a
-        // Monaco resource nobody releases. Translation needs the text, never a compile.
-        const content = await storFile.getContent('');
-        const source = typeof content === 'string' ? content : '';
-        if (!source) continue;
-        counters.scanned += 1;
-
-        const decision = decideQueue(source, requested, force);
-        if (decision.languages.length === 0) {
-            if (decision.reason === 'noCatalogue') counters.noCatalogue += 1; else counters.complete += 1;
-            continue;
-        }
-        counters.queued += 1;
-        const fileReference = mls.stor.convertFileToFileReference(storFile);
-        result.push({ languages: decision.languages, fileReference });
-    }
-
-    console.info(`[agentAddLanguage] ${moduleName}: scanned ${counters.scanned}, queued ${counters.queued}, already translated ${counters.complete}, without catalogue ${counters.noCatalogue}${force ? ' (force)' : ''}`);
-    return result;
+    console.info(`[agentAddLanguage] ${moduleName}: scanned ${scan.pages + scan.noCatalogue}, queued ${scan.pending.length}, already translated ${scan.complete}, without catalogue ${scan.noCatalogue}${force ? ' (force)' : ''}`);
+    return scan.pending;
 }
 
 
@@ -181,9 +157,8 @@ async function getPagei18nBlock(fileReference: string) {
 }
 
 async function geti18nByFile(stor: mls.stor.IFileInfo) {
-    // Reading the text, not creating a model: same reason as getPaths.
-    const content = await stor.getContent('');
-    const source = typeof content === 'string' ? content : '';
+    // The current text (open model first), the same that processOutput applies the translation to.
+    const source = await readCurrentSource(stor);
     return extractI18nBlock(source) || '';
 }
 
@@ -232,14 +207,22 @@ async function updateStorFile(params: { project: number, shortName: string, leve
 const system1 = `
 <!-- modelType: translate -->
 
+You must return ONLY a valid JSON object. No preamble, no markdown fences. Start with { and end with }
+
 You are a translation specialist responsible for adding a new i18n language, following the established standard.
 
 {{ skillLanguage }}
 
 ## Output format
-You must return the object strictly as JSON
-[[OutputSection]]
+Return exactly this JSON shape — "type" is always the literal "flexible":
 
+{"type":"flexible","result":{"i18n":"/// **collab_i18n_start**\\n...\\n/// **collab_i18n_end**","fileReference":"<the File Reference from the prompt>"}}
+
+- "i18n" is a JSON string holding the whole translated block, encoded ONCE by the normal JSON rules: once parsed, it must contain the block's real line breaks. Never escape twice.
+- "fileReference" is copied unchanged from the prompt.
+- Never answer with the TypeScript block itself, and never wrap the JSON in \`\`\`.
+
+[[OutputSection]]
 `
 
 //#region OutputSection

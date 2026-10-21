@@ -2,7 +2,8 @@
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-export type TaskStatus = 'running' | 'done' | 'error';
+// 'queued': waiting for its turn in a batch (e.g. one task per module, run in sequence).
+export type TaskStatus = 'queued' | 'running' | 'done' | 'error';
 
 export interface ITask {
     status: TaskStatus;
@@ -42,6 +43,11 @@ export function getTasksByScope(scope: string): Map<string, ITask> {
 
 export function hasRunning(scope: string): boolean {
     return [...getTasksByScope(scope).values()].some(t => t.status === 'running');
+}
+
+/** A batch is busy while any of its tasks is running or still waiting for its turn. */
+export function hasPending(scope: string): boolean {
+    return [...getTasksByScope(scope).values()].some(t => t.status === 'running' || t.status === 'queued');
 }
 
 // ─── Subscription ────────────────────────────────────────────────────

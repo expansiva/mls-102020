@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/moduleLanguages.ts" enhancement="_blank" />
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { readStorText, storTextExists, writeStorText } from '/_102020_/l2/agentMaterializeL2/helpers/storText.js';
 
 // Canonical read/write of a module's languages (BCP-47 codes) in l4/<module>/module.defs.ts.
 // The module is the single source of truth for Aura flows; project.json `config.languages`
@@ -115,6 +116,21 @@ export async function readModuleDefaultLanguage(project: number, moduleName: str
     }
 }
 
+/**
+ * The module's own languages, WITHOUT the legacy fallback: `null` when the module.defs.ts is missing,
+ * unreadable or carries no language. A batch over every module uses this to tell "configured" from "absent".
+ */
+export async function readModuleDefsLanguages(project: number, moduleName: string): Promise<string[] | null> {
+    try {
+        const file = mls.stor.files[mls.stor.getKeyToFile(moduleDefsFileInfo(project, moduleName) as mls.stor.IFileInfo)];
+        if (!file) return null;
+        const languages = moduleLanguagesOf(String(await file.getContent()));
+        return languages && languages.length > 0 ? languages : null;
+    } catch {
+        return null;
+    }
+}
+
 export async function readModuleLanguages(project: number, moduleName: string): Promise<string[]> {
     let reason = `module.defs.ts for '${moduleName}' (project ${project}) has no productLanguages/defaultLanguage`;
     try {
@@ -159,6 +175,68 @@ export async function writeModuleLanguages(project: number, moduleName: string, 
     if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
     storFile.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(storFile, { contentType: 'string', content: source });
+}
+
+// ─── Runtime list: l5/config.json ────────────────────────────────────
+// The app does not read module.defs.ts: Ctrl+Alt+L and the header language select use
+// `window.collabBoot.languages`, which the server takes from l5/config.json
+// `projects[<project>].modules[moduleId].languages`. finalize70 (agentMaterializeL2) writes it from
+// productLanguages; adding or removing a language must keep it in step, or the new language never shows.
+
+export function configJsonInfo(project: number): FileInfo {
+    return { project, level: 5, folder: '', shortName: 'config', extension: '.json' };
+}
+
+function configModuleEntry(config: unknown, project: number, moduleName: string): Record<string, unknown> | null {
+    const modules = (config as any)?.projects?.[String(project)]?.modules;
+    if (!Array.isArray(modules)) return null;
+    const entry = modules.find((m: unknown) => isRecord(m) && m.moduleId === moduleName);
+    return isRecord(entry) ? entry : null;
+}
+
+/** The module's runtime languages in config.json, or `null` when the module is not registered there. */
+export function configModuleLanguagesOf(raw: string, project: number, moduleName: string): string[] | null {
+    let config: unknown;
+    try { config = JSON.parse(raw); } catch { return null; }
+    const entry = configModuleEntry(config, project, moduleName);
+    if (!entry) return null;
+    return Array.isArray(entry.languages) ? entry.languages.filter((l): l is string => typeof l === 'string') : [];
+}
+
+/**
+ * config.json with only `languages` of the module's entry replaced, written the way finalize70 writes it
+ * (2-space JSON, trailing newline, the file's own line endings). `null` when the module is not registered —
+ * registering a module is finalize70's job — or when the list is already the same.
+ */
+export function withConfigModuleLanguages(raw: string, project: number, moduleName: string, languages: string[]): string | null {
+    const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+    const config = JSON.parse(raw.replace(/\r\n/g, '\n'));
+    const entry = configModuleEntry(config, project, moduleName);
+    if (!entry) return null;
+    if (JSON.stringify(entry.languages) === JSON.stringify(languages)) return null;
+    entry.languages = [...languages];
+    return `${JSON.stringify(config, null, 2)}\n`.replace(/\n/g, eol);
+}
+
+/** The module's runtime languages, or `null` when there is no config.json or the module is not in it. */
+export async function readConfigModuleLanguages(project: number, moduleName: string): Promise<string[] | null> {
+    const info = configJsonInfo(project);
+    if (!storTextExists(info)) return null;
+    try {
+        return configModuleLanguagesOf(await readStorText(info), project, moduleName);
+    } catch {
+        return null;
+    }
+}
+
+/** Writes the module's runtime languages. `false` when nothing was written (no config, not registered, same list). */
+export async function writeConfigModuleLanguages(project: number, moduleName: string, languages: string[]): Promise<boolean> {
+    const info = configJsonInfo(project);
+    if (!storTextExists(info)) return false;
+    const next = withConfigModuleLanguages(await readStorText(info), project, moduleName, languages);
+    if (next === null) return false;
+    await writeStorText(info, next);
+    return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

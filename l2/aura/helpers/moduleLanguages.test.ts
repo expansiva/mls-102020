@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { moduleLanguagesOf, readModuleDefaultLanguage, withModuleLanguages } from './moduleLanguages.js';
+import { configModuleLanguagesOf, moduleLanguagesOf, readModuleDefaultLanguage, withConfigModuleLanguages, withModuleLanguages } from './moduleLanguages.js';
 
 const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures/agendaClinica-module.defs.txt'), 'utf8');
 
@@ -50,4 +50,50 @@ test('readModuleDefaultLanguage reads defaultLanguage from the agendaClinica fix
 test('moduleLanguagesOf ignores the legacy languages key', () => {
     const legacy = 'export const m = {\n  "languages": ["pt-BR"]\n} as const;\n';
     assert.equal(moduleLanguagesOf(legacy), null);
+});
+
+// ─── l5/config.json: the list the app's language switch reads ───
+
+const CRLF = String.fromCharCode(13, 10);
+const LF = String.fromCharCode(10);
+
+function configJson(eol: string): string {
+    const config = {
+        projects: {
+            '102034': { modules: [{ moduleId: 'mdm' }] },
+            '102047': { modules: [
+                { moduleId: 'tarefas', basePath: '/tarefas', languages: ['pt-BR'], navigation: [] },
+                { moduleId: 'financeiro', basePath: '/financeiro' },
+            ] },
+        },
+    };
+    return `${JSON.stringify(config, null, 2)}${LF}`.split(LF).join(eol);
+}
+
+test('configModuleLanguagesOf reads the module entry, null when it is not registered', () => {
+    assert.deepEqual(configModuleLanguagesOf(configJson(LF), 102047, 'tarefas'), ['pt-BR']);
+    assert.deepEqual(configModuleLanguagesOf(configJson(LF), 102047, 'financeiro'), []);
+    assert.equal(configModuleLanguagesOf(configJson(LF), 102047, 'compras'), null);
+    assert.equal(configModuleLanguagesOf('not json', 102047, 'tarefas'), null);
+});
+
+test('withConfigModuleLanguages replaces only languages of that module, keeping the line endings', () => {
+    for (const eol of [LF, CRLF]) {
+        const before = configJson(eol);
+        const next = withConfigModuleLanguages(before, 102047, 'tarefas', ['pt-BR', 'ja'])!;
+        assert.equal(next.includes(CRLF), eol === CRLF);
+        const parsed = JSON.parse(next);
+        const tarefas = parsed.projects['102047'].modules[0];
+        assert.deepEqual(tarefas.languages, ['pt-BR', 'ja']);
+        assert.equal(tarefas.basePath, '/tarefas');
+        assert.deepEqual(parsed.projects['102047'].modules[1], { moduleId: 'financeiro', basePath: '/financeiro' });
+        assert.deepEqual(parsed.projects['102034'], { modules: [{ moduleId: 'mdm' }] });
+        // Same text everywhere else: only the languages lines changed.
+        assert.equal(next.split(eol).length, before.split(eol).length + 1);
+    }
+});
+
+test('withConfigModuleLanguages writes nothing for a module not registered, or for the same list', () => {
+    assert.equal(withConfigModuleLanguages(configJson(LF), 102047, 'compras', ['pt-BR', 'ja']), null);
+    assert.equal(withConfigModuleLanguages(configJson(LF), 102047, 'tarefas', ['pt-BR']), null);
 });
