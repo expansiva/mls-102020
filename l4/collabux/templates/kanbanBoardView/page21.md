@@ -74,6 +74,45 @@ itself — and makes the flow the only story.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the concept, the process order, the counts and limits, the loops,
+feedback and disciplines. Only the shape changes, because the columns can no longer stand side by
+side. Where this section and the layout described above differ, this section wins on mobile.
+
+- **"Where is everything?" is answered by the status switcher.** At the top, one row of status
+  chips in the declared process order, each with its count ("count / limit" when the contract
+  declares a limit, the number in alarm color past it). Every status is a chip even when empty,
+  and the chips never reorder. This row is the only thing that may scroll sideways.
+- **One column on screen at a time**: tapping a chip shows that status's cards as one column of
+  full-width cards. The column opens on the first status that has cards; an empty status says
+  once, quietly, what belongs there.
+- **Cards keep their limit**: title, at most two decisive facts, owner. Flags still color only
+  their own fact.
+- **Moving is a control on the card**, never a drag: a quiet "Move to" opens a short picker with
+  only the statuses the contract allows from here. On commit the card shows its running state,
+  then leaves the column, and both chip counts update in place; a failure keeps the card where it
+  was, with the reason and retry on the card.
+- **The overlay becomes a view of its own**, with back: tapping a card opens its full detail and
+  commands. Back returns to exactly the same status, the same scroll and the same filters. This is
+  how "never cost the board its state" holds on a phone.
+- **Create and filters stay quiet**: one create action for the status on screen (status is
+  context, never asked); filters behind one quiet control under the switcher, narrowing every
+  status and its count at once.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the status switcher with its counts, 2. the cards of the status on
+screen, 3. limit breaches and flagged facts, 4. create and filters.
+
+Forbidden on mobile:
+- several status columns squeezed side by side, or a board that scrolls sideways (only the row of
+  status chips may);
+- drag as the way to move a card, or a move picker offering statuses the contract does not allow;
+- hiding empty statuses from the switcher, or a switcher without counts;
+- card detail as a separate page that loses the status, scroll or filters on back.
+
 ## Forbidden
 
 - Horizontal lanes crossing the status columns to show distribution by person or type —

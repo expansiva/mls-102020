@@ -77,6 +77,7 @@ is a reading surface with occasional, careful edits: the table itself is never e
 ## On mobile
 
 Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
 Everything above holds: the concept, the loops, feedback and disciplines. Only the shape changes,
 because the side panel can no longer open beside the table. Where this section and the layout
 described above differ, this section wins on mobile.

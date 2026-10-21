@@ -86,6 +86,41 @@ one in the panel, and govern it — without ever leaving the page.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the flat shelf found by metadata, verify before governing, the loops,
+feedback and disciplines. Only the shape changes, because the list and the reading desk can no
+longer sit side by side. Where this section and the layout described above differ, this section
+wins on mobile.
+
+- **Side by side becomes a sequence on the same page**: list → document. The document is a view of
+  its own with back, inside this page — never another page. The shelf stays one tap away, exactly
+  where it was.
+- **The list is the home view**: the declared filters and search in one quiet row on top, upload
+  (when declared) as one clear control near them, then one document per row — name first, then
+  version and status worn small under it as muted text and the one consistent status chip. Rows
+  may wrap to two lines; no table, no horizontal scroll.
+- **The document view** keeps the panel's order in one column: preview or best summary first,
+  then the metadata as labeled facts, then the version trail, then ONLY the governance actions
+  valid for the current status, at the bottom where the thumb reaches, labeled by outcome.
+- **Actions that need input** (a rejection note, a version label) open their field in place in the
+  document view, one field per line, confirm disabled until valid. Archive confirms once, naming
+  the document.
+- **After acting**, the document view restates the new status; back returns to the list at the
+  same filters and scroll, with the row's chips updated.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the list with its governing facts (or, in the document view, the
+preview and facts), 2. the valid governance actions, 3. the way back.
+
+Forbidden on mobile:
+- a drawer or sheet over part of the list to show the document;
+- governance actions on list rows or by swiping a row;
+- a preview that replaces the metadata, or a blank view when the preview cannot render;
+- losing the list's filters or scroll after visiting a document.
+
 ## Forbidden
 
 - Folders, trees, breadcrumbs or any location hierarchy as the page's structure — that is

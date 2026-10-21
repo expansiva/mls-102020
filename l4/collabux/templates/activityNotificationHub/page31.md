@@ -75,6 +75,39 @@ they had already seen.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the river, the day landmarks, the waterline, the inline actions, the loops
+and disciplines. A feed is already one column, so little moves; what matters more on a phone is
+that each item stays complete and actionable with a thumb, without opening anything. Where this
+section and the layout described above differ, this section wins on mobile.
+
+- **One column, top to bottom**: the page header with the unread count, then mark-all-read and the
+  filter row, then the feed under its day headers. Nothing sits beside the feed.
+- **The filter row stays one quiet row**: a few choices wrap onto a second line; many collapse into
+  one control that opens the same choices in place. It never becomes a strip scrolling sideways.
+- **Each item keeps its anatomy on two or three lines**: the identity text (the link to the
+  source) first, wrapping instead of truncating; the relative time muted; the inline action button
+  below the text, at the row's end edge, labeled by outcome. Link and button stay two distinct
+  targets, with clear space between them so a tap never lands on the wrong one.
+- **Actions are always visible on the item**: never hidden behind hover, a long press or a
+  swipe-only gesture. A swipe may exist only as a shortcut for a button that is already shown.
+- **Day headers and the waterline stay** as full-width quiet lines; depth still loads as the
+  reader scrolls, and a settled item (muted, one-word outcome) keeps its place in the feed.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the newest items with their inline actions, 2. the day headers and
+the waterline, 3. mark-all-read and the filters.
+
+Forbidden on mobile:
+- actions reachable only by swipe, long press or hover;
+- items that must open a detail view or expand to be acted on;
+- truncating the identity text until the item no longer says what happened;
+- new rows inserted above the reader while they scroll;
+- a filter strip or anything else that scrolls sideways.
+
 ## Forbidden
 
 - A persistent selection with a detail panel beside the list — that is the `inboxSplit`

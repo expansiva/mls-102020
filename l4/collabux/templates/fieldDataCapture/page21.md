@@ -72,6 +72,36 @@ table: no columns header, no pagination, no sorting.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: every card on the bench, the field order, the capture loop, the session
+strip, feedback and disciplines. This bench was drawn for a phone already; this section only fixes
+where things sit in one column. Where this section and the layout described above differ, this
+section wins on mobile.
+
+- **Cards stack in one column**, full width, in the contract's order; fields inside a card stack
+  too, labels above inputs. No card is collapsed or hidden behind another to save space.
+- **Keyboards match the field**: numbers raise the numeric keypad, dates the native date picker;
+  the keyboard's next key moves field to field, and leaving the last field brings the card's
+  button into view, full width at the card's foot.
+- **After a success**, the card stays where it is on screen and its first field is focused again;
+  the inline confirmation names what was logged, so the worker never has to scroll to check.
+- **The session strip sits after the last card**: with one card it is right under it; rows stay
+  one line each (what, how much, when), wrapping rather than cutting the amount, Undo at the end
+  of the row.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the card in use, 2. its primary button, 3. the inline
+confirmation, 4. the session strip.
+
+Forbidden on mobile:
+- cards side by side, or swiped through as a carousel; anything that scrolls sideways;
+- the session strip placed above the cards, pushing the first card down;
+- a card's button hidden behind the on-screen keyboard with no way to reach it;
+- amounts truncated in the card or in the strip.
+
 ## Forbidden
 
 - Wizard, steps, tabs or accordion to reach a capture form — all forms are on the bench.

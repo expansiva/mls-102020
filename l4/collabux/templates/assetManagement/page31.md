@@ -86,6 +86,39 @@ fall into a generic empty illustration, never hide the page.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: urgency organizing everything, the large state text, one action per card,
+the demoted healthy remainder, the good-news state, feedback and disciplines. On a phone the wall
+becomes one column read from the top, so the order of urgency is the order of scrolling. Where this
+section and the layout described above differ, this section wins on mobile.
+
+- **One column, in urgency order**: the headline count first, then the lanes stacked worst first,
+  worst card first, each lane titled with its problem and its count.
+- **Cards are full width, one per line**: the state text first and loudest, in words; then the
+  asset's identity and the decisive fact; then the one action, full width at the card's foot. A
+  link to the asset's record, when declared, stays a separate quiet link.
+- **A lane with many cards shows its worst few** and one "see all N" control that expands it in
+  place, so the next lane's title is never pushed off several screens.
+- **Action inputs open in place on the card**, one field per line, pickers for references, the
+  state text still above them. The card then changes its state text and settles into its new lane
+  or resolves out, where the eye can follow.
+- **Fine assets barely appear**: one quiet line with the collapsed count after the lanes, linking
+  to the registry when the contract declares one. In the good-news state, the calm sentence comes
+  first and that line stays below it.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the headline count, 2. the worst lane and its worst card, 3. the
+other lanes, 4. the healthy count.
+
+Forbidden on mobile:
+- lanes as columns side by side, a board that scrolls sideways, or any horizontal scroll;
+- small cards in a grid that shrink the state text;
+- a list or table of healthy assets;
+- an action that leaves the board to commit.
+
 ## Forbidden
 
 - A neutral searchable list of all assets with a full dossier pane as the page's spine —

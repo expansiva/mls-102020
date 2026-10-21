@@ -74,6 +74,40 @@ that looks wrong. Target: find an item by eye faster than by typing its name.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the grid as the page, image and price doing the talking, uniform cards,
+the read view with Edit as an explicit switch, feedback and disciplines. Only the overlay changes,
+because a phone has no room to dim the grid around it. Where this section and the layout described
+above differ, this section wins on mobile.
+
+- **The grid stays a grid**: two columns of equal cards, image on top, then the name in one or two
+  lines, then the price, still the second-loudest thing. At 360px, one column only if two would cut
+  the price. Cards never become rows of text.
+- **Search and declared filters** sit in one quiet bar above the grid; filtering re-flows the grid
+  in place. More cards load at the end, as the contract pages.
+- **The overlay becomes a full view of its own, with back**, inside this page — never another page.
+  It opens in read mode: the larger image, then all contract fields in labeled blocks in one
+  column. **Edit is still an explicit switch** into the update form, one field per line, Save and
+  Cancel at the bottom where the thumb reaches. Only one mode is on screen.
+- **Back returns to the grid exactly as it was**: the same scroll place, filters and loaded cards,
+  with the card repainted. "New" is one clear action above the grid, opens the same view with the
+  create inputs, and after it commits the grid shows the new card where the ordering puts it.
+- **Activate/deactivate** stays a quiet action at the foot of the read mode.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the images, 2. the prices, 3. the current view's primary action,
+4. the way back.
+
+Forbidden on mobile:
+- cards turned into a list of text rows, or a table;
+- a sheet or drawer that covers part of the grid to show the item;
+- inline price fields or action icons on cards;
+- losing the grid's scroll place after closing an item;
+- carousels or any horizontal scroll.
+
 ## Forbidden
 
 - A persistent side detail panel with the list kept beside it — that is the

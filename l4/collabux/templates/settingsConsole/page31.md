@@ -78,6 +78,41 @@ the contract cannot back. Never a full-page empty illustration that hides the wa
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the dominant search box, the table of contents before any search, matches
+edited where they appear, commits per setting, the no-match state and the disciplines. On a phone
+the search box matters even more, because there is no room for anything else to lead the way.
+Where this section and the layout described above differ, this section wins on mobile.
+
+- **The search box owns the top and stays pinned** while the user scrolls the matches: full width,
+  focused on load, with its clear control inside it. Clearing returns to the table of contents at
+  the top.
+- **Before any search**, the groups stack as full-width headings with their one-line muted
+  summary. Tapping a heading expands that group in place, exactly like a match — never a second
+  screen.
+- **Matches render as groups expanded inline**, in one column, the matched term marked.
+  **One setting per line**: label, muted description under it, then its control — a switch at
+  the right edge with its state in words, selects and inputs full width under the label, pickers
+  opening a list of the contract's options. Number and date values use the matching keyboard.
+- **The commit stays with what it commits**: right under its setting or small group, full width,
+  naming the outcome, disabled until changed and valid. When the keyboard is open, the field being
+  edited and its commit stay in view together.
+- **Success and failure stay at the setting**, with no scroll jump; the search box keeps its term
+  and the other matches stay editable.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the search box, 2. the first matching group, 3. the setting being
+changed and its commit.
+
+Forbidden on mobile:
+- a menu of sections, or results that open each setting on a second screen;
+- one save bar at the bottom of the screen spanning unrelated matches;
+- a search box that scrolls away while matches are being worked;
+- multi-column groups, or horizontal scroll of any kind.
+
 ## Forbidden
 
 - A fixed left-hand section map as the primary navigation — that is the `sectionedForm`

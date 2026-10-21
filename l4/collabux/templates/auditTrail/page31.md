@@ -76,6 +76,41 @@ everything it went through, newest first.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the two acts (subject, then story), the read-only lens, the before/after
+as the product, the milestones, feedback and disciplines. Only the before/after changes shape,
+because two values can no longer sit side by side and stay readable. Where this section and the
+layout described above differ, this section wins on mobile.
+
+- **The subject comes first**: without a subject from context, the opening state is one
+  full-width search-select and nothing else. Once chosen, the subject header (display name and
+  the few identifying fields, wrapping) sits at the top, then the timeline below it.
+- **The fixed header becomes one compact line** while the story scrolls: the record's name and
+  the control to change the subject. The identifying fields show in full only at the top, once,
+  so the pinned header never eats the screen.
+- **Each entry stacks**: when and who on one line (wrapping if needed), then its changes. A
+  milestone stays visibly distinct, full width.
+- **Before/after is stacked, never side by side**: each changed field is a small block with the
+  field label, the old value (muted, struck) above, and the new value (emphasized) below. When
+  both values are short and fit on one line without truncation, `old → new` on a single line
+  under the label is fine. Long values wrap; the raw payload stays collapsed at the entry's end
+  and wraps inside the column when opened.
+- **Narrowing stays humble**: the period or kind choices are one small wrapping row above the
+  timeline; loading earlier changes is one full-width control at the bottom.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. which record is under the lens, 2. the newest change and its
+before/after, 3. the older entries, 4. the narrowing choices and the subject switcher.
+
+Forbidden on mobile:
+- old and new values in two columns, or a diff table;
+- truncating an old or a new value;
+- the full subject header pinned over the story;
+- horizontal scroll anywhere, raw payload included.
+
 ## Forbidden
 
 - A cross-record event stream with who/what/when filters as the main surface — that is the

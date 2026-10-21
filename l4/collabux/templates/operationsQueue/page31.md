@@ -81,6 +81,37 @@ under five seconds, one thumb, without losing the place in the deck.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the deck as the workspace, one primary transition per card, two touches,
+the chips as the only filter, loops, feedback and disciplines. This experience was built for the
+phone; this section only fixes the narrow-screen details. Where this section and the layout
+described above differ, this section wins on mobile.
+
+- **The status chips stay fixed at the top** while the deck scrolls under them, as one row that
+  may scroll sideways: the one horizontal scroll this page allows. The selected chip is always
+  scrolled into view.
+- **Each card is full width**: the identity on its own line, wrapped and never cut; the urgency
+  fact and the status chip on the line below; progress as a thin line under them.
+- **The primary transition is a full-width button at the card's foot**, the armed confirmation
+  appearing in the same place, so the second touch lands where the first did. The overflow is one
+  44px control at the card's top corner, away from the primary button.
+- **A transition that needs an input** expands the card in place; the page scrolls so the field
+  and its confirm stay visible above the on-screen keyboard.
+- **Touch**: every target is at least 44px high, the primary button more; nothing depends on
+  hover or on swipe gestures.
+
+Mobile attention hierarchy: 1. the top card, 2. its primary transition, 3. the status chips,
+4. the overflow and captions.
+
+Forbidden on mobile:
+- horizontal scroll of anything but the status chip row;
+- cards side by side, or a deck swiped sideways card by card;
+- swipe-to-transition as the only way to act;
+- a truncated identity or urgency fact, or the overflow placed next to the primary button.
+
 ## Forbidden
 
 - A master list with a separate working panel, or any two-region split — that is the

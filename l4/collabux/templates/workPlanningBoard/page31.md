@@ -79,6 +79,45 @@ left-to-right; the layout is the information.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the concept, the plan drawn from contract dates only, today, overdue in
+alarm color, the loops, feedback and disciplines. Only the shape changes, because a wide time
+canvas with a label column does not fit. Where this section and the layout described above
+differ, this section wins on mobile.
+
+- **It stays a picture of time.** One shared window (a few weeks around today) spans the full
+  width of every row, and each row draws its task as a mini-bar inside that same window, from
+  start to due date (a point marker when the contract has only a due date). Because every row
+  uses the same window, the bars stay comparable, and "today" is one thin marker at the same
+  place in every row, reading as one line down the list.
+- **Rows are grouped by week, ordered by start** (soonest first): each week a quiet date
+  header, its tasks under it. Bars stacked inside one week show what overlaps and what piles up
+  next week. This is what separates it from `timelineList`, which is ordered by deadline.
+- **Each row**: task identity first, its dates as small text, then the mini-bar. Overdue is
+  unmistakable: the part of the bar past today in alarm color; completed tasks muted. A bar that
+  runs outside the window is clipped with a small edge mark, never squeezed.
+- **Moving the window** is two quiet controls (earlier / later) and a "today" anchor at the top;
+  all bars shift together. The window never scrolls sideways.
+- **The detail region becomes a view of its own**, with back: the task's fields and the edit
+  command, one field per line, dates as date pickers, assignee as a picker, Save at the bottom.
+  Rescheduling happens here, never by dragging; when the contract declares a reschedule command,
+  the date change commits through it. Back returns to the same window and scroll, the row briefly
+  marked with its redrawn bar.
+- **Create**, when declared, is one quiet button at the top; the new task appears in its week.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the bars against the shared window, 2. the today line, 3. the
+overdue portions, 4. the task identities and dates.
+
+Forbidden on mobile:
+- the wide canvas shrunk, or anything that scrolls sideways;
+- a plain list with dates as text only and no bars (the picture of time is the experience);
+- ordering by deadline, or each row with its own time scale;
+- drag to reschedule, or a task view that loses the window or scroll on back.
+
 ## Forbidden
 
 - A deadline-ordered list with inline quick-assign as the main surface — that is the

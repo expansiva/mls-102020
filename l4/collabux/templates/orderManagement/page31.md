@@ -81,6 +81,44 @@ advance the orders that are ready without losing sight of the board.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the concept, the stages from the contract, the named transitions, the
+loops, feedback and disciplines. Only the shape changes, because the lanes can no longer stand
+side by side. Where this section and the layout described above differ, this section wins on
+mobile.
+
+- **"Where is the pile-up?" is answered by the stage switcher.** At the top, one row of stage
+  chips in process order, each with its count; the biggest count is marked by weight (never
+  alarm color), so the bottleneck is named in one glance. Cancelled sits apart, at the end. Every
+  stage is a chip even when empty, and the chips never reorder. This row is the only thing that
+  may scroll sideways.
+- **One stage on screen at a time**: the page opens on the busiest stage, its summed value (when
+  the contract provides it) quiet under the switcher, then its cards as one column, oldest first.
+  After an action the page stays on that stage.
+- **Each card keeps its facts**: number, customer, total with currency, age in stage when the
+  data carries dates.
+- **The ready ones advance from the card**: each card offers its progressive transitions
+  available from its status, labeled by outcome ("Approve order"). On success the card leaves the
+  stage and both counts update; a failure keeps it in its true stage with the reason and retry on
+  the card. Cancel is not on the card: it lives in the peek view, with its plain confirmation.
+- **The peek becomes a view of its own**, with back: header facts, compact lines, money summary
+  and the transitions. Back returns to the same stage at the same scroll. Peeking stays cheap.
+- **Filters** (period, customer) sit behind one quiet control under the switcher, never per
+  stage.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the stage switcher with its counts, 2. the oldest cards of the
+stage on screen, 3. their transitions, 4. filters.
+
+Forbidden on mobile:
+- lanes squeezed side by side, or a board that scrolls sideways (only the row of stage chips may);
+- drag between stages, or a transition the contract does not provide from the card's status;
+- hiding empty stages from the switcher, or reordering the chips by count;
+- the peek as a separate page that loses the stage or scroll on back.
+
 ## Forbidden
 
 - A filterable queue beside a full permanent detail panel — that is the `orderDeskSplit`

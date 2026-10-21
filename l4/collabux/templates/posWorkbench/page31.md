@@ -74,6 +74,40 @@ screen. Target: a long sale captured at scanner speed, heads-down, one beep per 
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: one input on stage, the capture loop, the compact strip, checkout as a
+second act, feedback and disciplines. A flow that gives each moment the whole screen is already at
+home on a phone; only the strip's place is fixed. Where this section and the layout described
+above differ, this section wins on mobile.
+
+- **The capture input stays at the top, full width and focused**; after every hit it is empty
+  and focused again. Suggestions for a typed fragment appear right under it as full-width rows,
+  name and price on each, picked by tap.
+- **The strip becomes a bar fixed at the bottom**: the last item added, the line count, and the
+  **running total, the biggest number on screen**, with the checkout button carrying the amount.
+  While the on-screen keyboard is open the bar rides just above it, so total and checkout stay
+  visible.
+- **Expanding the strip** shows the line list in the space between the input and the bar
+  (item, quantity with +/- when the contract provides them, line total, remove), cancel-sale at
+  its foot; one tap on the bar collapses it back to capture.
+- **Checkout takes the whole screen**: Back at the top, then the lines, the money summary and the
+  total large, the declared payment inputs (amount tendered raises the numeric keyboard), and the
+  commit button at the bottom where the thumb reaches it, its amount always in full.
+- **Touch**: every target is at least 44px high, suggestion rows and +/- included; nothing
+  depends on hover.
+
+Mobile attention hierarchy: 1. the capture input, 2. the total in the bar, 3. the last item
+added, 4. checkout.
+
+Forbidden on mobile:
+- a total or a checkout button hidden by the on-screen keyboard;
+- the line list stacked under the input as a long page that pushes the bar away;
+- checkout as a sheet over part of the capture scene instead of the whole screen;
+- totals or amounts truncated, or anything that scrolls sideways.
+
 ## Forbidden
 
 - A permanent side-by-side catalog and cart with payment on the same stage — that is the

@@ -81,6 +81,44 @@ on. Detail never steals the stage: it opens in a panel over the grid and leaves.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the concept, the slot as the control for creating, the contract's
+commands, the loops, feedback and disciplines. Only the shape changes, because a week or month
+grid with readable blocks does not fit. Where this section and the layout described above
+differ, this section wins on mobile.
+
+- **The grid is still the page, now one day tall.** A day grid with its hours down the left
+  edge, the blocks at their time positions, now anchored. Free space still looks free; a day with
+  nothing scheduled still shows its full hours. A three-day grid is allowed only when block
+  identities stay readable.
+- **A strip of the week's days sits at the top**: seven short day cells (weekday and date) that
+  fit the width, today anchored, the chosen day marked, each with a small mark when it has items.
+  Tapping a day shows it; earlier / later controls page the week. The strip never scrolls
+  sideways.
+- **The month is only a date picker**, opened from the header to jump to a date, never a grid of
+  blocks. The range switch becomes: day (or three days) on the grid, month to jump.
+- **Creating starts on the grid**: tapping an empty slot opens the creation view with that date
+  and time filled; the remaining fields follow the command's inputs, one per line, pickers for
+  participants and resources.
+- **The panel becomes a view of its own**, with back: a block opens its detail and commands. Back
+  returns to the same day at the same scroll. This is how "the grid stays behind the panel" holds.
+- **Moving is done in the block's view**, never by dragging: changing the time there commits
+  through the reschedule command when the contract has one. The block then settles in its new
+  slot, on the day it now belongs to.
+- **Touch**: every target is at least 44px high, the hour slots too; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the day grid with now anchored, 2. its blocks, 3. the day strip,
+4. the creation or detail view, when open.
+
+Forbidden on mobile:
+- a week or month grid of blocks shrunk to fit, or anything that scrolls sideways;
+- the day as a list of items with no hours and no free space (that is `agendaTimeline`);
+- a creation form that asks for the date and time of the slot just tapped;
+- drag to move a block, or a detail view that loses the day or scroll on back.
+
 ## Forbidden
 
 - Rendering the schedule as a chronological list of items with inline actions — that is

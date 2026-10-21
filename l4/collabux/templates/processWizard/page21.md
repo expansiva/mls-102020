@@ -85,6 +85,36 @@ real until the final confirmation.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: one step per screen, the rail as a map, collapsed steps, the summary
+before commit, feedback and disciplines. A corridor of isolated steps is already at home on a
+phone; only the rail and the placement of the buttons change. Where this section and the layout
+described above differ, this section wins on mobile.
+
+- **The numbered rail compresses** to one line at the top, "Step 2 of 5 — Choose the period",
+  with a thin progress line under it. Collapsed steps count as done in the line; nothing in it is
+  tappable.
+- **Fields stack in one column**, labels above inputs, full width. Numbers raise the numeric
+  keyboard, dates the native date picker, email and phone their own keyboards.
+- **Back and Next sit in a bar fixed at the bottom**, Next on the thumb side; while the on-screen
+  keyboard is open the bar rides just above it, so Next is reachable without closing it.
+- **The summary is one column of groups**, each with its step title, its values in plain words
+  (wrapped, never cut) and its "edit" link; the commit button with its full outcome label takes
+  Next's place in the bottom bar.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the current step's fields, 2. Next (or the commit button),
+3. the compressed rail, 4. Back.
+
+Forbidden on mobile:
+- a wide horizontal rail with every step's title;
+- fields side by side in two columns, or anything that scrolls sideways;
+- a Next or commit button hidden behind the on-screen keyboard;
+- summary values or the commit label truncated.
+
 ## Forbidden
 
 - Keeping completed steps visible on the same page as collapsed recaps while the next

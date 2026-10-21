@@ -73,6 +73,37 @@ human as the gatekeeper at its end.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the four acts in order, the human as gatekeeper, the honest running state,
+feedback and disciplines. Only the review changes shape, because the preview and the side rail can
+no longer sit side by side. Where this section and the layout described above differ, this section
+wins on mobile.
+
+- **Configure is a short form in one column**, pickers full width, the generate button at its
+  foot. Once a draft exists, the configuration folds into one quiet line of its real values
+  ("Q3 · Client A") with one "change" control that reopens it in place, above the preview.
+- **The preview takes the full width** and wraps its text; it never shrinks into a scaled-down
+  page. Wide parts of the artifact (a table it returned) wrap or stack, never scroll sideways.
+- **The side rail becomes a findings list under the preview**, each finding naming in plain words
+  what it concerns. When findings exist, one quiet line above the preview says how many wait below
+  ("3 notes below"), so they are never missed. No findings, no list and no line.
+- **Publish sits at the foot of the review**, after the findings, so the eye passes the artifact
+  and its findings before reaching it. Its audience and channel pickers open in place right above
+  it, and its confirmation stays one plain sentence.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the generated artifact, 2. its findings, 3. the publish action,
+4. the folded configuration.
+
+Forbidden on mobile:
+- preview and findings squeezed side by side, or findings in a drawer that covers the artifact;
+- a publish button fixed on screen before the artifact and its findings were scrolled past;
+- the artifact shown as a shrunken page, or anything that scrolls sideways;
+- the full configuration form left open above the preview after generation.
+
 ## Forbidden
 
 - An editable artifact canvas with per-suggestion accept/discard controls — that is the

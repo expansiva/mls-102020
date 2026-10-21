@@ -73,6 +73,41 @@ knowing "where am I and how did I get here" matters more than seeing every branc
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the path as the page, one level at a time, selecting as the only way to
+descend or backtrack, feedback and disciplines. Only the shape changes, because the columns can no
+longer sit side by side in one strip. Where this section and the layout described above differ,
+this section wins on mobile.
+
+- **One column on screen at a time**: the current level fills the width, its rows the same as on
+  desktop (name, one quiet fact, the forward marker on nodes with children). Selecting a node with
+  children slides to a new view holding its children; children never expand in place.
+- **The column titles become the path at the top**: a compact trail of the selected nodes' names,
+  the hierarchy's name first and the current level last. Middle levels collapse into one "…" that
+  opens the full trail as a list. Each crumb is tappable and returns to that level, pruning the
+  walk below it. "Where am I and how did I get here" is still answered at a glance by this trail.
+- **The trail replaces the column titles; it does not restate them**: on mobile there is no
+  separate title per column, so the "no separate breadcrumb bar" rule holds — the trail is the
+  strip itself, shrunk.
+- **The detail is the last position, as its own view**: selecting a leaf, or the "details" control
+  on a node, opens its fields and structural commands (add-child, edit, move with a picker, delete
+  with its plain confirm). Back returns to the same level, same scroll, the node still selected.
+- **After add-child or move**, the trail re-walks to the node's real position and its detail
+  opens, so the path never lies.
+- **Touch**: every target is at least 44px high, the whole row included; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the current level's nodes, 2. the trail at the top, 3. the forward
+markers, 4. the detail's commands, in the detail view.
+
+Forbidden on mobile:
+- several columns squeezed side by side, or the strip scrolling sideways;
+- an expandable tree, or a node's children expanded inside the current level;
+- a trail that wraps onto several lines or drops the current level;
+- the detail as a drawer or sheet covering part of the level.
+
 ## Forbidden
 
 - An expandable tree with a persistent side panel showing the whole structure — that is

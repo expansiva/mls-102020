@@ -70,6 +70,36 @@ thumb only, without reading anything twice.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the chooser, the beats, the rail as a map, the review, the closing scene,
+feedback and disciplines. This flow was built for a phone in one gloved hand; this section only
+pins down where the thumb finds things. Where this section and the layout described above differ,
+this section wins on mobile.
+
+- **The rail stays a slim row of dots at the top** while they fit at 360px; with more beats than
+  that, it becomes "3 of 7" with a thin progress line. Never tappable.
+- **Tiles fill the width** in one column, or two when labels are short; each tile is large and
+  its label wraps, never cut.
+- **Value beats never raise the full text keyboard**: numbers use the large on-page pad or the
+  numeric keypad, dates the native date picker. The value being entered sits big at the top.
+- **Back and Next sit in a bar fixed at the bottom**, Next on the thumb side; while the on-screen
+  keyboard is open the bar rides just above it. On the review beat the commit button takes Next's
+  place, its full label visible ("Log 3.5 hours on Framing").
+- **Touch**: every target is at least 44px high, tiles and pad keys much more; nothing depends on
+  hover.
+
+Mobile attention hierarchy: 1. the current question and its input, 2. Next (or the commit),
+3. the rail, 4. Back.
+
+Forbidden on mobile:
+- a beat that needs scrolling to reach its input or its Next;
+- Next or the commit hidden behind the on-screen keyboard;
+- small tiles in a dense grid, or anything that scrolls sideways;
+- truncated tile labels, review values or commit label.
+
 ## Forbidden
 
 - Showing two beats' inputs on the same screen (that is the workbench experience, not this

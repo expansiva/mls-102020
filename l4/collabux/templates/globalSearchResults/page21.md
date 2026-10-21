@@ -79,6 +79,39 @@ this page organizes by KIND first — the user picks the drawer, then the item.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the slicing by kind, the section order, the term highlighting, the
+"see all" exits, the loops and the disciplines. On a phone the sections stack, so the map of
+drawers is read by a short scroll instead of one glance. Where this section and the layout
+described above differ, this section wins on mobile.
+
+- **The search input stays at the top**, full width, holding the term; searching again replaces
+  the sections below it in place, never navigates.
+- **Type sections stack in one column**, strongest first, each titled with its bare business noun
+  and its match count. Each shows only its best few rows (about three), so the next section's
+  title comes after a short scroll, never after several screens.
+- **Each row takes one or two lines**: identity first, then the matched fragment with the term
+  highlighted, then at most one decisive fact, small. The highlighted match is never cut away to
+  make room. The whole row is the tap target and opens the record.
+- **"See all" closes each section** as a full-width control under its rows, only when there are
+  more matches, leading to the full result for that type as on desktop. Back returns to the
+  sections at the same scroll place, with the term still in the input.
+- **No matches anywhere**: the same calm sentence naming the term, right under the input.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the search input with the term, 2. the strongest section,
+3. the other sections, 4. the "see all" controls.
+
+Forbidden on mobile:
+- sections side by side, sections hidden behind tabs, or a carousel of types — nothing scrolls
+  sideways;
+- a section that shows all its matches and pushes the others off several screens;
+- truncating a row so the highlighted term is lost;
+- a filter control, or one blended list of all types, added because the screen is small.
+
 ## Forbidden
 
 - A facet rail, refinement filters, or one single blended list mixing all types — that

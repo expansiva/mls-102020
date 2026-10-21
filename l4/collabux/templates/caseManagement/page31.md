@@ -78,6 +78,39 @@ touch it".
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the thread as the center and the product, strict time order, the composer
+closing the story, the reference shelf with only allowed transitions, feedback and disciplines.
+The margin no longer exists, so the shelf folds as the body already says, and the thread keeps
+the whole page. Where this section and the layout described above differ, this section wins on
+mobile.
+
+- **The header compacts**: subject, requester and status in words at the top; while the story
+  scrolls it stays pinned as one line (subject and status) with the shelf control.
+- **The shelf becomes a compact summary that expands in place**: collapsed by default, one
+  control under the header ("Case details") opens it right there, pushing the thread down. Open,
+  it lists the case fields as label+value rows and, at its foot, the allowed transitions as
+  full-width buttons labeled by outcome. Closing it returns the reader to the same entry.
+- **The thread is one full-width column**: each comment with author and moment on one line, the
+  text wrapping below, never truncated; system lines stay quieter single lines between them.
+  Arrival lands on the newest entry; earlier entries load at the top on demand.
+- **The composer sits at the bottom of the screen**, at the thread's end: a field that grows up
+  to a few lines and a send button beside it. When the keyboard opens, the newest entry stays
+  visible above the composer.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the newest entries of the thread, 2. the composer, 3. the header
+status, 4. the shelf and its transitions.
+
+Forbidden on mobile:
+- the shelf open by default, or pushing the thread below the first screen;
+- the shelf as a drawer or overlay covering the thread;
+- status actions in a sticky bar competing with the composer;
+- comments truncated, or the thread folded behind a control.
+
 ## Forbidden
 
 - A case queue sharing the stage, or data/thread/actions laid out as three equal regions

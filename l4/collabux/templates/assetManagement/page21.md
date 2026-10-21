@@ -80,6 +80,41 @@ fact in the dossier, not the organizing principle of the page.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the neutral book of record, the complete dossier, state plus contextual
+transitions, the loops, feedback and disciplines. Only the shape changes, because the list and the
+dossier can no longer sit side by side. Where this section and the layout described above differ,
+this section wins on mobile.
+
+- **Side by side becomes a sequence on the same page**: list → dossier. The dossier is the view
+  "over the list" the body already names for narrow screens: a view of its own with back, inside
+  this page — never another page. The list survives every action, one tap away, exactly where it
+  was.
+- **The list is the home view**: search at the top, the contract's filters as compact pickers
+  under it, then one asset per row — identity first, then one or two distinguishing facts (type,
+  location, lifecycle state). No table, no horizontal scroll; more rows load at the end.
+- **The dossier is one column of labeled blocks**, in the same order: identification, location
+  and assignment, lifecycle. The current state stays prominent in words, with ONLY its allowed
+  transitions right under it, each a full-width button labeled by outcome.
+- **Editing** is an explicit switch inside the dossier view: one field per line, Save and Cancel
+  at the bottom where the thumb reaches. After Save, the dossier shows the saved values.
+- **Creating an asset** is its own view, opened by one clear action from the list; after it
+  commits, the new asset's dossier opens.
+- **Back** returns to the list with search, filters and scroll intact and the row updated.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. search and the list (or, in the dossier, the asset's state and
+facts), 2. the allowed transitions or the primary action, 3. the way back.
+
+Forbidden on mobile:
+- a drawer or sheet over part of the list to show the dossier;
+- dossier blocks in columns, or multi-column forms;
+- a list, a dossier and a form stacked on one long screen;
+- losing the search, filters or scroll after visiting an asset.
+
 ## Forbidden
 
 - Organizing the page around urgency — cards ranked by due maintenance owning the top —

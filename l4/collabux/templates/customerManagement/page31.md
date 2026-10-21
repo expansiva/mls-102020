@@ -81,6 +81,38 @@ knowing this customer after ten seconds on this page.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: one customer owning the page, the highlight band first, the relationship
+as the body, adding in place, the quiet picker, feedback and disciplines. On a phone the band
+must stay compact: the person often reads it on the way into the meeting. Where this section and
+the layout described above differ, this section wins on mobile.
+
+- **The band answers who, worth and standing in the first screen**: the name largest, wrapping
+  instead of truncating, then the decisive facts as value+label pairs, two per row when they fit.
+  It stays short enough to leave the first section's title in view. The edit switch is one quiet
+  control on the band; deactivation stays behind it.
+- **Switching customers stays quiet**: one small control in the header opens the search-select
+  in place, full width. It never shows a list of customers on the page and never sits above the
+  band in weight.
+- **Related collections stack as sections**, in their declared order, with the same anatomy:
+  title, entries as list rows, "see all" at the section's foot. Reachable details of a contact
+  (phone, email) are real links the thumb can tap.
+- **Adding happens in the section**: the add action opens a one-column form inside that section,
+  commit at its bottom; after commit the form closes and the new entry shows at the top.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the highlight band, 2. the first relationship section, 3. the
+remaining sections, 4. the picker and lifecycle actions.
+
+Forbidden on mobile:
+- a band taller than the first screen, or pushed down by the picker or a toolbar;
+- sections turned into tabs, a carousel, or anything that scrolls sideways;
+- a list of other customers anywhere on the page;
+- multi-column forms.
+
 ## Forbidden
 
 - A persistent directory list sharing the stage with the profile — that is the

@@ -71,6 +71,38 @@ head.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the four acts, one act on stage, nothing real before Act 4, the rail as a
+map, feedback and disciplines. A corridor with one act per screen is already at home on a phone;
+only the rail and the mapping rows change shape. Where this section and the layout described
+above differ, this section wins on mobile.
+
+- **The rail compresses** to one line at the top, "Step 2 of 4 — Map the columns", with a thin
+  progress line under it. Still a map: nothing in it is tappable.
+- **Act 1** is one large browse control (dropping a file is a desktop gesture); what was read
+  (file name, rows, columns) shows under it as short lines, the file name wrapped, never cut.
+- **The mapping is a list of rows**, one per target field: the field name and its required or
+  optional state on the first line, the source column picker full width below it, the guess
+  marked next to the picker. Never a two-column table.
+- **The errors scene is a list**: groups by kind of problem, each entry on its own row naming row
+  and column in words, with its remedy as one control in the entry. The passing count sits above
+  the list.
+- **Back and Continue sit in a bar fixed at the bottom**, Continue on the thumb side; in Act 4 the
+  commit button takes that place, its full label visible ("Import 214 rows").
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the current act's content, 2. its Continue or commit button,
+3. the compressed rail, 4. Back.
+
+Forbidden on mobile:
+- a wide horizontal rail of four labeled acts;
+- the mapping or the errors as a table, or anything that scrolls sideways;
+- a commit or Continue label truncated to fit the bar;
+- target field names or source column names cut short; they wrap.
+
 ## Forbidden
 
 - Preview, mapping and live validation sharing one screen — that is the

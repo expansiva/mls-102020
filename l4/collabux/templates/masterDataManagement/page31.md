@@ -73,6 +73,43 @@ change is marked, every commit is explicit, per row.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: bulk curation with visible control, editing where the data is, the dirty
+mark, the explicit commit per row, feedback and disciplines. Only the shape changes, because a
+keyboard-driven grid of cells cannot survive a phone's width and its on-screen keyboard. Where this
+section and the layout described above differ, this section wins on mobile.
+
+- **Still edited in place, never in a separate view**: the phone still answers "fix many records
+  fast, seeing which ones are pending" — in the list itself. This is what keeps it apart from
+  `compactCrudTable`, whose rows open a record view of their own.
+- **The grid becomes a list of rows**: identity first, then one or two key values small. Tapping
+  a row expands it IN PLACE into an edit card, one field per line, editable fields looking
+  editable and read-only fields visibly quieter; pickers for selections. Only one row is expanded
+  at a time.
+- **Commit stays per row and explicit**: the expanded card carries its own commit button, named
+  with the outcome, at its foot where the thumb reaches, disabled while a field is invalid, and a
+  revert. Collapsing a changed row does not save it.
+- **Pending rows stay marked**: a collapsed row with uncommitted changes keeps its dirty mark at
+  its edge and keeps the values typed; several rows may be pending at once, each committed on its
+  own. Tapping another row collapses the open one without losing anything.
+- **Create stays the last row**: a visibly distinct empty row at the foot of the list expands into
+  an empty card; after commit it settles as a normal row and a fresh empty row appears below.
+- **Merge and deactivate** live at the foot of the expanded card, quiet, with their plain-words
+  confirmation; merge targets are picked.
+- **Touch**: every target is at least 44px high; nothing depends on hover or on a keyboard.
+
+Mobile attention hierarchy: 1. the expanded card and its commit, 2. the pending marks in the list,
+3. the other rows, 4. the empty creator row.
+
+Forbidden on mobile:
+- a cell grid, wide tables or any horizontal scroll;
+- editing in a separate record view, a modal or a drawer;
+- more than one card expanded at once, or a collapse that silently saves or discards;
+- one global "Save all" as the only commit.
+
 ## Forbidden
 
 - A side panel or separate form as the way to edit a record — that is the

@@ -83,6 +83,38 @@ ones recognized fast and sent to deeper reading.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the headline, the minimum decisive set on each card, the inline outcomes,
+the card that leaves, the drill-down for hard cases, inbox zero and the disciplines. On a phone the
+queue is cleared with the thumb, one card at a time, so each card must fit on the screen with its
+outcomes. Where this section and the layout described above differ, this section wins on mobile.
+
+- **The headline, then the cards in one column**, in the contract's order. Declared filter chips sit
+  under the headline in one row that wraps.
+- **Each card fits on one screen**: who asks and for what (the identity link), then the one or two
+  decisive values, large, with unit; then approve and reject at the card's foot, large, each
+  labeled with its outcome. Facts and outcomes always travel together.
+- **Reject expands the card in place** with the required reason field; the field and its button
+  stay above the keyboard, and the button enables once the reason is valid.
+- **A decided card leaves** with a brief exit; the next card moves up into the same place, under
+  the thumb, and the headline count drops. No scroll jump.
+- **Hard ones go to deeper reading**: the card's identity link is the "open to read" exit to the
+  full record. Back returns to the queue at the same scroll place, shorter if it was decided there.
+- **Inbox zero**: the calm sentence takes the first screen; nothing else to look at.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the headline, 2. the first card and its outcomes, 3. the remaining
+cards, 4. the filter chips.
+
+Forbidden on mobile:
+- cards side by side, a sideways carousel of cards, or any horizontal scroll;
+- swipe gestures that decide — every decision is a labeled tap;
+- a card taller than the screen, whose outcomes need scrolling to reach;
+- confirmation dialogs on routine approvals, or a bar that decides several cards at once.
+
 ## Forbidden
 
 - Rendering one request's full narrative and trail with the decision at the end of a

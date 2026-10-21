@@ -82,6 +82,44 @@ this experience gives data, thread and actions equal standing on one bench.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the pick — resolve — next rhythm, the three peer regions of the case, the
+loops, feedback and disciplines. Only the shape changes, because the queue and the workspace can no
+longer sit side by side, and the three regions can no longer be seen at once. Where this section
+and the layout described above differ, this section wins on mobile.
+
+- **Side by side becomes a sequence on the same page**: queue → case. The case is a view of its
+  own with back, inside this page — never another page. The queue survives every action, one tap
+  away, with the same filters and scroll.
+- **The queue is the home view**: the contract's filters as compact pickers on top, then one case
+  per row — subject first, requester and status in words under it, the ordering fact (age,
+  priority) right-aligned. No table, no horizontal scroll.
+- **The case view keeps the three regions as peers**: on top, always, the case's identity and
+  status with ONLY its allowed status actions as buttons labeled by outcome. Below, a small
+  segmented switch with two equal options — the case record and the thread — swaps the body; it
+  remembers the last choice from case to case, so a sweep keeps its rhythm. Neither region is a
+  margin of the other.
+- **The thread** shows comments in time order with the newest reachable at once; the composer is
+  attached at its bottom, where the thumb reaches, and keeps focus after sending.
+- **Next case**: a "Next case" control in the case view opens the next row of the queue under the
+  current filters, so pick — resolve — next never needs a trip back. The case does not vanish on
+  resolution; it leaves the queue only when the filter says so.
+- **Back** returns to the queue at the same place, with the row updated.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the queue (or, in the case view, the case's identity and status),
+2. the thread and composer or the record, as switched, 3. the status actions, 4. next case and the
+way back.
+
+Forbidden on mobile:
+- a drawer or sheet over part of the queue to show the case;
+- the thread filling the case view with record and actions pushed out of reach;
+- record, thread and composer stacked on one long screen;
+- losing the queue's filters or scroll after working a case.
+
 ## Forbidden
 
 - The thread swallowing the page while case data and actions retreat to a margin — that

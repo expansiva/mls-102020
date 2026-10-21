@@ -84,6 +84,42 @@ read before it let them act.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the fixed reading order, the collapsed selection, the decision at the end,
+one deliberate beat per outcome, feedback and disciplines. On a phone the reading path only gets
+longer, and that is the point: the thumb reaches the decision by reading down to it. Where this
+section and the layout described above differ, this section wins on mobile.
+
+- **The reading path stays in order, in one column**: the identity line (with its "change" link
+  when the record was carried), the decisive facts as stacked label and value pairs — values
+  large, with unit — then the narrative, then the trail.
+- **Line items become a list of rows**: what, then its amount right-aligned. No table and no
+  horizontal scroll. A long trail shows its latest entries and one control that expands the rest
+  in place; the decision still comes after it.
+- **The decision block only at the end of the reading**, after the trail, full width. Outcomes
+  stack as full-width buttons, none preselected, the contract's primary path first. Never a sticky
+  decide bar or a floating button that lets the reviewer skip the reading.
+- **Each outcome is one deliberate beat**: reject (or request changes) expands its reason field
+  inline in the decision block, and the field and its button stay above the keyboard; approve opens
+  one plain confirmation restating the identity and the decisive fact, with the confirm at the
+  bottom.
+- **After deciding**, the decision block becomes the calm statement of what was decided; the page
+  never jumps to a next request.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the identity, 2. the decisive facts, 3. the narrative and the trail,
+4. the decision block at the end.
+
+Forbidden on mobile:
+- a sticky decide bar, a floating action button, or outcomes in the header;
+- jump links or shortcuts that take the reviewer straight to the decision;
+- line items as a wide table, or any horizontal scroll;
+- outcome buttons small or side by side, where a mistap decides;
+- a second dialog after the reason or the confirmation.
+
 ## Forbidden
 
 - A list of pending requests with inline approve/reject on each row — that is the

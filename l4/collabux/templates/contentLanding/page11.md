@@ -71,6 +71,37 @@ branch when the value is missing.
 - A failed command reports next to the submit control, in words, dismissible.
 - Empty image placeholders stay; they do not collapse the layout.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the reading surface, the closed content vocabulary, the attention
+hierarchy, the house rules and the single CTA leading to the hosted form. Only the scale changes:
+the offer must still be understood at the top, in a column a thumb scrolls. Where this section and
+the layout described above differ, this section wins on mobile.
+
+- **The hero scales down but keeps its role**: title and one supporting line, full width, still
+  the largest type on the page and still owning the top. A hero image becomes full width with
+  its aspect ratio kept; text is never shrunk to sit over it.
+- **The counter sits right under the hero** as one quiet proof line, not a tile.
+- **Prose is one column** with the page gutters, body text at its normal reading size and
+  comfortable line height; images and placeholders run full width between the blocks, keeping
+  their aspect ratio.
+- **The single CTA is a full-width control** after the opening prose, and the hosted form
+  follows it on the same page: one column of full-width fields, the submit at the bottom of the
+  form, still inside `<Scene>` when a scenario exists.
+- **The showcase stacks** as one column of cards, below the offer and the form.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the hero, 2. the counter, 3. the prose and images, 4. the CTA and
+the hosted form, 5. the showcase.
+
+Forbidden on mobile:
+- a carousel, or a showcase or image strip that scrolls sideways;
+- multi-column forms or multi-column prose;
+- body text shrunk below its reading size to fit more;
+- a second, sticky CTA duplicating the one in the flow.
+
 ## Forbidden
 
 - Management grids, filter bars, page-size inputs, or a dense table as the first screen.

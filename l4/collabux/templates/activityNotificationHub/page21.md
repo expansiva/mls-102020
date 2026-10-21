@@ -75,6 +75,39 @@ gets handled deliberately, one at a time, without ever leaving the page.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the triage desk, the one contextual action per item, the quieting loop,
+feedback and disciplines. Only the shape changes, because the list and the panel can no longer sit
+side by side. Where this section and the layout described above differ, this section wins on mobile.
+
+- **Side by side becomes a sequence on the same page**: list → item. The item is a view of its
+  own with back, inside this page — never another page. Its context and its action are always on
+  screen together, so nothing is acted on blind.
+- **The list is the home view**: the unread headline on top ("5 unread"), then mark-all and the
+  declared filters in one quiet row, then the rows. Each row stays identity only (who/what, when);
+  unread is still unmistakable by weight and the small marker, read rows muted. No horizontal
+  scroll.
+- **The item view** shows the full context in plain reading order, the drill-down link to the
+  source record as a real link, and the one primary action at the bottom, where the thumb
+  reaches, labeled with the outcome. Mark-as-read, when explicit, is a quiet secondary next to it.
+- **After acting**, the item view confirms in one line and offers "Next unread" as its primary
+  control, so the loop never stalls. Back returns to the list at the same scroll and filters, with
+  the row quieted in place and the headline count lower; the list never reshuffles.
+- **Mark-all** stays once, above the list, never inside the item view.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the unread headline and the unread rows (or, in the item view, its
+context), 2. the one action, 3. the way back or to the next unread.
+
+Forbidden on mobile:
+- a drawer or sheet over part of the list to show the item;
+- the item's action shown without its context on the same screen;
+- swipe gestures that act on rows from the list — acting happens in the item view;
+- losing the list's place (scroll, filters) after visiting an item.
+
 ## Forbidden
 
 - A single chronological stream grouped by day with actions inline on every row — that is

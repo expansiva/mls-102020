@@ -74,6 +74,37 @@ stability is the point: the user learns WHERE things are and reads the board by 
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the instrument panel, the key numbers on top, the uniform sections, flags
+inside the data, the stable layout, states and disciplines. On a phone stability by position
+matters even more: the user learns how far down each subject lives and scrolls straight to it.
+Where this section and the layout described above differ, this section wins on mobile.
+
+- **The stat row wraps into rows of equal tiles**, two per row (three when they fit), still one
+  block at the top, all the same size, value large and label below. This is how "one row" holds
+  on a phone: one block, never a second set of tiles elsewhere. A value is never truncated; if
+  one does not fit, all tile values scale down together.
+- **A declared period selector** sits full width above the stat block, the one global filter.
+- **Sections stack in their declared order**, full width, with the same anatomy and the same
+  position on every visit; an empty section stays in its place with its quiet line.
+- **Each section's rows are list rows**: identity on the left, the key value right-aligned and
+  tabular. A flag colors the value or adds a small chip inside its row, never the section. The
+  whole row is the drill-down, and back returns to the same place on the board.
+- **"See all" closes each section**, at its foot, the same control in every section.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the stat block, 2. the first section, 3. the remaining sections in
+declared order, 4. the "see all" links.
+
+Forbidden on mobile:
+- a carousel, or tiles or sections scrolling sideways;
+- moving a section up because it holds trouble, or collapsing sections by data;
+- tiles of different sizes in the wrapped stat block;
+- a triage headline or exception list above the stat block.
+
 ## Forbidden
 
 - An exception queue or triage headline hijacking the top — that is the `exceptionTriage`

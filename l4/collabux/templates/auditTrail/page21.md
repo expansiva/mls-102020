@@ -79,6 +79,40 @@ starts from time itself and lets any record appear in it.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: time as the spine, the read-only stance, filters as the question, the
+loops, feedback and disciplines. Only the shape changes, because the stream and the inspection
+panel can no longer sit side by side. Where this section and the layout described above differ,
+this section wins on mobile.
+
+- **Side by side becomes a sequence on the same page**: stream → event. The inspection is the
+  view "over the stream" the body already names for narrow screens: a view of its own with back,
+  inside this page. The stream stays one tap away, at the same place, the inspected row marked.
+- **The stream is the home view**: strict reverse chronological order, one event per row — the
+  "who + what" line first, the timestamp muted under it. Rows may wrap to two lines; never a table,
+  never horizontal scroll. More events load at the end.
+- **Filters become a quiet bar on top of the stream**: the active filters readable as words, each
+  removable with one tap, and one control that opens the filter choices (period, person, action)
+  as a view of their own, one choice per line, applied with one button at the bottom. The stream
+  keeps the filters after every visit to an event.
+- **The event view** shows every field in one column, before/after pairs stacked (before above
+  after) rather than side by side, raw payload last and collapsed. It never edits anything.
+- **Export**, when declared, stays quiet at the foot of the stream, its label naming the filtered
+  scope.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the active filters as words, 2. the stream (or, in the event view,
+the event), 3. the way back.
+
+Forbidden on mobile:
+- a drawer or sheet over part of the stream to show the event;
+- before/after values in side-by-side columns that force sideways scrolling;
+- filter choices spread as a form over the stream, or a stream that forgets its filters;
+- any edit, delete or replay control, on any view.
+
 ## Forbidden
 
 - Opening pre-anchored on a single record's history with before/after as the main content

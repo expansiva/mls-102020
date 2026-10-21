@@ -79,6 +79,44 @@ shows a map of drawers, this page trusts the ranking and hands the user the knif
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the one ranked list, the type chip on each row, the facets drawn only from
+the contract, the applied tokens, the loops and the disciplines. The rail cannot sit beside the
+list on a phone, so it moves behind one control, while what the list currently means stays visible
+above it. Where this section and the layout described above differ, this section wins on mobile.
+
+- **The search input stays at the top**, full width, holding the term; next to it, one
+  **"Filters" control** showing how many facets are applied ("Filters · 2"). It is always there,
+  in the same place, even when results are few — this is how the rail stays stable on a phone.
+- **Applied facets are removable chips above the list**, wrapping onto more lines when needed,
+  plus "clear all" when more than one is applied. Removing a chip widens the list at once,
+  without opening anything.
+- **The rail becomes a view of its own**, opened by the Filters control, inside this page — never
+  another page. It keeps the rail's facet groups in the same order, with their counts; zero-count
+  values stay muted and inert. A facet applies as soon as it is touched, and one control at the
+  bottom returns to the list, naming the result count when the contract provides it. Facets never
+  touch the term.
+- **The list is one column of rows**: the small type chip, then identity, then the matched
+  fragment with the term highlighted, then at most one decisive fact. The whole row is the tap
+  target. More results load at the end of the list, as the contract pages.
+- **Results keep their place**: back from a record returns to the list at the same scroll place,
+  with the same term and facets. Refined to zero, the same calm sentence names the term and the
+  facets, with removing the last facet offered right under it.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the search input with the term, 2. the applied-facet chips,
+3. the top of the ranked list, 4. the Filters control.
+
+Forbidden on mobile:
+- the rail squeezed beside the list, or a drawer that covers part of the list;
+- applied facets visible only inside the Filters view;
+- a Filters control that hides with few results, or facet groups that reorder with the data;
+- chips or facet groups that scroll sideways — they wrap;
+- a Filters view that wipes the term or loses the list's place.
+
 ## Forbidden
 
 - Sections grouped by entity type with per-group "see all" links — that is the

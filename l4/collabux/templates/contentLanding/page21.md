@@ -38,6 +38,37 @@ plus the hosted form and a counter as a mid-article proof (not a dashboard).
 - Form inside `<Scene>` when a scenario exists.
 - No contract-internal vocabulary as visible text.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the editorial pace, the quiet headline, the argument in order, the closed
+content vocabulary, the house rules and the CTA after the argument. A long-read is already one
+column; on a phone what matters is a measure that stays comfortable and an argument that is never
+interrupted by the offer. Where this section and the layout described above differ, this section
+wins on mobile.
+
+- **The headline and dek stay left-aligned**, scaled down, still an article headline and never a
+  poster; nothing full-bleed above them.
+- **The prose is one column** with the page gutters, body text at its normal reading size and
+  generous line height; blocks keep their vertical rhythm.
+- **Images run full width** of the column, where they punctuate the prose; placeholders keep
+  their aspect ratio.
+- **The counter stays a pull-quote** of one number, full width, in the flow.
+- **The CTA still comes after the last prose block**, as a full-width control, with the hosted
+  form right below it: one column of full-width fields, the submit at the bottom of the form,
+  inside `<Scene>` when a scenario exists. The showcase stacks as one column of cards.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the headline, 2. the argument, 3. the evidence, 4. the proof
+number, then the CTA and the form.
+
+Forbidden on mobile:
+- a sticky, floating or early CTA interrupting the argument;
+- multi-column text or multi-column forms;
+- body text shrunk below its reading size;
+- a carousel, or anything that scrolls sideways.
+
 ## Forbidden
 
 - Poster-style full-bleed hero (that is `campaignPage` / page11).

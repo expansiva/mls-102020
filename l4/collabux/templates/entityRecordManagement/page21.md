@@ -76,6 +76,40 @@ single scene with a single save — the whole record is one thought.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the one continuous column, the subject groups, create and edit in the same
+place, the contextual transitions, the single save, feedback and disciplines. The page is already a
+column, so only the save moves: at the end of a long column on a phone it would be out of reach.
+Where this section and the layout described above differ, this section wins on mobile.
+
+- **The identity header stays quiet and short** at the top: the record's name (or "New contract")
+  and its status chip. The transitions the current status allows sit right under it, as buttons
+  that wrap onto more lines when needed — never hidden in a menu when they are few.
+- **One column, as on desktop**: subject groups as labeled blocks in the declared order, free text
+  last and quiet. **One field per line**, label above the field, required marks visible before any
+  mistake. Selections are pickers; numbers and dates use the matching keyboard.
+- **The single Save lives in a bar fixed at the bottom**, always reachable, full width, naming the
+  outcome ("Save project") and disabled until valid (and, in edit, until something changed). It is
+  the only thing in that bar.
+- **At commit**, a failure shows right above the bar with retry, and invalid fields are marked at
+  the field; the page scrolls to the first one. Entered values are never lost.
+- **Create becomes edit in place**: after the first save the header fills and the allowed
+  transitions appear under it. Back with unsaved changes asks one plain confirm.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the identity header, 2. the group being filled, 3. the Save bar,
+4. the transitions.
+
+Forbidden on mobile:
+- splitting the column into tabs, steps or one screen per group;
+- multi-column groups, or labels and fields squeezed side by side;
+- transitions inside the Save bar, or a bar holding anything but Save;
+- a Save reachable only at the very end of the column;
+- horizontal scroll of any kind.
+
 ## Forbidden
 
 - Tabs, an identity header with per-section saves, or any sectioned shell — that is the

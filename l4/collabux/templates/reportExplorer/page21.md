@@ -82,6 +82,41 @@ gallery, this experience serves the person who composes the question themselves.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the question composed deliberately, RUN as the one act, nothing live, the
+result bound to its parameters, the run discipline, feedback and disciplines. Only the shape
+changes, because the panel and the result can no longer sit side by side. Where this section and
+the layout described above differ, this section wins on mobile.
+
+- **Side by side becomes a sequence**: parameters → result. Each is a view of its own, inside
+  this page. The parameters view is the home view and stays one stage: every parameter control
+  one per line, never split into steps.
+- **RUN sits at the bottom of the parameters view**, where the thumb reaches, disabled until the
+  required parameters are set. While it runs, the view locks and RUN shows its running state;
+  when the run returns, the result view opens. A failed run speaks in the result view, with retry.
+- **The result view opens with the parameter echo**: one compact, muted summary of the parameters
+  that produced it, always at the top, with "change parameters" right beside it. That control
+  goes back to the parameters view with every value exactly as set, and never runs anything.
+- **The last result stays reachable** from the parameters view by one quiet link; if a parameter
+  changed since the run, the result view says it is stale, in words, until RUN replaces it.
+- **Tabular results fit the column**: a table of two or three narrow columns may stay a table;
+  wider ones become a list of rows — the first column as identity, the rest as label and value,
+  numbers right-aligned with tabular figures. The aggregate summary line stays above the rows.
+- **Export and schedule**, when declared, sit at the foot of the result view and act on this run.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the parameters (or, in the result view, the echo and then the
+result), 2. RUN, 3. the way between the two views, 4. export/schedule.
+
+Forbidden on mobile:
+- any run not caused by RUN — not on back, not on changing a parameter, not on opening the result;
+- a result view without its parameter echo at the top;
+- parameters lost or reset on the way back from the result, or split across steps;
+- wide tables or any horizontal scroll.
+
 ## Forbidden
 
 - A gallery of ready-made report cards as the entry — that is the `catalogOfReports`

@@ -82,6 +82,38 @@ search box, this experience starts from a place on a stable map.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the stable section map as the way in, save per section, the dirty-state
+loop, feedback and disciplines. Only the shape changes, because the map and the section's form can
+no longer sit side by side. Where this section and the layout described above differ, this section
+wins on mobile.
+
+- **The section map becomes the home view**: a list of the sections in their fixed order, each
+  entry its business name, with the dirty mark on any section holding unsaved changes. It never
+  reorders, filters or collapses. With a single section the map still exists, one entry.
+- **"The map never moves" holds as**: the map is always one back away, and unchanged.
+- **A section opens as a view of its own**, with back, inside this page: its title and dirty state
+  at the top, then its fields one per line (label above, short description below, switches with
+  their state in words), then the unsaved-changes note and Save at the bottom, where the thumb
+  reaches. Reset/default, when declared, sits beside Save, secondary, and confirms.
+- **Back from a dirty section** asks the same plain question as leaving it on desktop — keep
+  editing or discard — never silent loss.
+- **After Save** the view stays on the section: the dirty mark clears and the quiet inline
+  confirmation appears. Save never returns to the map by itself.
+- **Touch**: every target is at least 44px high, switches included; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the map (or, inside a section, its title and dirty state),
+2. the section's fields, 3. its Save, 4. the way back to the map.
+
+Forbidden on mobile:
+- the map as a drawer or menu over the form, or map and form stacked on one long screen;
+- all sections as one long scrolling form, or sections opening as accordions inside the map;
+- a save that leaves the section, or one save for several sections;
+- section tabs scrolling sideways, or any horizontal scroll.
+
 ## Forbidden
 
 - A search box as the primary way to reach a setting — that is the `searchableSettings`

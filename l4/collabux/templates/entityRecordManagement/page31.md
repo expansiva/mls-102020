@@ -78,6 +78,42 @@ this is a stable building with labeled rooms — each room tidied and saved on i
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the pinned identity, one subject per tab, the per-section saves, the
+transitions in the header, create mode and the disciplines. On a phone the header and the tabs
+must take little height, so the active subject still owns the screen. Where this section and the
+layout described above differ, this section wins on mobile.
+
+- **The identity header becomes compact but stays pinned**: at the top of the page it shows the
+  name, the status chip, the few decisive facts and the allowed transitions; once the user scrolls,
+  it shrinks to one line of name and status that never scrolls away. Tapping that line brings the
+  full header, with its transitions, back into view. Transitions never move into a tab or a bar.
+- **The tabs stay a row of tabs, pinned under the header** — the one horizontal scroll this page
+  allows. When the subjects do not fit, the row scrolls sideways, the current tab is always brought
+  into view and marked, a dirty tab keeps its quiet mark, and tabs disabled in create mode stay in
+  the row, muted, showing their reason when tapped.
+- **The active tab's section form** fills the rest: one field per line, label above the field,
+  pickers for selections, the matching keyboard for numbers and dates.
+- **The section's save sits in a bar fixed at the bottom**, naming the subject ("Save billing
+  details"), committing only that tab's fields, disabled until the section is dirty and valid. It
+  changes with the tab; it is never a save for the whole record.
+- **Leaving a subject with unsaved changes asks once**: switching tab or going back asks one plain
+  confirm naming the subject — never silent loss, never auto-save.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the pinned identity line, 2. the active section's form, 3. its save,
+4. the row of tabs.
+
+Forbidden on mobile:
+- any horizontal scroll other than the row of tabs;
+- all subjects stacked in one long column with one save — that is `focusedRecordForm`;
+- a header that scrolls away, or a header so tall it leaves no room for the section;
+- a save bar that commits more than the active tab, or that holds transitions;
+- switching subject silently with unsaved changes.
+
 ## Forbidden
 
 - One continuous column with a single global save for the whole record — that is the

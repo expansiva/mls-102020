@@ -82,6 +82,39 @@ whole shift in view. Target: from "what is next?" to "acted on it" without a pag
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the dense queue worst first, valid transitions only, the loops, feedback
+and disciplines. Only the shape changes, because the queue and the item panel can no longer sit
+side by side. It stays a queue read as a list, not a deck of cards — that is `cardTriageMobile`.
+Where this section and the layout described above differ, this section wins on mobile.
+
+- **Side by side becomes a sequence on the same page**: queue → item. The item is a view of its
+  own with back, inside this page — never another page. "Both on stage" becomes "the queue is one
+  tap away, exactly where it was".
+- **The queue is the home view**: the status filter chips on top, wrapping to a second line when
+  they do not fit, then compact rows — identity first, the status chip under it, the urgency fact
+  right-aligned. One consistent row anatomy, the worst at the top. No table, no horizontal scroll.
+- **Rows only select**: no swipes, no transition from the row. Acting always happens in the item
+  view, after reading it.
+- **The item view** shows identity, then the facts in one column, then ONLY the valid transitions
+  at the bottom where the thumb reaches, each a full-width button labeled by outcome. An input a
+  transition needs (an assignee, a reason) opens in place above its confirm.
+- **After a transition**, the item view confirms in one line; back returns to the queue at the
+  same filter and scroll, where the row shows its new status chip or is gone from the filter.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the queue, worst first (or, in the item view, its facts), 2. the
+valid transitions, 3. the way back.
+
+Forbidden on mobile:
+- one card at a time, swipe gestures, or transitions fired from a queue row;
+- a drawer or sheet over part of the queue to show the item;
+- filter chips scrolling sideways, or any horizontal scroll;
+- losing the queue's filter or scroll after acting on an item.
+
 ## Forbidden
 
 - One-card-at-a-time layouts, swipes, or advancing status directly on a queue row in two

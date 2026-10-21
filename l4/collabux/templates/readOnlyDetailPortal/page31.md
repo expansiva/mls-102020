@@ -79,6 +79,42 @@ around the integrity of the whole sheet: everything present, in order, formally 
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the screen is the document, the integrity of the whole sheet, its formal
+order, no controls inside it, feedback and disciplines. Only the shape changes, because a sheet
+with side-by-side parties and a tabulated body cannot keep its columns at this width. Where this
+section and the layout described above differ, this section wins on mobile.
+
+- **Still a document, whole and in order**: the phone still answers "is this the complete,
+  official record?" — every part present, in the same order: header with the parties and the
+  document's identity, body, totals, footer with attribution. Nothing is dropped, folded or
+  moved to another view.
+- **The sheet reflows to one column**, still one bounded region with calm margins that reads as a
+  page: issuer, then recipient, then number, date and period, stacked, formal and compact.
+- **The tabulated body becomes stacked line items**: each line item is a short block of label and
+  value rows in the contract's column order, numbers right-aligned, tabular, with units or
+  currency, never truncated; a thin rule separates items. The totals close the body, after the
+  last item, heavier than the lines.
+- **The footer stays whole** at the foot of the sheet: attribution, references, fine print, in
+  small but readable text.
+- **Print or export** (only when the contract or the body provides it) stays a quiet control
+  outside the sheet, and produces the formal sheet layout of the desktop — parties side by side,
+  tabulated body — never this phone reflow.
+- **Acknowledge** (when declared) sits outside the sheet, below it, labeled with its outcome.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the sheet as a whole, 2. the document header, 3. the line items
+and totals, 4. the footer.
+
+Forbidden on mobile:
+- the tabulated body as a wide table, zoomed out, or scrolled sideways;
+- collapsible line items, tabs, or a "show more" that hides part of the document;
+- cards, chips or icons introduced by the reflow;
+- printing or exporting the phone reflow instead of the formal sheet.
+
 ## Forbidden
 
 - A giant headline value dominating the top with the breakdown demoted below it — that

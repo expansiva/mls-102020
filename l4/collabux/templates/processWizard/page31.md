@@ -78,6 +78,37 @@ right above.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: one open act, recaps as running context, the page growing only by
+completion, the commit as the last line, feedback and disciplines. A document that grows downward
+is already at home in a phone's single column; only the recaps tighten and the scroll is guided.
+Where this section and the layout described above differ, this section wins on mobile.
+
+- **Recaps stay as one-line rows above the open act**: the decision in plain words on the left,
+  its "change" link on the right. A recap that does not fit wraps to a second line; it is never
+  cut, and never grows into a card.
+- **On collapse, the page scrolls** so the new open act starts near the top with the latest recap
+  still visible above it; earlier recaps sit above, one scroll away.
+- **Inside the open act** fields stack in one column, labels above inputs, full width. Numbers
+  raise the numeric keyboard, dates the native date picker; the keyboard's next key moves field
+  to field, and leaving the last field brings the act's confirm control into view.
+- **The confirm control and the final commit stay in the flow** at the foot of their act, full
+  width, label complete; the commit is still the document's last line, not a fixed bar.
+- **Touch**: every target is at least 44px high, "change" links included; nothing depends on
+  hover.
+
+Mobile attention hierarchy: 1. the open act, 2. its confirm control (or the commit), 3. the
+latest recap, 4. earlier recaps.
+
+Forbidden on mobile:
+- recaps as cards, accordions or multi-line mini-forms;
+- a step counter or progress line added to compensate for the small screen;
+- a fixed bottom bar carrying the commit, which would make it reachable before the last act;
+- fields side by side, truncated recap values, or anything that scrolls sideways.
+
 ## Forbidden
 
 - A numbered progress rail, step counters, one-step-per-screen isolation, or a separate

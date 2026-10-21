@@ -72,6 +72,45 @@ one path at a time, this shows the whole shape at once and edits it in place.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the structure IS the page, the whole shape reachable by expanding,
+structural actions on the selected node, the loops, feedback and disciplines. Only the shape
+changes, because the tree and the panel can no longer sit side by side. Where this section and
+the layout described above differ, this section wins on mobile.
+
+- **The tree stays the home view**, as an indented list with expand/collapse per node. It is
+  never replaced by one level at a time: expanding opens children in place, under their parent.
+  The expand marker and the node name are two separate targets — the marker expands, the name
+  selects.
+- **Deep levels still fit**: the indent step is small and stops growing after a few levels, so
+  the name always keeps most of the width and may wrap to a second line rather than be cut short.
+  The quiet fact (count, code) stays at the right of the row. No horizontal scroll.
+- **The panel becomes the node view**, a view of its own with back, inside this page: the node's
+  name, its place in words ("Inside: Operations › Warehouse") — which carries the depth the
+  indent no longer shows — then its fields, then the structural actions at the foot.
+- **"The map is always visible" holds as**: the tree is one back away and unchanged — same
+  expansion, same scroll, the node still marked. The map never folds itself.
+- **Structural actions on a phone**: add-child and edit open their inputs as views of their own,
+  commit at the bottom; move opens a picker of valid destinations, each shown with its path in
+  words; delete is the quietest action, at the very foot, with its plain confirmation.
+- **After an action**, the tree shows the result where it happened: a new child opens its node
+  view ready for detailing, and back lands on the tree expanded to it, marked; a moved node is
+  revealed at its new place.
+- **Touch**: every target is at least 44px high, expand markers included; nothing depends on
+  hover.
+
+Mobile attention hierarchy: 1. the tree, 2. the selected node's data, then its structural actions,
+3. its path in words, 4. the way back to the tree.
+
+Forbidden on mobile:
+- one screen per level, drilling through children — that is the `columnsDrilldown` experience;
+- horizontal scroll to reach deep levels, or indent that squeezes names into nothing;
+- a tree that collapses, resets to root or loses its scroll after back or after an action;
+- the node form stacked under the tree on one long screen, or a drawer covering the tree.
+
 ## Forbidden
 
 - One column per level with the path laid out horizontally — that is the

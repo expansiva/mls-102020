@@ -86,6 +86,42 @@ on screen belongs to that place.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the hierarchy as the spine, standing in one node, children before
+documents, upload landing where the user stands, the same anatomy at every depth, and the
+disciplines. On a phone the path is long and the screen narrow, so the breadcrumb compresses while
+the current place stays unmistakable. Where this section and the layout described above differ,
+this section wins on mobile.
+
+- **The breadcrumb stays above, on one line**: the root, then the middle levels collapsed into one
+  "…" control, then the parent, then the current node as plain text. The "…" opens the hidden
+  ancestors as a short list, each a real link. The current node's name is the working heading
+  under it.
+- **Child nodes first, then documents, in one column of rows**: node rows look like places (name,
+  count when declared), document rows look like files (name, then status or update date, quiet).
+  The whole row is the tap target; a declared quick command is one separate quiet control at the
+  row's edge.
+- **Back walks up**: from a child node, back returns to the parent exactly as it was left, at the
+  same scroll place — the same as tapping the parent in the breadcrumb.
+- **Upload is one clear action at the bottom**, where the thumb reaches, naming where the file will
+  land ("Upload to Contracts / 2026"). Its inputs, when the command has any, come one per line; the
+  new document then appears in this node's listing, in view.
+- **An empty node** says so once, quietly, and the upload action stays in place.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the breadcrumb and the current node, 2. the child nodes, 3. this
+node's documents, 4. the upload action.
+
+Forbidden on mobile:
+- a tree pane or drawer beside the listing doing the breadcrumb's job;
+- a breadcrumb that wraps over several lines or scrolls sideways — middle levels collapse;
+- grids of small cards, or any horizontal scroll;
+- an upload that does not name its destination, or lands anywhere but the current node;
+- child nodes and documents mixed in one list.
+
 ## Forbidden
 
 - A flat metadata-first list with a preview/governance side panel — that is the

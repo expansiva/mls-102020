@@ -77,6 +77,41 @@ seconds.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the strong finder, the profile as calm stacked blocks, the loops, feedback
+and disciplines. Only the shape changes, because the directory and the profile can no longer sit
+side by side. Where this section and the layout described above differ, this section wins on
+mobile.
+
+- **Side by side becomes a sequence on the same page**: directory → profile. The profile is a
+  view of its own with back, inside this page — never another page. "The directory never yields
+  its side" becomes "the finder is one tap away, with the search exactly as typed".
+- **The directory is the home view, and search dominates it**: a large search field at the top,
+  then one customer per row — name loudest, one secondary fact under it to tell namesakes apart.
+  More rows load at the end. No table, no horizontal scroll.
+- **The profile stacks its blocks in one column**, in the same order: identity, commercial data,
+  contact details, then contacts and history as compact lists. Blocks stack and scroll; no tabs.
+- **Contact facts are tappable**: a phone opens the call, an email opens the mail app — each a
+  real link and nothing else, large enough to tap.
+- **Edit is still an explicit switch** into the update form, one field per line, Save and Cancel
+  at the bottom where the thumb reaches. Creating a customer is its own view, opened from the
+  directory; after it commits, the new profile opens.
+- **Back** returns to the directory with the search, scroll and the row updated. Deactivation
+  stays at the foot of the profile, quiet and confirmed.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the search (or, in the profile, identity and contact facts), 2. the
+list (or the rest of the profile), 3. the way back.
+
+Forbidden on mobile:
+- a drawer or sheet over part of the list to show the profile;
+- clearing the search or the scroll after visiting a profile;
+- tabs that split the profile, or multi-column forms;
+- phone or email shown as plain text when the contract provides them.
+
 ## Forbidden
 
 - A highlight band of the customer's value/status crowning the page with related lists as

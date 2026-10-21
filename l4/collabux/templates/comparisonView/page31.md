@@ -69,6 +69,38 @@ this stages one fight at a time and remembers who is winning.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the concept, the decision loop, only differences shown, the champion
+that never moves unless promoted, feedback and disciplines. The duel already fits a phone: two
+items are narrow enough to stand side by side. Only the details of the shape change. Where this
+section and the layout described above differ, this section wins on mobile.
+
+- **Two narrow columns, side by side**: the champion always on the left, labeled "current" when
+  the contract supports it; the challenger on the right. Their identities sit at the top of each
+  column, the challenger's picker just under its name.
+- **Each difference is one aligned row**: the attribute label as a short line spanning both
+  columns, the two values under it side by side, the challenger's value carrying the emphasis.
+  Values wrap inside their column, never cut.
+- **The identical line stays** under the differences ("14 attributes identical"), quiet,
+  collapsed, expanding in place for audit.
+- **The decision sits at the bottom of the screen**, always in the same two places: keep (quiet)
+  and promote (primary), each naming the item. They stay reachable while the differences scroll.
+- **The next challenger steps in** in the right column; the champion's column and the scroll
+  position do not change. A promotion slides the challenger to the left in place.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the differing rows, 2. the two decision buttons, 3. the two
+identities, 4. the identical line.
+
+Forbidden on mobile:
+- the champion and the challenger stacked one above the other, each with its own list;
+- swapping sides, or the champion moving between duels;
+- decision buttons that move from duel to duel or scroll out of reach;
+- anything that scrolls sideways.
+
 ## Forbidden
 
 - N items as simultaneous aligned columns with every attribute as a row — that is the

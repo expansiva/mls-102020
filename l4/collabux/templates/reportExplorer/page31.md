@@ -79,6 +79,42 @@ answers and gets out of the way.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the two acts, the gallery as the designed moment, the compact filters that
+refresh directly, the export with the result, feedback and disciplines. On a phone each act already
+takes the whole screen; only the filter bar and the result table must change shape to fit. Where
+this section and the layout described above differ, this section wins on mobile.
+
+- **Act one is one column of cards**, uniform, under subject headings when the contract groups
+  them: the report's name, then its one-or-two-line question. The whole card is the tap target.
+  With many reports, the filter-by-name field sits at the top.
+- **Act two takes the whole screen**: the "All reports" back control and the report's name at the
+  top, then the filters, then the result. Back returns to the gallery at the same scroll place;
+  reopening a report starts it at its defaults.
+- **The filter bar stays compact**: when the inputs are few and short, they wrap as small controls
+  above the result; otherwise one "Filters" control opens them as a view of its own inside this
+  page, one input per line, and returns to the result. Either way a change refreshes the result
+  directly, and the muted line restating the active filters stays above the result.
+- **The result becomes a list of rows**: the leading column as the row's identity, the other values
+  as label and value pairs under it, numbers right-aligned with their unit. No table and no
+  horizontal scroll.
+- **Export stays at hand**, next to the filter echo at the top of the result, acting on what is
+  shown.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the current act's content (the cards, or the result), 2. the
+filters and their echo, 3. export, 4. the way back to the gallery.
+
+Forbidden on mobile:
+- a sideways carousel of reports, or cards cramped into several columns;
+- the result as a wide table, or any horizontal scroll;
+- a RUN button in the Filters view — filters still refresh directly;
+- the gallery and an open report on one screen;
+- losing the gallery's place after closing a report.
+
 ## Forbidden
 
 - A dedicated parameter panel with an explicit RUN gate as the report's interface — that

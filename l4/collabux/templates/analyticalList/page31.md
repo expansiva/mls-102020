@@ -81,6 +81,45 @@ are looking for and needs the shape of the data to tell them.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the chart as the control, the selection sentence as the single source of
+truth, the narrowed rows that act, feedback and disciplines. Only the shape changes, because the
+chart and a wide table must share a width of a few hundred pixels and there is no pointer to hover.
+Where this section and the layout described above differ, this section wins on mobile.
+
+- **The chart still leads and still asks**: full width at the top, the largest thing on the first
+  screen. The phone still answers "what does the shape show, and which rows are behind the part I
+  point at?" — by tapping the chart, never by a filter form that replaces it.
+- **A tap is the pick**: tapping a bar, segment or point selects it, holds it visibly and dims the
+  rest; its value and label appear on the tap, in the selection sentence, never in a hover tooltip.
+  Every selectable mark is large enough to hit with a thumb (about 44px on its short side, or a
+  tap area that wide around it).
+- **A form that cannot be picked at this width changes form**: when the categories are too many
+  for thumb-sized marks, the chart becomes a horizontal bar chart of the top categories, one per
+  line, with one "others" bar for the rest; the same values, the same units, nothing invented.
+- **The selection sentence becomes a removable chip** right under the chart ("South · March ×"),
+  always visible while a pick is active; removing it restores the whole set. An empty pick still
+  says so plainly under the chip.
+- **The table becomes a list of rows**: identity first, the one or two decisive numbers
+  right-aligned and never truncated, flags on their own number. The row drills down; back returns
+  with the pick, the chart and the scroll intact. Chart-level inputs (period) sit quietly above the
+  chart in one compact line.
+- **Selection commands** (only when declared) use an explicit "Select" mode and a bar fixed at the
+  bottom with the count and the outcome-named action.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the chart, 2. the selection chip, 3. the narrowed list, 4. the
+chart-level inputs and the selection bar.
+
+Forbidden on mobile:
+- a chart that must be scrolled or zoomed sideways, or a wide table under it;
+- values or picks reachable only by hover or long-press;
+- a pick with no visible chip, or a list that disagrees with the chart;
+- replacing the chart with a filter form, or stacking a second chart.
+
 ## Forbidden
 
 - A KPI tile row commanding the top, with filters as the steering wheel — that is the

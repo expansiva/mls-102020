@@ -87,6 +87,45 @@ affecting everyone it should.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the role as the unit of thought, the stable order, the deliberate change
+with its stated scope, feedback and disciplines. Only the shape changes, because a role × permission
+matrix cannot fit a phone's width. Where this section and the layout described above differ, this
+section wins on mobile.
+
+- **Still the model, not the people**: the phone still answers "what does this role grant, and who
+  holds it?" — role by role instead of all roles side by side. The home view is the list of roles,
+  never a list of users.
+- **The home view lists the roles** in the contract's stable order, one per row: the role name
+  first, large, then its member count and its granted-permission count (when the contract declares
+  them) small, right-aligned. A role with nothing granted or no members says so in its row. The
+  row opens the role.
+- **A role opens as a view of its own**, with back that returns to the role list at the same
+  place: first its permissions, grouped exactly as the contract groups them, one permission per
+  line with its granted/denied state as a toggle (when grant commands allow it) readable as text;
+  then its members, with the picker that assigns a person into the role.
+- **Cross-role reading survives as a count, not as a matrix**: the role list's permission counts
+  are how imbalance is spotted on a phone; the same permission keeps the same group and position
+  in every role view, so the admin still learns the model by position.
+- **The change stays deliberate**: toggles in a role view are pending until one explicit save at
+  the bottom, where the thumb reaches it, which states the scope before commit ("Grant 2
+  permissions to 14 people with Manager"). Back with pending changes asks one plain confirmation.
+- **Role lifecycle** (create, rename, disable, only if declared) lives quietly at the foot of the
+  role list or of the role view, outcome-named.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the roles (in the list) or the role's grants (in its view), 2. its
+members and the assignment picker, 3. the save with its stated scope, 4. the way back.
+
+Forbidden on mobile:
+- the role × permission matrix squeezed, zoomed out, or scrolled sideways;
+- a user list as the home view, or per-user permission overrides in a role view;
+- toggles that commit one by one with no stated scope;
+- a role view that drops, regroups or reorders permissions differently from the other roles.
+
 ## Forbidden
 
 - A user list with a per-person panel as the page's structure — that is the

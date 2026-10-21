@@ -78,6 +78,43 @@ supplier's fiscal facts and decide approve/block without leaving the page.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the concept, fiscal facts as the headline, deliberate approve/block, the
+trail, the loops, feedback and disciplines. Only the shape changes, because the list and the
+panel can no longer sit side by side. Where this section and the layout described above differ,
+this section wins on mobile.
+
+- **Side by side becomes a sequence**: list → supplier. Each is a view of its own, with back,
+  inside this page — never another page. The list is the home view.
+- **The list is a list of rows**: supplier name first, then the standing chip and one
+  disambiguating fact small. Search at the top; the status filter as one compact control next
+  to it. Filter and scroll survive a round trip to a supplier and back. No horizontal scroll.
+- **The supplier view keeps the panel's order**: the name, then fiscal identity right under it,
+  first and loudest, then commercial conditions, then contacts. Fiscal data is never folded
+  away behind a tab or a closed section.
+- **The decision sits at the foot**: the standing and its trail (quiet, reverse-chronological),
+  then Approve and Block as two separate, outcome-named buttons, clearly apart from each other,
+  where the thumb reaches. Each asks its one plain confirmation naming the supplier and the
+  consequence, with the reason input there when the contract accepts one.
+- **After a decision** the view stays on the same supplier: the chip changes and the trail grows
+  by one line right above the button that caused it. Back returns to the list at the same place,
+  with the row's chip updated.
+- **Edit and New** are views of their own (one field per line, Save at the bottom); edit never
+  touches standing. After Save, return to the supplier view in read mode.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the fiscal block, 2. Approve/Block at the foot, 3. the way back
+to the list.
+
+Forbidden on mobile:
+- wide tables or any horizontal scroll;
+- approve or block reachable from list rows or swipe gestures;
+- fiscal data pushed below contacts, or hidden in a section that starts closed;
+- a drawer or sheet that covers part of the list to show the supplier.
+
 ## Forbidden
 
 - Grouping suppliers into stage columns and moving them between stages — that is the

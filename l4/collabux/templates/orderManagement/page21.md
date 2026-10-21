@@ -82,6 +82,43 @@ right transition without leaving the page.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the concept, the contextual transitions, the work-the-queue loop, feedback
+and disciplines. Only the shape changes, because the queue and the selected order can no longer
+sit side by side. Where this section and the layout described above differ, this section wins on
+mobile.
+
+- **Side by side becomes a sequence**: queue → order. Each is a view of its own, with back, inside
+  this page — never another page. The queue is the home view; nothing opens by itself on arrival.
+- **The status filter becomes one compact control** at the top of the queue (a select or a short
+  segmented choice over the declared statuses), never a wrapping bar of buttons. Filter and scroll
+  survive a round trip to an order and back.
+- **The queue is a list of rows**, one order per row: number and customer first, then status chip
+  and date small, the total right-aligned with its currency. No table and no horizontal scroll.
+- **The order view keeps the panel's reading order**: header facts, then the item lines as
+  stacked rows (description first, quantity × unit value small, line total right-aligned), then
+  the money summary with the **total still the loudest number on screen**. Edit and New open as
+  views of their own, one field per line, commit at the bottom, and return to the order view.
+- **Transitions sit at the bottom of the order view**, where the thumb reaches: only those the
+  contract allows from the current status, outcome-named, progressive ones first, cancel apart
+  and below with its plain confirmation. "Detail on stage" holds because a transition is
+  reachable only from the order view, never from a queue row.
+- **After a transition** the view stays on the same order, showing its new status. Back returns
+  to the queue at the same place, with the row updated — or gone, if the filter now excludes it.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the order's lines and total, 2. its available transitions,
+3. the way back to the queue.
+
+Forbidden on mobile:
+- wide tables (the queue or the item lines) or any horizontal scroll;
+- transitions or swipe actions on queue rows;
+- a drawer or sheet that covers part of the queue to show the order;
+- the queue and the order stacked on one long screen.
+
 ## Forbidden
 
 - Grouping orders into stage lanes with quick overlay peeks — that is the

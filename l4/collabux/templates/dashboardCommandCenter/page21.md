@@ -80,6 +80,7 @@ it, don't let it fall into a generic empty state. Never hide the page or auto-re
 ## On mobile
 
 Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
 Everything above holds: the concept, the hierarchy, the loops, the good-news state, feedback and
 disciplines. On a phone the triage matters even more: the person decides between two other tasks.
 Where this section and the layout described above differ, this section wins on mobile.

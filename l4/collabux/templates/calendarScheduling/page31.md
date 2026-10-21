@@ -81,6 +81,36 @@ stream to keep up with. No grid, no spatial layout — order and grouping do all
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the agenda as a stream, today first, actions on the item, the in-place
+reschedule, loops, feedback and disciplines. This experience was built for a phone in one hand;
+this section only fixes the narrow-screen details. Where this section and the layout described
+above differ, this section wins on mobile.
+
+- **The day shoulder sticks to the top** while its items scroll under it, so the user always
+  knows which day is on screen; the "Hoje" anchor appears as a small fixed control near the
+  bottom once today has scrolled away.
+- **Each item is a full-width row**: the time large on the left, identity and passing facts
+  beside it, wrapping onto a second line rather than being cut. The primary action and the
+  overflow sit on the row's last line, at thumb reach.
+- **Reschedule opens in place under the item**, with the native date and time pickers; its
+  commit button stays visible above the on-screen keyboard or picker.
+- **Creating** opens from the header as a view of its own that takes the whole screen, with
+  back; on commit it returns to the agenda with the new item visible under its day.
+- **Touch**: every target is at least 44px high; nothing depends on hover or on swipe gestures.
+
+Mobile attention hierarchy: 1. today and the next item, 2. its time and identity, 3. its
+primary action, 4. later days.
+
+Forbidden on mobile:
+- a week strip, day columns, or anything that scrolls sideways;
+- a create panel that covers only part of the agenda;
+- swipe-to-cancel or swipe-to-act as the only way to act on an item;
+- a truncated time or identity on an item.
+
 ## Forbidden
 
 - A week/month grid, spatial slots, or drag-to-move on a time surface — that is the

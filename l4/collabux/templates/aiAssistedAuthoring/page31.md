@@ -79,6 +79,42 @@ author's hands — assistance without surrender.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the canvas as the page, the human's text sovereign, suggestions applied
+one at a time only on an explicit accept, feedback and disciplines. Only the shape changes, because
+the rail can no longer sit beside the canvas without covering it. Where this section and the layout
+described above differ, this section wins on mobile.
+
+- **Still a desk, not a corridor**: the phone still answers "write my draft, with help I choose to
+  take" — the canvas is the home view and always reopens exactly as it was left.
+- **The canvas takes the full width**: title above, the editable text below, nothing beside it.
+  The save state and the save control stay visible in a slim bar, near the top.
+- **The rail becomes a bar with a count** ("4 suggestions"), fixed at the bottom of the canvas
+  view. It is the only presence of the AI on the canvas; no returned suggestions means no bar.
+  Tapping it opens the suggestions as a view of its own, with back that returns to the canvas at
+  the same place, cursor and text untouched.
+- **The suggestions view** lists one card per suggestion: what it proposes and the part of the
+  draft it concerns, quoted briefly, with exactly accept and dismiss. Accept returns to the canvas
+  at the spot where the change landed, briefly marked, and the count drops; dismiss removes the
+  card and stays in the view. Request-fresh, when declared, sits quietly in this view.
+- **Typed text is never lost** on the way to the suggestions view and back, and nothing on the
+  canvas changes while the author is in that view except what they accept.
+- **Publish** (when declared) stays contextual and last, in the slim bar, with its plain-words
+  confirmation.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the canvas, 2. the save state, 3. the suggestions bar with its
+count, 4. publish.
+
+Forbidden on mobile:
+- suggestions as a sheet, drawer or popup covering any part of the text;
+- inline suggestion cards inserted between paragraphs of the canvas;
+- accepting several suggestions at once, or applying any without a tap on that card's accept;
+- leaving the canvas in any state other than how the author left it.
+
 ## Forbidden
 
 - A staged configure → generate → review → publish corridor, or a configuration panel

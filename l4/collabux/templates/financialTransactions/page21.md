@@ -85,6 +85,44 @@ matches expectation, act on the selection — without losing filters, scroll or 
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the working ledger, the totals that never leave the screen, selection
+driving batch commands, feedback and disciplines. Only the shape changes, because a dense table of
+many columns cannot fit the width. Where this section and the layout described above differ, this
+section wins on mobile.
+
+- **Still a bench, not a story**: the phone still answers "is this filtered set right, and which
+  entries do I settle?" — a flat list of entries under anchored totals, never grouped by day.
+- **The totals become a bar fixed on screen** (at the bottom): count and sum of the current
+  filtered set, in tabular figures with currency. While a selection exists, the bar shows the
+  selection's count and total and holds the batch actions ("Pay 3 entries · 1,240.00"). This bar
+  is how "totals never leave the screen" holds on a phone.
+- **The table becomes a list of rows**, one entry per row: date and counterparty/description on
+  the left, the amount right-aligned, tabular, with currency, never truncated; the status chip and
+  account small on a second line. Debit and credit stay distinguished by sign or label, never by
+  color alone.
+- **The filter bar becomes compact**: the applied filters as removable tokens in one line at the
+  top, and a "Filters" control with the active count that opens the declared filters as a view of
+  its own; back returns to the list at the same place, totals recomputed.
+- **Selection is an explicit mode**: one "Select" control turns rows into checkable rows, with
+  select-all-in-filter stating how many it selects. Leaving the mode clears the selection;
+  filters, scroll and the remaining selection survive a batch action.
+- **The entry's identity** still links to its detail as a view of its own; back returns to the
+  same filters, scroll and selection.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the totals bar, 2. the entry rows, 3. the filter tokens, 4. the
+batch actions in the bar, once a selection exists.
+
+Forbidden on mobile:
+- wide tables or any horizontal scroll;
+- totals that scroll away with the list, or only shown at its end;
+- truncated, left-aligned or currency-less amounts;
+- batch actions anywhere but the bar, or acting without a selection.
+
 ## Forbidden
 
 - Grouping entries by day/period with subtotal headers as the page's structure — that is

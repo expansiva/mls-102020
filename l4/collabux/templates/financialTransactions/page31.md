@@ -85,6 +85,40 @@ touching a single control.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the statement reading, the groups with subtotals, the summary on top, the
+sign and color rules, the demoted actions, feedback and disciplines. A statement is already one
+column; on a phone the point is that every amount stays whole and aligned, so the flow is still
+understood by scrolling once. Where this section and the layout described above differ, this
+section wins on mobile.
+
+- **One column, in reading order**: the period selector (when declared) full width at the top,
+  then the summary, then the other declared filters as one quiet control, then the groups.
+- **The summary wraps** into rows of value+label pairs (in, out, balance), still a quiet line of
+  numbers, never tiles or charts.
+- **A group header keeps date and subtotal on one line**: the date on the left, the subtotal
+  right-aligned. If space runs out the date wraps; the subtotal never does.
+- **Each entry is a line of two levels**: the description on the left, wrapping to a second line
+  when long, with category or counterpart muted below it; the amount right-aligned at the end,
+  tabular, with sign and currency. All amounts on the page share one right edge.
+- **The per-entry action stays one quiet control** at the line's end, after the amount, opening
+  the declared commands in place; the confirmation still restates the entry and its amount. The
+  description stays the link to the entry's detail, and back returns to the same place.
+- **Groups stay open**: the reader scrolls through them, never taps to unfold them.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the period summary, 2. the group headers with subtotals, 3. the
+entry lines, 4. filters and per-entry actions.
+
+Forbidden on mobile:
+- truncating, abbreviating or wrapping an amount;
+- groups collapsed behind taps, or a flat list without groups;
+- a table, or any horizontal scroll;
+- swipe or long press to select entries in bulk.
+
 ## Forbidden
 
 - A dense filter-and-select table with pinned totals and batch reconcile/pay — that is

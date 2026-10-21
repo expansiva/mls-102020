@@ -88,6 +88,44 @@ their whole access picture at a glance, change it — without leaving the page.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the person as the unit of thought, access status worn openly, roles
+through pickers, contextual account actions, the loops, feedback and disciplines. Only the shape
+changes, because the directory and the panel can no longer sit side by side. Where this section
+and the layout described above differ, this section wins on mobile.
+
+- **Side by side becomes a sequence**: directory → person. The person view is the panel, a view
+  of its own with back inside this page — never a separate profile page. The directory is the
+  home view, so there is no empty panel and no auto-opened person.
+- **The directory is a list of rows**: name and the declared identifier (email) first, the
+  access status chip on the row, roles muted on one line below. The audit loop holds: an
+  unhealthy status is visible on the row without opening anything. No horizontal scroll.
+- **Filters stay quiet**: search at the top, the declared filters as compact selects under it,
+  wrapping to a second line rather than scrolling sideways. Invite, when declared, is one
+  primary control at the top and opens its inputs as a view of its own, commit at the bottom.
+  Filters and scroll survive every round trip.
+- **The person view keeps the panel's order**: identity, access status in plain words, then roles
+  and permissions as readable facts, grouped as the contract groups them. Changing a role opens
+  a picker over the declared roles, and the change applies only on its explicit confirm.
+- **Account actions sit at the foot of the person view**, only those valid for the current
+  status, outcome-named, each with one plain confirmation naming the person and the consequence
+  (and the self-lockout warning when it applies).
+- **After an action** the view stays on the person, restating the new state. Back returns to the
+  directory at the same place, with the row's chip updated.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the content of the current view (the rows' status, or the
+person's access picture), 2. its action, 3. the way back.
+
+Forbidden on mobile:
+- wide tables, a permission grid, or any horizontal scroll;
+- role changes or account actions from list rows or swipe gestures;
+- a drawer or sheet that covers part of the directory to show the person;
+- the directory and the person view stacked on one long screen.
+
 ## Forbidden
 
 - Roles or a permission matrix as the page's central structure — that is the `roleMatrix`

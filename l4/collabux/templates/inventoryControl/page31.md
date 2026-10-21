@@ -79,6 +79,40 @@ empty. Target: every low item restocked, one row at a time, without opening anyt
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the queue first, worst first, the inline adjustment on each row, the
+fixed direction, the demoted catalog, the empty state and the disciplines. On a phone the queue is
+worked with the thumb, so each row must carry its own adjustment within reach. Where this section
+and the layout described above differ, this section wins on mobile.
+
+- **The headline and the queue own the first screen**: the one-sentence count, then the queue
+  rows in one column, worst first. Nothing else comes before them.
+- **Each queue row is a compact block**: identity first; then "2 of 10", the deficit in alarm
+  color; then the adjustment on its own line — a positive quantity field with a numeric keyboard
+  and, beside it, a large "Add stock" button. There is still no in/out choice: this queue only
+  adds, so the movement control of `splitViewOperations` is reduced here to quantity and commit.
+- **After a commit**, the row confirms briefly and leaves; the next row moves up into the same
+  place, under the thumb, and the headline count follows. No scroll jump, no view to close. While
+  typing, the row and its button stay above the keyboard.
+- **The catalog stays demoted**: one quiet collapsed section at the end of the queue ("All stock
+  items"). Opened, it is a compact read-only list of rows — identity and balance with its unit —
+  no table; rows navigate only when the contract declares a route.
+- **The empty queue**: the calm sentence takes the first screen, the catalog section still below.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the headline, 2. the top queue row and its adjustment, 3. the rest
+of the queue, 4. the catalog section.
+
+Forbidden on mobile:
+- an in/out choice or a signed quantity on queue rows;
+- opening an item view, sheet or dialog to adjust — the adjustment happens on the row;
+- the catalog as a tab, a toggle next to the headline, or anything above the queue;
+- wide tables or any horizontal scroll;
+- the keyboard covering the button of the row being typed in.
+
 ## Forbidden
 
 - A dense full-catalog grid with a modal side panel as the page's center — that is the

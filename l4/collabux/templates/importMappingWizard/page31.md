@@ -76,6 +76,42 @@ head, this trusts the expert to read the whole bench at once.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: one bench, the real rows as ground truth, the live verdict converging to
+green, the commit unlocked by it, feedback and disciplines. Only the shape changes, because the
+preview table and the mapping can no longer sit side by side. Where this section and the layout
+described above differ, this section wins on mobile.
+
+- **Still one bench that converges, not a corridor**: the phone still answers "is this file safe
+  to import as mapped, and what do I adjust?" on one scrolling screen — no acts, no "next".
+- **The verdict is pinned at the top**: the plain verdict line stays fixed while the bench scrolls,
+  recomputing on every selector change, so each adjustment is seen moving it toward green. Its
+  first offending entries open in place under it, named by row and column in words.
+- **The mapping becomes a list, one target field per row** (as the contract declares them): the
+  field name with required or optional, the picker of the file's detected columns, and, right
+  under it, the first real values of the chosen column in small text. These values replace the
+  highlight in the wide preview: truth and mapping still read as one.
+- **The real rows stay reachable, never replaced**: under the mapping, the file's first rows as
+  read, each row as stacked column/value lines, in one section that starts collapsed and opens in
+  place. Nothing is sampled or invented; this is how "never hide the real rows" holds on a phone.
+- **The file region** stays quiet at the top of the bench: upload, then name and row count, and
+  replace keeps the mapping and revalidates.
+- **The commit sits at the bottom**, where the thumb reaches, disabled until validation passes,
+  its label naming the outcome with the count ("Import 214 rows").
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the pinned verdict, 2. the mapping rows with their real values,
+3. the commit, 4. the full real rows, on demand.
+
+Forbidden on mobile:
+- the preview as a wide table, or any horizontal scroll;
+- splitting the bench into steps or separate views with "next";
+- a verdict that scrolls out of sight while mappings are adjusted;
+- mapping rows without the chosen column's real values.
+
 ## Forbidden
 
 - Explicit acts with a progress rail and a separate validation scene — that is the

@@ -77,6 +77,41 @@ its power is that the eye and the hand never leave the list.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the single deadline order, overdue dates in alarm color, the quick-assign
+loop, feedback and disciplines. Only the shape changes, because a detail panel or a sliding panel
+can no longer sit beside the list. Where this section and the layout described above differ, this
+section wins on mobile.
+
+- **The deadline-ordered list stays the home view**: one task per row, identity first, the due
+  date right-aligned (alarm color on overdue dates only), assignee and status chip small on a
+  second line. Overdue rows still rise to the top. No table and no horizontal scroll.
+- **Quick-assign stays on the row**: an unassigned row shows its assignee slot as a clear target,
+  apart from the rest of the row. Tapping it opens the assignee picker; choosing commits at once
+  and closes the picker on the list, exactly where it was. Running state and failure speak in
+  that row. This picker is the only thing that may open over the list.
+- **The detail panel becomes a view of its own**, with back, inside this page: tapping the row
+  (anywhere but the assignee slot) opens it. Fields grouped by subject, one per line, pickers for
+  selections, reassignment here, Save at the bottom where the thumb reaches.
+- **New task is a view of its own too**, opened by the one button above the list, Save at the
+  bottom.
+- **After Save** (edit or create), return to the list with the row at its deadline position,
+  scrolled into view and briefly marked. Back with unsaved changes asks one plain confirmation.
+- **Touch**: every target is at least 44px high, the assignee slot included; nothing depends on
+  hover.
+
+Mobile attention hierarchy: 1. overdue rows, 2. the upcoming list in deadline order,
+3. unassigned rows' assignee slots, 4. the create button.
+
+Forbidden on mobile:
+- any horizontal scroll, time strip or axis;
+- detail or create as side or sliding panels covering part of the list;
+- an unassigned row that must be opened before it can be assigned;
+- swipe actions, or inline editing beyond the assignee gap.
+
 ## Forbidden
 
 - Bars, time-proportional drawing, a today line, or any time canvas — that is the

@@ -77,6 +77,37 @@ the deliverable, this is a screen built around one headline answer.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the one giant answer, the hierarchy, zero write actions, feedback and
+disciplines. On a phone this experience matters even more: the stakeholder often opens it from a
+message, so the answer must be there before any scroll. Where this section and the layout
+described above differ, this section wins on mobile.
+
+- **The answer fits the first screen without zoom**: the short label, then the headline value
+  with its unit or currency, still the largest thing on the page. A long value scales down until
+  it fits the width on one line; it never wraps mid-number and is never truncated.
+- **Reference facts follow, compact**: short label+value pairs, two per row when they fit, one
+  per row otherwise; muted and small.
+- **The breakdown stacks below as a list of rows**: the description on the left, wrapping when
+  long; the value right-aligned and tabular, never truncated. Totals close the list, in the
+  contract's order. No table.
+- **Notes and fine print come last**, quiet, at full reading width.
+- **A declared action** (acknowledge, print) is one full-width control after the breakdown and
+  before the notes, where the thumb reaches it; no command in the contract still means no button.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the headline, 2. the reference facts, 3. the breakdown, 4. the
+notes and fine print.
+
+Forbidden on mobile:
+- a headline that needs zoom or scroll to be read, or that is truncated;
+- the breakdown as a table, or any horizontal scroll;
+- a sticky action bar competing with the headline;
+- anything above the headline but the page header.
+
 ## Forbidden
 
 - A formal document sheet — parties' letterhead, tabulated document body, attribution

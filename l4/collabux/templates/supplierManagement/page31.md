@@ -82,6 +82,45 @@ forward without opening a detail page.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the concept, the stages from the contract, the pendencies on the card,
+the named transitions with their confirmation, the loops, feedback and disciplines. Only the
+shape changes, because the stage columns can no longer stand side by side. Where this section
+and the layout described above differ, this section wins on mobile.
+
+- **"Where does the population sit?" is answered by the stage switcher.** At the top, one row of
+  stage chips in process order, each with its count; blocked sits apart, at the end. Every stage
+  is a chip even when empty, and the chips never reorder. This row is the only thing that may
+  scroll sideways.
+- **One stage on screen at a time**, its cards as one column, oldest in stage first. An empty
+  stage says once, quietly, what will appear there.
+- **"Who is stuck?" stays on the card**: name, time in stage when the data carries it, and the
+  pendency flags, short and wrapping onto a second line rather than cut. A card with no
+  pendencies is visibly ready.
+- **The ready ones move forward from the card**: its transition, labeled with the destination
+  outcome ("Approve supplier"), disabled when the contract says it is not available. One plain
+  confirmation naming the supplier (with the reason input only when declared); on success the
+  card leaves the stage and both counts update; a failure keeps it in its true stage, with the
+  reason and retry on the card.
+- **The summary becomes a view of its own**, with back to the same stage at the same scroll:
+  fiscal identity and terms, read-only, the transition at the bottom.
+- **"New"** is one quiet action under the switcher; its form is a view of its own, one field per
+  line, and the new card lands in the first stage.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the stage switcher with its counts, 2. the stuck cards and their
+pendencies, 3. the transition on ready cards, 4. "New".
+
+Forbidden on mobile:
+- stage columns squeezed side by side, or a board that scrolls sideways (only the row of stage
+  chips may);
+- drag between stages, or a move without its confirmation;
+- pendency flags hidden behind the summary, or truncated to fit the card;
+- hiding empty stages from the switcher, or a summary that loses the stage or scroll on back.
+
 ## Forbidden
 
 - A directory list with a deep fiscal panel and approve/block worked one at a time at a

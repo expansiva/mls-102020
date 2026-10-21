@@ -76,6 +76,41 @@ the eye referee.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+This section applies only when the page's device is `mobile`; on desktop, ignore it.
+Everything above holds: the concept, the aligned rows, the highlighted differences, the
+identical fold, choosing on the column itself, the loops, feedback and disciplines. Only the
+shape changes, because more than two columns of values cannot sit side by side. Where this
+section and the layout described above differ, this section wins on mobile.
+
+- **The whole field stays on stage as the set**: at the top, the items under comparison as one
+  wrapping row of compact chips (identity only), with the quiet add control. Two of them are
+  marked as the pair on screen; tapping a chip swaps it into a side. Neither side is a fixed
+  reference: both swap freely, which keeps this apart from `championChallenger`.
+- **Two items as columns side by side**, each header with the item's identity, its subtitle fact
+  and its own choose action ("Choose ACME quote"), plus the quiet remove. The headers stay
+  pinned at the top while the rows scroll.
+- **Rows stay aligned across the two columns**: the attribute label once, as a short line
+  spanning both columns, and the two values under it, side by side. Numbers right-aligned with
+  their units; a missing value is an em dash.
+- **Differences and sameness follow the pair on screen**: differing values carry the weight;
+  rows equal for these two fold into the quiet expander. A row that differs elsewhere in the set
+  shows a small "differs in the set" mark, so no difference is hidden by the pair chosen.
+- **With fewer than two items**, the page says once, quietly, that comparison starts at two.
+- **Merge**, when declared, is one action under the set, acting on the whole set.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the two column headers with their choose action, 2. the
+differing rows, 3. the set of items, 4. the identical fold.
+
+Forbidden on mobile:
+- more than two value columns on screen, or anything that scrolls sideways;
+- items stacked one after the other, each with its own list of attributes (rows stop aligning);
+- one side locked as a reference;
+- choosing anywhere but on the column header.
+
 ## Forbidden
 
 - A fixed reference with one challenger swapped in and out, showing only differences —
