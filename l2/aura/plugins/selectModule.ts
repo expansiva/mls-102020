@@ -5,7 +5,10 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { setLastModule, openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/aura/helpers/auraState.js';
-import { listVariationsStatus, type ModuleVariationStatus, type PageVariationStatus } from '/_102020_/l2/aura/helpers/dsMatch/variationStatus.js';
+import {
+    listVariationsStatus, variationAction, VARIATION_DEVICES,
+    type ModuleVariationStatus, type PageVariationEntry, type PageVariationStatus, type VariationDevice,
+} from '/_102020_/l2/aura/helpers/dsMatch/variationStatus.js';
 import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
 import { getState, setState } from '/_102029_/l2/collabState.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
@@ -37,6 +40,13 @@ const message_en = {
     statusMaterialize: 'materialize pending',
     statusGeneration: 'generation pending',
     statusStale: 'outdated',
+    statusRefused: 'refused by the materializer',
+    regenerateVariation: 'Regenerate refused pages',
+    ownTemplatesWord: 'with own template',
+    baseLabel: 'base',
+    staleBecause: 'changed',
+    deviceDesktop: 'desktop',
+    deviceMobile: 'mobile',
     generateVariation: 'Generate variation',
     materializeVariation: 'Materialize',
     variationRunning: 'Running…',
@@ -69,6 +79,13 @@ const messages: Record<string, MessageType> = {
         statusMaterialize: 'pendente materialize',
         statusGeneration: 'pendente geração',
         statusStale: 'desatualizada',
+        statusRefused: 'recusada pelo materializador',
+        regenerateVariation: 'Refazer páginas recusadas',
+        ownTemplatesWord: 'com template próprio',
+        baseLabel: 'base',
+        staleBecause: 'mudou',
+        deviceDesktop: 'desktop',
+        deviceMobile: 'mobile',
         generateVariation: 'Gerar variação',
         materializeVariation: 'Materializar',
         variationRunning: 'Executando…',
@@ -98,6 +115,13 @@ const messages: Record<string, MessageType> = {
         statusMaterialize: 'materialize pendiente',
         statusGeneration: 'generación pendiente',
         statusStale: 'desactualizada',
+        statusRefused: 'rechazada por el materializador',
+        regenerateVariation: 'Rehacer páginas rechazadas',
+        ownTemplatesWord: 'con plantilla propia',
+        baseLabel: 'base',
+        staleBecause: 'cambió',
+        deviceDesktop: 'desktop',
+        deviceMobile: 'mobile',
         generateVariation: 'Generar variación',
         materializeVariation: 'Materializar',
         variationRunning: 'Ejecutando…',
@@ -132,6 +156,7 @@ export class PluginSelectModule extends StateLitElement {
     @state() private _varsLoading: boolean = false;
     @state() private _varsError: boolean = false;
     @state() private _expandedVariation: string | null = null;
+    @state() private _expandedPage: string | null = null;
     private _varsLoadedFor: string | null = null;
     private _varsLoadSeq = 0;
     private _threadCache = new Map<string, Promise<any>>();
@@ -233,8 +258,9 @@ export class PluginSelectModule extends StateLitElement {
     }
 
     // ─── Variations panel ─────────────────────────────────────────────
-    // Consolidated per-variation (page{layout}{ds}) status of the selected module,
-    // with the pending action (generate / materialize) per variation.
+    // Consolidated per-UX status of the selected module (TASK-102020-genome-ux-3): UX 1 = page11 (the base),
+    // UX N = page{N}1 (agentGenomeUx), both devices, plus orphan page* folders. Each page shows its status per
+    // device and, when the materializer (input20) refused it, the reasons.
 
     private _maybeLoadVariations(): void {
         const module = this._selectedModule;
@@ -243,12 +269,13 @@ export class PluginSelectModule extends StateLitElement {
             this._variations = null;
             return;
         }
-        const device = getAuraState().actualDevice ?? 'web/desktop';
-        const key = `${module.name}|${device}`;
+        // Both devices are read: the key is the module only.
+        const key = module.name;
         if (key === this._varsLoadedFor) return;
         this._varsLoadedFor = key;
         this._expandedVariation = null;
-        this._loadVariations(module.name, device);
+        this._expandedPage = null;
+        this._loadVariations(module.name);
     }
 
     private _reloadVariations(): void {
@@ -256,7 +283,7 @@ export class PluginSelectModule extends StateLitElement {
         this._maybeLoadVariations();
     }
 
-    private async _loadVariations(moduleName: string, device: string): Promise<void> {
+    private async _loadVariations(moduleName: string): Promise<void> {
         const seq = ++this._varsLoadSeq;
         this._varsLoading = true;
         this._varsError = false;
@@ -264,7 +291,7 @@ export class PluginSelectModule extends StateLitElement {
         const project = getAuraState().actualProject;
         if (!project) { this._varsLoading = false; return; }
         try {
-            const variations = await listVariationsStatus(project, moduleName, device);
+            const variations = await listVariationsStatus(project, moduleName);
             if (seq !== this._varsLoadSeq) return; // superseded by a newer load
             this._variations = variations;
         } catch {
@@ -280,6 +307,7 @@ export class PluginSelectModule extends StateLitElement {
             case 'generation': return this.msg.statusGeneration;
             case 'materialize': return this.msg.statusMaterialize;
             case 'stale': return this.msg.statusStale;
+            case 'refused': return this.msg.statusRefused;
             default: return this.msg.statusFresh;
         }
     }
@@ -289,6 +317,7 @@ export class PluginSelectModule extends StateLitElement {
             case 'generation': return 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400';
             case 'materialize': return 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400';
             case 'stale': return 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400';
+            case 'refused': return 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400';
             default: return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400';
         }
     }
@@ -308,6 +337,14 @@ export class PluginSelectModule extends StateLitElement {
         `;
     }
 
+    private _actionLabel(action: NonNullable<ReturnType<typeof variationAction>>): string {
+        switch (action.kind) {
+            case 'generate': return this.msg.generateVariation;
+            case 'regenerate': return this.msg.regenerateVariation;
+            default: return this.msg.materializeVariation;
+        }
+    }
+
     private _renderVariationRow(module: IModule, v: ModuleVariationStatus) {
         const taskKey = `variation:${module.name}:${v.variation}`;
         const task = getTask(taskKey);
@@ -315,39 +352,42 @@ export class PluginSelectModule extends StateLitElement {
         const total = v.pages.length;
         const affected = v.counts[v.status] ?? 0;
         const expanded = this._expandedVariation === v.variation;
-        const needsMaterialize = v.status === 'materialize';
-        const needsGenerate = v.status === 'generation' || v.status === 'stale';
+        const action = variationAction(v.kind, v.pages);
 
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2 flex flex-col gap-1.5">
                 <div
-                    class="flex items-center gap-2 cursor-pointer"
-                    @click=${() => { this._expandedVariation = expanded ? null : v.variation; }}
+                    class="flex flex-col gap-0.5 cursor-pointer"
+                    @click=${() => { this._expandedVariation = expanded ? null : v.variation; this._expandedPage = null; }}
                 >
-                    <span class="text-sm font-mono font-semibold text-gray-700 dark:text-gray-200">${v.variation}</span>
-                    <span class="text-xs text-gray-400 dark:text-gray-500 truncate">${v.layoutName} · ${v.dsName}</span>
-                    ${v.orphan ? html`
-                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                            ${this.msg.orphanLabel}
-                        </span>` : nothing}
-                    <span class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${this._statusChipClass(v.status)}">
-                        ${this._statusLabel(v.status)}${v.status !== 'fresh' && total ? ` (${affected}/${total} ${this.msg.pagesWord})` : ''}
-                    </span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-mono font-semibold text-gray-700 dark:text-gray-200">${v.variation}</span>
+                        <span class="ml-auto shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${this._statusChipClass(v.status)}">
+                            ${this._statusLabel(v.status)}${v.status !== 'fresh' && total ? ` (${affected}/${total} ${this.msg.pagesWord})` : ''}
+                        </span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span class="text-xs text-gray-500 dark:text-gray-400">${v.layout !== null ? `UX ${v.layout} · ` : ''}${v.name}</span>
+                        ${v.kind === 'base' ? html`
+                            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
+                                ${this.msg.baseLabel}
+                            </span>` : nothing}
+                        ${v.orphan ? html`
+                            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                                ${this.msg.orphanLabel}
+                            </span>` : nothing}
+                        ${v.kind === 'ux' && v.ownTemplates ? html`
+                            <span class="text-[10px] text-gray-400 dark:text-gray-500">${v.ownTemplates}/${total} ${this.msg.ownTemplatesWord}</span>
+                        ` : nothing}
+                    </div>
                 </div>
                 ${expanded ? html`
                     ${total ? html`
                         <div class="flex flex-col gap-1 pl-1">
-                            ${v.pages.map(p => html`
-                                <div class="flex items-center gap-2">
-                                    <span class="text-xs text-gray-600 dark:text-gray-300 truncate">${p.page}</span>
-                                    <span class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${this._statusChipClass(p.status)}">
-                                        ${this._statusLabel(p.status)}
-                                    </span>
-                                </div>
-                            `)}
+                            ${v.pages.map(p => this._renderVariationPage(v, p))}
                         </div>
                     ` : nothing}
-                    ${needsGenerate || needsMaterialize ? html`
+                    ${action ? html`
                         <button
                             class="
                                 self-start text-xs px-2.5 py-1 rounded
@@ -358,7 +398,7 @@ export class PluginSelectModule extends StateLitElement {
                             "
                             ?disabled=${running}
                             @click=${(e: Event) => { e.stopPropagation(); this._onVariationAction(module, v); }}
-                        >${running ? this.msg.variationRunning : needsMaterialize ? this.msg.materializeVariation : this.msg.generateVariation}</button>
+                        >${running ? this.msg.variationRunning : this._actionLabel(action)}</button>
                     ` : nothing}
                 ` : nothing}
                 ${task ? html`
@@ -376,14 +416,54 @@ export class PluginSelectModule extends StateLitElement {
         `;
     }
 
-    // Generate (agentImplementGenome + materialize) or materialize-only, per variation —
-    // same shape as selectPage's _onRegenerate, but scoped to the missing/stale pages.
+    // One page of a variation: overall status; expanded, the status per device and why (stale reasons,
+    // the input20 refusal messages, or the diagnostic when the page cannot be read).
+    private _renderVariationPage(v: ModuleVariationStatus, p: PageVariationEntry) {
+        const key = `${v.variation}/${p.page}`;
+        const expanded = this._expandedPage === key;
+        const deviceLabel = (device: VariationDevice) => device === 'desktop' ? this.msg.deviceDesktop : this.msg.deviceMobile;
+        return html`
+            <div class="flex flex-col gap-0.5">
+                <div class="flex items-center gap-2 cursor-pointer"
+                    @click=${(e: Event) => { e.stopPropagation(); this._expandedPage = expanded ? null : key; }}>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 truncate">${p.page}</span>
+                    <span class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${this._statusChipClass(p.status)}">
+                        ${this._statusLabel(p.status)}
+                    </span>
+                </div>
+                ${expanded ? html`
+                    <div class="flex flex-col gap-0.5 pl-2 border-l border-gray-200 dark:border-gray-700">
+                        ${VARIATION_DEVICES.map(device => html`
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400 dark:text-gray-500">${deviceLabel(device)}</span>
+                                <span class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${this._statusChipClass(p.devices[device])}">
+                                    ${this._statusLabel(p.devices[device])}
+                                </span>
+                            </div>
+                        `)}
+                        ${p.staleReasons.length ? html`
+                            <span class="text-[10px] text-rose-600 dark:text-rose-400">${this.msg.staleBecause}: ${p.staleReasons.join(', ')}</span>
+                        ` : nothing}
+                        ${p.refusedReasons.map(reason => html`
+                            <span class="text-[10px] text-red-600 dark:text-red-400 break-words">${reason}</span>
+                        `)}
+                        ${p.diagnostic ? html`
+                            <span class="text-[10px] font-mono text-amber-600 dark:text-amber-400 break-all">${p.diagnostic}</span>
+                        ` : nothing}
+                    </div>
+                ` : nothing}
+            </div>
+        `;
+    }
+
+    // UX N: generate (agentGenomeUx, which chains agentMaterializeL2 --genome page{N}1 itself) or materialize only
+    // (agentMaterializeL2 scoped to the variation's folder). UX 1 (page11) is only materialized. Same shape as
+    // selectPage's _onRegenerate, but for every pending page of the UX.
     private async _onVariationAction(module: IModule, v: ModuleVariationStatus): Promise<void> {
         const taskKey = `variation:${module.name}:${v.variation}`;
         if (getTask(taskKey)?.status === 'running') return;
-        // The agent's `device` is the segment after web/ (e.g. 'desktop'); aura stores 'web/desktop'.
-        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
-        const asIndex = (x: number | string) => Number.isFinite(Number(x)) ? Number(x) : x;
+        const action = variationAction(v.kind, v.pages);
+        if (!action) return;
 
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
         // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
@@ -394,27 +474,21 @@ export class PluginSelectModule extends StateLitElement {
             this.requestUpdate();
         };
         try {
-            if (v.status === 'materialize') {
-                // Defs already written — only the rendered .ts pages are missing.
-                // agentMaterializeL2 (the former v4) takes '<module> [--page …] [--device …] [--force] [--review]'.
-                await this._executeAgent('agentMaterializeL2', module.name, trackTask);
+            if (action.kind === 'materialize' || v.layout === null || v.kind !== 'ux') {
+                // Defs already accepted — only the rendered .ts pages of this folder are missing.
+                // agentMaterializeL2 takes '<module> [--page …] [--device …] [--genome pageNN] [--force] [--review]'.
+                await this._executeAgent('agentMaterializeL2', `${module.name} --genome ${v.variation}`, trackTask);
             } else {
-                const pages = v.pages
-                    .filter(p => p.status === 'generation' || p.status === 'stale')
-                    .map(p => p.page);
-                const prompt = JSON.stringify({
+                const entry = {
                     module: module.name,
-                    layout: asIndex(v.layout),
-                    ds: asIndex(v.ds),
-                    device,
-                    pages,
+                    layout: v.layout,
+                    pages: action.pages,
                     materialize: true,
-                });
+                    // A refused page has a current receipt: force makes the agent choose its molecules again.
+                    ...(action.kind === 'regenerate' ? { force: true } : {}),
+                };
                 setState('preview.pausePreview', true);
-                await this._executeAgent('agentImplementGenome', prompt, trackTask);
-                // Unpause before materialize so the .ts writes repaint the preview.
-                setState('preview.pausePreview', prevPause ?? false);
-                await this._executeAgent('agentMaterializeL2', module.name);
+                await this._executeAgent('agentGenomeUx', JSON.stringify(entry), trackTask);
             }
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {

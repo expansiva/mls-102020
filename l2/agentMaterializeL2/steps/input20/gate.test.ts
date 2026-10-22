@@ -250,3 +250,77 @@ test('a required param gets a note with the inputs it feeds; only the opening lo
 test('a page with no required param has no M4_INPUT_REQUIRED_PARAM note', () => {
   assert.deepEqual(find(gateM4Input(input()).problems, 'minhas_despesas', 'M4_INPUT_REQUIRED_PARAM'), []);
 });
+
+// TASK-102020-genome-ux-3 (22/10/2026), scope 5: a variant is generated, so its molecules must be in the catalog and in
+// no group its template forbids (`## Molecule rules`, phase 2). mls-102047 page31/minhas_despesas had template
+// decisionFirst (no table) with groupviewtable--ml-data-table.
+const templateFile = (path: string) => readFileSync(new URL(`../../../../l4/collabux/${path}`, import.meta.url), 'utf8');
+const DECISION_FIRST = '_102020_/l4/collabux/templates/approvalWorkflow/decisionFirst.md';
+const LEGACY = '_102020_/l4/collabux/templatesTest/decisionFirst/page21.md';
+const withTemplate = (category: string) => (sources: { desktop: string; mobile: string }) => {
+  for (const device of ['desktop', 'mobile'] as const) sources[device] = sources[device].replace(`"${LEGACY}"`, `"${category}"`);
+};
+const templates: Record<string, string> = {
+  [DECISION_FIRST]: templateFile('templates/approvalWorkflow/decisionFirst.md'),
+  [LEGACY]: templateFile('templatesTest/decisionFirst/page21.md'),
+};
+
+test('variant with a molecule outside the catalog: refused with M4_INPUT_VARIANT_MOLECULE_UNKNOWN; the page is accepted', () => {
+  const result = gateM4Input(withVariant(sources => { sources.mobile = sources.mobile.replace('"groupviewtable--ml-responsive-data-table"', '"groupviewtable--ml-nao-existe"'); }));
+  assert.ok(result.accepted.includes('minhas_despesas'));
+  assert.deepEqual(result.parsed.minhas_despesas.variants, []);
+  const unknown = find(result.problems, 'minhas_despesas', 'M4_INPUT_VARIANT_MOLECULE_UNKNOWN');
+  assert.equal(unknown.length, 1);
+  assert.equal(unknown[0].severity, 'warning');
+  assert.match(unknown[0].message, /The mobile organism \w+ of variant page21 of minhas_despesas uses molecule groupviewtable--ml-nao-existe, which is not in its group index/u);
+  assert.match(find(result.problems, 'minhas_despesas', 'M4_INPUT_VARIANT_REFUSED')[0].message, /mobile molecule groupviewtable--ml-nao-existe of \w+ is not in the molecule catalog/u);
+});
+
+test('variant with a molecule of a group its template forbids (decisionFirst, groupViewTable): refused with M4_INPUT_VARIANT_MOLECULE_FORBIDDEN', () => {
+  const result = gateM4Input({ ...withVariant(withTemplate(DECISION_FIRST)), templateText: category => templates[category] ?? null });
+  assert.ok(result.accepted.includes('minhas_despesas'), 'the page is never refused for its variant');
+  assert.deepEqual(result.parsed.minhas_despesas.variants, []);
+  const forbidden = find(result.problems, 'minhas_despesas', 'M4_INPUT_VARIANT_MOLECULE_FORBIDDEN');
+  assert.ok(forbidden.length >= 2 && forbidden.every(item => item.severity === 'warning'));
+  assert.ok(forbidden.some(item => /The desktop organism \w+ of variant page21 of minhas_despesas uses molecule groupviewtable--ml-data-table, of group groupviewtable, which template _102020_\/l4\/collabux\/templates\/approvalWorkflow\/decisionFirst\.md forbids/u.test(item.message)));
+  assert.match(find(result.problems, 'minhas_despesas', 'M4_INPUT_VARIANT_REFUSED')[0].message, /is of group groupviewtable, which template .*decisionFirst\.md forbids/u);
+  assert.ok(result.parsed.minhas_despesas.page11.desktop.molecules, 'page11 is parsed as before');
+});
+
+test('variant without forbidden molecules under a template with rules is accepted', () => {
+  const result = gateM4Input({
+    ...withVariant(sources => {
+      withTemplate(DECISION_FIRST)(sources);
+      for (const device of ['desktop', 'mobile'] as const) sources[device] = sources[device].replace(/groupviewtable--[a-z-]+/gu, 'groupviewcard--ml-vertical-card');
+    }),
+    moleculeExists: () => true,
+    templateText: category => templates[category] ?? null,
+  });
+  assert.deepEqual(result.parsed.minhas_despesas.variants.map(item => item.genome), ['page21']);
+  assert.deepEqual(find(result.problems, 'minhas_despesas', 'M4_INPUT_VARIANT_REFUSED'), []);
+});
+
+test('variant under a legacy template (no Molecule rules section) is accepted: no restriction', () => {
+  const result = gateM4Input({ ...withVariant(), templateText: category => templates[category] ?? null });
+  assert.deepEqual(result.parsed.minhas_despesas.variants.map(item => item.genome), ['page21']);
+  assert.deepEqual(result.problems.filter(item => item.code.startsWith('M4_INPUT_VARIANT_')), []);
+});
+
+test('variant whose template rules cannot be read: refused with M4_INPUT_VARIANT_TEMPLATE_RULES', () => {
+  const broken = '# t\n\n## Molecule rules\n\n```json\n{ "groups": \n```\n';
+  const result = gateM4Input({ ...withVariant(), templateText: () => broken });
+  assert.ok(result.accepted.includes('minhas_despesas'));
+  assert.deepEqual(result.parsed.minhas_despesas.variants, []);
+  const rules = find(result.problems, 'minhas_despesas', 'M4_INPUT_VARIANT_TEMPLATE_RULES');
+  assert.deepEqual(rules.map(item => item.path), ['page21/desktop:template.category', 'page21/mobile:template.category']);
+  assert.match(rules[0].message, /invalid JSON in "## Molecule rules"/u);
+});
+
+test('page11 is unaffected: its template forbidding a group it uses, and an unknown molecule, stay notes', () => {
+  const result = gateM4Input(input(pages => {
+    pages.minhas_despesas.desktop = pages.minhas_despesas.desktop!.replace('"groupviewtable--ml-view-table"', '"groupviewtable--ml-nao-existe"');
+  }, { templateText: () => templates[DECISION_FIRST] }));
+  assert.deepEqual(result.accepted, ALL);
+  assert.deepEqual(result.problems.filter(item => item.code.startsWith('M4_INPUT_VARIANT_')), []);
+  assert.equal(find(result.problems, 'minhas_despesas', 'M4_INPUT_MOLECULE_UNKNOWN').length, 1);
+});

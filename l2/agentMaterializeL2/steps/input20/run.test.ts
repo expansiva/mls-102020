@@ -123,3 +123,35 @@ test('a change of product languages keeps the shared fingerprint and changes the
   assert.notEqual(a.desktop, b.desktop);
   assert.notEqual(a.mobile, b.mobile);
 });
+
+// TASK-102020-genome-ux-3 (22/10/2026): the variant gate reads the template's `## Molecule rules`. The variant unit hash
+// already has the full template text, so a change of rules re-evaluates the variant and changes its units.
+test('a change of the template rules re-evaluates the variant: forbidding a group it uses refuses it', async () => {
+  const port = memoryPort();
+  const category = '_102020_/l4/collabux/templates/approvalWorkflow/page21.md';
+  for (const device of ['desktop', 'mobile'] as const) {
+    const from = `${identity.project}/l2/${identity.module}/web/${device}/page11/minhas_despesas.defs.ts`;
+    port.files.set(`${identity.project}/l2/${identity.module}/web/${device}/page21/minhas_despesas.defs.ts`, port.files.get(from)!.replace(`/web/${device}/page11/`, `/web/${device}/page21/`));
+  }
+  assert.ok(port.files.get(`${identity.project}/l2/${identity.module}/web/desktop/page21/minhas_despesas.defs.ts`)!.includes(`"${category}"`));
+  const templateKey = '102020/l4/collabux/templates/approvalWorkflow/page21.md';
+  const rules = (forbid: string[]) => `# template\n\n## Molecule rules\n\n\`\`\`json\n${JSON.stringify({ axes: {}, groups: { prefer: [], forbid } })}\n\`\`\`\n`;
+  const variant = (snapshot: M4InputSnapshot) => snapshot.pages.find(item => item.pageId === 'minhas_despesas')!.variants![0];
+
+  port.files.set(templateKey, rules(['groupViewChart']));
+  const allowed = await runM4Input(identity, port);
+  assert.equal(variant(allowed.snapshot).status, 'accepted');
+  port.files.set(templateKey, rules(['groupViewTable']));
+  const forbidden = await runM4Input(identity, port);
+  assert.equal(forbidden.written, true);
+  assert.equal(variant(forbidden.snapshot).status, 'refused');
+  assert.deepEqual(variant(forbidden.snapshot).units, []);
+  assert.ok(forbidden.snapshot.pages.find(item => item.pageId === 'minhas_despesas')!.problems.some(item => item.code === 'M4_INPUT_VARIANT_MOLECULE_FORBIDDEN'));
+  port.files.set(templateKey, rules(['groupViewChart', 'groupEnterDate']));
+  const changed = await runM4Input(identity, port);
+  assert.equal(variant(changed.snapshot).status, 'refused', 'minhas_despesas uses groupenterdate');
+  port.files.set(templateKey, `${rules(['groupViewChart'])}\nMore text.\n`);
+  const again = await runM4Input(identity, port);
+  assert.equal(variant(again.snapshot).status, 'accepted');
+  assert.notDeepEqual(variant(again.snapshot).units.map(unit => unit.inputHash), variant(allowed.snapshot).units.map(unit => unit.inputHash), 'the template text is in the unit hash');
+});

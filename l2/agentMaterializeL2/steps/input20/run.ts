@@ -93,10 +93,14 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
   const gate = gateM4Input({
     ...identity, defsPipelineStatus, pages,
     templateExists: category => templates.get(category) != null,
+    // The variant gate reads the template's molecule rules: their text is already in every variant unit hash (below).
+    templateText: category => templates.get(category) ?? null,
     moleculeExists,
   });
 
-  // The variants of a page: inputs always; units only when accepted (both devices parse and need no new shared member).
+  // The variants of a page: inputs always; units only when accepted (both devices parse, need no new shared member, and
+  // their molecules are in the catalog and allowed by the template rules). The unit hash has the full template text,
+  // so a change of its rules changes the unit (and a variant the new rules refuse loses its units).
   const snapshotVariants = async (pageId: string, variants: Array<{ genome: string; sources: Record<'desktop' | 'mobile', string | null> }>): Promise<M4InputVariant[]> => {
     const out: M4InputVariant[] = [];
     const accepted = gate.accepted.includes(pageId) ? gate.parsed[pageId].variants : [];

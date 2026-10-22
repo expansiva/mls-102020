@@ -20,8 +20,9 @@ import { currentEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectPage.js';
-import '/_102020_/l2/aura/plugins/selectLayout.js';
-import '/_102020_/l2/aura/plugins/selectLayoutRules.js';
+// selectLayout / selectLayoutRules are kept in the repo but no longer mounted: a UX is now a set of
+// templates per page (selectUx), and the component rules come from the template.
+import '/_102020_/l2/aura/plugins/selectUx.js';
 import '/_102020_/l2/aura/plugins/selectMolecule.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -1193,6 +1194,7 @@ export class ServiceGenome102020 extends ServiceBase {
                     @page-config=${(e: CustomEvent) => this._onPageConfig(e)}
                     @select-layout=${(e: CustomEvent) => this._setKnobValue('layout', e.detail.value)}
                     @layout-created=${(e: CustomEvent) => this._onLayoutCreated(e.detail.value)}
+                    @layout-renamed=${() => this._initLayoutKnob()}
                     @select-molecule=${(e: CustomEvent) => this._setKnobValue('molecules', e.detail.value)}
                     @molecule-replace-mode=${(e: CustomEvent) => { this._moleculeReplaceMode = e.detail.value; this.requestUpdate(); }}
                 >
@@ -1219,28 +1221,17 @@ export class ServiceGenome102020 extends ServiceBase {
         `;
         switch (this._selectedKnob) {
             case 'layout': {
-                // Rules now live on the LAYOUT. Picker (structure) + the rule cascade editor
-                // for the selected layout (scope base/module/page chosen inside the editor).
+                // A UX is a set of templates per page: the plugin edits the template of the page in
+                // context, keyed "<module>/<page>" (module = first folder segment).
                 const folder = this._currentPageFile?.folder ?? '';
                 const mod = folder.split('/')[0] || null;
                 const page = this._currentPageFile?.shortName ?? null;
-                // Real layout = 1..max-1; the last slot (max) is "+ Add layout" (handled inside
-                // selectLayout). Every real layout is configurable — layout 1 included.
-                const isRealLayout = !!this._layoutValue && this._layoutValue > 0 && this._layoutValue < this._layoutConfig.max;
                 return html`
-                    <div class="flex flex-col gap-4">
-                        <aura--plugins--select-layout-102020
-                            .value=${this._layoutValue}
-                        ></aura--plugins--select-layout-102020>
-                        ${isRealLayout ? html`
-                            <aura--plugins--select-layout-rules-102020
-                                .projectId=${getAuraState().actualProject}
-                                .layout=${this._layoutValue}
-                                .module=${mod}
-                                .page=${page}
-                            ></aura--plugins--select-layout-rules-102020>
-                        ` : nothing}
-                    </div>
+                    <aura--plugins--select-ux-102020
+                        .value=${this._layoutValue}
+                        .module=${mod}
+                        .page=${page}
+                    ></aura--plugins--select-ux-102020>
                 `;
             }
             case 'molecules':

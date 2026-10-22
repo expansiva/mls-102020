@@ -621,39 +621,37 @@ export class PluginSelectPage extends StateLitElement {
         await this._loadPageStatus();
     }
 
-    // Regenerate this single page through the DS-implementation agent (pages: [page]).
+    // Regenerate this single page (TASK-102020-genome-ux-3). UX N (2..9): agentGenomeUx writes page{N}1/<page>.defs.ts
+    // on both devices and chains agentMaterializeL2 --genome page{N}1 itself (force: even when its receipt is fresh).
+    // UX 1 (page11) is agentDefsL2's: only its .ts is regenerated (agentMaterializeL2 --genome page11 --force).
     private async _onRegenerate(page: IPageEntry) {
-        const module = this._modulePath;
-        const layout = getAuraState().actualLayout;
-        const ds = getAuraState().actualDesignSystem;
-        if (!module || layout == null || ds == null) return;
-        // The agent's `device` is the segment after web/ (e.g. 'desktop'); aura stores 'web/desktop'.
-        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+        const module = this._moduleName ?? this._modulePath;
+        const layout = Number(getAuraState().actualLayout ?? 1);
+        if (!module) return;
 
         const taskKey = `regenerate:${page.name}`;
         if (getTask(taskKey)?.status === 'running') return;
 
-        const materialize = true; // the button regenerates the rendered .ts page too
-        // The agent matches on page shortNames; page.name may be a pageId/path, so send the file shortName.
+        // The agents match on page ids (the defs shortName); page.name may be a pageId/path, so send the file shortName.
         const pageShort = page.file?.shortName ?? page.name;
-        const prompt = JSON.stringify({ module, layout, ds, device, pages: [pageShort], materialize });
+        const genomeUx = Number.isInteger(layout) && layout >= 2 && layout <= 9;
         // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
         const prevPause = getState('preview.pausePreview');
-        setState('preview.pausePreview', true);
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
+        const trackTask = (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => {
+            this._taskInfoByName.set(page.name, data);
+            this.requestUpdate(); // surface "Follow task" as soon as the task exists
+        };
         try {
-            // 1) DS-implementation: rewrite the page defs (page{layout}{ds}/<page>.defs.ts).
-            await this._executeAgent('agentImplementGenome', prompt, (data) => {
-                this._taskInfoByName.set(page.name, data);
-                this.requestUpdate(); // surface "Follow task" as soon as the task exists
-            });
-            // 2) Materialize: read the now-stale defs and generate the .ts page. Unpause first
-            //    so the .ts write repaints the preview with the new result.
-            if (materialize) {
-                setState('preview.pausePreview', prevPause ?? false);
-                // agentMaterializeL2 (the former v4): this page only, regenerated even when its defs did not change.
-                await this._executeAgent('agentMaterializeL2', `${this._moduleName ?? module} --page ${pageShort} --force`);
+            let result: { failure?: string };
+            if (genomeUx) {
+                setState('preview.pausePreview', true);
+                const entry = { module, layout, pages: [pageShort], force: true, materialize: true };
+                result = await this._executeAgent('agentGenomeUx', JSON.stringify(entry), trackTask);
+            } else {
+                result = await this._executeAgent('agentMaterializeL2', `${module} --page ${pageShort} --genome page11 --force`, trackTask);
             }
+            if (result.failure) throw new Error(result.failure);
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {
             setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });

@@ -19,3 +19,7 @@ Everything else is a **note** (`warning`): a fact for the generators, never a co
 - `methods`: intent and submit names → the shared method that serves them (`createMesa → criarMesa`).
 - `l4`: the L4 slice of the page: entities it writes, its journeys touch or its types name; the rules of its routes and entities; its journeys; its actors; module title and product languages.
 - `units`: `shared`, `desktop`, `mobile`, `tests`, each with an input hash that includes the L4 slice.
+
+## UX variants (page12…page99)
+
+A variant reuses the page's shared. It is left out (warning `M4_INPUT_VARIANT_REFUSED`, the page is never refused) when a device is missing or does not parse at its folder, an intent is not one of page11, a navigation reaches no page, a molecule is not in the catalog (`M4_INPUT_VARIANT_MOLECULE_UNKNOWN`), a molecule is of a group the template forbids (`M4_INPUT_VARIANT_MOLECULE_FORBIDDEN`, `## Molecule rules` → `groups.forbid`), or the template rules cannot be read (`M4_INPUT_VARIANT_TEMPLATE_RULES`). Accepted variants get a unit per device, hashed with the defs and the template text.

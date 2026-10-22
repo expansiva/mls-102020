@@ -14,7 +14,8 @@
 // The shared has the frozen structure of 13/10/2026 (no forms, no functions): see helpers/defs/shared.ts.
 // No IO here: io.ts reads the files and run.ts persists the result.
 
-import { L2_PRIMARY_GENOME, parseL2Page11, type L2Page11Definition, type L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { L2_PRIMARY_GENOME, moleculeGroupFolder, parseL2Page11, type L2Page11Definition, type L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { l2TemplateForbiddenGroups } from '/_102020_/l2/agentMaterializeL2/helpers/templateRules.js';
 import { classifyL2StateSource, parseL2Shared, type L2SharedDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import { parseL2Contract, type L2ContractDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
 
@@ -52,6 +53,11 @@ export interface M4GateInput {
   pages: M4PageSources[];
   /** Whether a `_NNN_/l4/collabux/templates/…` reference resolves to an existing file. */
   templateExists: (category: string) => boolean;
+  /**
+   * The text of a template reference, or null when it does not exist. Read for the `## Molecule rules` of a variant's
+   * template (its `groups.forbid`); absent = the variants are not checked against template rules.
+   */
+  templateText?: (category: string) => string | null;
   /** Whether a molecule tag is listed in its group index in _102040_. */
   moleculeExists: (tag: string) => boolean;
 }
@@ -179,8 +185,12 @@ function parsePage(input: M4GateInput, page: M4PageSources, problems: M4InputPro
 
 /**
  * A UX variant (page21…) reuses the page's shared: its intents must be ones the primary page11 already resolves, its
- * navigations must reach pages of the module, and both devices must parse at their own folder. Anything else is a
- * warning that leaves the variant out (M4_INPUT_VARIANT_REFUSED); the page and its page11 are never refused for it.
+ * navigations must reach pages of the module, and both devices must parse at their own folder. Its molecules must be in
+ * the catalog (M4_INPUT_VARIANT_MOLECULE_UNKNOWN) and in no group its template forbids (`## Molecule rules`,
+ * M4_INPUT_VARIANT_MOLECULE_FORBIDDEN; unreadable rules: M4_INPUT_VARIANT_TEMPLATE_RULES; a template without the
+ * section restricts nothing). Anything else is a warning that leaves the variant out (M4_INPUT_VARIANT_REFUSED); the
+ * page and its page11 are never refused for it. A variant is generated, not chosen by a person, so what page11 only
+ * notes (an unknown molecule) leaves a variant out.
  */
 function checkVariant(page: M4ParsedPage, variant: M4VariantSources, knownPages: Set<string>, input: M4GateInput, problems: M4InputProblem[]): void {
   const id = page.pageId;
@@ -203,6 +213,7 @@ function checkVariant(page: M4ParsedPage, variant: M4VariantSources, knownPages:
         }
       }
       if (!input.templateExists(definition.template.category)) problems.push(warning('M4_INPUT_TEMPLATE_MISSING', id, `${variant.genome}/${device}:template.category`, `Template ${definition.template.category} does not exist; the ${variant.genome} variant is designed from the defs alone.`));
+      reasons.push(...checkVariantMolecules(id, variant.genome, device, definition, input, problems));
     } catch (cause) {
       reasons.push(`the ${device} defs do not follow the v2 grammar: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
@@ -212,6 +223,39 @@ function checkVariant(page: M4ParsedPage, variant: M4VariantSources, knownPages:
     return;
   }
   page.variants.push({ genome: variant.genome, page11: defs });
+}
+
+/**
+ * The molecules of one device of a variant against the catalog and the `groups.forbid` of its template (group = the
+ * tag prefix before `--`, compared ignoring case). Each failure is its own warning; the returned reasons leave the
+ * variant out.
+ */
+function checkVariantMolecules(id: string, genome: string, device: L2Page11Device, definition: L2Page11Definition, input: M4GateInput, problems: M4InputProblem[]): string[] {
+  const reasons: string[] = [];
+  const category = definition.template.category;
+  const text = input.templateText?.(category) ?? null;
+  const rules = text === null ? { kind: 'none' as const } : l2TemplateForbiddenGroups(text);
+  if (rules.kind === 'error') {
+    problems.push(warning('M4_INPUT_VARIANT_TEMPLATE_RULES', id, `${genome}/${device}:template.category`, `The ${device} defs of variant ${genome} of ${id} use template ${category}, whose molecule rules cannot be read: ${rules.message}.`));
+    reasons.push(`${device} template ${category} has unreadable molecule rules (${rules.message})`);
+  }
+  const forbidden = new Set(rules.kind === 'forbid' ? rules.groups : []);
+  for (const [organism, list] of Object.entries(definition.molecules)) {
+    const tags = [...new Set(list.flatMap(molecule => [molecule.preferred, molecule.alternative]).filter((tag): tag is string => Boolean(tag)))];
+    for (const tag of tags) {
+      const path = `${genome}/${device}:molecules.${organism}`;
+      if (!input.moleculeExists(tag)) {
+        problems.push(warning('M4_INPUT_VARIANT_MOLECULE_UNKNOWN', id, path, `The ${device} organism ${organism} of variant ${genome} of ${id} uses molecule ${tag}, which is not in its group index.`));
+        reasons.push(`${device} molecule ${tag} of ${organism} is not in the molecule catalog`);
+      }
+      const group = moleculeGroupFolder(tag);
+      if (forbidden.has(group.toLowerCase())) {
+        problems.push(warning('M4_INPUT_VARIANT_MOLECULE_FORBIDDEN', id, path, `The ${device} organism ${organism} of variant ${genome} of ${id} uses molecule ${tag}, of group ${group}, which template ${category} forbids.`));
+        reasons.push(`${device} molecule ${tag} of ${organism} is of group ${group}, which template ${category} forbids`);
+      }
+    }
+  }
+  return reasons;
 }
 
 function checkPage(page: M4ParsedPage, all: Record<string, M4ParsedPage>, knownPages: Set<string>, input: M4GateInput, problems: M4InputProblem[]): void {
