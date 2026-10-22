@@ -9,6 +9,7 @@ import { approveM4Shared, buildM4SharedContext } from '/_102020_/l2/agentMateria
 import {
   M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, productLocales, reusableM4Page, type M4PagePort,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 
 interface Fixture { project: number; module: string; knownMolecules: string[]; pages: Record<string, { contract: string; shared: string; desktop: string; mobile: string }> }
 const fixture = JSON.parse(readFileSync(new URL('../input20/fixtures/controleEstoque.json', import.meta.url), 'utf8')) as Fixture;
@@ -93,10 +94,27 @@ test('locales and design tokens are read from the real module and design system'
   assert.ok(tokens.includes('page-bg') && tokens.includes('status-error-text') && !tokens.some(name => name.endsWith('-hover')));
 });
 
+test('a molecule surface line is the properties and detail keys of its real .ts', () => {
+  const propertiesOf = (line: string) => line.split('; events')[0].replace(/^.*properties\s/u, '').split(',').map(item => item.trim()).filter(Boolean);
+  const address = m4MoleculeSurfaceLine('groupentertext--ml-address-field', real('mls-102040/l2/molecules/groupentertext/ml-address-field.ts'));
+  assert.match(address, /events .*change \{field, value\}/);
+  assert.match(address, /address-confirmed \{address\}/);
+  assert.equal(propertiesOf(address).includes('value'), false);
+  const enter = m4MoleculeSurfaceLine('groupentertext--ml-enter-text', real('mls-102040/l2/molecules/groupentertext/ml-enter-text.ts'));
+  assert.match(enter, /change \{value\}/);
+  assert.equal(propertiesOf(enter).includes('value'), true);
+  const unread = m4MoleculeSurfaceLine('x', "this.dispatchEvent(new CustomEvent('change', { detail: { [name]: 1 } }));");
+  assert.match(unread, /change \{keys not read\}/);
+  const table = m4MoleculeSurfaceLine('groupviewtable--ml-record-form-table', real('mls-102040/l2/molecules/groupviewtable/ml-record-form-table.ts'));
+  assert.match(table, /change \{keys not read\}/);
+  assert.match(table, /rowClick \{keys not read\}/);
+});
+
 test('the page prompt carries target, declaration, page11, tokens, molecules with imports and their usage contracts', async () => {
   const port = await studio();
   const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
-  const { humanPrompt } = buildM4PagePrompt(context);
+  const { systemPrompt, humanPrompt } = buildM4PagePrompt(context);
+  assert.ok(systemPrompt.includes('follows the same rule on desktop and on mobile; how it looks is free'));
   for (const needle of [
     '- path: _102047_/l2/controleEstoque/web/desktop/page11/produtos.ts',
     '- tag: controle-estoque--web--desktop--page11--produtos-102047',

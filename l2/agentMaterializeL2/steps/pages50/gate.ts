@@ -30,8 +30,25 @@ export interface M4PageTarget {
    * source could not be read): the event check only refuses what it can prove.
    */
   moleculeEvents?: Record<string, string[]>;
+  /**
+   * Molecule tag → event name → top-level `detail` keys (`m4MoleculeDetailEvents`). `null` keys were not
+   * read: that event is not checked. A tag absent here is not checked.
+   */
+  moleculeDetail?: Record<string, Record<string, string[] | null>>;
+  /**
+   * Molecule tag → properties declared on its own `.ts` (`m4MoleculeProperties`). Checked only when the list
+   * has at least one name. A tag absent here was not read and is not checked.
+   */
+  moleculeProperties?: Record<string, string[]>;
+  /** Properties declared on the shared molecule bases, read from their `.ts`. Not a fixed list. */
+  baseProperties?: string[];
   /** The requests only the page can start (m4PageOnlyRequests); each must be called by the page. */
   pageOnlyRequests?: M4PageOnlyRequest[];
+  /**
+   * The shared `.d.ts` the page codes against, when the caller already has it. Used only to name an
+   * `empty<X>Draft` function. Absent: the gate does not read a file and speaks of the function without a name.
+   */
+  sharedDeclaration?: string;
 }
 
 export interface M4PageOnlyRequest { fn: string; steps: string[] }
@@ -84,6 +101,190 @@ export function m4MoleculeEvents(source: string): string[] {
   return [...names].sort();
 }
 
+const FIELD_MODIFIERS = new Set(['public', 'private', 'protected', 'readonly', 'override', 'declare', 'static', 'abstract']);
+
+function skipSpaceAndComments(source: string, index: number): number {
+  let i = index;
+  while (i < source.length) {
+    if (/\s/u.test(source[i])) { i += 1; continue; }
+    if (source[i] === '/' && source[i + 1] === '/') { i += 2; while (i < source.length && source[i] !== '\n') i += 1; continue; }
+    if (source[i] === '/' && source[i + 1] === '*') { i += 2; while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1; i += 2; continue; }
+    break;
+  }
+  return i;
+}
+
+function skipBalanced(source: string, openIndex: number): number {
+  const open = source[openIndex];
+  const close = open === '(' ? ')' : open === '{' ? '}' : open === '[' ? ']' : '';
+  if (!close) return openIndex;
+  let depth = 0;
+  let quote = '';
+  for (let i = openIndex; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === '\\') { i += 1; continue; }
+      if (quote === '`' && ch === '$' && source[i + 1] === '{') { i += 1; continue; }
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === '/' && source[i + 1] === '/') { i += 2; while (i < source.length && source[i] !== '\n') i += 1; continue; }
+    if (ch === '/' && source[i + 1] === '*') { i += 2; while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1; i += 1; continue; }
+    if (ch === '\'' || ch === '"' || ch === '`') { quote = ch; continue; }
+    if (ch === open) depth += 1;
+    else if (ch === close) { depth -= 1; if (depth === 0) return i + 1; }
+  }
+  return source.length;
+}
+
+/** Top-level keys of an object literal. `null` when a key is computed, spread, or not a literal. */
+function objectLiteralKeys(source: string, openBrace: number): string[] | null {
+  if (source[openBrace] !== '{') return null;
+  const keys: string[] = [];
+  let i = openBrace + 1;
+  while (i < source.length) {
+    i = skipSpaceAndComments(source, i);
+    if (source[i] === '}') return keys;
+    if (source.startsWith('...', i) || source[i] === '[') return null;
+    const quoted = /^(['"])([A-Za-z_][\w-]*)\1/u.exec(source.slice(i));
+    const ident = /^[A-Za-z_$][\w$]*/u.exec(source.slice(i));
+    const key = quoted?.[2] ?? ident?.[0];
+    if (!key) return null;
+    i += (quoted ?? ident)![0].length;
+    i = skipSpaceAndComments(source, i);
+    if (source[i] === ':') {
+      i = skipSpaceAndComments(source, i + 1);
+      let depth = 0;
+      let quote = '';
+      for (; i < source.length; i += 1) {
+        const ch = source[i];
+        if (quote) { if (ch === '\\') { i += 1; continue; } if (ch === quote) quote = ''; continue; }
+        if (ch === '/' && source[i + 1] === '/') { i += 2; while (i < source.length && source[i] !== '\n') i += 1; continue; }
+        if (ch === '/' && source[i + 1] === '*') { i += 2; while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1; i += 1; continue; }
+        if (ch === '\'' || ch === '"' || ch === '`') { quote = ch; continue; }
+        if (ch === '{' || ch === '(' || ch === '[') { depth += 1; continue; }
+        if (ch === '}' || ch === ')' || ch === ']') { if (depth === 0) break; depth -= 1; continue; }
+        if (ch === ',' && depth === 0) break;
+      }
+      i = skipSpaceAndComments(source, i);
+    }
+    keys.push(key);
+    if (source[i] === ',') { i += 1; continue; }
+    if (source[i] === '}') return keys;
+    return null;
+  }
+  return null;
+}
+
+/** Property and method names of `HTMLElement`, `Element` and `Node` in a `lib.dom.d.ts` source. */
+export function m4DomProperties(source: string): string[] {
+  const names = new Set<string>();
+  for (const iface of ['HTMLElement', 'Element', 'Node']) {
+    const match = new RegExp(`\\binterface\\s+${iface}\\b`, 'u').exec(source);
+    if (!match) continue;
+    let i = match.index + match[0].length;
+    while (i < source.length && source[i] !== '{') i += 1;
+    if (source[i] !== '{') continue;
+    collectInterfaceMembers(source.slice(i + 1, skipBalanced(source, i) - 1), names);
+  }
+  return [...names].sort();
+}
+
+/** Names of the members declared directly on one interface body. */
+function collectInterfaceMembers(body: string, into: Set<string>): void {
+  let depth = 0;
+  let quote = '';
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i];
+    if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = ''; continue; }
+    if (ch === '/' && body[i + 1] === '/') { i += 2; while (i < body.length && body[i] !== '\n') i += 1; continue; }
+    if (ch === '/' && body[i + 1] === '*') { i += 2; while (i < body.length && !(body[i] === '*' && body[i + 1] === '/')) i += 1; i += 1; continue; }
+    if (ch === '\'' || ch === '"' || ch === '`') { quote = ch; continue; }
+    if (ch === '{' || ch === '(' || ch === '[') { depth += 1; continue; }
+    if (ch === '}' || ch === ')' || ch === ']') { depth -= 1; continue; }
+    if (depth !== 0 || !/[A-Za-z_$]/u.test(ch)) continue;
+    const word = /^[A-Za-z_$][\w$]*/u.exec(body.slice(i))?.[0] ?? '';
+    if (!word) continue;
+    if (word === 'readonly' || word === 'get' || word === 'set' || word === 'static') { i += word.length - 1; continue; }
+    const after = skipSpaceAndComments(body, i + word.length);
+    if (body[after] === ':' || body[after] === '?' || body[after] === '(' || body[after] === '<') into.add(word);
+    i += word.length - 1;
+  }
+}
+
+/** Names declared with `@property` / `@propertyDataSource` across the base sources the caller read. */
+export function m4InheritedProperties(sources: string[]): string[] {
+  const names = new Set<string>();
+  for (const source of sources) for (const name of m4MoleculeProperties(source)) names.add(name);
+  return [...names].sort();
+}
+
+/** Names of fields declared under `@property` or `@propertyDataSource`. */
+export function m4MoleculeProperties(source: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const match of source.matchAll(/@(?:propertyDataSource|property)\b/gu)) {
+    let i = skipSpaceAndComments(source, (match.index ?? 0) + match[0].length);
+    if (source[i] === '(') i = skipSpaceAndComments(source, skipBalanced(source, i));
+    let name = /^[A-Za-z_$][\w$]*/u.exec(source.slice(i))?.[0] ?? '';
+    while (FIELD_MODIFIERS.has(name)) {
+      const afterMod = skipSpaceAndComments(source, i + name.length);
+      if (source[afterMod] === ':' || source[afterMod] === '=' || source[afterMod] === '?') break;
+      i = afterMod;
+      name = /^[A-Za-z_$][\w$]*/u.exec(source.slice(i))?.[0] ?? '';
+    }
+    if (!name || seen.has(name)) continue;
+    const after = skipSpaceAndComments(source, i + name.length);
+    if (source[after] !== ':' && source[after] !== '=' && source[after] !== '?') continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
+/**
+ * Top-level `detail` keys of each `new CustomEvent('<name>', { detail: { … } })`.
+ * `keys` is null when a key of that event is not a literal (`keys not read`).
+ * An event dispatched with no `detail` object has an empty key list.
+ */
+export function m4MoleculeDetailEvents(source: string): Array<{ name: string; keys: string[] | null }> {
+  const found = new Map<string, { keys: string[] | null }>();
+  const re = /\bnew\s+CustomEvent\s*(?:<[^>]*>)?\(\s*(['"`])([A-Za-z][\w:.-]*)\1/gu;
+  for (const match of source.matchAll(re)) {
+    const name = match[2];
+    let i = skipSpaceAndComments(source, (match.index ?? 0) + match[0].length);
+    let keys: string[] | null = [];
+    if (source[i] === ',') {
+      i = skipSpaceAndComments(source, i + 1);
+      if (source[i] === '{') {
+        const bodyEnd = skipBalanced(source, i);
+        const body = source.slice(i, bodyEnd);
+        const detail = /\bdetail\s*:/u.exec(body);
+        if (detail) {
+          let k = skipSpaceAndComments(body, detail.index + detail[0].length);
+          keys = body[k] === '{' ? objectLiteralKeys(body, k) : null;
+        }
+      } else keys = null;
+    }
+    const previous = found.get(name);
+    if (!previous) found.set(name, { keys });
+    else if (previous.keys === null || keys === null) previous.keys = null;
+    else for (const key of keys) if (!previous.keys.includes(key)) previous.keys.push(key);
+  }
+  return [...found.entries()].map(([name, item]) => ({ name, keys: item.keys }));
+}
+
+/** One prompt line: `` `<tag>`: properties a, b; events change {field, value} ``.
+ * Events are the union of names (`m4MoleculeEvents`) and detail keys (`m4MoleculeDetailEvents`).
+ * A name with no keys read is `<name> {keys not read}`. */
+export function m4MoleculeSurfaceLine(tag: string, source: string): string {
+  const properties = m4MoleculeProperties(source).join(', ');
+  const byName = new Map(m4MoleculeDetailEvents(source).map(item => [item.name, item.keys]));
+  for (const name of m4MoleculeEvents(source)) if (!byName.has(name)) byName.set(name, null);
+  const events = [...byName.entries()].map(([name, keys]) => `${name} {${keys === null ? 'keys not read' : keys.join(', ')}}`).join(', ');
+  return `\`${tag}\`: properties ${properties}; events ${events}`;
+}
+
 /** Every `@event=` bound on the opening tag of a molecule element, outside the `${…}` expressions of that tag. */
 export function m4BoundEvents(code: string, tag: string): string[] {
   const found: string[] = [];
@@ -113,6 +314,76 @@ export function m4BoundEvents(code: string, tag: string): string[] {
   }
   return found;
 }
+
+/** First parameter name of an inline handler, or null when the handler is not an inline function. */
+function m4HandlerParam(expression: string): string | null {
+  const arrow = /^\s*(?:async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>/u.exec(expression);
+  const fn = /^\s*(?:async\s+)?function\s*(?:[A-Za-z_$][\w$]*)?\s*\(([^)]*)\)/u.exec(expression);
+  const list = arrow?.[1] ?? arrow?.[2] ?? fn?.[1];
+  if (list === undefined) return null;
+  const first = list.split(',')[0]?.trim().replace(/[:?=].*$/u, '').trim() ?? '';
+  return /^[A-Za-z_$][\w$]*$/u.test(first) ? first : null;
+}
+
+/**
+ * Property bindings (`.prop=`) and event handlers (`@event=`) on the opening tag, outside its `${…}` expressions.
+ * The expression is empty when the binding is not `${…}`.
+ */
+function m4TagBindings(code: string, tag: string): Array<{ kind: 'property' | 'event'; name: string; expression: string }> {
+  const found: Array<{ kind: 'property' | 'event'; name: string; expression: string }> = [];
+  const open = new RegExp(`<${tag.replace(/\./gu, '\\.')}(?![\\w-])`, 'gu');
+  for (const match of code.matchAll(open)) {
+    let i = (match.index ?? 0) + match[0].length;
+    let depth = 0;
+    let quote = '';
+    for (; i < code.length; i += 1) {
+      const ch = code[i];
+      if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = ''; continue; }
+      if (depth > 0) {
+        if (ch === '\'' || ch === '"' || ch === '`') quote = ch;
+        else if (ch === '{') depth += 1;
+        else if (ch === '}') depth -= 1;
+        continue;
+      }
+      if (ch === '$' && code[i + 1] === '{') { depth = 1; i += 1; continue; }
+      if (ch === '"' || ch === '\'') { quote = ch; continue; }
+      if (ch === '>') break;
+      if ((ch !== '@' && ch !== '.') || !/\s/u.test(code[i - 1] ?? '')) continue;
+      const binding = /^[@.]([A-Za-z][\w:.-]*)\s*=/u.exec(code.slice(i, i + 80));
+      if (!binding) continue;
+      let expression = '';
+      const after = i + binding[0].length;
+      if (code[after] === '$' && code[after + 1] === '{') {
+        const start = after + 2;
+        let innerDepth = 1;
+        let j = start;
+        let inner = '';
+        for (; j < code.length && innerDepth > 0; j += 1) {
+          const c = code[j];
+          if (inner) { if (c === '\\') j += 1; else if (c === inner) inner = ''; continue; }
+          if (c === '\'' || c === '"' || c === '`') inner = c;
+          else if (c === '{') innerDepth += 1;
+          else if (c === '}') innerDepth -= 1;
+        }
+        expression = code.slice(start, j - 1);
+        i = j - 1;
+      }
+      found.push({ kind: ch === '@' ? 'event' : 'property', name: binding[1], expression });
+    }
+  }
+  return found;
+}
+
+/** Top-level `param.detail.key` reads in a handler. A key that is not an identifier is ignored. */
+function m4DetailKeysRead(expression: string): string[] {
+  const param = m4HandlerParam(expression);
+  if (!param) return [];
+  const keys: string[] = [];
+  const re = new RegExp(`\\b${param}\\s*\\.\\s*detail\\s*\\??\\.\\s*([A-Za-z_$][\\w$]*)`, 'gu');
+  for (const match of expression.matchAll(re)) if (!keys.includes(match[1])) keys.push(match[1]);
+  return keys;
+}
+
 /**
  * The event handlers bound on a molecule that throw away the molecule's own event. A molecule dispatches its events on
  * itself, so in its handler `e.target === e.currentTarget` is always true. The bubbling guard belongs only to the scene
@@ -152,6 +423,29 @@ export function m4OwnEventDrops(code: string): Array<{ tag: string; event: strin
       if (binding && dropsOwnEvent(expression)) found.push({ tag: match[1], event: binding[1], handler: expression.replace(/\s+/gu, ' ').trim().slice(0, 160) });
       i = j - 1;
     }
+  }
+  return found;
+}
+
+/** Tags of `<groupselectone|groupselectmany--…>…</…>` whose body has no `<Item`. */
+function m4SelectsWithoutOptions(code: string): string[] {
+  const found: string[] = [];
+  for (const match of code.matchAll(/<(groupselect(?:one|many)--[a-z0-9-]+)\b/gu)) {
+    const tag = match[1];
+    let i = (match.index ?? 0) + match[0].length;
+    let quote = '';
+    let selfClose = false;
+    for (; i < code.length; i += 1) {
+      const ch = code[i];
+      if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = ''; continue; }
+      if (ch === '"' || ch === '\'' || ch === '`') { quote = ch; continue; }
+      if (ch === '/' && code[i + 1] === '>') { selfClose = true; break; }
+      if (ch === '>') break;
+    }
+    if (selfClose || i >= code.length) { found.push(tag); continue; }
+    const closeAt = code.indexOf(`</${tag}>`, i + 1);
+    if (closeAt < 0) continue;
+    if (!code.slice(i + 1, closeAt).includes('<Item')) found.push(tag);
   }
   return found;
 }
@@ -284,11 +578,54 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
       issues.push({ code: 'M4_PAGE_EVENT_UNKNOWN', severity: 'error', always: true, message: `<${tag}> never dispatches "${name}", so @${name} never runs. It dispatches ${events.length ? events.map(event => `"${event}"`).join(', ') : 'no event of its own'}${events.length ? '' : ' (only native DOM events such as click reach the page)'}; listen to the one that carries what the page needs, as its skill describes.` });
     }
   }
+  // A handler that reads a detail key the molecule does not send, and a `.prop=` the molecule does not declare
+  // (ml-address-field, onboarding mobile, 22/10/2026: change was read as the whole address, and .value does not exist).
+  // Enforced even while the rest of the gate is off. A molecule whose keys were not read is not checked.
+  const inherited = new Set(target.baseProperties ?? []);
+  const listed = (names: string[]) => names.length ? names.map(name => `"${name}"`).join(', ') : 'nothing';
+  for (const [tag, events] of Object.entries(target.moleculeDetail ?? {})) {
+    for (const binding of m4TagBindings(code, tag)) {
+      if (binding.kind !== 'event') continue;
+      const keys = events[binding.name];
+      if (!keys) continue;
+      for (const key of m4DetailKeysRead(binding.expression)) {
+        if (keys.includes(key)) continue;
+        issues.push({ code: 'M4_PAGE_EVENT_DETAIL_UNKNOWN', severity: 'error', always: true, message: `<${tag}> reads "${key}" from the detail of @${binding.name}. That event sends ${listed(keys)}.` });
+      }
+    }
+  }
+  for (const [tag, properties] of Object.entries(target.moleculeProperties ?? {})) {
+    if (!properties.length) continue;
+    const declared = new Set([...properties, ...inherited]);
+    for (const binding of m4TagBindings(code, tag)) {
+      if (binding.kind !== 'property' || declared.has(binding.name)) continue;
+      issues.push({ code: 'M4_PAGE_PROPERTY_UNKNOWN', severity: 'error', always: true, message: `<${tag}> binds property "${binding.name}", which it does not declare. It declares ${listed(properties)}.` });
+    }
+  }
 
   // A field that throws its own event away compiles and silently does nothing (m4OwnEventDrops). Enforced even while
   // the rest of the gate is off.
   for (const drop of m4OwnEventDrops(code)) {
     issues.push({ code: 'M4_PAGE_OWN_EVENT_DROPPED', severity: 'error', always: true, message: `The @${drop.event} handler of <${drop.tag}> throws away the molecule's own event (${drop.handler}). A molecule dispatches its events on itself, so e.target === e.currentTarget is always true there: use e.detail directly, with no target check. The bubbling guard belongs only to the scene host.` });
+  }
+
+  // Spreading a possibly absent nested draft with `!` drops every key the expression did not set
+  // (onboarding company address, 22/10/2026: `...address!` left line3 undefined and the save threw).
+  // Enforced even while the rest of the gate is off. The message names every shared function that takes
+  // no argument and returns a `…Draft` type, whatever its name, when that declaration is already on the
+  // target; it does not open a file.
+  const spreadNonNull = [...code.matchAll(/\.\.\.([A-Za-z_.]+)!/gu)].map(match => match[1]);
+  if (spreadNonNull.length > 0) {
+    const drafts = [...(target.sharedDeclaration ?? '').matchAll(/export\s+declare\s+function\s+([A-Za-z_$][\w$]*)\s*\(\s*\)\s*:\s*(?:[A-Za-z_][\w$.]*)?Draft\s*;/gu)].map(match => match[1]);
+    const via = drafts.length ? drafts.join(', ') : "the shared's empty-draft function";
+    issues.push({ code: 'M4_PAGE_SPREAD_NON_NULL', severity: 'error', always: true, message: `Spreading ${[...new Set(spreadNonNull)].join(', ')} with ! builds a nested draft that is missing the keys that were not set. Start that object from ${via}.` });
+  }
+
+  // A select with no <Item> offers nothing to choose (onboarding my_access_details, 21/10/2026: the country
+  // selector rendered empty). Enforced even while the rest of the gate is off. The message names the defect,
+  // not a code sample.
+  for (const tag of m4SelectsWithoutOptions(code)) {
+    issues.push({ code: 'M4_PAGE_SELECT_NO_OPTIONS', severity: 'error', always: true, message: `<${tag}> offers nothing to choose. The options come from a shared state that lists the choices, one <Item> per entry. If the shared has no such state, the page cannot offer the choice.` });
   }
 
   // Scenes: optional, decided by the page (Guilherme, 01/10/2026); when used, the host is wired to the shared.

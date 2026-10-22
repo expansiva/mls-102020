@@ -36,6 +36,8 @@ You fix ONE TypeScript file that the Studio refused: the **page** of one device 
 
 - **M4_PAGE_SCENARY_BUBBLE**: replace the host handler with `@change=${(e: CustomEvent<{ value: string }>) => { if (e.target === e.currentTarget) this.setScenario(e.detail.value); }}`. If the handler does more than `setScenario` (for example `if (e.detail.value === '<view without the record>') this.select<X>(null);`), keep those statements inside the guard. Change nothing else.
 - **M4_PAGE_OWN_EVENT_DROPPED**: in the handler named in the error, remove the `e.target`/`e.currentTarget` check and keep what it does with `e.detail` (the molecule's event is always its own). Change nothing else; the host of the scenes keeps its guard.
+- **M4_PAGE_SELECT_NO_OPTIONS**: the selector named in the error offers nothing to choose. Fill it from the shared state that lists the choices, one Item per entry. If the shared declares no such state, the page cannot offer the choice. Change nothing else.
+- **M4_PAGE_SPREAD_NON_NULL**: the spread named in the error starts from the shared's empty-draft function instead of asserting the absent value with !. Change nothing else.
 
 - **M4_PAGE_SCENARY_CUSTOM "The page switches views by hand"**: the views are rendered by a condition on `this.scenary` (or `this.setScenario` is called with no host). Keep the same views, and move them into the scene host. If the page computes the default view from its selection (`this.scenary || (this.selected<X> !== null ? … : …)`), move that whole expression into `.value=${…}` and keep the condition; do not replace it with the first view.
   ```ts

@@ -1,0 +1,799 @@
+{
+  "attempt": "1",
+  "model": "claude-opus-5-5",
+  "promptChars": 34327,
+  "receivedAt": "2026-10-21T23:13:33.687Z",
+  "raw": {
+    "type": "flexible",
+    "result": {
+      "toolName": "submitD2Bff",
+      "arguments": {
+        "types": [
+          {
+            "name": "CompanyIdentification",
+            "description": "Identification block of the platform company record: name, platform status, document and country.",
+            "fields": [
+              {
+                "name": "name",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'Active' | 'Inactive' | 'Merged' | 'Blocked'",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification.status"
+                  ]
+                }
+              },
+              {
+                "name": "docType",
+                "type": "'EIN' | 'CNPJ' | 'VAT' | 'NationalId' | 'Other'",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification.docType"
+                  ]
+                }
+              },
+              {
+                "name": "docId",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification.docId"
+                  ]
+                }
+              },
+              {
+                "name": "countryCode",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification.countryCode"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CompanyBase",
+            "description": "Base block of the company record: its addresses and the summary of its linked contact channels.",
+            "fields": [
+              {
+                "name": "addresses",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.base.addresses"
+                  ]
+                }
+              },
+              {
+                "name": "contacts",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.base.contacts"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CompanyLegal",
+            "description": "Company block of the record with the official registered name.",
+            "fields": [
+              {
+                "name": "legalName",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.company.legalName"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CompanyOnboarding",
+            "description": "Onboarding readiness of the company: whether it is prepared and which company data is still missing.",
+            "fields": [
+              {
+                "name": "companyPrepared",
+                "type": "boolean",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.onboarding.companyPrepared"
+                  ]
+                }
+              },
+              {
+                "name": "missingCompanyData",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.onboarding.missingCompanyData"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CompanyDetails",
+            "description": "Details of the platform company record.",
+            "fields": [
+              {
+                "name": "identification",
+                "type": "CompanyIdentification",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification"
+                  ]
+                }
+              },
+              {
+                "name": "base",
+                "type": "CompanyBase",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.base"
+                  ]
+                }
+              },
+              {
+                "name": "company",
+                "type": "CompanyLegal",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.company"
+                  ]
+                }
+              },
+              {
+                "name": "onboarding",
+                "type": "CompanyOnboarding",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.onboarding"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CompanyContactIdentification",
+            "description": "Identification of a company contact channel: its name and country.",
+            "fields": [
+              {
+                "name": "name",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "countryCode",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.identification.countryCode"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CompanyContactChannel",
+            "description": "The channel of a company contact: type, value and verification.",
+            "fields": [
+              {
+                "name": "contactType",
+                "type": "'Phone' | 'Email' | 'WhatsApp' | 'Instagram' | 'LinkedIn' | 'X' | 'Other'",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.contactChannel.contactType"
+                  ]
+                }
+              },
+              {
+                "name": "value",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.contactChannel.value"
+                  ]
+                }
+              },
+              {
+                "name": "isVerified",
+                "type": "boolean",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.contactChannel.isVerified"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CompanyContactDetails",
+            "description": "Details of a company contact channel.",
+            "fields": [
+              {
+                "name": "identification",
+                "type": "CompanyContactIdentification",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.identification"
+                  ]
+                }
+              },
+              {
+                "name": "contactChannel",
+                "type": "CompanyContactChannel",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.contactChannel"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CompanyContactSummary",
+            "description": "A contact channel linked to the company through HasContact.",
+            "fields": [
+              {
+                "name": "details",
+                "type": "CompanyContactDetails",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CountryLocalizedName",
+            "description": "Name of a country in one language.",
+            "fields": [
+              {
+                "name": "language",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Country.details.localizedNames.language"
+                  ]
+                }
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Country.details.localizedNames.name"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CountryDetails",
+            "description": "Details of a country of the module list.",
+            "fields": [
+              {
+                "name": "localizedNames",
+                "type": "CountryLocalizedName[]",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Country.details.localizedNames"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CountryOption",
+            "description": "A country of the module country list with its ISO code, English name, status and localized names.",
+            "fields": [
+              {
+                "name": "code",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Country.code"
+                  ]
+                }
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Country.name"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'active' | 'inactive'",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Country.status"
+                  ]
+                }
+              },
+              {
+                "name": "details",
+                "type": "CountryDetails",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Country.details"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CompanySetup",
+            "description": "The organization's platform company record with its readiness, its linked contacts and its current country.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.version"
+                  ]
+                }
+              },
+              {
+                "name": "details",
+                "type": "CompanyDetails",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details"
+                  ]
+                }
+              },
+              {
+                "name": "companyContact",
+                "type": "CompanyContactSummary[]",
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "CompanyContact.details"
+                  ]
+                }
+              },
+              {
+                "name": "country",
+                "type": "CountryOption",
+                "optional": true,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Country.code",
+                    "Country.name",
+                    "Country.status",
+                    "Country.details.localizedNames"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "id": "getCompanySetup",
+            "kind": "qry",
+            "when": "onLoad",
+            "input": [],
+            "output": [
+              {
+                "name": "company",
+                "type": "CompanySetup",
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Company.id",
+                    "Company.details",
+                    "CompanyContact.details",
+                    "Country.details"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "onlyOwnerPreparesCompany",
+              "askOnlyMissingCompanyData",
+              "companyPreparedRequiresAllData",
+              "unknownCountryNeverDefaulted",
+              "sameIdentityOnReturn"
+            ],
+            "jsdoc": {
+              "purpose": "Loads the organization's company record in one call, with its readiness, its linked contacts and its current country, so the owner sees what is saved and what is still missing.",
+              "input": "None. The company is the one of the logged-in owner's organization.",
+              "processing": "Reads the company by id (read.byId) for the caller's organization; refuses with an authority error when the caller is not the company owner (onlyOwnerPreparesCompany) and returns a distinct not-found error when there is no company. Lists the linked contacts (listLinks). Resolves the saved countryCode in the module country list; when no country is saved it stays empty and is never defaulted (unknownCountryNeverDefaulted). Computes companyPrepared as true only when name, legal name, country, document type and number, at least one address and at least one linked contact are saved (companyPreparedRequiresAllData), and computes missingCompanyData as the items among those not yet saved (askOnlyMissingCompanyData). Derived fields are computed, never stored. Always returns the same company for the same organization (sameIdentityOnReturn).",
+              "output": "The company record in its current saved state with id, version, identification, addresses, contacts summary, legal name, computed readiness and missing list, its linked contacts and the saved country when known."
+            }
+          },
+          {
+            "id": "searchCompanyCountries",
+            "kind": "qry",
+            "when": "interaction",
+            "input": [
+              {
+                "name": "search",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "page",
+                "type": "number",
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "pageSize",
+                "type": "number",
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "countries",
+                "type": "CountryOption[]",
+                "paginated": true,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Country.code",
+                    "Country.name",
+                    "Country.status",
+                    "Country.details.localizedNames"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "companyCountryFromModuleList",
+              "inactiveCountryNotOffered",
+              "countryCodeIsoAlpha2",
+              "unknownCountryNoDefault"
+            ],
+            "jsdoc": {
+              "purpose": "Searches the module country list for the company and contact country pickers.",
+              "input": "search: optional text matched against the ISO code or English name; page and pageSize: the requested page.",
+              "processing": "Uses the same module country list used for people (companyCountryFromModuleList), filtered to status active only (inactiveCountryNotOffered), matched by code or English name (locate.byText) and sorted by English name. Countries are identified by their two-letter ISO code (countryCodeIsoAlpha2). No country is preselected or defaulted (unknownCountryNoDefault).",
+              "output": "One page of active countries with code, English name, status and localized names."
+            }
+          },
+          {
+            "id": "saveCompany",
+            "kind": "cmd",
+            "when": "saveCompany",
+            "writes": "Company.update",
+            "input": [
+              {
+                "name": "id",
+                "type": "string",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.version"
+                  ]
+                }
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "legalName",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.company.legalName"
+                  ]
+                }
+              },
+              {
+                "name": "docType",
+                "type": "'EIN' | 'CNPJ' | 'VAT' | 'NationalId' | 'Other'",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification.docType"
+                  ]
+                }
+              },
+              {
+                "name": "docId",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification.docId"
+                  ]
+                }
+              },
+              {
+                "name": "countryCode",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.identification.countryCode"
+                  ]
+                }
+              },
+              {
+                "name": "addresses",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Company.details.base.addresses"
+                  ]
+                }
+              },
+              {
+                "name": "contactName",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "contactCountryCode",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.identification.countryCode"
+                  ]
+                }
+              },
+              {
+                "name": "contactType",
+                "type": "'Phone' | 'Email' | 'WhatsApp' | 'Instagram' | 'LinkedIn' | 'X' | 'Other'",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.contactChannel.contactType"
+                  ]
+                }
+              },
+              {
+                "name": "contactValue",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "CompanyContact.details.contactChannel.value"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "company",
+                "type": "CompanySetup",
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Company.id",
+                    "Company.details",
+                    "CompanyContact.details",
+                    "Country.details"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "onlyOwnerPreparesCompany",
+              "askOnlyMissingCompanyData",
+              "companyCountryFromModuleList",
+              "inactiveCountryNotOffered",
+              "unknownCountryNeverDefaulted",
+              "unknownCountryNoDefault",
+              "companyContactLinkedWithoutDuplicate",
+              "companyContactBelongsToCompany",
+              "companyContactLinkNotDuplicated",
+              "companyPreparedRequiresAllData",
+              "savedDataNotRetyped"
+            ],
+            "jsdoc": {
+              "purpose": "Saves the missing company data and creates or links the company contact, then returns the company in its new state.",
+              "input": "id and version of the company for optimistic concurrency; name, legalName, docType, docId, countryCode and addresses: the company data the owner completes; contactName, contactCountryCode, contactType and contactValue: the company contact channel. Only the missing items are sent.",
+              "processing": "Refuses with an authority error when the caller is not the company owner (onlyOwnerPreparesCompany), apart from validation errors and a missing company. Accepts only the items still missing (askOnlyMissingCompanyData). Checks countryCode and contactCountryCode exist as active countries of the module list (companyCountryFromModuleList, inactiveCountryNotOffered); an absent country stays missing and is never defaulted (unknownCountryNeverDefaulted, unknownCountryNoDefault). Updates the platform fields with the version (edit.platformFields). Locates an existing channel by type and value (locate.byContact), creates or attaches it only through the platform contact capability (companyContactLinkedWithoutDuplicate), checks it belongs to this company (companyContactBelongsToCompany) and links it with HasContact only when no active link exists (companyContactLinkNotDuplicated). If the contact step fails after the company was saved, the saved data is kept and reported so nothing is retyped (savedDataNotRetyped). Rereads the company and computes companyPrepared and missingCompanyData (companyPreparedRequiresAllData); derived fields are never stored.",
+              "output": "The company record as saved, with its new version, identification, addresses, legal name, linked contacts, country and recomputed readiness and missing list."
+            }
+          }
+        ],
+        "bindings": {
+          "organisms": [
+            {
+              "organism": "companyReadiness",
+              "reads": "getCompanySetup.company"
+            },
+            {
+              "organism": "companyDataForm",
+              "reads": "getCompanySetup.company"
+            },
+            {
+              "organism": "companyDataForm",
+              "reads": "searchCompanyCountries.countries"
+            },
+            {
+              "organism": "companySaveActions",
+              "reads": "getCompanySetup.company"
+            }
+          ],
+          "commands": [
+            {
+              "endpoint": "saveCompany",
+              "refreshes": []
+            }
+          ],
+          "selections": [],
+          "updates": [
+            {
+              "endpoint": "saveCompany",
+              "state": "getCompanySetup.company",
+              "mode": "replace"
+            },
+            {
+              "endpoint": "searchCompanyCountries",
+              "state": "searchCompanyCountries.countries",
+              "mode": "replace"
+            }
+          ],
+          "journeys": [
+            {
+              "step": "prepareCompany/openCompany",
+              "organisms": [
+                "companyReadiness",
+                "companyDataForm"
+              ],
+              "endpoints": [
+                "getCompanySetup"
+              ]
+            },
+            {
+              "step": "prepareCompany/chooseCompanyCountry",
+              "organisms": [
+                "companyDataForm"
+              ],
+              "endpoints": [
+                "searchCompanyCountries"
+              ]
+            },
+            {
+              "step": "prepareCompany/saveCompany",
+              "organisms": [
+                "companySaveActions",
+                "companyDataForm"
+              ],
+              "endpoints": [
+                "saveCompany"
+              ]
+            },
+            {
+              "step": "prepareCompany/seeGuidance",
+              "organisms": [
+                "companySaveActions",
+                "companyReadiness"
+              ],
+              "endpoints": [
+                "getCompanySetup",
+                "saveCompany"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "status": "completed",
+    "stepId": 15,
+    "interaction": null,
+    "nextSteps": null
+  },
+  "verdict": "accepted"
+}

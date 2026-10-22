@@ -71,6 +71,15 @@ async function studio(compileErrors: string[] = []) {
   return port;
 }
 
+test('an empty draft stays quiet and a reference list loads whole', () => {
+  for (const needle of [
+    'When the draft has nothing to send and no required leaf is empty, do not call and do not publish an error: the status stays as it was.',
+    'A paged query whose state feeds the options of a selector',
+    'loads **every page** on open, up to 500 items',
+    "searches on the server through that query's own search parameter",
+  ]) assert.ok(promptText.includes(needle), needle);
+});
+
 test('the prompt carries target, contract, shared, organisms, the methods the pages call and the notes', async () => {
   const port = await studio();
   const context = await buildM4SharedContext(identity, 'produtos', port);
