@@ -1,0 +1,232 @@
+{
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "onboarding",
+  "entityId": "Company",
+  "title": "Company",
+  "description": "The platform company record of the organization. The owner completes its legal name, country, document, address and contact; the module namespace stays empty.",
+  "displayField": "details.identification.name",
+  "relationships": {
+    "contacts": {
+      "relationshipId": "companyHasContact",
+      "to": "CompanyContact",
+      "via": "HasContact",
+      "cardinality": "1:N",
+      "title": "Company contacts",
+      "description": "Contact channels that belong to this company, linked through the platform HasContact relationship without duplicating the link.",
+      "required": "for the company to count as prepared"
+    }
+  },
+  "capabilities": {
+    "read.byId": "Reads the organization's company record by its id when the owner opens Prepare the company and again after saving, so the screen shows what is saved and what is still missing; a missing company is shown apart.",
+    "edit.platformFields": "Saves the missing legal name, country, document and address on the platform company record when the owner saves the company; validation and authority errors are shown apart.",
+    "link.contact": "Creates or links the company contact channel with HasContact when the owner saves the company, so the contact is a platform record and never a field.",
+    "locate.byContact": "Looks up an existing contact channel before linking it, so the owner's save checks it belongs to this company and repeating the save does not duplicate the link.",
+    "listLinks": "Lists the contacts linked to the company so the owner sees the current contact and the screen knows whether the contact is still missing.",
+    "unlink": "Closes a wrong contact link of the company while keeping its history, used by the owner when replacing the contact.",
+    "locate.byDocument": "Checks the document the owner types against existing companies before saving, so the same document is not given to two companies.",
+    "audit": "Records who changed the company data and when, readable through the platform audit by an administrator."
+  },
+  "rules": [
+    "rule-foreign-namespace-refused",
+    "rule-identity-never-in-namespace",
+    "rule-document-shape-validated",
+    "rule-company-legal-name-required",
+    "rule-company-ein-unique-for-us",
+    "companyPreparedRequiresAllData",
+    "companyCountryFromModuleList",
+    "unknownCountryNeverDefaulted",
+    "companyContactLinkedWithoutDuplicate",
+    "onlyOwnerPreparesCompany",
+    "askOnlyMissingCompanyData"
+  ],
+  "kind": "role",
+  "subtype": "Company",
+  "roleTag": "onboarding.Company",
+  "source": "/_102034_/l4/ontology/mdm.defs.ts",
+  "record": {
+    "fields": {
+      "id": {
+        "type": "uuid",
+        "required": true,
+        "indexed": true,
+        "derived": true,
+        "description": "mdmId; stable through promotion and merge."
+      },
+      "version": {
+        "type": "integer",
+        "required": true,
+        "derived": true,
+        "writePrecondition": true,
+        "description": "Bumped by the engine on every write; optimistic concurrency."
+      },
+      "details": {
+        "type": "object",
+        "required": true,
+        "description": "The platform record of the organization's company. The owner completes the data that is missing; what the platform already has is not asked again.",
+        "fields": {
+          "identification": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "subtype": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  {
+                    "value": "Company",
+                    "title": "Company"
+                  }
+                ],
+                "description": "Always Company for this role.",
+                "title": "Subtype"
+              },
+              "name": {
+                "type": "string",
+                "required": true,
+                "indexed": true,
+                "maxLength": 200,
+                "description": "The name the platform created the company with. Shown to the owner and asked only if it is missing.",
+                "title": "Company name"
+              },
+              "status": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  {
+                    "value": "Active",
+                    "title": "Active"
+                  },
+                  {
+                    "value": "Inactive",
+                    "title": "Inactive"
+                  },
+                  {
+                    "value": "Merged",
+                    "title": "Merged"
+                  },
+                  {
+                    "value": "Blocked",
+                    "title": "Blocked"
+                  }
+                ],
+                "title": "Status",
+                "description": "Platform status of the company record; read only in this module."
+              },
+              "docType": {
+                "type": "enum",
+                "indexed": true,
+                "values": [
+                  {
+                    "value": "EIN",
+                    "title": "EIN"
+                  },
+                  {
+                    "value": "CNPJ",
+                    "title": "CNPJ"
+                  },
+                  {
+                    "value": "VAT",
+                    "title": "VAT"
+                  },
+                  {
+                    "value": "NationalId",
+                    "title": "National ID"
+                  },
+                  {
+                    "value": "Other",
+                    "title": "Other"
+                  }
+                ],
+                "title": "Document type",
+                "description": "Type of the company's national document (for example CNPJ, EIN or VAT). Asked while preparing the company when missing; needed for the company to count as prepared."
+              },
+              "docId": {
+                "type": "string",
+                "indexed": true,
+                "description": "The company's document number. Asked while preparing the company when missing; needed for the company to count as prepared.",
+                "title": "Document number"
+              },
+              "countryCode": {
+                "type": "string",
+                "required": true,
+                "indexed": true,
+                "pattern": "^[A-Z]{2}$",
+                "maxLength": 2,
+                "default": "US",
+                "description": "Two-letter ISO code of the company country, picked from the module country list. If the country is unknown it stays missing and is never filled with a default.",
+                "title": "Country"
+              }
+            },
+            "description": "Index columns of the platform record: company name, document, country and status."
+          },
+          "base": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "addresses": {
+                "type": "object",
+                "required": true,
+                "collection": true,
+                "of": "Address",
+                "title": "Addresses",
+                "description": "The company address the owner fills in while preparing the company; at least one is needed for the company to count as prepared."
+              },
+              "contacts": {
+                "type": "object",
+                "required": true,
+                "collection": true,
+                "of": "ContactSummary",
+                "derived": true,
+                "description": "Summary of the contact channels linked to this company through the platform contact capability. Never typed here; the link is created once and never duplicated.",
+                "title": "Contacts"
+              }
+            },
+            "description": "Platform data every record has: addresses and the summary of linked contacts."
+          },
+          "company": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "legalName": {
+                "type": "string",
+                "required": true,
+                "description": "The official registered name. The platform creates the company with only its name, so it is usually missing and asked while preparing the company.",
+                "title": "Legal name"
+              }
+            },
+            "description": "Platform company branch."
+          },
+          "general": {
+            "type": "object",
+            "owner": "organization",
+            "open": true,
+            "description": "Fields promoted by the organization; read only, not declared by this module."
+          },
+          "onboarding": {
+            "type": "object",
+            "owner": "module",
+            "fields": {
+              "companyPrepared": {
+                "type": "boolean",
+                "derived": true,
+                "title": "Company prepared",
+                "description": "True when the saved company record has its name, legal name, country, document type and number, at least one address and at least one linked contact; only then the fixed guidance with the link to create the first module in Studio is shown."
+              },
+              "missingCompanyData": {
+                "type": "text",
+                "derived": true,
+                "title": "Still missing",
+                "description": "The list of the company data not yet saved on the platform record among name, legal name, country, document, address and contact, so the owner is asked only for these."
+              }
+            },
+            "description": "Empty: the onboarding module keeps no data of its own about the company."
+          }
+        }
+      }
+    }
+  }
+}

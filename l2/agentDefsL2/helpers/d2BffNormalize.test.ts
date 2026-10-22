@@ -233,3 +233,39 @@ void test('d2_107: an L4 enum written as plain strings gives the same values as 
   assert.deepEqual(d2OntologyLeafType(role(['Active', 'Inactive']), 'Pessoa.details.status')?.values, ['Active', 'Inactive']);
   assert.deepEqual(d2OntologyLeafType(role([{ value: 'Active', title: 'Ativa' }, { value: 'Inactive' }]), 'Pessoa.details.status')?.values, ['Active', 'Inactive']);
 });
+
+void test('d2_121: a platform object of a known MDM type becomes that type', () => {
+  const envelope = JSON.parse(readFileSync(new URL('./fixtures/d2_121_company_setup-1.json', import.meta.url), 'utf8')) as { raw: { result: { arguments: unknown } } };
+  const company = JSON.parse(readFileSync(new URL('./fixtures/d2_121_Company.defs.ts.json', import.meta.url), 'utf8')) as Ns5OntologyAnyEntity;
+  const normalized = normalizeD2BffDesign(buildD2BffDesign(envelope.raw.result.arguments), { Company: company }, 'Company_setupContracts');
+  const address = normalized.types.find(item => item.name === 'Address');
+  assert.ok(address);
+  const byName = Object.fromEntries(address.fields.map(item => [item.name, item]));
+  for (const name of ['type', 'line1', 'countryCode', 'isPrimary']) assert.equal(byName[name]?.optional, undefined, name);
+  for (const name of ['label', 'line2', 'line3', 'city', 'stateOrProvince', 'postalCode', 'formatted', 'geolocation']) assert.equal(byName[name]?.optional, true, name);
+  assert.match(byName.type.type, /'Residential'/u);
+  assert.equal(byName.line1.type, 'string');
+  assert.equal(byName.geolocation.type, 'GeoPoint');
+  assert.equal(byName.formatted.derived, true);
+  const addressLeaves = [
+    ...normalized.types.flatMap(item => item.fields),
+    ...normalized.endpoints.flatMap(item => [...item.input, ...item.output]),
+  ].filter(item => item.name === 'addresses' || item.name.endsWith('.addresses'));
+  assert.ok(addressLeaves.length > 0);
+  assert.ok(addressLeaves.every(item => item.type === 'Address[]'));
+  const source = renderD2ContractV2(
+    { project: 102056, module: 'onboarding', pageId: 'company_setup' },
+    buildD2ContractFromBff({
+      module: 'onboarding', pageId: 'company_setup', design: normalized,
+      access: { actors: ['owner'], grants: ['prepare'], scope: 'organization' },
+      entities: { Company: company }, userLanguage: 'en',
+    }),
+  );
+  assert.match(source, new RegExp('addresses\\?: Address\\[]'));
+  assert.match(source, new RegExp('line1: string;'));
+  assert.match(source, new RegExp('readonly formatted\\?: string;'));
+  assert.doesNotMatch(source, new RegExp('addresses\\?: string'));
+  const bare = JSON.parse('{"record":{"fields":{"details":{"type":"object","fields":{"blob":{"type":"object"},"other":{"type":"object","of":"NotAPlatformType"}}}}}}') as Ns5OntologyAnyEntity;
+  const kept = normalizeD2BffDesign(design(endpoint('qry', [leaf('blob', 'Thing.details.blob', 'string'), leaf('other', 'Thing.details.other', 'string')], '')), { Thing: bare });
+  assert.deepEqual(kept.endpoints[0].input.map(item => item.type), ['string', 'string']);
+});

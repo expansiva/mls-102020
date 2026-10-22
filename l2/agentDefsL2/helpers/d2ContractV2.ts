@@ -100,6 +100,8 @@ function inline(rows: readonly D2BffLeaf[], entities: Record<string, Ns5Ontology
 /** A value the page cannot write: a derived field or an aggregate. */
 function readonly(leaf: D2BffLeaf, entities: Record<string, Ns5OntologyAnyEntity>): string {
   if (leaf.origin?.kind === 'aggregate') return 'readonly ';
+  // A platform-type field is not on the page ontology; the leaf carries the mark (d2_121).
+  if (leaf.derived) return 'readonly ';
   if (leaf.origin?.kind !== 'field') return '';
   const path = leaf.origin.paths[0];
   const parts = path.split('.');

@@ -2,6 +2,7 @@
 
 import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
+import mdm from '/_102034_/l4/ontology/mdm.defs.js';
 import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs, D2Page11OrganismNeeds } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
@@ -41,6 +42,8 @@ export interface D2BffLeaf {
   type: string;
   optional?: boolean;
   origin?: D2BffOrigin;
+  /** The page cannot write this leaf. Set when the field comes from a platform type (`mdm.types`) marked `derived` (d2_121). */
+  derived?: boolean;
   /** A list the page pages: the contract renders `{ items: T[]; page; pageSize; hasMore }` (d2_79). */
   paginated?: boolean;
 }
@@ -293,6 +296,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     };
   }
   design = paginateD2BffDesign(design);
+  const platformTypes = new Set<string>();
   // A field leaf of a type or an input keeps its path in the ontology (d2_79): relative to the root entity, or under the
   // other entity's name when it is a join. An output key stays one name (bindings and states point at it).
   const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountChains: string[][] = [], nameUnderField = false): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
@@ -341,7 +345,9 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
       if (!nested && (counts.get(name) ?? 0) > 1 && entity !== root) name = `${lowerFirst(entity)}${name[0].toUpperCase()}${name.slice(1)}`;
       const type = underField(leaf) ? null : d2OntologyLeafType(entitiesOf[entity], path);
       const ref = parseD2BffType(leaf.type);
-      const next = { ...leaf, name, type: type && ref ? renderD2BffType({ ...type, list: ref.list }) : leaf.type };
+      // A platform `object of X` takes the MDM type, including its list, whatever type the answer wrote (d2_121).
+      if (type?.base === 'ref') platformTypes.add(type.ref);
+      const next = { ...leaf, name, type: type && ref ? renderD2BffType(type.base === 'ref' ? type : { ...type, list: ref.list }) : leaf.type };
       if (next.name !== leaf.name) renamed.set(leaf.name, next.name);
       return next;
     });
@@ -402,8 +408,9 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     return `${value.slice(0, dot)}.${outputs.get(value.slice(0, dot))?.get(key) ?? key}`;
   };
   const bindings = design.bindings;
+  const withPlatformTypes = addMdmTypes(types, platformTypes);
   return {
-    types, endpoints,
+    types: withPlatformTypes, endpoints,
     bindings: {
       ...bindings,
       organisms: bindings.organisms.map(row => ({ ...row, reads: ref(row.reads) })),
@@ -455,10 +462,62 @@ export function paginateD2BffDesign(design: D2BffDesign): D2BffDesign {
   return { ...design, types, endpoints };
 }
 
+interface MdmTypeField { type?: string; required?: boolean; derived?: boolean; values?: ReadonlyArray<string | { value: string }>; of?: string; collection?: boolean }
+
+function mdmTypeTable(): Record<string, Record<string, MdmTypeField>> {
+  return mdm.types as unknown as Record<string, Record<string, MdmTypeField>>;
+}
+
+/** Contract type of one field of a platform type (`mdm.types`). Nested `object of Y` stays a ref when Y is known. */
+function mdmFieldType(field: MdmTypeField): string {
+  if (field.type === 'object' && field.of && field.of in mdmTypeTable()) return field.collection ? `${field.of}[]` : field.of;
+  if (field.type === 'enum' && field.values?.length) return renderD2BffType({ base: 'enum', values: field.values.map(d2EnumValue), ref: '', list: false });
+  if (field.type === 'number') return 'number';
+  if (field.type === 'boolean') return 'boolean';
+  return 'string';
+}
+
+function mdmTypeLeaves(name: string): D2BffLeaf[] {
+  return Object.entries(mdmTypeTable()[name] ?? {}).map(([key, field]) => ({
+    name: key,
+    type: mdmFieldType(field),
+    ...(!field.required ? { optional: true } : {}),
+    ...(field.derived ? { derived: true } : {}),
+  }));
+}
+
+/**
+ * Types an ontology `object of X` resolved to (d2_121). A response type of the same name is replaced by the MDM shape.
+ * Nested `of` names are included. A name that is not in `mdm.types` is left as the answer wrote it.
+ */
+function addMdmTypes(types: D2BffType[], resolved: ReadonlySet<string>): D2BffType[] {
+  const table = mdmTypeTable();
+  const wanted = new Set<string>();
+  const queue = [...resolved];
+  const take = (rows: readonly D2BffLeaf[]): void => {
+    for (const leaf of rows) {
+      const ref = parseD2BffType(leaf.type);
+      if (ref?.base === 'ref' && ref.ref in table) queue.push(ref.ref);
+    }
+  };
+  while (queue.length) {
+    const name = queue.pop()!;
+    if (wanted.has(name) || !(name in table)) continue;
+    wanted.add(name);
+    take(mdmTypeLeaves(name));
+  }
+  if (!wanted.size) return types;
+  const kept = types.filter(type => !wanted.has(type.name));
+  return [...kept, ...[...wanted].map(name => ({ name, description: '', fields: mdmTypeLeaves(name) }))];
+}
+
 /** The contract type of one ontology field, as the v2 contract of main renders it; null for a branch. */
 export function d2OntologyLeafType(entity: Ns5OntologyAnyEntity | undefined, path: string): D2BffTypeRef | null {
   const field = fieldAt(entity, path);
-  if (!field || field.fields) return null;
+  if (!field) return null;
+  // A platform object with no fields of its own takes the named type from the MDM ontology (d2_121).
+  if (field.type === 'object' && !field.fields && field.of && field.of in mdmTypeTable()) return { base: 'ref', values: [], ref: field.of, list: Boolean(field.collection) };
+  if (field.fields) return null;
   if (field.type === 'enum' && field.values?.length) return { base: 'enum', values: field.values.map(d2EnumValue), ref: '', list: false };
   if (field.type === 'boolean') return { base: 'boolean', values: [], ref: '', list: false };
   if (field.type === 'integer' || field.type === 'number' || field.type === 'decimal') return { base: 'number', values: [], ref: '', list: false };
@@ -533,6 +592,8 @@ export function d2BffValueLeaves(rows: readonly D2BffLeaf[], design: Pick<D2BffD
     const ref = parseD2BffType(leaf.type);
     if (ref?.base === 'ref') {
       if (seen.has(ref.ref)) continue;
+      // The leaf that points at a platform type still names the ontology path (d2_121). Its fields do not.
+      if (leaf.origin) out.push({ at: here, leaf });
       const type = design.types.find(item => item.name === ref.ref);
       if (type) out.push(...d2BffValueLeaves(type.fields, design, here, new Set([...seen, ref.ref])));
     } else out.push({ at: here, leaf });
@@ -735,7 +796,7 @@ export function d2BffL4Slice(entities: Record<string, Ns5OntologyAnyEntity>, rul
   return { entities: out, rules: Object.fromEntries([...reached].filter(id => id in rules).sort().map(id => [id, rules[id]])) };
 }
 
-interface SliceField { type?: string; required?: boolean; derived?: boolean; title?: string; description?: string; values?: Array<{ value: string }>; fields?: Record<string, SliceField> }
+interface SliceField { type?: string; required?: boolean; derived?: boolean; title?: string; description?: string; values?: Array<string | { value: string }>; of?: string; collection?: boolean; fields?: Record<string, SliceField> }
 
 /** Scalar paths the ontology lists under an object node, at any depth. Undefined when `path` is not an object node. */
 function ontologyLeaves(entity: Ns5OntologyAnyEntity | undefined, path: string): string[] | undefined {
