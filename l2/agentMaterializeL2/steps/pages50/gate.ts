@@ -228,7 +228,9 @@ export function m4MoleculeProperties(source: string): string[] {
     if (source[i] === '(') i = skipSpaceAndComments(source, skipBalanced(source, i));
     let name = /^[A-Za-z_$][\w$]*/u.exec(source.slice(i))?.[0] ?? '';
     while (FIELD_MODIFIERS.has(name)) {
-      i = skipSpaceAndComments(source, i + name.length);
+      const afterMod = skipSpaceAndComments(source, i + name.length);
+      if (source[afterMod] === ':' || source[afterMod] === '=' || source[afterMod] === '?') break;
+      i = afterMod;
       name = /^[A-Za-z_$][\w$]*/u.exec(source.slice(i))?.[0] ?? '';
     }
     if (!name || seen.has(name)) continue;

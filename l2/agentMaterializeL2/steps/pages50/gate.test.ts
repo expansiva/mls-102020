@@ -433,7 +433,7 @@ test('a detail key or a property the molecule does not have is refused; an unrea
   assert.equal(noProps.filter(item => item.code === 'M4_PAGE_PROPERTY_UNKNOWN').length, 0);
 });
 
-test('a ${} on a plain attribute is skipped; a native property passes; .readonly on ml-enter-text is refused', () => {
+test('a ${} on a plain attribute is skipped; a native property passes; .readonly on ml-enter-text passes', () => {
   const enter = molecule('groupentertext/ml-enter-text');
   const text = 'groupentertext--ml-enter-text';
   const dom = m4DomProperties(readFileSync(new URL('../../../../../node_modules/typescript/lib/lib.dom.d.ts', import.meta.url), 'utf8'));
@@ -444,8 +444,20 @@ test('a ${} on a plain attribute is skipped; a native property passes; .readonly
     moleculeProperties: { [text]: m4MoleculeProperties(enter) },
     baseProperties: dom,
   }).filter(item => item.code === 'M4_PAGE_PROPERTY_UNKNOWN');
-  assert.equal(issues.length, 1);
-  assert.match(issues[0].message, /binds property "readonly"/u);
+  assert.equal(issues.length, 0);
+});
+
+test('readonly before : = or ? is the property name; readonly before another name stays a modifier', () => {
+  assert.deepEqual(
+    m4MoleculeProperties('@propertyDataSource({ type: Boolean }) readonly: boolean = false;'),
+    ['readonly'],
+  );
+  assert.deepEqual(m4MoleculeProperties('@property() readonly foo = 1;'), ['foo']);
+  const enter = molecule('groupentertext/ml-enter-text');
+  assert.deepEqual(m4MoleculeProperties(enter), [
+    'value', 'error', 'name', 'placeholder', 'maxLength', 'minLength', 'rows', 'autocomplete',
+    'inputType', 'mask', 'isEditing', 'disabled', 'readonly', 'required', 'loading',
+  ]);
 });
 
 test('M4_DOM_PROPERTIES matches HTMLElement, Element and Node in lib.dom.d.ts', () => {
