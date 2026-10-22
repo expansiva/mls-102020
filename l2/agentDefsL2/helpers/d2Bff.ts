@@ -276,6 +276,8 @@ function parseBindings(value: unknown, fail: (path: string, what: string) => nev
  * A leaf that carries one field takes the field's key as its name and the type the contract gives that field (d2_75):
  * the answer's choice is overwritten, never refused. Two leaves of one list that derive the same name keep the root
  * entity's leaf as is and prefix the others with their entity. Bindings follow the renamed output keys.
+ * Two leaves of one field in a query input keep the names the answer wrote. Two leaves of one field in a type keep the
+ * name and the type the answer wrote (`textId: string`) and stay distinct (d2_120). A command input folds them.
  */
 export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = ''): D2BffDesign {
   // The contract interface of the page owns its name: a type that took it is renamed, with its references (d2_76).
@@ -293,12 +295,14 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   design = paginateD2BffDesign(design);
   // A field leaf of a type or an input keeps its path in the ontology (d2_79): relative to the root entity, or under the
   // other entity's name when it is a join. An output key stays one name (bindings and states point at it).
-  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountChains: string[][] = []): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
+  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountChains: string[][] = [], nameUnderField = false): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
     const field = (leaf: D2BffLeaf): string => (leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '');
     // A query input uses two leaves of one field as two roles (from/to). They keep the names the answer wrote.
+    // A type with several leaves of one field keeps each answer name and type (d2_120). A command input folds them.
     const originCounts = new Map<string, number>();
-    if (keepSameOrigin) for (const path of rows.map(field).filter(Boolean)) originCounts.set(path, (originCounts.get(path) ?? 0) + 1);
-    const keepsName = (leaf: D2BffLeaf): boolean => (originCounts.get(field(leaf)) ?? 0) > 1;
+    if (keepSameOrigin || nameUnderField) for (const path of rows.map(field).filter(Boolean)) originCounts.set(path, (originCounts.get(path) ?? 0) + 1);
+    const keepsName = (leaf: D2BffLeaf): boolean => keepSameOrigin && (originCounts.get(field(leaf)) ?? 0) > 1;
+    const underField = (leaf: D2BffLeaf): boolean => nameUnderField && (originCounts.get(field(leaf)) ?? 0) > 1;
     // The root: the entity of the `Entity.id` leaf, the written entity of a command input, else the entity most fields
     // come from (a line without its id still belongs to its own entity; the others are joins).
     const counted = new Map<string, number>();
@@ -333,9 +337,9 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
       const path = field(leaf);
       if (!path) return leaf;
       const entity = entityOf(path);
-      let name = keepsName(leaf) ? leaf.name : derivedName(leaf);
+      let name = keepsName(leaf) || underField(leaf) ? leaf.name : derivedName(leaf);
       if (!nested && (counts.get(name) ?? 0) > 1 && entity !== root) name = `${lowerFirst(entity)}${name[0].toUpperCase()}${name.slice(1)}`;
-      const type = d2OntologyLeafType(entitiesOf[entity], path);
+      const type = underField(leaf) ? null : d2OntologyLeafType(entitiesOf[entity], path);
       const ref = parseD2BffType(leaf.type);
       const next = { ...leaf, name, type: type && ref ? renderD2BffType({ ...type, list: ref.list }) : leaf.type };
       if (next.name !== leaf.name) renamed.set(leaf.name, next.name);
@@ -345,7 +349,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     // A query input is the exception: the two roles of one field stay two leaves.
     const unique: D2BffLeaf[] = [];
     for (const leaf of out) {
-      if (keepsName(leaf)) { unique.push(leaf); continue; }
+      if (keepsName(leaf) || underField(leaf)) { unique.push(leaf); continue; }
       const same = unique.find(item => item.name === leaf.name);
       if (!same) { unique.push(leaf); continue; }
       if (JSON.stringify(same.origin) !== JSON.stringify(leaf.origin)) throw new Error(`D2_BFF_FORMAT: ${at}.${leaf.name}: two leaves with different origins carry the same name after the ontology names were applied.`);
@@ -378,12 +382,12 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     if (!incoming.length) return [[]];
     return incoming.flatMap(mount => chainsOf(mount.parent, [...seen, name]).map(chain => [...chain, mount.field]));
   };
-  const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`, '', true, false, chainsOf(type.name)).rows }));
+  const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`, '', true, false, chainsOf(type.name), true).rows }));
   const outputs = new Map<string, Map<string, string>>();
   const endpoints = design.endpoints.map(endpoint => {
     const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`, '', false);
     outputs.set(endpoint.id, output.renamed);
-    const input = fix(endpoint.input, `endpoints.${endpoint.id}.input`, endpoint.writes ? entityOf(endpoint.writes) : '', true, endpoint.kind === 'qry');
+    const input = fix(endpoint.input, `endpoints.${endpoint.id}.input`, endpoint.writes ? entityOf(endpoint.writes) : '', true, endpoint.kind === 'qry', []);
     return {
       ...endpoint,
       input: input.rows,
