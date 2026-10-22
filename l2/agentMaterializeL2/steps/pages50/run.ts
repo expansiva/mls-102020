@@ -21,8 +21,9 @@ import { loadMoleculeCatalog, m4DefsInfo, moleculeIndexInfo, templateInfo, type 
 import { m4SharedReuseBlocker, readM4Snapshot, sharedDeclarationInfo, sharedSourceInfo, storedHash, studioSharedPort, type M4SharedPort } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { m4SharedClassName } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
 import {
-  M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
+  M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4InheritedProperties, m4MoleculeDetailEvents, m4MoleculeEvents, m4MoleculeImport, m4MoleculeProperties, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { M4_DOM_PROPERTIES } from '/_102020_/l2/agentMaterializeL2/steps/pages50/domProperties.js';
 
 export const M4_PAGE_VERSION = '2026-10-05-materialize-l2-v4-page-v1' as const;
 export const M4_PAGE_TOOL = 'submitPageTs' as const;
@@ -178,7 +179,8 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     sharedClassName: m4SharedClassName(identity.module, pageId),
     locales, tokens,
     methods: page.methods ?? {},
-    moleculeEvents: await m4PageMoleculeEvents(tags, port),
+    ...(await m4PageMoleculeFacts(tags, port)),
+    baseProperties: await m4BaseProperties(port),
     pageOnlyRequests,
   };
   const prompt = await port.read(pagePromptInfo);
@@ -237,15 +239,42 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
  * reaches the page), plus the scene host. A molecule whose source cannot be read is left out, so it is not checked.
  */
 export async function m4PageMoleculeEvents(tags: string[], port: Pick<M4PagePort, 'exists' | 'read'>): Promise<Record<string, string[]>> {
+  return (await m4PageMoleculeFacts(tags, port)).moleculeEvents ?? {};
+}
+
+/** Events, detail keys and properties of each molecule, from one read of its `.ts`. Unreadable sources are left out. */
+export async function m4PageMoleculeFacts(tags: string[], port: Pick<M4PagePort, 'exists' | 'read'>): Promise<Pick<M4PageTarget, 'moleculeEvents' | 'moleculeProperties' | 'moleculeDetail'>> {
   const sources: Array<[string, Ns5FileInfo]> = [
     ...tags.map(tag => [tag, { ...moleculeIndexInfo(tag), shortName: tag.slice(tag.indexOf('--') + 2), extension: '.ts' }] as [string, Ns5FileInfo]),
     [M4_SCENARY_TAG, { project: 102020, level: 2, folder: 'molecules', shortName: 'ml-scenary', extension: '.ts' }],
   ];
-  const events: Record<string, string[]> = {};
+  const moleculeEvents: Record<string, string[]> = {};
+  const moleculeProperties: Record<string, string[]> = {};
+  const moleculeDetail: Record<string, Record<string, string[] | null>> = {};
   for (const [tag, info] of sources) {
-    try { if (port.exists(info)) events[tag] = m4MoleculeEvents(await port.read(info)); } catch { /* unreadable: not checked */ }
+    try {
+      if (!port.exists(info)) continue;
+      const source = await port.read(info);
+      moleculeEvents[tag] = m4MoleculeEvents(source);
+      moleculeProperties[tag] = m4MoleculeProperties(source);
+      moleculeDetail[tag] = Object.fromEntries(m4MoleculeDetailEvents(source).map(item => [item.name, item.keys]));
+    } catch { /* unreadable: not checked */ }
   }
-  return events;
+  return { moleculeEvents, moleculeProperties, moleculeDetail };
+}
+
+/** Properties of MoleculeAuraElement, StateLitElement and CollabLitElement, read from their `.ts`. */
+async function m4BaseProperties(port: Pick<M4PagePort, 'exists' | 'read'>): Promise<string[]> {
+  const files: Ns5FileInfo[] = [
+    { project: 102033, level: 2, folder: '', shortName: 'moleculeBase', extension: '.ts' },
+    { project: 102029, level: 2, folder: '', shortName: 'stateLitElement', extension: '.ts' },
+    { project: 102029, level: 2, folder: '', shortName: 'collabLitElement', extension: '.ts' },
+  ];
+  const sources: string[] = [];
+  for (const info of files) {
+    try { if (port.exists(info)) sources.push(await port.read(info)); } catch { /* unread: that base adds nothing */ }
+  }
+  return [...new Set([...m4InheritedProperties(sources), ...M4_DOM_PROPERTIES])].sort();
 }
 
 /** The projection interfaces of the contract (no route map): the exact shape of every row the shared exposes. */

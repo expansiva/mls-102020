@@ -30,6 +30,18 @@ export interface M4PageTarget {
    * source could not be read): the event check only refuses what it can prove.
    */
   moleculeEvents?: Record<string, string[]>;
+  /**
+   * Molecule tag → event name → top-level `detail` keys (`m4MoleculeDetailEvents`). `null` keys were not
+   * read: that event is not checked. A tag absent here is not checked.
+   */
+  moleculeDetail?: Record<string, Record<string, string[] | null>>;
+  /**
+   * Molecule tag → properties declared on its own `.ts` (`m4MoleculeProperties`). Checked only when the list
+   * has at least one name. A tag absent here was not read and is not checked.
+   */
+  moleculeProperties?: Record<string, string[]>;
+  /** Properties declared on the shared molecule bases, read from their `.ts`. Not a fixed list. */
+  baseProperties?: string[];
   /** The requests only the page can start (m4PageOnlyRequests); each must be called by the page. */
   pageOnlyRequests?: M4PageOnlyRequest[];
 }
@@ -159,6 +171,49 @@ function objectLiteralKeys(source: string, openBrace: number): string[] | null {
   return null;
 }
 
+/** Property and method names of `HTMLElement`, `Element` and `Node` in a `lib.dom.d.ts` source. */
+export function m4DomProperties(source: string): string[] {
+  const names = new Set<string>();
+  for (const iface of ['HTMLElement', 'Element', 'Node']) {
+    const match = new RegExp(`\\binterface\\s+${iface}\\b`, 'u').exec(source);
+    if (!match) continue;
+    let i = match.index + match[0].length;
+    while (i < source.length && source[i] !== '{') i += 1;
+    if (source[i] !== '{') continue;
+    collectInterfaceMembers(source.slice(i + 1, skipBalanced(source, i) - 1), names);
+  }
+  return [...names].sort();
+}
+
+/** Names of the members declared directly on one interface body. */
+function collectInterfaceMembers(body: string, into: Set<string>): void {
+  let depth = 0;
+  let quote = '';
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i];
+    if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = ''; continue; }
+    if (ch === '/' && body[i + 1] === '/') { i += 2; while (i < body.length && body[i] !== '\n') i += 1; continue; }
+    if (ch === '/' && body[i + 1] === '*') { i += 2; while (i < body.length && !(body[i] === '*' && body[i + 1] === '/')) i += 1; i += 1; continue; }
+    if (ch === '\'' || ch === '"' || ch === '`') { quote = ch; continue; }
+    if (ch === '{' || ch === '(' || ch === '[') { depth += 1; continue; }
+    if (ch === '}' || ch === ')' || ch === ']') { depth -= 1; continue; }
+    if (depth !== 0 || !/[A-Za-z_$]/u.test(ch)) continue;
+    const word = /^[A-Za-z_$][\w$]*/u.exec(body.slice(i))?.[0] ?? '';
+    if (!word) continue;
+    if (word === 'readonly' || word === 'get' || word === 'set' || word === 'static') { i += word.length - 1; continue; }
+    const after = skipSpaceAndComments(body, i + word.length);
+    if (body[after] === ':' || body[after] === '?' || body[after] === '(' || body[after] === '<') into.add(word);
+    i += word.length - 1;
+  }
+}
+
+/** Names declared with `@property` / `@propertyDataSource` across the base sources the caller read. */
+export function m4InheritedProperties(sources: string[]): string[] {
+  const names = new Set<string>();
+  for (const source of sources) for (const name of m4MoleculeProperties(source)) names.add(name);
+  return [...names].sort();
+}
+
 /** Names of fields declared under `@property` or `@propertyDataSource`. */
 export function m4MoleculeProperties(source: string): string[] {
   const names: string[] = [];
@@ -252,6 +307,76 @@ export function m4BoundEvents(code: string, tag: string): string[] {
   }
   return found;
 }
+
+/** First parameter name of an inline handler, or null when the handler is not an inline function. */
+function m4HandlerParam(expression: string): string | null {
+  const arrow = /^\s*(?:async\s+)?(?:\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*=>/u.exec(expression);
+  const fn = /^\s*(?:async\s+)?function\s*(?:[A-Za-z_$][\w$]*)?\s*\(([^)]*)\)/u.exec(expression);
+  const list = arrow?.[1] ?? arrow?.[2] ?? fn?.[1];
+  if (list === undefined) return null;
+  const first = list.split(',')[0]?.trim().replace(/[:?=].*$/u, '').trim() ?? '';
+  return /^[A-Za-z_$][\w$]*$/u.test(first) ? first : null;
+}
+
+/**
+ * Property bindings (`.prop=`) and event handlers (`@event=`) on the opening tag, outside its `${…}` expressions.
+ * The expression is empty when the binding is not `${…}`.
+ */
+function m4TagBindings(code: string, tag: string): Array<{ kind: 'property' | 'event'; name: string; expression: string }> {
+  const found: Array<{ kind: 'property' | 'event'; name: string; expression: string }> = [];
+  const open = new RegExp(`<${tag.replace(/\./gu, '\\.')}(?![\\w-])`, 'gu');
+  for (const match of code.matchAll(open)) {
+    let i = (match.index ?? 0) + match[0].length;
+    let depth = 0;
+    let quote = '';
+    for (; i < code.length; i += 1) {
+      const ch = code[i];
+      if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = ''; continue; }
+      if (depth > 0) {
+        if (ch === '\'' || ch === '"' || ch === '`') quote = ch;
+        else if (ch === '{') depth += 1;
+        else if (ch === '}') depth -= 1;
+        continue;
+      }
+      if (ch === '$' && code[i + 1] === '{') { depth = 1; i += 1; continue; }
+      if (ch === '"' || ch === '\'') { quote = ch; continue; }
+      if (ch === '>') break;
+      if ((ch !== '@' && ch !== '.') || !/\s/u.test(code[i - 1] ?? '')) continue;
+      const binding = /^[@.]([A-Za-z][\w:.-]*)\s*=/u.exec(code.slice(i, i + 80));
+      if (!binding) continue;
+      let expression = '';
+      const after = i + binding[0].length;
+      if (code[after] === '$' && code[after + 1] === '{') {
+        const start = after + 2;
+        let innerDepth = 1;
+        let j = start;
+        let inner = '';
+        for (; j < code.length && innerDepth > 0; j += 1) {
+          const c = code[j];
+          if (inner) { if (c === '\\') j += 1; else if (c === inner) inner = ''; continue; }
+          if (c === '\'' || c === '"' || c === '`') inner = c;
+          else if (c === '{') innerDepth += 1;
+          else if (c === '}') innerDepth -= 1;
+        }
+        expression = code.slice(start, j - 1);
+        i = j - 1;
+      }
+      found.push({ kind: ch === '@' ? 'event' : 'property', name: binding[1], expression });
+    }
+  }
+  return found;
+}
+
+/** Top-level `param.detail.key` reads in a handler. A key that is not an identifier is ignored. */
+function m4DetailKeysRead(expression: string): string[] {
+  const param = m4HandlerParam(expression);
+  if (!param) return [];
+  const keys: string[] = [];
+  const re = new RegExp(`\\b${param}\\s*\\.\\s*detail\\s*\\??\\.\\s*([A-Za-z_$][\\w$]*)`, 'gu');
+  for (const match of expression.matchAll(re)) if (!keys.includes(match[1])) keys.push(match[1]);
+  return keys;
+}
+
 /**
  * The event handlers bound on a molecule that throw away the molecule's own event. A molecule dispatches its events on
  * itself, so in its handler `e.target === e.currentTarget` is always true. The bubbling guard belongs only to the scene
@@ -444,6 +569,30 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
     for (const name of new Set(m4BoundEvents(code, tag))) {
       if (dispatched.has(name) || NATIVE_EVENTS.has(name)) continue;
       issues.push({ code: 'M4_PAGE_EVENT_UNKNOWN', severity: 'error', always: true, message: `<${tag}> never dispatches "${name}", so @${name} never runs. It dispatches ${events.length ? events.map(event => `"${event}"`).join(', ') : 'no event of its own'}${events.length ? '' : ' (only native DOM events such as click reach the page)'}; listen to the one that carries what the page needs, as its skill describes.` });
+    }
+  }
+  // A handler that reads a detail key the molecule does not send, and a `.prop=` the molecule does not declare
+  // (ml-address-field, onboarding mobile, 22/10/2026: change was read as the whole address, and .value does not exist).
+  // Enforced even while the rest of the gate is off. A molecule whose keys were not read is not checked.
+  const inherited = new Set(target.baseProperties ?? []);
+  const listed = (names: string[]) => names.length ? names.map(name => `"${name}"`).join(', ') : 'nothing';
+  for (const [tag, events] of Object.entries(target.moleculeDetail ?? {})) {
+    for (const binding of m4TagBindings(code, tag)) {
+      if (binding.kind !== 'event') continue;
+      const keys = events[binding.name];
+      if (!keys) continue;
+      for (const key of m4DetailKeysRead(binding.expression)) {
+        if (keys.includes(key)) continue;
+        issues.push({ code: 'M4_PAGE_EVENT_DETAIL_UNKNOWN', severity: 'error', always: true, message: `<${tag}> reads "${key}" from the detail of @${binding.name}. That event sends ${listed(keys)}.` });
+      }
+    }
+  }
+  for (const [tag, properties] of Object.entries(target.moleculeProperties ?? {})) {
+    if (!properties.length) continue;
+    const declared = new Set([...properties, ...inherited]);
+    for (const binding of m4TagBindings(code, tag)) {
+      if (binding.kind !== 'property' || declared.has(binding.name)) continue;
+      issues.push({ code: 'M4_PAGE_PROPERTY_UNKNOWN', severity: 'error', always: true, message: `<${tag}> binds property "${binding.name}", which it does not declare. It declares ${listed(properties)}.` });
     }
   }
 
