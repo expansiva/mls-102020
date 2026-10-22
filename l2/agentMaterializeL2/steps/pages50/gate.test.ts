@@ -358,6 +358,25 @@ test('a molecule handler that throws away its own event is refused; the harmless
   assert.match(issue.message, /use e\.detail directly/u);
 });
 
+test('spreading a possibly absent value with ! is refused; the empty-draft start and a bare ! pass', () => {
+  const withBody = (body: string) => reference.replace('</main>', `${body}</main>`);
+  const refused = withBody('updateAddress({ ...address!, line1: v })');
+  assert.notEqual(refused, reference);
+  const issue = gateM4PageSource(refused, target()).find(item => item.code === 'M4_PAGE_SPREAD_NON_NULL');
+  assert.ok(issue && issue.always && issue.severity === 'error');
+  assert.match(issue.message, /address/u);
+  assert.match(issue.message, /the shared's empty-draft function/u);
+  assert.doesNotMatch(issue.message, /emptyAddressDraft|\?\?/u);
+  const named = gateM4PageSource(refused, { ...target(), sharedDeclaration: 'export declare function emptyAddressDraft(): AddressDraft;\nexport declare function other(): void;' });
+  const namedIssue = named.find(item => item.code === 'M4_PAGE_SPREAD_NON_NULL');
+  assert.match(namedIssue!.message, /emptyAddressDraft/u);
+  assert.doesNotMatch(namedIssue!.message, /the shared's empty-draft function|\?\?/u);
+  const renamed = gateM4PageSource(refused, { ...target(), sharedDeclaration: 'export declare function newAddressDraft(): AddressDraft;' });
+  assert.match(renamed.find(item => item.code === 'M4_PAGE_SPREAD_NON_NULL')!.message, /newAddressDraft/u);
+  assert.ok(!gateM4PageSource(withBody('updateAddress({ ...(address ?? emptyAddressDraft()), line1: v })'), target()).some(item => item.code === 'M4_PAGE_SPREAD_NON_NULL'));
+  assert.ok(!gateM4PageSource(withBody('const x = address!;'), target()).some(item => item.code === 'M4_PAGE_SPREAD_NON_NULL'));
+});
+
 test('a select with no Item is refused; options from a list or inside Group pass', () => {
   const select = (body: string) => reference.replace('</main>', `<groupselectone--ml-select-one-autocomplete .value=\${this.pais}>${body}</groupselectone--ml-select-one-autocomplete></main>`);
   const empty = select('<Label>${this.msg[\'pais\']}</Label>');

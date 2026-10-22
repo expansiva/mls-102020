@@ -182,6 +182,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     ...(await m4PageMoleculeFacts(tags, port)),
     baseProperties: await m4BaseProperties(port),
     pageOnlyRequests,
+    sharedDeclaration: declaration,
   };
   const prompt = await port.read(pagePromptInfo);
   const parts = [

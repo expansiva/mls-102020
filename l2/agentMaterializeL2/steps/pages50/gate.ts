@@ -44,6 +44,11 @@ export interface M4PageTarget {
   baseProperties?: string[];
   /** The requests only the page can start (m4PageOnlyRequests); each must be called by the page. */
   pageOnlyRequests?: M4PageOnlyRequest[];
+  /**
+   * The shared `.d.ts` the page codes against, when the caller already has it. Used only to name an
+   * `empty<X>Draft` function. Absent: the gate does not read a file and speaks of the function without a name.
+   */
+  sharedDeclaration?: string;
 }
 
 export interface M4PageOnlyRequest { fn: string; steps: string[] }
@@ -600,6 +605,18 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   // the rest of the gate is off.
   for (const drop of m4OwnEventDrops(code)) {
     issues.push({ code: 'M4_PAGE_OWN_EVENT_DROPPED', severity: 'error', always: true, message: `The @${drop.event} handler of <${drop.tag}> throws away the molecule's own event (${drop.handler}). A molecule dispatches its events on itself, so e.target === e.currentTarget is always true there: use e.detail directly, with no target check. The bubbling guard belongs only to the scene host.` });
+  }
+
+  // Spreading a possibly absent nested draft with `!` drops every key the expression did not set
+  // (onboarding company address, 22/10/2026: `...address!` left line3 undefined and the save threw).
+  // Enforced even while the rest of the gate is off. The message names every shared function that takes
+  // no argument and returns a `…Draft` type, whatever its name, when that declaration is already on the
+  // target; it does not open a file.
+  const spreadNonNull = [...code.matchAll(/\.\.\.([A-Za-z_.]+)!/gu)].map(match => match[1]);
+  if (spreadNonNull.length > 0) {
+    const drafts = [...(target.sharedDeclaration ?? '').matchAll(/export\s+declare\s+function\s+([A-Za-z_$][\w$]*)\s*\(\s*\)\s*:\s*(?:[A-Za-z_][\w$.]*)?Draft\s*;/gu)].map(match => match[1]);
+    const via = drafts.length ? drafts.join(', ') : "the shared's empty-draft function";
+    issues.push({ code: 'M4_PAGE_SPREAD_NON_NULL', severity: 'error', always: true, message: `Spreading ${[...new Set(spreadNonNull)].join(', ')} with ! builds a nested draft that is missing the keys that were not set. Start that object from ${via}.` });
   }
 
   // A select with no <Item> offers nothing to choose (onboarding my_access_details, 21/10/2026: the country
