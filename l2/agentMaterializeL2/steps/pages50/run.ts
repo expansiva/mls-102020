@@ -21,7 +21,7 @@ import { loadMoleculeCatalog, m4DefsInfo, moleculeIndexInfo, templateInfo, type 
 import { m4SharedReuseBlocker, readM4Snapshot, sharedDeclarationInfo, sharedSourceInfo, storedHash, studioSharedPort, type M4SharedPort } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { m4SharedClassName } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
 import {
-  M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
+  M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 
 export const M4_PAGE_VERSION = '2026-10-05-materialize-l2-v4-page-v1' as const;
@@ -216,7 +216,12 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     tokens.length ? tokens.join(', ') : '(no design system: use neutral structural utilities only)',
     '',
     '# Molecules of this page',
-    ...(tags.length ? tags.map(tag => `- <${tag}> — import '${m4MoleculeImport(tag)}'`) : ['(none: this page has no molecule recommendation. Build it with semantic HTML and Tailwind only, and import no molecule.)']),
+    ...(tags.length ? (await Promise.all(tags.map(async tag => {
+      const info = { ...moleculeIndexInfo(tag), shortName: tag.slice(tag.indexOf('--') + 2), extension: '.ts' };
+      let surface = '';
+      try { if (port.exists(info)) surface = m4MoleculeSurfaceLine(tag, await port.read(info)); } catch { /* unreadable: the line is omitted */ }
+      return [`- <${tag}> — import '${m4MoleculeImport(tag)}'`, ...(surface ? [surface] : [])];
+    }))).flat() : ['(none: this page has no molecule recommendation. Build it with semantic HTML and Tailwind only, and import no molecule.)']),
     '',
     ...[...groups.entries()].flatMap(([folder, group]) => [`## Usage contract — ${folder}`, group.usage.trim() || '(usage contract not found)', '']),
     ...skills.flatMap(item => [`## Molecule — <${item.tag}>`, item.skill, '']),

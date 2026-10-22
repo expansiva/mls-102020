@@ -84,6 +84,145 @@ export function m4MoleculeEvents(source: string): string[] {
   return [...names].sort();
 }
 
+const FIELD_MODIFIERS = new Set(['public', 'private', 'protected', 'readonly', 'override', 'declare', 'static', 'abstract']);
+
+function skipSpaceAndComments(source: string, index: number): number {
+  let i = index;
+  while (i < source.length) {
+    if (/\s/u.test(source[i])) { i += 1; continue; }
+    if (source[i] === '/' && source[i + 1] === '/') { i += 2; while (i < source.length && source[i] !== '\n') i += 1; continue; }
+    if (source[i] === '/' && source[i + 1] === '*') { i += 2; while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1; i += 2; continue; }
+    break;
+  }
+  return i;
+}
+
+function skipBalanced(source: string, openIndex: number): number {
+  const open = source[openIndex];
+  const close = open === '(' ? ')' : open === '{' ? '}' : open === '[' ? ']' : '';
+  if (!close) return openIndex;
+  let depth = 0;
+  let quote = '';
+  for (let i = openIndex; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === '\\') { i += 1; continue; }
+      if (quote === '`' && ch === '$' && source[i + 1] === '{') { i += 1; continue; }
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === '/' && source[i + 1] === '/') { i += 2; while (i < source.length && source[i] !== '\n') i += 1; continue; }
+    if (ch === '/' && source[i + 1] === '*') { i += 2; while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1; i += 1; continue; }
+    if (ch === '\'' || ch === '"' || ch === '`') { quote = ch; continue; }
+    if (ch === open) depth += 1;
+    else if (ch === close) { depth -= 1; if (depth === 0) return i + 1; }
+  }
+  return source.length;
+}
+
+/** Top-level keys of an object literal. `null` when a key is computed, spread, or not a literal. */
+function objectLiteralKeys(source: string, openBrace: number): string[] | null {
+  if (source[openBrace] !== '{') return null;
+  const keys: string[] = [];
+  let i = openBrace + 1;
+  while (i < source.length) {
+    i = skipSpaceAndComments(source, i);
+    if (source[i] === '}') return keys;
+    if (source.startsWith('...', i) || source[i] === '[') return null;
+    const quoted = /^(['"])([A-Za-z_][\w-]*)\1/u.exec(source.slice(i));
+    const ident = /^[A-Za-z_$][\w$]*/u.exec(source.slice(i));
+    const key = quoted?.[2] ?? ident?.[0];
+    if (!key) return null;
+    i += (quoted ?? ident)![0].length;
+    i = skipSpaceAndComments(source, i);
+    if (source[i] === ':') {
+      i = skipSpaceAndComments(source, i + 1);
+      let depth = 0;
+      let quote = '';
+      for (; i < source.length; i += 1) {
+        const ch = source[i];
+        if (quote) { if (ch === '\\') { i += 1; continue; } if (ch === quote) quote = ''; continue; }
+        if (ch === '/' && source[i + 1] === '/') { i += 2; while (i < source.length && source[i] !== '\n') i += 1; continue; }
+        if (ch === '/' && source[i + 1] === '*') { i += 2; while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1; i += 1; continue; }
+        if (ch === '\'' || ch === '"' || ch === '`') { quote = ch; continue; }
+        if (ch === '{' || ch === '(' || ch === '[') { depth += 1; continue; }
+        if (ch === '}' || ch === ')' || ch === ']') { if (depth === 0) break; depth -= 1; continue; }
+        if (ch === ',' && depth === 0) break;
+      }
+      i = skipSpaceAndComments(source, i);
+    }
+    keys.push(key);
+    if (source[i] === ',') { i += 1; continue; }
+    if (source[i] === '}') return keys;
+    return null;
+  }
+  return null;
+}
+
+/** Names of fields declared under `@property` or `@propertyDataSource`. */
+export function m4MoleculeProperties(source: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const match of source.matchAll(/@(?:propertyDataSource|property)\b/gu)) {
+    let i = skipSpaceAndComments(source, (match.index ?? 0) + match[0].length);
+    if (source[i] === '(') i = skipSpaceAndComments(source, skipBalanced(source, i));
+    let name = /^[A-Za-z_$][\w$]*/u.exec(source.slice(i))?.[0] ?? '';
+    while (FIELD_MODIFIERS.has(name)) {
+      i = skipSpaceAndComments(source, i + name.length);
+      name = /^[A-Za-z_$][\w$]*/u.exec(source.slice(i))?.[0] ?? '';
+    }
+    if (!name || seen.has(name)) continue;
+    const after = skipSpaceAndComments(source, i + name.length);
+    if (source[after] !== ':' && source[after] !== '=' && source[after] !== '?') continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
+/**
+ * Top-level `detail` keys of each `new CustomEvent('<name>', { detail: { … } })`.
+ * `keys` is null when a key of that event is not a literal (`keys not read`).
+ * An event dispatched with no `detail` object has an empty key list.
+ */
+export function m4MoleculeDetailEvents(source: string): Array<{ name: string; keys: string[] | null }> {
+  const found = new Map<string, { keys: string[] | null }>();
+  const re = /\bnew\s+CustomEvent\s*(?:<[^>]*>)?\(\s*(['"`])([A-Za-z][\w:.-]*)\1/gu;
+  for (const match of source.matchAll(re)) {
+    const name = match[2];
+    let i = skipSpaceAndComments(source, (match.index ?? 0) + match[0].length);
+    let keys: string[] | null = [];
+    if (source[i] === ',') {
+      i = skipSpaceAndComments(source, i + 1);
+      if (source[i] === '{') {
+        const bodyEnd = skipBalanced(source, i);
+        const body = source.slice(i, bodyEnd);
+        const detail = /\bdetail\s*:/u.exec(body);
+        if (detail) {
+          let k = skipSpaceAndComments(body, detail.index + detail[0].length);
+          keys = body[k] === '{' ? objectLiteralKeys(body, k) : null;
+        }
+      } else keys = null;
+    }
+    const previous = found.get(name);
+    if (!previous) found.set(name, { keys });
+    else if (previous.keys === null || keys === null) previous.keys = null;
+    else for (const key of keys) if (!previous.keys.includes(key)) previous.keys.push(key);
+  }
+  return [...found.entries()].map(([name, item]) => ({ name, keys: item.keys }));
+}
+
+/** One prompt line: `` `<tag>`: properties a, b; events change {field, value} ``.
+ * Events are the union of names (`m4MoleculeEvents`) and detail keys (`m4MoleculeDetailEvents`).
+ * A name with no keys read is `<name> {keys not read}`. */
+export function m4MoleculeSurfaceLine(tag: string, source: string): string {
+  const properties = m4MoleculeProperties(source).join(', ');
+  const byName = new Map(m4MoleculeDetailEvents(source).map(item => [item.name, item.keys]));
+  for (const name of m4MoleculeEvents(source)) if (!byName.has(name)) byName.set(name, null);
+  const events = [...byName.entries()].map(([name, keys]) => `${name} {${keys === null ? 'keys not read' : keys.join(', ')}}`).join(', ');
+  return `\`${tag}\`: properties ${properties}; events ${events}`;
+}
+
 /** Every `@event=` bound on the opening tag of a molecule element, outside the `${…}` expressions of that tag. */
 export function m4BoundEvents(code: string, tag: string): string[] {
   const found: string[] = [];
