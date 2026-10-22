@@ -135,3 +135,17 @@ Forbidden on mobile:
    the user selecting it.
 4. **S4 remaining count:** a visible count of documents still waiting drops after each decision.
 5. **S5 empty goal:** with nothing pending, one calm sentence states the inbox is clear.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "listOverflow": "infinite",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupViewData", "groupTriggerAction"], "forbid": ["groupViewHierarchy"] }
+}
+```

@@ -83,7 +83,11 @@ English only. Sections in exactly this order:
 ## On mobile
 ## Forbidden
 ## Signals (how to check the generated page)
+## Molecule rules
 ```
+
+`## Molecule rules` is required in every new template. The legacy `pageNN.md` files do not have it,
+and its absence means "no restriction".
 
 What goes in each section:
 
@@ -125,6 +129,53 @@ What goes in each section:
   (`**S1 <name>:** ...`), each about the **distinguishing** shape. Prefer signals that hold for any
   contract of the category. When one depends on an optional command, say so ("wherever the contract
   declares X").
+- **Molecule rules.** The only part read by code: see the format below.
+
+### The `## Molecule rules` block
+
+The last section holds exactly one ```` ```json ```` block, one blank line after the heading, and
+nothing else:
+
+````
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "grid", "density": "comfortable" },
+  "groups": { "prefer": ["groupViewCard"], "forbid": ["groupViewTable"] }
+}
+```
+````
+
+It replaces the old per-layout "Rules for components". It applies to the **whole page** (there are no
+rules per organism), and it goes into the prompt with the rest of the template, so the LLM reads it
+too. Code takes the first `json` block after the heading (`templateRules.ts`); the guard
+`templateRules.test.ts` fails on a missing section, invalid JSON, more than one block, or any
+problem below.
+
+- **`axes`**: only the axes and values of `layoutAxes` in
+  [`designSystemAuraBase.ts`](../../../l2/aura/helpers/designSystemAuraBase.ts) (density,
+  labelPlacement, validation, selectOne, recordsView, cardLayout…). An absent axis keeps the axis
+  default. Never invent a value: if the prose needs one that does not exist, the prose still rules.
+  Do not use `navMain`, which belongs to the shell, not to the page.
+- **`groups.forbid`**: groups the page must not use. Molecule choice refuses them.
+- **`groups.prefer`**: groups the template favors. They steer the choice but are not mandatory.
+- **Group ids** are the folders of `l2/aura/molecules/skills/` that start with `group`
+  (`groupViewCard`, `groupViewTable`, `groupNavigateSteps`…), compared ignoring case. The same group
+  never appears in both lists, nor twice in one.
+- The keys `axes` and `groups`, with `prefer` and `forbid`, are always present. Empty lists and an
+  empty `axes` are allowed.
+
+How to decide, after reading the whole template:
+- **axes**: only what the prose decides (a card board → `recordsView: grid`; "validation at the
+  field, in words" → `validation: inline-below`). Usually 2 to 6 axes.
+- **forbid**: only groups that `## Forbidden` (or the slots) excludes for the **whole page**, e.g.
+  "a table for the collection" → `groupViewTable`. Never a group that another part of the page may
+  legitimately need. When in doubt, do not forbid: a forbid that is too broad leaves an organism
+  without a molecule.
+- **prefer**: 1 to 4 groups that carry the distinguishing shape of the experience (`groupViewCard`
+  for a card board, `groupNavigateSteps` for a corridor, `groupViewChart` for a chart-led page).
+- The block never contradicts the prose.
 
 Format:
 - lines wrapped at about 100 characters;
@@ -203,7 +254,7 @@ A template is not done until it has changed a real page.
       unique in the category.
 - [ ] The title is `# <category> — experience \`<experienceName>\``, followed by the blockquote
       verbatim.
-- [ ] All nine sections are present, in order.
+- [ ] All ten sections are present, in order (`## Molecule rules` last).
 - [ ] Concept names every sibling in backticks, states the axis and ends with `Target:`.
 - [ ] Nothing is invented beyond the category's guarantees, and every optional dependency has its
       degradation written down.
@@ -213,6 +264,10 @@ A template is not done until it has changed a real page.
       twice.
 - [ ] Forbidden names the siblings' shapes.
 - [ ] 3 to 5 Signals about the distinguishing shape.
+- [ ] `## Molecule rules` holds exactly one `json` block with `axes` and `groups.prefer` /
+      `groups.forbid`, from the closed vocabulary; every forbidden group matches something the
+      `Forbidden` section already excludes for the whole page, and no axis contradicts the prose.
+      `templateRules.test.ts` passes.
 - [ ] English, lines of about 100 characters or fewer, CRLF.
 - [ ] The entry in `experienceIndex.json` has label, description and bestFor in pt and en, and the
       label is unique in the category.

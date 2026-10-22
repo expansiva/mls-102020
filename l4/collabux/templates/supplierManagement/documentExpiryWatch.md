@@ -132,3 +132,19 @@ Forbidden on mobile:
 3. **S3 renewal in place:** the renewal form opens under its line, not in a side panel or
    another page.
 4. **S4 headline:** one sentence above the list states how many documents need attention.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewData", "groupEnterDate"],
+    "forbid": []
+  }
+}
+```

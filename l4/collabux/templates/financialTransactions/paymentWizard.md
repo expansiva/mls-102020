@@ -130,3 +130,19 @@ Forbidden on mobile:
 4. **S4 Confirm only at the end:** no control on the queue or the review scene runs the payment
    command.
 5. **S5 Success scene:** success is a scene of its own with a button back to the queue.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "cardLayout": "horizontal",
+    "steps": "horizontal",
+    "listOverflow": "infinite",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupNavigateSteps", "groupViewCard"], "forbid": ["groupViewTable", "groupSearchContent"] }
+}
+```

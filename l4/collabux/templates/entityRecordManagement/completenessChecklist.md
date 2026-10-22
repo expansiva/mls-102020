@@ -128,3 +128,16 @@ Forbidden on mobile:
    after an item is saved.
 4. **S4 Gated foot:** under the checklist, the lifecycle action (or, with none declared, the
    readiness line) states not ready while a required item is incomplete, naming those items.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "progress": "segmented",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupShowProgress", "groupTriggerAction"], "forbid": [] }
+}
+```

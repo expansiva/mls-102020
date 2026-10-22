@@ -125,3 +125,12 @@ Forbidden on mobile:
    user's.
 4. **S4 terminal folded:** terminal statuses are collapsed into one trailing column or
    group with its count.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "kanban", "actionStyle": "standard", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewCard", "groupTriggerAction"], "forbid": [] }
+}
+```

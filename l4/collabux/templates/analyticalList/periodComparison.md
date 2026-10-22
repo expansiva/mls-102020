@@ -124,3 +124,18 @@ Forbidden on mobile:
 3. **S3 Movers first:** the default order is by size of change, not by name or by value.
 4. **S4 Neutral deltas:** delta cells carry no success/alarm color unless the contract declares a
    good direction or a flag.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "table",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewTable"],
+    "forbid": ["groupViewChart"]
+  }
+}
+```

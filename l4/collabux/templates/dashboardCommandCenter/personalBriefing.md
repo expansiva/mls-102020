@@ -129,3 +129,15 @@ Forbidden on mobile:
 3. **S3 Number is the link:** every clickable element in the prose is a number (or a named item)
    that opens the items behind it; no separate "view" buttons beside sentences.
 4. **S4 Person from context:** no field or picker selects the user; the scope comes from session.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "density": "comfortable",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": [], "forbid": ["groupViewChart", "groupViewTable", "groupViewMetric", "groupNavigateSteps"] }
+}
+```

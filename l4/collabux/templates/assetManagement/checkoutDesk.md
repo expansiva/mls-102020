@@ -131,3 +131,21 @@ Forbidden on mobile:
 3. **S3 holder picked:** check out requires choosing a holder through a picker.
 4. **S4 move between lists:** after a check-out the asset leaves the available list and appears
    among the assets out, with its holder.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "search": "bar",
+    "validation": "inline-below",
+    "actionStyle": "standard",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupSearchContent", "groupTriggerAction", "groupSelectOne"],
+    "forbid": []
+  }
+}
+```

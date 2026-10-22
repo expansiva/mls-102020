@@ -132,3 +132,19 @@ Forbidden on mobile:
    names the count.
 4. **S4 the rest stays:** after the verdict, the signed lines leave the set while unticked
    lines remain in view, unselected.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "boolean": "checkbox",
+    "actionStyle": "standard",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupEnterBoolean", "groupTriggerAction", "groupViewData"],
+    "forbid": []
+  }
+}
+```

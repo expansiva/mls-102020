@@ -127,3 +127,12 @@ Forbidden on mobile:
    offending cell (or line, on mobile) in words.
 4. **S4 Counted commit:** the commit button carries the number of rows it will import and stays
    disabled while validation fails.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "table", "validation": "inline-below", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewTable", "groupSelectOne"], "forbid": ["groupSelectFileForUpload", "groupNavigateSteps"] }
+}
+```

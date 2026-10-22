@@ -129,3 +129,18 @@ Forbidden on mobile:
 3. **S3 progress:** a visible "N of M" counter for people in scope.
 4. **S4 review before commit:** revocations are committed from a summary view listing them,
    never directly from a verdict.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "selectOne": "segmented",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupSelectOne", "groupShowProgress"],
+    "forbid": []
+  }
+}
+```

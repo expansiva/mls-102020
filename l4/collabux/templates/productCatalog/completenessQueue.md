@@ -136,3 +136,19 @@ Forbidden on mobile:
    to the list.
 4. **S4 headline count:** one sentence states how many items are incomplete and updates after
    each save; an empty queue shows a calm all-complete sentence.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewData", "groupTriggerAction"],
+    "forbid": []
+  }
+}
+```

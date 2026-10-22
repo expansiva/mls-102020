@@ -130,3 +130,19 @@ Forbidden on mobile:
    on tiles.
 4. **S4 flip:** the viewer offers previous and next controls that move to neighbouring
    documents without closing.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "grid",
+    "cardLayout": "media",
+    "listOverflow": "infinite",
+    "upload": "button",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupViewCard"], "forbid": ["groupViewTable", "groupViewHierarchy"] }
+}
+```

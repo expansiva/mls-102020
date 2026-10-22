@@ -125,3 +125,19 @@ Forbidden on mobile:
 3. **S3 drill-down:** choosing a count adds a removable token and shows the matching events.
 4. **S4 grouped counts:** at least one ranking of counts by another dimension (actor or action)
    sits beside or under the day summary.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "expand": "collapsible",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewChart", "groupEnterDateInterval", "groupExpandContent"],
+    "forbid": []
+  }
+}
+```

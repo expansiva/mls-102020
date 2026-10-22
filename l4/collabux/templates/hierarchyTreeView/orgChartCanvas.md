@@ -123,3 +123,12 @@ Forbidden on mobile:
 2. **S2 select to act:** structural commands appear only for the selected box, next to it.
 3. **S3 keyboard:** arrow keys move the focus between parent, children and siblings.
 4. **S4 move without drag:** moving a node is possible through a destination picker.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "hierarchy": "orgchart", "validation": "inline-below", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewHierarchy"], "forbid": [] }
+}
+```

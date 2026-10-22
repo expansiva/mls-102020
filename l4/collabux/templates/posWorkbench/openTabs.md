@@ -128,3 +128,12 @@ Forbidden on mobile:
 3. **S3 Nothing lost:** switching to another tab and back shows the first tab's lines intact.
 4. **S4 Close one:** closing a tab takes only that tab to payment; afterwards it leaves the
    switcher and the other tabs remain.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "grid", "numberInput": "stepper", "validation": "inline-below", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewCard", "groupSearchContent"], "forbid": [] }
+}
+```

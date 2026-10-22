@@ -123,3 +123,20 @@ Forbidden on mobile:
 3. **S3 Progress:** a line counts required items done out of the total and updates after a save.
 4. **S4 Opens its settings:** opening an item shows only that area's settings with a Save named
    for the item.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "validation": "inline-below",
+    "feedback": "inline",
+    "boolean": "toggle",
+    "selectOne": "dropdown"
+  },
+  "groups": {
+    "prefer": ["groupShowProgress", "groupViewData"],
+    "forbid": ["groupNavigateSteps"]
+  }
+}
+```

@@ -130,3 +130,12 @@ Forbidden on mobile:
 3. **S3 no workbench:** the page has no detail panel, no selection state, and no filter or
    search inputs on the main surface.
 4. **S4 distance type:** the ticket identity renders well above the page's body text size.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "density": "comfortable", "recordsView": "grid", "actionStyle": "standard", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewCard", "groupTriggerAction"], "forbid": ["groupViewTable", "groupSearchContent"] }
+}
+```

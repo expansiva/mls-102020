@@ -126,3 +126,16 @@ Forbidden on mobile:
 3. **S3 One CTA at the end:** exactly one CTA, placed after the last entry, leading to the hosted
    form on the same page.
 4. **S4 Compact hero:** the hero is title plus one line, with no full-bleed poster.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "expand": "accordion",
+    "accordionMode": "multiple",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupExpandContent"], "forbid": ["groupSearchContent", "groupViewTable", "groupNavigateSteps"] }
+}
+```

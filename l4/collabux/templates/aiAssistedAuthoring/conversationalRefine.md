@@ -124,3 +124,18 @@ Forbidden on mobile:
    turns.
 4. **S4 Versions return:** an earlier version can be shown and made current from the thread.
 5. **S5 Publish the shown version:** the publish confirmation names the version being published.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupEnterText", "groupTriggerAction"],
+    "forbid": []
+  }
+}
+```

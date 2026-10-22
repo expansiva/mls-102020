@@ -128,3 +128,12 @@ Forbidden on mobile:
 3. **S3 Locked fulfil:** the fulfil action is disabled, with the number of lines left, until all
    lines are checked.
 4. **S4 Stable rows:** checking a line does not remove it from the page; it stays visible as done.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "list", "boolean": "checkbox", "feedback": "inline" },
+  "groups": { "prefer": ["groupEnterBoolean", "groupShowProgress"], "forbid": [] }
+}
+```

@@ -132,3 +132,12 @@ Forbidden on mobile:
    moves focus to a new empty line.
 4. **S4 Single commit:** the order is created by one outcome-named action at the foot, after
    which the sheet resets for a new order.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "table", "validation": "inline-below", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewTable", "groupSelectOne"], "forbid": ["groupNavigateSteps"] }
+}
+```

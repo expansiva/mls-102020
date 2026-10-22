@@ -119,3 +119,20 @@ Forbidden on mobile:
 3. **S3 Narrowing:** after choosing, the chosen draft leads and the others fold into one line
    that reopens them.
 4. **S4 Publish after choice:** the publish control exists only once a draft is chosen.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "grid",
+    "cardLayout": "vertical",
+    "expand": "readmore",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewCard", "groupTriggerAction"],
+    "forbid": []
+  }
+}
+```

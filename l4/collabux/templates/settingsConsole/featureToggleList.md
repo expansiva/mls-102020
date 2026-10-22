@@ -118,3 +118,19 @@ Forbidden on mobile:
 3. **S3 Result in the row:** after a flip, the confirmation (with Undo) or the failure appears in
    that row, not as a toast.
 4. **S4 Honest state:** on a failed flip the switch returns to its saved state.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "boolean": "toggle",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupEnterBoolean"],
+    "forbid": []
+  }
+}
+```

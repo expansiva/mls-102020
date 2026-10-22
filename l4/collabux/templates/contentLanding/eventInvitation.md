@@ -122,3 +122,15 @@ Forbidden on mobile:
 3. **S3 Facts first:** the facts band comes before any prose, agenda, image or showcase in the
    page order.
 4. **S4 Form last:** the hosted form sits after the agenda on the same page, never on another page.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupViewData", "groupTriggerAction"], "forbid": ["groupViewTable", "groupNavigateSteps"] }
+}
+```

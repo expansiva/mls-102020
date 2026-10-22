@@ -127,3 +127,12 @@ Forbidden on mobile:
    focus.
 4. **S4 in-place rename:** a node's name is edited directly on its line.
 5. **S5 line state:** a failed change is reported on the line that failed.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "hierarchy": "tree", "validation": "inline-below", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewHierarchy"], "forbid": [] }
+}
+```

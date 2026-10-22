@@ -118,3 +118,15 @@ Forbidden on mobile:
 3. **S3 Local save:** each open block has its own Save named for its subject, and saving returns
    that block to reading.
 4. **S4 All blocks visible:** every subject is on the page at once, without tabs.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupViewCard", "groupTriggerAction"], "forbid": [] }
+}
+```

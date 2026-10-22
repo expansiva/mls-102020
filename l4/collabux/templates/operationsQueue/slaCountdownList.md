@@ -138,3 +138,12 @@ Forbidden on mobile:
    overdue/on-time divider, when present, is a quiet line inside the same list.
 4. **S4 act in the row:** a transition is reachable from the row itself, without opening a
    detail view or page.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "list", "actionStyle": "standard", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewData", "groupTriggerAction"], "forbid": [] }
+}
+```

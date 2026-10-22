@@ -128,3 +128,20 @@ Forbidden on mobile:
 3. **S3 Plain questions:** the prompt is phrased as a question in words, not a bare field label.
 4. **S4 Summary then commit:** after the last question a summary of the answers appears with the
    only commit button, labeled with the outcome.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "density": "comfortable",
+    "validation": "inline-below",
+    "feedback": "inline",
+    "selectOne": "cards"
+  },
+  "groups": {
+    "prefer": ["groupSelectOne", "groupTriggerAction"],
+    "forbid": ["groupNavigateSteps"]
+  }
+}
+```

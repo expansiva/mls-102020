@@ -132,3 +132,18 @@ Forbidden on mobile:
    the count and at least one command.
 4. **S4 Counts follow actions:** after a group action moves customers, the source and target
    counts change without reloading the page.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "expand": "collapsible",
+    "listOverflow": "load-more",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupExpandContent", "groupViewData"], "forbid": ["groupViewChart"] }
+}
+```

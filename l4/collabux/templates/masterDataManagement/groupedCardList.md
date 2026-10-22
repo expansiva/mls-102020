@@ -130,3 +130,12 @@ Forbidden on mobile:
 3. **S3 muted in place:** a deactivated record stays in its group, visually muted.
 4. **S4 light edit:** editing opens a compact dialog (on mobile, a view with back) holding only
    the edit inputs — no side panel, no editable cells.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "grid", "boolean": "toggle", "validation": "inline-below", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewCard", "groupEnterBoolean"], "forbid": ["groupViewTable"] }
+}
+```

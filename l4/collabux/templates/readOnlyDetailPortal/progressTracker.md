@@ -121,3 +121,19 @@ Forbidden on mobile:
    current and upcoming (or only done and current when no order exists) markers.
 3. **S3 No writes:** no form fields or edit controls; at most the declared acknowledge/print.
 4. **S4 Facts after:** the record's reference facts render below the timeline, not above it.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "timeline",
+    "steps": "vertical",
+    "expand": "collapsible"
+  },
+  "groups": {
+    "prefer": ["groupViewData"],
+    "forbid": ["groupNavigateSection"]
+  }
+}
+```

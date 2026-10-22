@@ -129,3 +129,20 @@ Forbidden on mobile:
    rows carry no primary button.
 4. **S4 zero holds its place:** with no action items, the action section still renders,
    stating there is nothing to act on, above the information.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "validation": "inline-below",
+    "feedback": "inline",
+    "actionStyle": "standard"
+  },
+  "groups": {
+    "prefer": ["groupViewData", "groupTriggerAction"],
+    "forbid": []
+  }
+}
+```

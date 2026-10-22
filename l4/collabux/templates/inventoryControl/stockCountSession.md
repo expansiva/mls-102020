@@ -132,3 +132,12 @@ Forbidden on mobile:
    recorded, counted and difference.
 4. **S4 one commit:** writes happen only from one final commit that names how many adjustments
    it will make.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "numberInput": "input", "validation": "inline-below", "feedback": "inline" },
+  "groups": { "prefer": ["groupEnterNumber", "groupNavigateSteps", "groupShowProgress"], "forbid": [] }
+}
+```

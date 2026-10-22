@@ -124,3 +124,19 @@ Forbidden on mobile:
 3. **S3 Active-tab binding:** switching a tab replaces the result; a muted line under the tabs
    states the active tab's parameters in words.
 4. **S4 One report:** every tab queries the same report; no tab opens a different report.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "sectionNav": "tabs",
+    "recordsView": "table",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupNavigateSection", "groupViewTable"],
+    "forbid": []
+  }
+}
+```

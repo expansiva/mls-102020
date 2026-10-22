@@ -125,3 +125,20 @@ Forbidden on mobile:
 2. **S2 Ranked rows:** items render as rows in score order with rank and score, not as columns.
 3. **S3 Live reorder:** changing a weight reorders the ranking without any run/apply action.
 4. **S4 Method stated:** one visible line explains how the score is combined from the weights.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "numberInput": "stepper",
+    "selectOne": "segmented",
+    "recordsView": "list",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupEnterNumber", "groupViewData"],
+    "forbid": ["groupNavigateSteps"]
+  }
+}
+```

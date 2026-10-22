@@ -115,3 +115,19 @@ Forbidden on mobile:
    not one block per item.
 3. **S3 Count first:** a sentence stating how many attributes differ sits above the list.
 4. **S4 No privileged item:** no item is labeled or positioned as a reference.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "expand": "collapsible",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupSelectMany", "groupViewData", "groupExpandContent"],
+    "forbid": ["groupViewTable", "groupNavigateSteps"]
+  }
+}
+```

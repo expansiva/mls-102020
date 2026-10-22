@@ -122,3 +122,21 @@ Forbidden on mobile:
    owner's current load.
 4. **S4 Both sides update:** after a reassign, the task moves to the new owner and both owners'
    load numbers change without a page reload.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "progress": "linear",
+    "expand": "collapsible",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewData", "groupShowProgress", "groupExpandContent"],
+    "forbid": []
+  }
+}
+```

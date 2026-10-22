@@ -122,3 +122,15 @@ Forbidden on mobile:
 2. **S2 few results:** at most about eight candidates render; no pagination and no facets.
 3. **S3 first active:** the first candidate is marked active, and Enter opens it.
 4. **S4 arrow keys:** arrow up / down move the active candidate.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "search": "bar",
+    "recordsView": "list"
+  },
+  "groups": { "prefer": ["groupSearchContent"], "forbid": [] }
+}
+```

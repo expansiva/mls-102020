@@ -131,3 +131,18 @@ Forbidden on mobile:
    carries it.
 4. **S4 summary in place:** opening a supplier shows its summary without leaving the ranking
    (under the row on desktop, a view with back on mobile).
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "table",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewTable"],
+    "forbid": ["groupRateItem"]
+  }
+}
+```

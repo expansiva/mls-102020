@@ -122,3 +122,19 @@ Forbidden on mobile:
    status or owner.
 3. **S3 Move control:** each card has a non-drag control that moves it to another day.
 4. **S4 Day count:** each day header shows how many cards it holds, updated after a move.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "calendar",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewCard"],
+    "forbid": []
+  }
+}
+```

@@ -130,3 +130,17 @@ Forbidden on mobile:
 3. **S3 Short card:** the card has no tabs and no full-length related list; its actions (edit,
    record) open inside the card, not on another page.
 4. **S4 Fast reset:** one control clears the search and the card and returns focus to the field.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "search": "bar",
+    "cardLayout": "profile",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupSearchContent", "groupViewCard"], "forbid": ["groupViewTable", "groupNavigateSection"] }
+}
+```

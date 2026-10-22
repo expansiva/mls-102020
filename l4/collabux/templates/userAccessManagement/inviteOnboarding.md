@@ -125,3 +125,19 @@ Forbidden on mobile:
 3. **S3 counted send:** one send control whose label carries the number of invites.
 4. **S4 per-line outcome:** after sending, results appear on each line, and failed lines keep
    their values.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "validation": "inline-below",
+    "feedback": "inline",
+    "selectOne": "dropdown"
+  },
+  "groups": {
+    "prefer": ["groupEnterText", "groupSelectOne", "groupViewData"],
+    "forbid": []
+  }
+}
+```

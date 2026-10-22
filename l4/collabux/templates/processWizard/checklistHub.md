@@ -127,3 +127,20 @@ Forbidden on mobile:
    and it changes when a card is confirmed.
 4. **S4 Honest finish:** the finish button is disabled while a required card is not ready and its
    reason names the missing cards; it enables when all required are ready.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "validation": "inline-below",
+    "feedback": "inline",
+    "expand": "accordion",
+    "accordionMode": "single"
+  },
+  "groups": {
+    "prefer": ["groupViewCard", "groupExpandContent", "groupShowProgress"],
+    "forbid": ["groupNavigateSteps"]
+  }
+}
+```

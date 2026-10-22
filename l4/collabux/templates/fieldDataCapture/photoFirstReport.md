@@ -125,3 +125,16 @@ Forbidden on mobile:
    stays visible on the same screen.
 4. **S4 Reset to evidence:** after a successful send, the page returns empty to the evidence
    input.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "upload": "button",
+    "selectOne": "cards",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupSelectFileForUpload", "groupSelectOne"], "forbid": ["groupNavigateSteps"] }
+}
+```

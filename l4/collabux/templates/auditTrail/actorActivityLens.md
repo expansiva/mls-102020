@@ -126,3 +126,20 @@ Forbidden on mobile:
 3. **S3 diary by day:** entries are grouped under day headings, newest first, and no entry
    shows the actor's name.
 4. **S4 record per entry:** each entry names the record that was touched.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "timeline",
+    "expand": "collapsible",
+    "listOverflow": "load-more",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupSelectOne", "groupViewData", "groupExpandContent"],
+    "forbid": []
+  }
+}
+```

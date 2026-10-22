@@ -130,3 +130,20 @@ Forbidden on mobile:
    chosen.
 4. **S4 move by picking:** changing an asset's place uses a picker of places, never a text
    field.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "sectionNav": "breadcrumb",
+    "recordsView": "list",
+    "expand": "collapsible",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupNavigateSection", "groupViewData", "groupExpandContent"],
+    "forbid": []
+  }
+}
+```

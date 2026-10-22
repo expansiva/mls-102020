@@ -131,3 +131,16 @@ Forbidden on mobile:
    ready again.
 4. **S4 No browsing:** no list of items is shown before a code is read (only a short pick list
    for several matches).
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "numberInput": "input",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupScanCode", "groupSearchContent"], "forbid": ["groupNavigateSteps"] }
+}
+```

@@ -123,3 +123,17 @@ Forbidden on mobile:
    without any interaction.
 3. **S3 Only answerable:** no question renders with an empty or "not available" answer.
 4. **S4 No writes:** no form fields or edit controls; at most the declared acknowledge/print.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "expand": "collapsible"
+  },
+  "groups": {
+    "prefer": ["groupViewData"],
+    "forbid": ["groupNavigateSection", "groupNavigateSteps", "groupSearchContent"]
+  }
+}
+```

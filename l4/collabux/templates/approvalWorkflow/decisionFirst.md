@@ -139,3 +139,19 @@ Forbidden on mobile:
    a grid of cards (no `<table>`) and the record opens over it or as its own view.
 4. **S4 decided in place:** after an outcome, the decision row is replaced by one line
    stating the decision while the record stays open.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "grid",
+    "actionStyle": "standard",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupTriggerAction", "groupViewCard"],
+    "forbid": ["groupViewTable"]
+  }
+}
+```

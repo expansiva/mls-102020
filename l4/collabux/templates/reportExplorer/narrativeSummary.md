@@ -125,3 +125,19 @@ Forbidden on mobile:
 3. **S3 Number links to rows:** clicking a highlight number moves to and marks rows in the table
    on the same page.
 4. **S4 Evidence complete:** the table under the highlights lists the whole result.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "table",
+    "intervalInput": "presets",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewTable"],
+    "forbid": ["groupViewMetric", "groupViewChart"]
+  }
+}
+```

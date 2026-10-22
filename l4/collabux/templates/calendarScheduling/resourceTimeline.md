@@ -128,3 +128,19 @@ Forbidden on mobile:
    empty row.
 4. **S4 Prefilled creation:** creating from an empty cell opens a form with resource and start
    already set, not as typed fields.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "timeline",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewData"],
+    "forbid": ["groupNavigateSteps"]
+  }
+}
+```

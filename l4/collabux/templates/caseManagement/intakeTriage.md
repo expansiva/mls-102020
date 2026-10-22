@@ -133,3 +133,21 @@ Forbidden on mobile:
    list; at most a row expands in place, read-only.
 4. **S4 routed rows leave:** after routing, the row leaves the list and the waiting count
    drops.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "selectOne": "dropdown",
+    "expand": "collapsible",
+    "actionStyle": "standard",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupSelectOne", "groupTriggerAction", "groupExpandContent"],
+    "forbid": []
+  }
+}
+```

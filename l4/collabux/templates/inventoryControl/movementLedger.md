@@ -136,3 +136,12 @@ Forbidden on mobile:
    journal, and a committed movement appears as its newest line.
 3. **S3 filters:** item and period filters sit above the journal and narrow its lines.
 4. **S4 lines are read-only:** no edit or delete control on any journal line.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "table", "numberInput": "input", "validation": "inline-below", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewTable", "groupEnterDateInterval"], "forbid": [] }
+}
+```

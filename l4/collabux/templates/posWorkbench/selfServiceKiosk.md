@@ -131,3 +131,12 @@ Forbidden on mobile:
 4. **S4 Plain words:** no visible label uses operator terms (SKU, line, register, tender, void).
 5. **S5 Back to start:** after payment, a done screen leads back to the first act with an empty
    order.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "density": "comfortable", "recordsView": "grid", "steps": "horizontal", "numberInput": "stepper", "selectOne": "cards", "feedback": "inline" },
+  "groups": { "prefer": ["groupViewCard", "groupNavigateSteps", "groupEnterNumber"], "forbid": ["groupScanCode", "groupViewTable"] }
+}
+```

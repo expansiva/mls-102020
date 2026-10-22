@@ -126,3 +126,20 @@ Forbidden on mobile:
 3. **S3 Booker view:** no other person's booking identity appears anywhere on the page.
 4. **S4 One commit:** exactly one command call happens, from the final act; earlier choices
    never call a command.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "steps": "vertical",
+    "dateInput": "inline-calendar",
+    "selectOne": "cards",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupNavigateSteps", "groupEnterDate", "groupSelectOne"],
+    "forbid": []
+  }
+}
+```

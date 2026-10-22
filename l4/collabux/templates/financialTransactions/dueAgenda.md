@@ -129,3 +129,17 @@ Forbidden on mobile:
    agenda or opening another scene.
 4. **S4 Settled leaves:** after the action commits, the row leaves its bucket and that bucket's
    count and sum change.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "accordionMode": "single",
+    "listOverflow": "load-more",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupViewData", "groupTriggerAction"], "forbid": ["groupViewTable", "groupNavigateSteps"] }
+}
+```

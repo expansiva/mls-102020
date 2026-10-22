@@ -126,3 +126,12 @@ Forbidden on mobile:
    section; collapsed headers stay visible with their count.
 3. **S3 rows, not tiles:** cards render as compact rows.
 4. **S4 move via control:** each card offers a move control listing destination statuses.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "recordsView": "list", "expand": "collapsible", "accordionMode": "multiple", "feedback": "inline" },
+  "groups": { "prefer": ["groupExpandContent", "groupViewData"], "forbid": [] }
+}
+```

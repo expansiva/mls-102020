@@ -126,3 +126,12 @@ Forbidden on mobile:
    column, in words, under a verdict line with counts.
 4. **S4 Re-upload cycle:** the upload stays available after a report, and a new upload replaces
    the report; the commit enables only when the report is clean.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "upload": "dropzone", "validation": "summary", "feedback": "inline" },
+  "groups": { "prefer": ["groupSelectFileForUpload"], "forbid": [] }
+}
+```

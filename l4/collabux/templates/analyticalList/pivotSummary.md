@@ -124,3 +124,19 @@ Forbidden on mobile:
 2. **S2 Expand in place:** opening a group reveals its items inline under it, on the same page.
 3. **S3 Grand total:** a total row closes the table and matches the sum of the group subtotals.
 4. **S4 Act on items:** item rows (not group rows) drill down; selection actions name the count.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "table",
+    "expand": "collapsible",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewTable", "groupExpandContent"],
+    "forbid": ["groupViewChart", "groupViewMetric"]
+  }
+}
+```

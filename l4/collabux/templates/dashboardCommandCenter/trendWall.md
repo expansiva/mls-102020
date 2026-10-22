@@ -130,3 +130,16 @@ Forbidden on mobile:
    declares a good direction or a flag.
 4. **S4 One period for all:** at most one period control on the page, changing every cell at
    once; no per-cell filters.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "metric": "sparkline",
+    "recordsView": "grid",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupViewMetric"], "forbid": ["groupNavigateSteps"] }
+}
+```

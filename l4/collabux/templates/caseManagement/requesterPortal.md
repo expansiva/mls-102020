@@ -134,3 +134,18 @@ Forbidden on mobile:
    anywhere (a requester's own confirm or withdraw is not one).
 4. **S4 reply is the action:** the open request carries a reply composer as its main
    control, labeled with the outcome.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewData", "groupEnterText"],
+    "forbid": []
+  }
+}
+```

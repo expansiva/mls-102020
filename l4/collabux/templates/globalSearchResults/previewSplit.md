@@ -126,3 +126,17 @@ Forbidden on mobile:
    previewed.
 4. **S4 single Open:** the preview has exactly one control that opens the full record, its
    label naming the record.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "search": "bar",
+    "recordsView": "list",
+    "listOverflow": "infinite",
+    "feedback": "inline"
+  },
+  "groups": { "prefer": ["groupSearchContent", "groupViewData"], "forbid": [] }
+}
+```

@@ -131,3 +131,12 @@ Forbidden on mobile:
 3. **S3 survivor:** resolution requires an explicit single choice of the record that stays.
 4. **S4 confirmed:** the resolve action names the survivor and opens a confirmation listing the
    affected records.
+
+## Molecule rules
+
+```json
+{
+  "axes": { "feedback": "inline" },
+  "groups": { "prefer": ["groupViewTable", "groupSelectOne"], "forbid": [] }
+}
+```

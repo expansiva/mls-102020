@@ -145,3 +145,21 @@ Forbidden on mobile:
    mobile a view whose back returns to that open shelf) — no side panel, no page-wide overlay.
 4. **S4 jump:** a control lists every shelf (jump bar on desktop, shelf list on mobile) and
    moves to the chosen one without filtering the others away.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "density": "compact",
+    "recordsView": "grid",
+    "sectionNav": "scrollspy",
+    "validation": "inline-below",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupViewCard", "groupNavigateSection", "groupExpandContent"],
+    "forbid": []
+  }
+}
+```

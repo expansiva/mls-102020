@@ -126,3 +126,20 @@ Forbidden on mobile:
    its line, in place, without reloading the list.
 4. **S4 no split, no day stream:** there is no detail panel beside the list and no day
    headers as the main structure.
+
+## Molecule rules
+
+```json
+{
+  "axes": {
+    "recordsView": "list",
+    "expand": "collapsible",
+    "accordionMode": "multiple",
+    "feedback": "inline"
+  },
+  "groups": {
+    "prefer": ["groupExpandContent", "groupViewData"],
+    "forbid": []
+  }
+}
+```
