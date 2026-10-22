@@ -20,7 +20,7 @@ export const skill = `
 
 ---
 
-## Properties
+## Properties — ml-enter-text
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -42,7 +42,7 @@ export const skill = `
 
 ---
 
-## Events
+## Events — ml-enter-text
 
 | Event | Detail | Description |
 |-------|--------|-------------|
@@ -53,12 +53,42 @@ export const skill = `
 
 ---
 
-## Value Format
+## Value Format — ml-enter-text
 
 - Value is always a plain **string**
 - Empty string \`''\` when not yet provided
 - When \`mask\` is set, \`value\` contains the **raw unmasked string** — the formatted display is handled internally
 - When \`inputType='password'\`, view mode renders \`"••••••••"\` regardless of value
+
+---
+
+## ml-address-field contract
+
+The tables above describe \`ml-enter-text\`, not every molecule in the group.
+\`groupentertext--ml-address-field\` has **no \`value\` property**. Bind each address property separately:
+
+| Property | HTML attribute | Type | Default |
+|----------|----------------|------|---------|
+| \`postalCode\` | \`postal-code\` | \`string\` | \`''\` |
+| \`street\` | \`street\` | \`string\` | \`''\` |
+| \`number\` | \`number\` | \`string\` | \`''\` |
+| \`complement\` | \`complement\` | \`string\` | \`''\` |
+| \`neighborhood\` | \`neighborhood\` | \`string\` | \`''\` |
+| \`city\` | \`city\` | \`string\` | \`''\` |
+| \`stateCode\` | \`state-code\` | \`string\` | \`''\` |
+
+For field events, \`field\` is one of \`postalCode\`, \`street\`, \`number\`, \`complement\`, \`neighborhood\`, \`city\`, or \`stateCode\`.
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`input\` | \`{ field, value: string }\` | One edited field; postal code value contains digits only |
+| \`change\` | \`{ field, value: string }\` | One field confirmed on blur; not the full address |
+| \`blur\` | \`{ field, value: string }\` | One field loses focus |
+| \`focus\` | \`{ field }\` | One field receives focus |
+| \`address-lookup\` | \`{ postalCode: string }\` | Postal code reaches \`postalCodeLength\` |
+| \`address-confirmed\` | \`{ address: { postalCode, street, number, complement, neighborhood, city, state } }\` | Full address; every value is a string |
+
+Only \`address-confirmed.detail.address\` uses \`state\` (copied from \`stateCode\`). Field events use \`stateCode\`; do not treat the two keys as interchangeable.
 
 ---
 
