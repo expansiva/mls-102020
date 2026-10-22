@@ -156,6 +156,29 @@ export function m4OwnEventDrops(code: string): Array<{ tag: string; event: strin
   return found;
 }
 
+/** Tags of `<groupselectone|groupselectmany--…>…</…>` whose body has no `<Item`. */
+function m4SelectsWithoutOptions(code: string): string[] {
+  const found: string[] = [];
+  for (const match of code.matchAll(/<(groupselect(?:one|many)--[a-z0-9-]+)\b/gu)) {
+    const tag = match[1];
+    let i = (match.index ?? 0) + match[0].length;
+    let quote = '';
+    let selfClose = false;
+    for (; i < code.length; i += 1) {
+      const ch = code[i];
+      if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = ''; continue; }
+      if (ch === '"' || ch === '\'' || ch === '`') { quote = ch; continue; }
+      if (ch === '/' && code[i + 1] === '>') { selfClose = true; break; }
+      if (ch === '>') break;
+    }
+    if (selfClose || i >= code.length) { found.push(tag); continue; }
+    const closeAt = code.indexOf(`</${tag}>`, i + 1);
+    if (closeAt < 0) continue;
+    if (!code.slice(i + 1, closeAt).includes('<Item')) found.push(tag);
+  }
+  return found;
+}
+
 function dropsOwnEvent(handler: string): boolean {
   // A bare `return` only: `return this.setX(…)` still does the work (mobile page21, 14/10/2026).
   if (/if\s*\(\s*([A-Za-z_$][\w$]*)\.target\s*===\s*\1\.currentTarget\s*\)\s*\{?\s*return\s*(?:;|\}|$)/u.test(handler)) return true;
@@ -289,6 +312,13 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   // the rest of the gate is off.
   for (const drop of m4OwnEventDrops(code)) {
     issues.push({ code: 'M4_PAGE_OWN_EVENT_DROPPED', severity: 'error', always: true, message: `The @${drop.event} handler of <${drop.tag}> throws away the molecule's own event (${drop.handler}). A molecule dispatches its events on itself, so e.target === e.currentTarget is always true there: use e.detail directly, with no target check. The bubbling guard belongs only to the scene host.` });
+  }
+
+  // A select with no <Item> offers nothing to choose (onboarding my_access_details, 21/10/2026: the country
+  // selector rendered empty). Enforced even while the rest of the gate is off. The message names the defect,
+  // not a code sample.
+  for (const tag of m4SelectsWithoutOptions(code)) {
+    issues.push({ code: 'M4_PAGE_SELECT_NO_OPTIONS', severity: 'error', always: true, message: `<${tag}> offers nothing to choose. The options come from a shared state that lists the choices, one <Item> per entry. If the shared has no such state, the page cannot offer the choice.` });
   }
 
   // Scenes: optional, decided by the page (Guilherme, 01/10/2026); when used, the host is wired to the shared.

@@ -357,6 +357,22 @@ test('a molecule handler that throws away its own event is refused; the harmless
   assert.match(issue.message, /use e\.detail directly/u);
 });
 
+test('a select with no Item is refused; options from a list or inside Group pass', () => {
+  const select = (body: string) => reference.replace('</main>', `<groupselectone--ml-select-one-autocomplete .value=\${this.pais}>${body}</groupselectone--ml-select-one-autocomplete></main>`);
+  const empty = select('<Label>${this.msg[\'pais\']}</Label>');
+  assert.notEqual(empty, reference);
+  const issue = gateM4PageSource(empty, target()).find(item => item.code === 'M4_PAGE_SELECT_NO_OPTIONS');
+  assert.ok(issue && issue.always && issue.severity === 'error');
+  assert.match(issue.message, /offers nothing to choose/u);
+  assert.match(issue.message, /groupselectone--ml-select-one-autocomplete/u);
+  const mapped = select("${this.lista.map(x => html`<Item value=\${x.id}>\${x.nome}</Item>`)}");
+  assert.ok(!gateM4PageSource(mapped, target()).some(item => item.code === 'M4_PAGE_SELECT_NO_OPTIONS'));
+  const grouped = select('<Group>${this.lista.map(x => html`<Item value=${x.id}>${x.nome}</Item>`)}</Group>');
+  assert.ok(!gateM4PageSource(grouped, target()).some(item => item.code === 'M4_PAGE_SELECT_NO_OPTIONS'));
+  const many = select('').replaceAll('groupselectone--ml-select-one-autocomplete', 'groupselectmany--ml-select-many');
+  assert.ok(gateM4PageSource(many, target()).some(item => item.code === 'M4_PAGE_SELECT_NO_OPTIONS' && item.always));
+});
+
 test('`return this.setX(…)` after the own-event check still does the work and passes (mobile page21, 14/10/2026)', () => {
   const field = '<groupenterdate--ml-date-shortcut-picker @change=${(e: CustomEvent<{ value: string | null }>) => { if (e.target === e.currentTarget) return this.setDraft(e.detail.value); }}></groupenterdate--ml-date-shortcut-picker>';
   assert.deepEqual(m4OwnEventDrops(field), []);
