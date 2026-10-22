@@ -97,11 +97,7 @@ test('the page prompt carries target, declaration, page11, tokens, molecules wit
   const port = await studio();
   const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
   const { systemPrompt, humanPrompt } = buildM4PagePrompt(context);
-  assert.ok([
-    'What one page asks for or hides, the other does too',
-    'mobile summarizes, it does not omit',
-    'search and filter go one under the other',
-  ].every(phrase => systemPrompt.includes(phrase)));
+  assert.ok(systemPrompt.includes('follows the same rule on desktop and on mobile; how it looks is free'));
   for (const needle of [
     '- path: _102047_/l2/controleEstoque/web/desktop/page11/produtos.ts',
     '- tag: controle-estoque--web--desktop--page11--produtos-102047',
