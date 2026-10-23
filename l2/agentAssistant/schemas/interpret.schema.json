@@ -1,0 +1,176 @@
+{
+  "$id": "https://collab.codes/schemas/agentAssistant/interpret.schema.json",
+  "version": "2026-10-22-interpret-v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "userLanguage",
+    "reply",
+    "mode",
+    "candidates",
+    "manual"
+  ],
+  "properties": {
+    "userLanguage": {
+      "type": "string"
+    },
+    "reply": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "alternatives",
+        "sequence",
+        "question",
+        "manual"
+      ]
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "route",
+          "title",
+          "reason",
+          "values",
+          "refs"
+        ],
+        "properties": {
+          "route": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "value"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "lookupRoute",
+                "lookupParams",
+                "matchEntity",
+                "matchText"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "lookupRoute": {
+                  "type": "string"
+                },
+                "lookupParams": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "name",
+                      "value"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "matchEntity": {
+                  "type": "string"
+                },
+                "matchText": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "manual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modules",
+        "pages",
+        "journeys"
+      ],
+      "properties": {
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "module",
+              "pageId"
+            ],
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "pageId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "journeys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "module",
+              "journeyId"
+            ],
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "journeyId": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

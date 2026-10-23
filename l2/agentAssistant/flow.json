@@ -1,0 +1,110 @@
+{
+  "flowId": "agentAssistant",
+  "schemaVersion": "2026-10-22-assistant-v4",
+  "description": "Generic assistant for any generated app: turns one sentence ('adicione uma salada na mesa 1') into one of the app's own commands, asks only for what is missing, confirms, and runs it through /execBff with the logged user's session. It reads the app's catalog as DATA from the generated files; nothing in it is specific to a module.",
+  "principles": [
+    "The app's files are the catalog: l5/project.json (modules + live routeKeys), l1 controllers defs (contractPath per page), l1 requests defs (list mechanics: where rows are, paging, related entities, doc.purpose), l2 contracts (wire input types), l4 ontology (titles, displayField, record targets, enum titles).",
+    "One model call per sentence (interpret). It chooses commands and extracts what the user said; it never produces identifiers. Everything after it is deterministic: the gate drops what does not fit the catalog, the resolver finds records by running the app's list queries and matching display values.",
+    "No inference by name: a field is a record reference because the ontology says type 'record' with 'to'; its label is the ontology title; a wrapped wire path (details.details.x) maps to the ontology path by its longest suffix. The only structural conventions are the contract's own: 'id' of the written entity is the record a transition acts on, 'version' is taken from that record's row.",
+    "Nothing is written without an explicit confirmation round, and the command goes through the same /execBff the screens use, so access rules are the backend's, not the assistant's.",
+    "State is task memory (longMemory key 'assistantState'), written before the step that reads it is added. No files are written.",
+    "Two kinds of sentence (interpret 'mode'): 'alternatives' = readings of ONE request, the user picks one; 'sequence' = SEVERAL actions to run in order ('abrir comanda para a mesa 2 e lançar 1 bife'). A sequence is confirmed once as a plan, and each action is resolved only when its turn comes, because it may need what the previous one created. The run stops at the first failure.",
+    "Questions (interpret mode 'question'): exactly one QUERY route answers the sentence. It is resolved like a command (refs, missing inputs) but needs no confirmation because it only reads. Its data (compacted to 12k chars) goes to the 'answer' step, where the model writes the answer from that data only. Whatever the user must READ (an answer, 'nothing fits', a failed query) is shown on its own screen with an OK button that closes the task. Command runs still end in their result step.",
+    "Optional record inputs are resolved only when the user mentioned them (otherwise neither asked nor sent). Inputs and filters the ontology types 'date'/'timestamp' only ever reach the wire as validated ISO; the model gets today's local date and weekday to resolve relative dates.",
+    "Manual (interpret mode 'manual'): questions on how to use the app or what it has are answered from its defs only (helpers/asManual): l4 module/access/rules/journeys, l4 pool/l2/web/menu.json (screens, hubs, who sees them), l2 desktop page defs (intent, sections) and l1 controllers defs (routes per screen). The interpret call gets a short index ('## App map') and picks journeys/pages/modules; the answer step gets only that material (or the overview when nothing was picked) and writes it with steps/answer/manual.md. Journeys reach their screen by data: a step that acts (create/update/transition) -> the command whose contract writes '<Entity>.<operation>' -> the screen whose controller has that route. The manual never blocks: if it cannot be read, the mode is not offered and everything else works as before."
+  ],
+  "conventions": {
+    "entry": "@@agentAssistant <sentence>. Prose; { prompt: '...' } also accepted (helpers/asEntry). Empty -> a status task with an example.",
+    "project": "mls.actualProject at entry, stored in longMemory.project. On the runtime VM it is the app's site project.",
+    "host": "Needs /execBff on the same origin: works in the app's messages panel on the runtime VM. In the Studio the first lookup or the command fails with BFF_UNAVAILABLE and the task ends with that message.",
+    "modelAliases": {
+      "interpret": "code + x-tool-strict",
+      "askEnvelope": "general",
+      "answer": "general"
+    },
+    "planIds": "interpret, ask-<n> (one per human round, n from 1), ask-<n>-answer (completed result closing round n), answer (the read-and-OK screen), reply | done | error (terminal results).",
+    "intentOrder": "Opening round n+1: add-step ask-<n+1> under the root FIRST, then the completed ask-<n>-answer result, then the update-status of the clarification (skills/collab_messages.md 'Parent auto-completion').",
+    "sequence": "helpers/asPlan.advance is the only place a command is sent: it loops planNext -> 'ready' -> /execBff -> next queued action, and stops at a question ('ask'), a failure or the end ('finished'). 'ready' requires state.authorized (single action: its confirmation round; sequence: the plan confirmation). Rounds inside an authorized sequence have no extra confirmation: continuing runs the action.",
+    "modeManual": "Nothing runs, no confirmation. The selection lives in state.manual; the answer step rebuilds the context from the defs (it is never stored). Exact button labels are not in the defs, so the answer describes actions instead of quoting labels."
+  },
+  "treeOverview": [
+    "root agentAssistant (skipRootLLM) -> plants interpret",
+    "interpret (LLM, tool submitAssistantPlan) -> gate -> advance -> ask-1 | answer | reply",
+    "ask-n (envelope call + Decision Clarification widget) -> answers -> advance -> ask-n+1 | answer | done | error | cancelled",
+    "answer (one call: envelope + the answer written from the query data; or envelope only for a fixed message) -> OK -> done"
+  ],
+  "steps": [
+    {
+      "planId": "interpret",
+      "agentName": "agentAsInterpret",
+      "type": "agent",
+      "model": "interpret",
+      "goal": "Build the catalog, ask the model for mode + candidate commands (route, title, reason, values the user said, refs = how to find each record), gate it, then advance (nothing is authorized yet, so it only plans): 0 candidates -> reply; alternatives >1 -> round asking which action; sequence -> plan confirmation; 1 action -> resolve refs (auto-pick on a single match), ask missing/invalid fields, or confirm. Mode 'manual': plants the answer step directly with state.manual (no advance).",
+      "input": [
+        "longMemory.userText",
+        "longMemory.project",
+        "catalog (asStor)"
+      ],
+      "output": {
+        "memory": "assistantState",
+        "next": "ask-1 or a reply result"
+      },
+      "gate": {
+        "file": "steps/interpret/gate.ts",
+        "onFail": "drop the offending piece with an issue (trace); never repair a value into another"
+      }
+    },
+    {
+      "planId": "ask-<n>",
+      "agentName": "agentAsAsk",
+      "type": "agent",
+      "model": "askEnvelope",
+      "goal": "Emit the clarification envelope, mount widget-decision-clarification-102020 (inside the asBusy loading host) with state.pending. Answers fold into the state (applyAnswers; a confirmation sets authorized), then advance runs every action that is ready: finished -> done/error result listing every action; ask -> ask-<n+1>; reply -> result. Cancel -> 'cancelled' result (with how many actions already ran).",
+      "input": [
+        "longMemory.assistantState"
+      ],
+      "output": {
+        "memory": "assistantState",
+        "next": "ask-<n+1> or a terminal result"
+      },
+      "gate": {
+        "file": "helpers/asIds.checkClarificationPayload",
+        "onFail": "the step fails (no widget could mount)"
+      }
+    },
+    {
+      "planId": "answer",
+      "agentName": "agentAsAnswer",
+      "type": "agent",
+      "model": "answer",
+      "goal": "Show what the user must read and close the task on OK. state.final.kind 'answer': steps/answer/prompt.md + question + the query's route/purpose/params/data -> the model returns the clarification envelope WITH json.answer. kind 'message': steps/answer/envelope.md, and the text comes from state.final.text. The screen (helpers/asAnswerView inside asBusy) shows the text and OK, and OK adds a 'done' result carrying the text. In mode 'manual' it uses steps/answer/manual.md and asManual.manualContext(state.manual) instead of query data.",
+      "input": [
+        "longMemory.assistantState (final, results)"
+      ],
+      "output": {
+        "result": "done (title = first line of the text)"
+      },
+      "gate": {
+        "file": "helpers/asIds.checkClarificationPayload",
+        "onFail": "the step fails (no screen could mount); a missing answer shows the 'noAnswer' label"
+      }
+    }
+  ],
+  "limits": [
+    "Lookups read at most 4 pages of 50 rows; a record beyond that is reached by typing a more specific term.",
+    "Inputs typed as arrays or unknown shapes make a command unavailable when required (catalog.issues) and are never sent when optional.",
+    "'version' comes from the chosen row; a list query that does not return version leaves it out and the backend's validation answers.",
+    "A sequence holds at most 6 actions; alternatives at most 4.",
+    "A query's data reaches the answer prompt compacted to 12k characters; it reads the first page (50 rows) of a paged query.",
+    "A query input the contract types as a plain id but the l1/l4 do not declare as a record (e.g. obterComandaAtendimento.comandaId) cannot be filled from words; the model has the number/code filters of other queries instead.",
+    "The app map adds about 15k characters to the interpret prompt on mls-102047 (13 modules, 68 screens, 79 journeys)."
+  ],
+  "acceptance": {
+    "test1": "'adicione uma salada na mesa 1' on comandaRestaurante: the open comanda of table 1 is picked without asking; with more than one salad in the menu one question lists them; then a confirmation; the item is launched.",
+    "test2": "'adicione uma salada': a question offers 'lançar em uma comanda' and 'cadastrar no cardápio'; choosing the menu asks only the price; confirmation; the item is created.",
+    "test3": "Cancel at any round ends the task with 'Cancelado' and nothing is sent.",
+    "test4": "'abrir comanda para a mesa 2 e lançar 1 bife': one confirmation listing both actions; the comanda of table 2 is opened, then the steak is launched on THAT comanda; the task ends with both actions done. If opening fails (table already has an open comanda) nothing else is sent.",
+    "test5": "'qual o valor total da comanda 4?': no confirmation; a screen shows the total of comanda 4 written from the app's data; OK closes the task. A sentence nothing fits shows its message on the same screen.",
+    "test6": "'como faço para fechar uma comanda?': no confirmation; the screen shows who does it (Caixa), where (Fechamento), the steps, the required payment method and the discount rule; OK closes. 'quais módulos existem?' lists every module, with or without a backend."
+  }
+}
