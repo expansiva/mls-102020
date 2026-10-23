@@ -5,14 +5,14 @@
 // No LLM, and no write when nothing changed. The L4 slice is part of each unit hash: an L4 change regenerates.
 
 import { displayPath, writeJson } from '/_102035_/l2/solution/fs.js';
-import { sha256Text } from '/_102020_/l2/agentMaterializeL2/helpers/hash.js';
+import { sha256Text, stableJson } from '/_102020_/l2/agentMaterializeL2/helpers/hash.js';
 import { m4OwnedFile, type M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { gateM4Input, M4_INPUT_KINDS, type M4ContextInput, type M4InputKind, type M4InputProblem, type M4Navigation } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
 import {
   discoverM4Pages, discoverM4Variants, loadMoleculeCatalog, m4DefsInfo, readDefsPipelineStatus, readM4PageSources, readM4VariantSources, studioInputPort, templateInfo, type M4InputPort,
 } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
 import { m4LocaleKey } from '/_102020_/l2/agentMaterializeL2/helpers/locale.js';
-import { l4RefsOf, readL4Module, renderL4Slice, sliceL4ForPage, type L4ModuleContext, type L4PageRefs } from '/_102020_/l2/agentMaterializeL2/helpers/l4/context.js';
+import { l4RefsOf, readL4Module, sliceL4ForPage, type L4ModuleContext, type L4PageRefs } from '/_102020_/l2/agentMaterializeL2/helpers/l4/context.js';
 
 // v3 (13/10/2026): the frozen shared (no forms, no functions); pages carry their navigations.
 // v4 (14/10/2026): pages carry their UX variants (page21…).
@@ -99,8 +99,10 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
   });
 
   // The variants of a page: inputs always; units only when accepted (both devices parse, need no new shared member, and
-  // their molecules are in the catalog and allowed by the template rules). The unit hash has the full template text,
-  // so a change of its rules changes the unit (and a variant the new rules refuse loses its units).
+  // their molecules are in the catalog and allowed by the template rules). The unit hash is DATA only (22/10/2026): the
+  // variant page11, and what the page11 unit holds; a template is agent material and changes nothing until --force.
+  /** pageId → hash of what a variant shares with its page11: the contract, the shared defs and the L4 slice. */
+  const pageDataHashes = new Map<string, string>();
   const snapshotVariants = async (pageId: string, variants: Array<{ genome: string; sources: Record<'desktop' | 'mobile', string | null> }>): Promise<M4InputVariant[]> => {
     const out: M4InputVariant[] = [];
     const accepted = gate.accepted.includes(pageId) ? gate.parsed[pageId].variants : [];
@@ -116,8 +118,8 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
       const units: M4Unit[] = [];
       if (parsed) {
         for (const device of ['desktop', 'mobile'] as const) {
-          const template = await sha256Text(templates.get(parsed.page11[device].template.category) ?? '');
-          units.push({ unitId: `${pageId}__${device}__${variant.genome}`, kind: device, inputHash: await sha256Text([hashes[device], template].join('\n')) });
+          const base = pageDataHashes.get(pageId) ?? '';
+          units.push({ unitId: `${pageId}__${device}__${variant.genome}`, kind: device, inputHash: await sha256Text([hashes[device], base].join('\n')) });
         }
       }
       out.push({ genome: variant.genome, status: parsed ? 'accepted' : 'refused', inputs, units });
@@ -137,17 +139,19 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
     const units: M4Unit[] = [];
     if (accepted) {
       const parsed = gate.parsed[page.pageId];
-      const templateHash = async (device: 'desktop' | 'mobile') => sha256Text(templates.get(parsed.page11[device].template.category) ?? '');
       const unit = async (kind: M4UnitKind, parts: string[]): Promise<M4Unit> => ({ unitId: `${page.pageId}__${kind}`, kind, inputHash: await sha256Text(parts.join('\n')) });
+      // Units are DATA only (22/10/2026): the defs, the contract and the L4 slice as data (stableJson), never the text an
+      // agent renders from it, and never a template, a prompt or a rule of agent code. Those regenerate only with --force.
       const slice = sliceL4ForPage(l4, parsed.contract, parsed.shared);
-      const l4Hash = await sha256Text(renderL4Slice(slice));
+      const l4Hash = await sha256Text(stableJson(slice));
       // The shared holds no visible text (the pages write every catalogue), so the product languages are not part of its
       // fingerprint: adding en-US and es-ES regenerated every shared of reembolsoDespesas for nothing (14/10/2026).
-      const sharedL4Hash = await sha256Text(renderL4Slice({ ...slice, module: { ...slice.module, productLanguages: [], defaultLanguage: '' } }));
+      const sharedL4Hash = await sha256Text(stableJson({ ...slice, module: { ...slice.module, productLanguages: [], defaultLanguage: '' } }));
+      pageDataHashes.set(page.pageId, await sha256Text([hashes.contract, hashes.shared, l4Hash].join('\n')));
       // D1 (30/09/2026): the contract .defs.ts is used as is (types for execBff); it is an input, not a unit.
       units.push(await unit('shared', [hashes.contract, hashes.shared, sharedL4Hash]));
-      units.push(await unit('desktop', [hashes.contract, hashes.shared, hashes.desktop, await templateHash('desktop'), l4Hash]));
-      units.push(await unit('mobile', [hashes.contract, hashes.shared, hashes.mobile, await templateHash('mobile'), l4Hash]));
+      units.push(await unit('desktop', [hashes.contract, hashes.shared, hashes.desktop, l4Hash]));
+      units.push(await unit('mobile', [hashes.contract, hashes.shared, hashes.mobile, l4Hash]));
       units.push(await unit('tests', [hashes.shared, hashes.desktop, hashes.mobile, l4Hash]));
     }
     snapshotPages.push({

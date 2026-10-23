@@ -14,6 +14,19 @@ Run `@@agentMaterializeL2 <module>`. The project comes from the current context.
 
 Examples: `@@agentMaterializeL2 comandaRestaurante --page mesas --device mobile`, `@@agentMaterializeL2 comandaRestaurante --page fechamento --force`.
 
+**What regenerates (22/10/2026): only data, or `--force`.** A unit is reused while its DATA is unchanged and its files were not
+edited after approval. A change of the agent (prompts, input20 notes, collabux templates, molecule `.defs.ts`, how the L4 slice is
+written) regenerates nothing: ask with `--force`.
+
+| unit | regenerates when |
+|---|---|
+| shared | the contract, the shared defs or the page's L4 slice (as data; the product languages excluded) changed; the shared `.ts`/`Dts` was edited |
+| page (desktop, mobile, variant) | its page11 defs, the contract, the shared defs or the L4 slice changed; the shared declaration changed (a new shared); the page `.ts` was edited |
+| review | the reviewed page, its page11 unit or the shared declaration changed |
+
+A receipt version change (`M4_*_VERSION`) still regenerates: bump it only when the old output cannot be used. Receipts written
+before 22/10/2026 are adopted on the first run (`fingerprint: 'data-v1'` is written) when their files are unchanged.
+
 **State on 05/10/2026: phase C** (`entry10 → input20 → shared40 → pages50`). Task: `mls-base/tasks/planned/TASK-102020-agent-materialize-l2-v4.md`.
 
 ## Inputs, per page

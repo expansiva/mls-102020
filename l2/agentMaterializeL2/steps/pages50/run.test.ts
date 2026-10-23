@@ -141,7 +141,7 @@ test('the page prompt carries target, declaration, page11, tokens, molecules wit
   assert.equal(context.target.sharedClassName, 'ControleEstoqueProdutosShared');
 });
 
-test('the reference page is approved, compiled and reused; a context change regenerates it', async () => {
+test('the reference page is approved, compiled and reused; only a data change regenerates it (22/10)', async () => {
   const port = await studio();
   const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
   const receipt = await approveM4Page(context, pageRef.source, 1, port);
@@ -150,7 +150,29 @@ test('the reference page is approved, compiled and reused; a context change rege
   assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true);
   assert.equal(await reusableM4Page(identity, 'produtos', 'mobile', port), false, 'mobile was never generated');
   port.files.set('102020/l4/collabux/templates/inventoryControl/page21.md', `${port.files.get('102020/l4/collabux/templates/inventoryControl/page21.md')}\nnew behavior rule\n`);
-  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), false, 'a template change regenerates the page');
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'a template change regenerates nothing');
+  port.files.set('102020/l2/agentMaterializeL2/steps/pages50/prompt.md', `${port.files.get('102020/l2/agentMaterializeL2/steps/pages50/prompt.md')}\nnew rule\n`);
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'a prompt change regenerates nothing');
+  const declaration = '102047/l2/controleEstoque/web/shared/produtosDts.txt';
+  assert.ok(port.files.has(declaration));
+  port.files.set(declaration, `${port.files.get(declaration)}\nexport type Extra = string;\n`);
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), false, 'a new shared declaration (data) regenerates the page');
+});
+
+test('a receipt from before the data fingerprint is adopted when its page is unchanged (22/10)', async () => {
+  const port = await studio();
+  const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
+  await approveM4Page(context, pageRef.source, 1, port);
+  const receiptKey = '102047/l2/controleEstoque/pipeline/agentMaterializeL2/pages50/produtosDesktop.json';
+  const { dataHash: _dataHash, fingerprint: _fingerprint, ...old } = JSON.parse(port.files.get(receiptKey)!);
+  port.files.set(receiptKey, JSON.stringify({ ...old, contextHash: 'sha256:an-old-prompt' }));
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'adopted');
+  const adopted = JSON.parse(port.files.get(receiptKey)!);
+  assert.equal(adopted.fingerprint, 'data-v1');
+  assert.equal(adopted.dataHash, context.dataHash);
+  port.files.set(receiptKey, JSON.stringify({ ...old, fingerprint: undefined }));
+  port.files.set('102047/l2/controleEstoque/web/desktop/page11/produtos.ts', `${pageRef.source}\n// edited by hand\n`);
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), false, 'a page edited after approval is not adopted');
 });
 
 test('the receipt keeps the design answer and the design observations; a design choice is never a refusal', async () => {

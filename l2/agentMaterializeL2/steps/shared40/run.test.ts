@@ -147,7 +147,7 @@ test('approval writes the source, compiles it, writes the declaration and a rece
   assert.equal(await reusableM4Shared(identity, 'produtos', port), false, 'a hand edit invalidates the receipt');
 });
 
-test('a note change from input20 invalidates the receipt, as a defs change does', async () => {
+test('a note change from input20 regenerates nothing: notes follow agent code (22/10)', async () => {
   const port = await studio();
   await approveM4Shared(await buildM4SharedContext(identity, 'produtos', port), reference, 1, port);
   assert.equal(await reusableM4Shared(identity, 'produtos', port), true);
@@ -156,7 +156,22 @@ test('a note change from input20 invalidates the receipt, as a defs change does'
   const produtos = snapshot.pages.find((page: { pageId: string }) => page.pageId === 'produtos');
   produtos.problems = [...produtos.problems, { severity: 'warning', code: 'M4_INPUT_ROUTE_KIND', page: 'produtos', path: 'shared:requests.load', message: 'a new note' }];
   port.files.set(path, JSON.stringify(snapshot));
-  assert.equal(await reusableM4Shared(identity, 'produtos', port), false);
+  assert.equal(await reusableM4Shared(identity, 'produtos', port), true);
+  const unit = produtos.units.find((item: { kind: string }) => item.kind === 'shared');
+  unit.inputHash = 'sha256:the-defs-changed';
+  port.files.set(path, JSON.stringify(snapshot));
+  assert.match((await m4SharedReuseBlocker(identity, 'produtos', port))!, /data fingerprint/u, 'a data change still regenerates');
+});
+
+test('a receipt from before the data fingerprint is adopted when its files are unchanged (22/10)', async () => {
+  const port = await studio();
+  await approveM4Shared(await buildM4SharedContext(identity, 'produtos', port), reference, 1, port);
+  const receiptKey = '102047/l2/controleEstoque/pipeline/agentMaterializeL2/shared40/produtos.json';
+  const { fingerprint: _fingerprint, ...old } = JSON.parse(port.files.get(receiptKey)!);
+  port.files.set(receiptKey, JSON.stringify({ ...old, unitInputHash: 'sha256:the-old-formula' }));
+  assert.equal(await m4SharedReuseBlocker(identity, 'produtos', port), null, 'adopted');
+  assert.equal(JSON.parse(port.files.get(receiptKey)!).fingerprint, 'data-v1');
+  assert.notEqual(JSON.parse(port.files.get(receiptKey)!).unitInputHash, 'sha256:the-old-formula');
 });
 
 test('the reuse check says why, and tolerates CRLF and trailing whitespace the Studio may add', async () => {
@@ -171,11 +186,11 @@ test('the reuse check says why, and tolerates CRLF and trailing whitespace the S
   assert.equal(await m4SharedReuseBlocker(identity, 'produtos', port), 'l2/controleEstoque/web/shared/produtos.ts changed after approval');
 });
 
-test('a prompt change invalidates the receipt', async () => {
+test('a prompt change regenerates nothing until --force (22/10)', async () => {
   const port = await studio();
   await approveM4Shared(await buildM4SharedContext(identity, 'produtos', port), reference, 1, port);
   port.files.set('102020/l2/agentMaterializeL2/steps/shared40/prompt.md', `${promptText}\nextra rule\n`);
-  assert.equal(await reusableM4Shared(identity, 'produtos', port), false);
+  assert.equal(await reusableM4Shared(identity, 'produtos', port), true);
 });
 
 test('a gate refusal writes nothing; a compile error leaves no receipt', async () => {

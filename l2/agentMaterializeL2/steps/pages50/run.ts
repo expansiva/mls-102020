@@ -18,7 +18,7 @@ import { parseL2Contract } from '/_102020_/l2/agentMaterializeL2/helpers/defs/co
 import { m4OwnedFile, type M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { loadMoleculeCatalog, m4DefsInfo, moleculeIndexInfo, templateInfo, type M4InputPort } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
-import { m4SharedReuseBlocker, readM4Snapshot, sharedDeclarationInfo, sharedSourceInfo, storedHash, studioSharedPort, type M4SharedPort } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { M4_REUSE_FINGERPRINT, m4SharedReuseBlocker, readM4Snapshot, sharedDeclarationInfo, sharedSourceInfo, storedHash, studioSharedPort, type M4SharedPort } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { m4SharedClassName } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
 import {
   M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
@@ -46,6 +46,8 @@ export interface M4PageContext {
   target: M4PageTarget;
   humanPrompt: string;
   contextHash: string;
+  /** The DATA of the page: its page11 unit (defs, contract, L4) and the shared declaration it codes against. Compared for reuse. */
+  dataHash: string;
   /** The shared declaration the page codes against; the repair prompt sends it again. */
   declaration: string;
   /**
@@ -65,7 +67,11 @@ export interface M4PageReceipt {
   device: L2Page11Device;
   /** Absent in receipts of page11 written before 14/10/2026. */
   genome?: string;
+  /** What the LLM was sent (prompt included). Recorded, never compared: a prompt or template change regenerates nothing until --force. */
   contextHash: string;
+  /** The data fingerprint compared for reuse; absent in receipts before 22/10/2026, which are adopted. */
+  dataHash?: string;
+  fingerprint?: typeof M4_REUSE_FINGERPRINT;
   sourcePath: string;
   sourceHash: string;
   attempt: number;
@@ -234,7 +240,9 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     scenaryContract || '(scene host contract not found: do not use scenes)',
   ];
   const humanPrompt = parts.join('\n');
-  return { identity, pageId, device, genome, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), declaration, rowTypes, platformTypes };
+  const unitHash = (variant ? variant.units : page.units).find(item => item.kind === device)?.inputHash ?? '';
+  const dataHash = await sha256Text([unitHash, await storedHash(declaration)].join('\n'));
+  return { identity, pageId, device, genome, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), dataHash, declaration, rowTypes, platformTypes };
 }
 
 /**
@@ -371,7 +379,7 @@ export async function approveM4Page(context: M4PageContext, source: unknown, att
   const receipt: M4PageReceipt = {
     schemaVersion: M4_PAGE_VERSION, ...context.identity, pageId: context.pageId, device: context.device,
     ...(context.genome === L2_PRIMARY_GENOME ? {} : { genome: context.genome }),
-    contextHash: context.contextHash, sourcePath: displayPath(info), sourceHash: await storedHash(await port.read(info)), attempt,
+    contextHash: context.contextHash, dataHash: context.dataHash, fingerprint: M4_REUSE_FINGERPRINT, sourcePath: displayPath(info), sourceHash: await storedHash(await port.read(info)), attempt,
     design: m4PageDesign(design),
     advisories: [
       ...normalized.lines.map(message => ({ code: 'M4_PAGE_MOLECULE_SUFFIX', message })),
@@ -389,7 +397,11 @@ export async function reusableM4Page(identity: M4RunIdentity, pageId: string, de
     if ((receipt.genome ?? L2_PRIMARY_GENOME) !== genome) return false;
     const info = pageSourceInfo(identity, pageId, device, genome);
     if (!port.exists(info) || await storedHash(await port.read(info)) !== receipt.sourceHash) return false;
-    return (await buildM4PageContext(identity, pageId, device, port, snapshot, genome)).contextHash === receipt.contextHash;
+    // Only DATA decides (22/10/2026); a receipt from before is adopted, its page being unchanged since approval.
+    const { dataHash } = await buildM4PageContext(identity, pageId, device, port, snapshot, genome);
+    if (receipt.fingerprint === M4_REUSE_FINGERPRINT) return dataHash === receipt.dataHash;
+    await port.writeJson(pageReceiptInfo(identity, pageId, device, genome), { ...receipt, dataHash, fingerprint: M4_REUSE_FINGERPRINT });
+    return true;
   } catch {
     return false;
   }

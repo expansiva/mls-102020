@@ -20,6 +20,8 @@ import { readL4Module, renderL4Slice, resolveL4Refs } from '/_102020_/l2/agentMa
 import { gateM4SharedSource, m4ContractImport, m4FillStateJsdoc, m4SharedClassName, m4SharedPath, type M4SharedTarget } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
 
 export const M4_SHARED_VERSION = '2026-10-05-materialize-l2-v4-shared-v1' as const;
+/** The reuse fingerprints compare DATA only (22/10/2026); shared by the shared40, pages50 and review55 receipts. */
+export const M4_REUSE_FINGERPRINT = 'data-v1' as const;
 export const M4_SHARED_TOOL = 'submitSharedTs' as const;
 /** One generation plus up to three focused repairs (agentFix style); an environment failure stops at once. */
 export const M4_SHARED_MAX_ATTEMPTS = 4;
@@ -49,9 +51,13 @@ export interface M4SharedReceipt {
   project: number;
   module: string;
   pageId: string;
+  /** The DATA of the page (contract, shared defs, L4 slice): the only thing compared for reuse. */
   unitInputHash: string;
+  /** 'data-v1': unitInputHash is the data-only fingerprint (22/10/2026); absent in older receipts, which are adopted. */
+  fingerprint?: typeof M4_REUSE_FINGERPRINT;
+  /** Recorded, never compared: a prompt change regenerates nothing until --force. */
   promptHash: string;
-  /** The input20 warnings of the page: a rule change (agent code) must regenerate, like a defs change. */
+  /** The input20 warnings the shared was generated with. Recorded, never compared (they follow agent code). */
   rulesHash: string;
   sourcePath: string;
   sourceHash: string;
@@ -276,6 +282,7 @@ export async function approveM4Shared(context: M4SharedContext, source: unknown,
   const receipt: M4SharedReceipt = {
     schemaVersion: M4_SHARED_VERSION, ...context.identity, pageId: context.pageId,
     unitInputHash: context.unitInputHash,
+    fingerprint: M4_REUSE_FINGERPRINT,
     promptHash: await sha256Text(context.prompt),
     rulesHash: await rulesHashOf(context.target.rules),
     sourcePath: displayPath(sourceInfo), sourceHash: await storedHash(await port.read(sourceInfo)),
@@ -301,15 +308,17 @@ export async function m4SharedReuseBlocker(identity: M4RunIdentity, pageId: stri
     const page = snap.pages.find(item => item.pageId === pageId && item.status === 'accepted');
     const unit = page?.units.find(item => item.kind === 'shared');
     if (!page || !unit) return 'page not accepted by input20';
-    if (unit.inputHash !== receipt.unitInputHash) return 'contract or shared defs changed (unit fingerprint)';
-    if (await rulesHashOf(m4SharedRules(page.problems)) !== receipt.rulesHash) return 'input20 rules of the page changed';
-    if (await sha256Text(await port.read(promptInfo)) !== receipt.promptHash) return 'shared40 prompt.md changed';
+    // Only DATA decides (22/10/2026): the prompt, the input20 rules and the templates are agent material; a change of
+    // theirs regenerates nothing until --force. A receipt written before that is adopted when its files are unchanged.
+    const adopt = receipt.fingerprint !== M4_REUSE_FINGERPRINT;
+    if (!adopt && unit.inputHash !== receipt.unitInputHash) return 'contract, shared defs or L4 changed (data fingerprint)';
     const sourceInfo = sharedSourceInfo(identity, pageId);
     const declarationInfo = sharedDeclarationInfo(identity, pageId);
     if (!port.exists(sourceInfo)) return `${displayPath(sourceInfo)} does not exist`;
     if (!port.exists(declarationInfo)) return `${displayPath(declarationInfo)} does not exist`;
     if (!await sameStored(await port.read(sourceInfo), receipt.sourceHash)) return `${displayPath(sourceInfo)} changed after approval`;
     if (!await sameStored(await port.read(declarationInfo), receipt.declarationHash)) return `${displayPath(declarationInfo)} changed after approval`;
+    if (adopt) await port.writeJson(sharedReceiptInfo(identity, pageId), { ...receipt, unitInputHash: unit.inputHash, fingerprint: M4_REUSE_FINGERPRINT });
     return null;
   } catch (error) {
     return `reuse check failed: ${error instanceof Error ? error.message : String(error)}`;

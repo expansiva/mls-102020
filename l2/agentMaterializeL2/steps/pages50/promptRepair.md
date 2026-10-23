@@ -31,6 +31,7 @@ You fix ONE TypeScript file that the Studio refused: the **page** of one device 
 - **TS2531 / TS18047 "'x' is possibly 'null'"**: guard it (`x ? html`…` : nothing`, `x?.field ?? fallback`). Never `!`.
 - **TS6133 / TS6192 unused import or variable**: remove only that import or variable.
 - **TS2304 "Cannot find name 'html' / 'nothing'"**: import it from `lit`.
+- **TS2304 "Cannot find name 'this'"** in a parameter or return type (`typeof this.<member>…`): replace that type with the Row type of the declaration (`<Row>[]`), imported with `import type { <Row> } from` the shared module the class extends. Change nothing else.
 
 - **M4_PAGE_ANY "The page uses `any`"**: give each helper parameter the row type the shared declares (`import type { ProdutoLoad } from '<shared module>'`) and read the nested paths of that type (`item.details.identification.name`, not `item.name`). Then fix every TS error the real type reveals.
 

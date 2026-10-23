@@ -13,7 +13,7 @@ import { readL4Module, renderL4Slice, resolveL4Refs } from '/_102020_/l2/agentMa
 import type { M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { m4DefsInfo, templateInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
-import { readM4Snapshot, sharedDeclarationInfo } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { M4_REUSE_FINGERPRINT, readM4Snapshot, sharedDeclarationInfo, storedHash } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { pageReceiptInfo, pageSourceInfo, studioPagePort, type M4PagePort, type M4PageReceipt } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 
 export const M4_REVIEW_VERSION = '2026-10-05-materialize-l2-v4-review-v1' as const;
@@ -39,7 +39,11 @@ export interface M4ReviewReceipt {
   module: string;
   pageId: string;
   device: L2Page11Device;
+  /** What the reviewer was sent (prompt included). Recorded, never compared. */
   contextHash: string;
+  /** The data compared for reuse (the page, its page11 unit, the shared declaration); absent before 22/10/2026 (adopted). */
+  dataHash?: string;
+  fingerprint?: typeof M4_REUSE_FINGERPRINT;
   pagePath: string;
   summary: string;
   findings: M4ReviewFinding[];
@@ -53,6 +57,7 @@ export interface M4ReviewContext {
   prompt: string;
   humanPrompt: string;
   contextHash: string;
+  dataHash: string;
 }
 
 export const reviewPromptInfo: Ns5FileInfo = { project: 102020, level: 2, folder: 'agentMaterializeL2/steps/review55', shortName: 'prompt', extension: '.md' };
@@ -102,7 +107,11 @@ export async function buildM4ReviewContext(identity: M4RunIdentity, pageId: stri
     '```ts', declaration.trim() || '(not found)', '```',
   ];
   const humanPrompt = parts.join('\n');
-  return { identity, pageId, device, prompt, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`) };
+  // Only DATA decides reuse (22/10/2026): the reviewed page, its page11 unit and the shared declaration; never the prompt,
+  // the template or how the L4 is written.
+  const unitHash = page.units.find(item => item.kind === device)?.inputHash ?? '';
+  const dataHash = await sha256Text([await storedHash(source), unitHash, await storedHash(declaration)].join('\n'));
+  return { identity, pageId, device, prompt, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), dataHash };
 }
 
 export function buildM4ReviewPrompt(context: M4ReviewContext): { systemPrompt: string; humanPrompt: string } {
@@ -113,7 +122,7 @@ export function buildM4ReviewPrompt(context: M4ReviewContext): { systemPrompt: s
 export async function recordM4Review(context: M4ReviewContext, answer: { summary: string; findings: M4ReviewFinding[]; failed?: string }, port: Pick<M4PagePort, 'writeJson'> = studioPagePort): Promise<M4ReviewReceipt> {
   const receipt: M4ReviewReceipt = {
     schemaVersion: M4_REVIEW_VERSION, ...context.identity, pageId: context.pageId, device: context.device,
-    contextHash: context.contextHash, pagePath: displayPath(pageSourceInfo(context.identity, context.pageId, context.device)),
+    contextHash: context.contextHash, dataHash: context.dataHash, fingerprint: M4_REUSE_FINGERPRINT, pagePath: displayPath(pageSourceInfo(context.identity, context.pageId, context.device)),
     summary: answer.summary, findings: answer.findings, ...(answer.failed ? { failed: answer.failed } : {}),
   };
   await port.writeJson(reviewReceiptInfo(context.identity, context.pageId, context.device), receipt);
@@ -129,7 +138,9 @@ export async function m4ReviewState(identity: M4RunIdentity, pageId: string, dev
     const receipt = await port.readJson<M4ReviewReceipt>(reviewReceiptInfo(identity, pageId, device));
     if (!receipt || receipt.schemaVersion !== M4_REVIEW_VERSION) return { settled: false, reusable: false };
     const context = await buildM4ReviewContext(identity, pageId, device, port, snapshot);
-    const settled = context.contextHash === receipt.contextHash;
+    // A receipt from before 22/10/2026 is adopted: its review stands until the page or its data change.
+    if (receipt.fingerprint !== M4_REUSE_FINGERPRINT) await port.writeJson(reviewReceiptInfo(identity, pageId, device), { ...receipt, dataHash: context.dataHash, fingerprint: M4_REUSE_FINGERPRINT });
+    const settled = receipt.fingerprint !== M4_REUSE_FINGERPRINT || context.dataHash === receipt.dataHash;
     return { settled, reusable: settled && !receipt.failed };
   } catch {
     return { settled: false, reusable: false };

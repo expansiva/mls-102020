@@ -153,5 +153,6 @@ test('a change of the template rules re-evaluates the variant: forbidding a grou
   port.files.set(templateKey, `${rules(['groupViewChart'])}\nMore text.\n`);
   const again = await runM4Input(identity, port);
   assert.equal(variant(again.snapshot).status, 'accepted');
-  assert.notDeepEqual(variant(again.snapshot).units.map(unit => unit.inputHash), variant(allowed.snapshot).units.map(unit => unit.inputHash), 'the template text is in the unit hash');
+  // 22/10/2026: a template is agent material; its text (rules aside, which decide acceptance) is not in the data hash.
+  assert.deepEqual(variant(again.snapshot).units.map(unit => unit.inputHash), variant(allowed.snapshot).units.map(unit => unit.inputHash), 'the template text is not in the unit hash');
 });
