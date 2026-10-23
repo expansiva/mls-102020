@@ -54,6 +54,8 @@ export interface M4PageContext {
    * `movimentadoEm`, in every run and every repair (controleEstoque, 02/10/2026).
    */
   rowTypes: string;
+  /** The platform types (MDM ontology of 102034) the contract uses, with the meaning of each field; '' when none. */
+  platformTypes: string;
 }
 export interface M4PageReceipt {
   schemaVersion: typeof M4_PAGE_VERSION;
@@ -136,7 +138,9 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
   // What the shared starts by itself is read from its code; the other requests are the page's to start.
   const sharedInfo = sharedSourceInfo(identity, pageId);
   const pageOnlyRequests = m4PageOnlyRequests(shared, port.exists(sharedInfo) ? await port.read(sharedInfo) : '', Object.values(page.methods ?? {}));
-  const rowTypes = m4RowTypes(await port.read(m4DefsInfo(identity, 'contract', pageId)));
+  const contractSource = await port.read(m4DefsInfo(identity, 'contract', pageId));
+  const rowTypes = m4RowTypes(contractSource);
+  const platformTypes = await m4PlatformTypes(contractSource, port);
   const template = templateInfo(page11.template.category);
   const templateText = template && port.exists(template) ? await port.read(template) : '';
   const designSystem: Ns5FileInfo = { project: identity.project, level: 2, folder: '', shortName: 'designSystem', extension: '.ts' };
@@ -200,6 +204,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     `# Row types — web/contracts/${pageId}.defs.ts (the only fields a row has)`,
     '```ts', rowTypes, '```',
     '',
+    ...m4PlatformTypesSection(platformTypes),
     `# Page definition — web/${device}/${genome}/${pageId}.defs.ts`,
     '```ts', page11Source.trim(), '```',
     '',
@@ -229,7 +234,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     scenaryContract || '(scene host contract not found: do not use scenes)',
   ];
   const humanPrompt = parts.join('\n');
-  return { identity, pageId, device, genome, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), declaration, rowTypes };
+  return { identity, pageId, device, genome, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), declaration, rowTypes, platformTypes };
 }
 
 /**
@@ -249,6 +254,34 @@ export async function m4PageMoleculeEvents(tags: string[], port: Pick<M4PagePort
     } catch { /* unreadable: not checked */ }
   }
   return moleculeEvents;
+}
+
+/** The MDM ontology of the platform: the meaning of each field of the platform types (Address, ContactSummary…). */
+export const M4_PLATFORM_ONTOLOGY: Ns5FileInfo = { project: 102034, level: 1, folder: 'mdm/defs', shortName: 'ontology', extension: '.ts' };
+
+/**
+ * The ontology entries (`export const <Name> = { … } as const;`, with the comment above it) of every type the contract
+ * declares under the same name, verbatim: the descriptions and examples say what each field holds (22/10/2026: the
+ * mobile company_setup wrote the neighborhood and the complement both into `line3`). A missing ontology is an error.
+ */
+export async function m4PlatformTypes(contractSource: string, port: Pick<M4PagePort, 'exists' | 'read'>): Promise<string> {
+  if (!port.exists(M4_PLATFORM_ONTOLOGY)) throw new Error(`M4_PAGE_ONTOLOGY_MISSING: ${displayPath(M4_PLATFORM_ONTOLOGY)} not found.`);
+  const ontology = await port.read(M4_PLATFORM_ONTOLOGY);
+  const names = [...new Set([...contractSource.matchAll(/^export interface (\w+)/gmu)].map(match => match[1]))];
+  const entries: string[] = [];
+  for (const name of names) {
+    const start = ontology.search(new RegExp(`^export const ${name} = \\{`, 'mu'));
+    if (start < 0) continue;
+    const end = ontology.indexOf('} as const;', start);
+    if (end < 0) throw new Error(`M4_PAGE_ONTOLOGY_UNREADABLE: ${displayPath(M4_PLATFORM_ONTOLOGY)}: ${name} has no closing "} as const;".`);
+    const doc = /(\/\*\*[\s\S]*?\*\/)\s*$/u.exec(ontology.slice(Math.max(0, ontology.lastIndexOf('// ----', start)), start))?.[1];
+    entries.push([doc, ontology.slice(start, end + '} as const;'.length)].filter(Boolean).join('\n'));
+  }
+  return entries.join('\n\n');
+}
+
+function m4PlatformTypesSection(platformTypes: string): string[] {
+  return platformTypes ? [`# Platform types — meaning of each field (${displayPath(M4_PLATFORM_ONTOLOGY)})`, '```ts', platformTypes, '```', ''] : [];
 }
 
 /** The projection interfaces of the contract (no route map): the exact shape of every row the shared exposes. */
@@ -288,6 +321,7 @@ export async function buildM4PageRepairPrompt(context: M4PageContext, repair: { 
     '',
     `# Row types — web/contracts/${target.pageId}.defs.ts (the only fields a row has)`,
     '```ts', context.rowTypes, '```',
+    ...(context.platformTypes ? ['', ...m4PlatformTypesSection(context.platformTypes).slice(0, -1)] : []),
   ];
   return { systemPrompt: await port.read(pageRepairPromptInfo), humanPrompt: parts.join('\n') };
 }

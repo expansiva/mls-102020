@@ -7,7 +7,7 @@ import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { approveM4Shared, buildM4SharedContext } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import {
-  M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, productLocales, reusableM4Page, type M4PagePort,
+  M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, productLocales, reusableM4Page, type M4PagePort,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 
@@ -49,6 +49,7 @@ async function studio(compileErrors: string[] = []) {
     if (existsSync(new URL(path, BASE))) put({ project: 102040, level: 2, folder: `molecules/${group}`, shortName: name, extension: '.defs.ts' }, real(path));
   }
   put({ project: 102020, level: 2, folder: 'molecules', shortName: 'ml-scenary', extension: '.defs.ts' }, real('mls-102020/l2/molecules/ml-scenary.defs.ts'));
+  put({ project: 102034, level: 1, folder: 'mdm/defs', shortName: 'ontology', extension: '.ts' }, real('mls-102034/l1/mdm/defs/ontology.ts'));
   put({ project: 102020, level: 2, folder: 'agentMaterializeL2/steps/shared40', shortName: 'prompt', extension: '.md' }, real('mls-102020/l2/agentMaterializeL2/steps/shared40/prompt.md'));
   // The real L4 of the module, as the Studio serves it (level 4).
   const l4Root = new URL(`mls-102047/l4/${identity.module}/`, BASE);
@@ -184,6 +185,27 @@ test('a page repair is a focused fix (agentFix style): errors, refused file, its
     assert.ok(humanPrompt.includes(needle), needle);
   }
   assert.match(systemPrompt, /^<!-- modelType: code -->/u);
+});
+
+test('the platform types the contract uses carry the meaning of each field, read from the 102034 ontology (d2_125)', async () => {
+  const ontology = real('mls-102034/l1/mdm/defs/ontology.ts');
+  const ports = (files: Record<string, string>) => ({ exists: (info: Ns5FileInfo) => key(info) in files, read: async (info: Ns5FileInfo) => files[key(info)] });
+  const port = ports({ '102034/l1/mdm/defs/ontology.ts': ontology });
+  const section = await m4PlatformTypes(real('mls-102056/l2/onboarding/web/contracts/company_setup.defs.ts'), port);
+  assert.match(section, /line1: \{[^}]*street and number/u);
+  assert.match(section, /line2: \{[^}]*apartment, suite, floor/u);
+  assert.match(section, /line3: \{[^}]*neighborhood, district/u);
+  assert.match(section, /Brazil: line1="Rua das Flores 100", line2="Apto 42", line3="Jardim Paulista"/u);
+  assert.match(section, /export const ContactSummary = \{/u);
+  assert.doesNotMatch(section, /export const (?:PrivacyConsent|MdmEntity) = /u, 'only the types the contract declares');
+  await assert.rejects(m4PlatformTypes('export interface Address {}', ports({})), /M4_PAGE_ONTOLOGY_MISSING: .*ontology/u);
+  // control: a page whose contract uses no platform type gets no section
+  const studioPort = await studio();
+  const context = await buildM4PageContext(identity, 'produtos', 'desktop', studioPort);
+  assert.equal(context.platformTypes, '');
+  assert.ok(!context.humanPrompt.includes('# Platform types'));
+  const repair = await buildM4PageRepairPrompt({ ...context, platformTypes: section }, { diagnostic: 'x', previous: 'y' }, studioPort);
+  assert.ok(repair.humanPrompt.includes('# Platform types') && repair.humanPrompt.includes('street and number'), 'the repair repeats the section');
 });
 
 test('a page waits for its shared: no receipt, no context', async () => {
