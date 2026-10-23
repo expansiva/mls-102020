@@ -239,7 +239,7 @@ export function m4MoleculeDetailEvents(source: string): Array<{ name: string; ke
         if (detail) {
           let k = skipSpaceAndComments(body, detail.index + detail[0].length);
           keys = body[k] === '{' ? objectLiteralKeys(body, k) : null;
-        }
+        } else if (/[{,]\s*(?:detail\s*[,}]|\.\.\.)/u.test(body)) keys = null; // shorthand `detail` or a spread
       } else keys = null;
     }
     const previous = found.get(name);

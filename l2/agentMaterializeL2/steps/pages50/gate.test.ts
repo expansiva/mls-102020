@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
-import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4MoleculeEvents, m4MoleculeImport, m4MoleculeProperties, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PagePath, m4PageTag, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4MoleculeEvents, m4MoleculeImport, m4MoleculeDetailEvents, m4MoleculeProperties, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PagePath, m4PageTag, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 import { M4_DOM_PROPERTIES } from '/_102020_/l2/agentMaterializeL2/steps/pages50/domProperties.js';
 
 const input = JSON.parse(readFileSync(new URL('../input20/fixtures/controleEstoque.json', import.meta.url), 'utf8')) as { pages: Record<string, { desktop: string; mobile: string }> };
@@ -380,4 +380,11 @@ test('`return this.setX(…)` after the own-event check still does the work and 
   const field = '<groupenterdate--ml-date-shortcut-picker @change=${(e: CustomEvent<{ value: string | null }>) => { if (e.target === e.currentTarget) return this.setDraft(e.detail.value); }}></groupenterdate--ml-date-shortcut-picker>';
   assert.deepEqual(m4OwnEventDrops(field), []);
   assert.equal(m4OwnEventDrops(field.replace('return this.setDraft(e.detail.value);', '{ return; }')).length, 1);
+});
+
+test('d2_125: shorthand or spread `detail` is keys not read; no detail is an empty list', () => {
+  const scenary = readFileSync(new URL('../../../molecules/ml-scenary.ts', import.meta.url), 'utf8');
+  assert.match(m4MoleculeSurfaceLine('molecules--ml-scenary-102020', scenary), /\bchange \{keys not read\}/u);
+  assert.deepEqual(m4MoleculeDetailEvents("new CustomEvent('x', { bubbles: true })"), [{ name: 'x', keys: [] }]);
+  assert.deepEqual(m4MoleculeDetailEvents("new CustomEvent('x', { detail: { field, value } })"), [{ name: 'x', keys: ['field', 'value'] }]);
 });
