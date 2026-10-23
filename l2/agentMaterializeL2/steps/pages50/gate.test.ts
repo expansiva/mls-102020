@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
-import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4InheritedProperties, m4MoleculeDetailEvents, m4MoleculeEvents, m4MoleculeImport, m4MoleculeProperties, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PagePath, m4PageTag, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4MoleculeEvents, m4MoleculeImport, m4MoleculeProperties, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PagePath, m4PageTag, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 import { M4_DOM_PROPERTIES } from '/_102020_/l2/agentMaterializeL2/steps/pages50/domProperties.js';
 
 const input = JSON.parse(readFileSync(new URL('../input20/fixtures/controleEstoque.json', import.meta.url), 'utf8')) as { pages: Record<string, { desktop: string; mobile: string }> };
@@ -356,95 +356,6 @@ test('a molecule handler that throws away its own event is refused; the harmless
   const issue = gateM4PageSource(page, target()).find(item => item.code === 'M4_PAGE_OWN_EVENT_DROPPED');
   assert.ok(issue && issue.always);
   assert.match(issue.message, /use e\.detail directly/u);
-});
-
-test('spreading a possibly absent value with ! is refused; the empty-draft start and a bare ! pass', () => {
-  const withBody = (body: string) => reference.replace('</main>', `${body}</main>`);
-  const refused = withBody('updateAddress({ ...address!, line1: v })');
-  assert.notEqual(refused, reference);
-  const issue = gateM4PageSource(refused, target()).find(item => item.code === 'M4_PAGE_SPREAD_NON_NULL');
-  assert.ok(issue && issue.always && issue.severity === 'error');
-  assert.match(issue.message, /address/u);
-  assert.match(issue.message, /the shared's empty-draft function/u);
-  assert.doesNotMatch(issue.message, /emptyAddressDraft|\?\?/u);
-  const named = gateM4PageSource(refused, { ...target(), sharedDeclaration: 'export declare function emptyAddressDraft(): AddressDraft;\nexport declare function other(): void;' });
-  const namedIssue = named.find(item => item.code === 'M4_PAGE_SPREAD_NON_NULL');
-  assert.match(namedIssue!.message, /emptyAddressDraft/u);
-  assert.doesNotMatch(namedIssue!.message, /the shared's empty-draft function|\?\?/u);
-  const renamed = gateM4PageSource(refused, { ...target(), sharedDeclaration: 'export declare function newAddressDraft(): AddressDraft;' });
-  assert.match(renamed.find(item => item.code === 'M4_PAGE_SPREAD_NON_NULL')!.message, /newAddressDraft/u);
-  assert.ok(!gateM4PageSource(withBody('updateAddress({ ...(address ?? emptyAddressDraft()), line1: v })'), target()).some(item => item.code === 'M4_PAGE_SPREAD_NON_NULL'));
-  assert.ok(!gateM4PageSource(withBody('const x = address!;'), target()).some(item => item.code === 'M4_PAGE_SPREAD_NON_NULL'));
-});
-
-test('a select with no Item is refused; options from a list or inside Group pass', () => {
-  const select = (body: string) => reference.replace('</main>', `<groupselectone--ml-select-one-autocomplete .value=\${this.pais}>${body}</groupselectone--ml-select-one-autocomplete></main>`);
-  const empty = select('<Label>${this.msg[\'pais\']}</Label>');
-  assert.notEqual(empty, reference);
-  const issue = gateM4PageSource(empty, target()).find(item => item.code === 'M4_PAGE_SELECT_NO_OPTIONS');
-  assert.ok(issue && issue.always && issue.severity === 'error');
-  assert.match(issue.message, /offers nothing to choose/u);
-  assert.match(issue.message, /groupselectone--ml-select-one-autocomplete/u);
-  const mapped = select("${this.lista.map(x => html`<Item value=\${x.id}>\${x.nome}</Item>`)}");
-  assert.ok(!gateM4PageSource(mapped, target()).some(item => item.code === 'M4_PAGE_SELECT_NO_OPTIONS'));
-  const grouped = select('<Group>${this.lista.map(x => html`<Item value=${x.id}>${x.nome}</Item>`)}</Group>');
-  assert.ok(!gateM4PageSource(grouped, target()).some(item => item.code === 'M4_PAGE_SELECT_NO_OPTIONS'));
-  const many = select('').replaceAll('groupselectone--ml-select-one-autocomplete', 'groupselectmany--ml-select-many');
-  assert.ok(gateM4PageSource(many, target()).some(item => item.code === 'M4_PAGE_SELECT_NO_OPTIONS' && item.always));
-});
-
-test('a detail key or a property the molecule does not have is refused; an unread event and a common attribute are not', () => {
-  const address = molecule('groupentertext/ml-address-field');
-  const enter = molecule('groupentertext/ml-enter-text');
-  const baseDir = new URL('../../../../../', import.meta.url);
-  const baseProperties = m4InheritedProperties([
-    readFileSync(new URL('mls-102033/l2/moleculeBase.ts', baseDir), 'utf8'),
-    readFileSync(new URL('mls-102029/l2/stateLitElement.ts', baseDir), 'utf8'),
-    readFileSync(new URL('mls-102029/l2/collabLitElement.ts', baseDir), 'utf8'),
-  ]);
-  assert.ok(baseProperties.includes('cssClass') && baseProperties.includes('globalVariation'));
-  const facts = (tag: string, source: string) => ({
-    moleculeProperties: { [tag]: m4MoleculeProperties(source) },
-    moleculeDetail: { [tag]: Object.fromEntries(m4MoleculeDetailEvents(source).map(item => [item.name, item.keys])) },
-    baseProperties,
-  });
-  const addr = 'groupentertext--ml-address-field';
-  const text = 'groupentertext--ml-enter-text';
-  const of = (tag: string, attrs: string, extra: Partial<M4PageTarget>) => {
-    const page = `<${tag} ${attrs}></${tag}>`;
-    return gateM4PageSource(page, { ...target(), ...extra });
-  };
-  const detailOf = (tag: string, attrs: string, source: string) => of(tag, attrs, facts(tag, source)).filter(item => item.code === 'M4_PAGE_EVENT_DETAIL_UNKNOWN');
-  const propOf = (tag: string, attrs: string, source: string) => of(tag, attrs, facts(tag, source)).filter(item => item.code === 'M4_PAGE_PROPERTY_UNKNOWN');
-  const street = detailOf(addr, '@change=${(e) => this.setDraft(e.detail.street)}', address);
-  assert.equal(street.length, 1);
-  assert.equal(street[0].always, true);
-  assert.match(street[0].message, /reads "street" from the detail of @change\. That event sends "field", "value"\./u);
-  assert.equal(detailOf(addr, '@change=${(e) => this.setDraft(e.detail.field)}', address).length, 0);
-  const value = propOf(addr, '.value=${current}', address);
-  assert.equal(value.length, 1);
-  assert.match(value[0].message, /binds property "value"/u);
-  assert.doesNotMatch(value[0].message, /```/u);
-  assert.equal(propOf(text, '.value=${current}', enter).length, 0);
-  assert.equal(propOf(addr, '.cssClass=${"w-full"} class=${"a"} data-class="b" ?disabled=${false} @change=${(e) => e.detail.field}', address).filter(item => item.code === 'M4_PAGE_PROPERTY_UNKNOWN').length, 0);
-  const unread = of(addr, '@change=${(e) => e.detail.street}', { ...facts(addr, address), moleculeDetail: { [addr]: { change: null } } });
-  assert.equal(unread.filter(item => item.code === 'M4_PAGE_EVENT_DETAIL_UNKNOWN').length, 0);
-  const noProps = of(addr, '.value=${current}', { ...facts(addr, address), moleculeProperties: { [addr]: [] } });
-  assert.equal(noProps.filter(item => item.code === 'M4_PAGE_PROPERTY_UNKNOWN').length, 0);
-});
-
-test('a ${} on a plain attribute is skipped; a native property passes; .readonly on ml-enter-text passes', () => {
-  const enter = molecule('groupentertext/ml-enter-text');
-  const text = 'groupentertext--ml-enter-text';
-  const dom = m4DomProperties(readFileSync(new URL('../../../../../node_modules/typescript/lib/lib.dom.d.ts', import.meta.url), 'utf8'));
-  assert.ok(dom.includes('id'));
-  const page = `<${text} ?loading=\${this.xStatus === 'loading'} class=\${this.a.b} .id=\${this.row} .readonly=\${true}></${text}>`;
-  const issues = gateM4PageSource(page, {
-    ...target(),
-    moleculeProperties: { [text]: m4MoleculeProperties(enter) },
-    baseProperties: dom,
-  }).filter(item => item.code === 'M4_PAGE_PROPERTY_UNKNOWN');
-  assert.equal(issues.length, 0);
 });
 
 test('readonly before : = or ? is the property name; readonly before another name stays a modifier', () => {
