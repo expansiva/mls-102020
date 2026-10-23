@@ -61,6 +61,46 @@ function addL5Dependencies(config: ProjectsConfig, l5: L5ProjectJson, clientId: 
   }
 }
 
+/** Absolute `/_<id>_/` specifiers in `import` / `from` / `import(` string literals. */
+const IMPORTED_PROJECT_SPECIFIER = /\b(?:import|from)\s*(?:\(\s*)?(['"`])\/_(\d+)_\/[^'"`\n]*\1/g;
+
+/** Ids the client frontend imports, as libs. An entry already in `projects` is left as it is. */
+export function addImportedProjects(config: ProjectsConfig, clientId: string, sources: readonly string[]): void {
+  config.projects = config.projects || {};
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const source of sources) {
+    for (const match of source.matchAll(IMPORTED_PROJECT_SPECIFIER)) {
+      const id = match[2];
+      if (!id || id === clientId || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  for (const id of ids) {
+    config.projects[id] = config.projects[id] || { root: `../mls-${id}`, type: 'lib' };
+  }
+}
+
+/** Text of the `.ts` files under `<clientRoot>/l2`, skipping any `pipeline/` directory. */
+function readClientFrontendSources(clientRoot: string): string[] {
+  const sources: string[] = [];
+  const walk = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (entry.name === 'pipeline') continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile() && entry.name.endsWith('.ts')) {
+        try { sources.push(fs.readFileSync(full, 'utf8')); } catch { /* unreadable file is not a source */ }
+      }
+    }
+  };
+  walk(path.join(clientRoot, 'l2'));
+  return sources;
+}
+
 /** Object literal of a generated .defs.ts (`export const x = {...};` or `... as const;`). */
 function readDefsData(file: string): Record<string, unknown> | null {
   let content: string;
@@ -559,6 +599,7 @@ export function composeFrontendRuntimeConfig(root: string, clientId: string): Co
   delete config.projects['102036'];
   config.projects['102029'] = config.projects['102029'] || { root: '../mls-102029', type: 'lib' };
   addL5Dependencies(config, l5, clientId);
+  addImportedProjects(config, clientId, readClientFrontendSources(clientRoot));
 
   const client = config.projects[clientId];
   client.modules = client.modules || [];

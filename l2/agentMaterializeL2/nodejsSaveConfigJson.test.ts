@@ -7,9 +7,11 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  addImportedProjects,
   composeFrontendRuntimeConfig,
   FrontendConfigComposeError,
 } from '/_102020_/l2/agentMaterializeL2/nodejsSaveConfigJson.js';
+import type { ProjectsConfig } from '/_102029_/l2/runtimeConfigTypes.js';
 
 const CLIENT_ID = '109001';
 
@@ -401,6 +403,82 @@ test('filesystem errors while composing a module remain hard errors', () => {
         && /module 'todo' could not be composed/.test(error.message),
     );
     assert.equal(fs.existsSync(path.join(clientRoot, 'l5', 'config.json')), false);
+  });
+});
+
+function bareConfig(projects: ProjectsConfig['projects']): ProjectsConfig {
+  return { defaultProjectId: CLIENT_ID, shellTemplates: { spa: '', pwa: '' }, projects };
+}
+
+const DATE_PICKER = "import { x } from '/_102040_/l2/molecules/groupenterdate/ml-date-picker.js';\n";
+
+test('a source that imports /_102040_/ adds that project as a lib', () => {
+  const config = bareConfig({ [CLIENT_ID]: { root: '.', type: 'client' } });
+  addImportedProjects(config, CLIENT_ID, [DATE_PICKER]);
+  assert.deepEqual(config.projects['102040'], { root: '../mls-102040', type: 'lib' });
+});
+
+test('adding imported projects twice leaves the same projects', () => {
+  const config = bareConfig({});
+  addImportedProjects(config, CLIENT_ID, [DATE_PICKER]);
+  const once = JSON.stringify(config.projects);
+  addImportedProjects(config, CLIENT_ID, [DATE_PICKER]);
+  assert.equal(JSON.stringify(config.projects), once);
+});
+
+test('an existing master frontend entry stays master frontend when the client imports it', () => {
+  const config = bareConfig({ '102033': { root: '../mls-102033', type: 'master frontend' } });
+  addImportedProjects(config, CLIENT_ID, ["import { y } from '/_102033_/l2/shared/spa/index.js';\n"]);
+  assert.deepEqual(config.projects['102033'], { root: '../mls-102033', type: 'master frontend' });
+});
+
+test('the client id in an import does not add another projects entry', () => {
+  const client = { root: '.', type: 'client' as const };
+  const config = bareConfig({ [CLIENT_ID]: client });
+  addImportedProjects(config, CLIENT_ID, [`import { z } from '/_${CLIENT_ID}_/l2/page.js';\n`, DATE_PICKER]);
+  assert.equal(config.projects[CLIENT_ID], client);
+  assert.equal(Object.keys(config.projects).filter(id => id === CLIENT_ID).length, 1);
+  assert.deepEqual(config.projects['102040'], { root: '../mls-102040', type: 'lib' });
+});
+
+test('a source with no absolute import leaves projects unchanged', () => {
+  const config = bareConfig({ '102029': { root: '../mls-102029', type: 'lib' } });
+  const before = JSON.stringify(config.projects);
+  addImportedProjects(config, CLIENT_ID, [
+    "import { local } from './page.js';\nexport const value = 1;\nconst note = 'not an import';\n",
+  ]);
+  assert.equal(JSON.stringify(config.projects), before);
+});
+
+test('compose adds an imported lib and ignores pipeline text', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo']);
+    writeDesignSystem(clientRoot);
+    materializePage(clientRoot, 'todo', 'taskCatalogue', 'Tarefa');
+    writeFile(
+      path.join(clientRoot, 'l2', 'todo', 'web', 'desktop', 'page11', 'taskCatalogue.ts'),
+      `${DATE_PICKER}export const taskCataloguePage = true;\n`,
+    );
+    writeFile(
+      path.join(clientRoot, 'l2', 'todo', 'pipeline', 'onlyHere.ts'),
+      "import { hidden } from '/_102041_/l2/secret.js';\n",
+    );
+    writeFile(
+      path.join(clientRoot, 'l2', 'todo', 'pipeline', 'agentMaterializeL2', 'pages50', 'taskCatalogueDesktopAttempt1.txt'),
+      "import { hidden } from '/_102042_/l2/secret.js';\n",
+    );
+
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const projects = (readConfig(clientRoot).projects as Record<string, { root: string; type: string }>);
+    assert.deepEqual(projects['102040'], { root: '../mls-102040', type: 'lib' });
+    assert.equal(projects['102041'], undefined);
+    assert.equal(projects['102042'], undefined);
+    assert.equal(projects['102033'].type, 'master frontend');
+    assert.equal(projects[CLIENT_ID].type, 'client');
+
+    const written = fs.readFileSync(path.join(clientRoot, 'l5', 'config.json'), 'utf8');
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    assert.equal(fs.readFileSync(path.join(clientRoot, 'l5', 'config.json'), 'utf8'), written);
   });
 });
 
