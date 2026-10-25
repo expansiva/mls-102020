@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "2026-10-25-p4-change-effort-v2",
+  "module": "tarefas",
+  "base": { "baseId": "b", "revisionId": "r", "candidateRoot": "tobe/plan" },
+  "request": {
+    "text": "two pages",
+    "items": [
+      { "changeId": "field:a", "kind": "field", "op": "changed", "entity": "Tarefa", "source": "l4/tarefas/ontology.defs.ts" },
+      { "changeId": "field:b", "kind": "field", "op": "changed", "entity": "Tarefa", "source": "l4/tarefas/ontology.defs.ts" }
+    ]
+  },
+  "masters": [
+    { "project": "102020", "kind": "l2", "device": "web" }
+  ],
+  "perItem": [
+    {
+      "item": "field:a",
+      "answers": [
+        {
+          "master": { "project": "102020", "kind": "l2", "device": "web" },
+          "item": "field:a",
+          "status": "computed",
+          "create": [],
+          "regenerateDefs": [],
+          "materialize": [
+            { "kind": "page", "id": "segunda", "path": "l2/tarefas/web/contracts/segunda.defs.ts" },
+            { "kind": "page", "id": "primeira", "path": "l2/tarefas/web/contracts/primeira.defs.ts" }
+          ],
+          "remove": [],
+          "runAgents": [],
+          "contract": "keep"
+        }
+      ]
+    },
+    {
+      "item": "field:b",
+      "answers": [
+        {
+          "master": { "project": "102020", "kind": "l2", "device": "web" },
+          "item": "field:b",
+          "status": "computed",
+          "create": [],
+          "regenerateDefs": [],
+          "materialize": [
+            { "kind": "page", "id": "primeira", "path": "l2/tarefas/web/contracts/primeira.defs.ts" }
+          ],
+          "remove": [],
+          "runAgents": [],
+          "contract": "keep"
+        }
+      ]
+    }
+  ],
+  "merged": {
+    "create": [],
+    "regenerateDefs": [],
+    "materialize": [
+      { "project": "102020", "kind": "page", "id": "primeira", "path": "l2/tarefas/web/contracts/primeira.defs.ts" },
+      { "project": "102020", "kind": "page", "id": "segunda", "path": "l2/tarefas/web/contracts/segunda.defs.ts" }
+    ],
+    "remove": [],
+    "runAgents": [],
+    "abend": []
+  },
+  "untouched": { "count": 0, "sealHash": "fixture" },
+  "status": "simple"
+}

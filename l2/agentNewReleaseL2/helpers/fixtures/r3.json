@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "2026-10-25-p4-change-effort-v2",
+  "module": "tarefas",
+  "base": { "baseId": "b", "revisionId": "r", "candidateRoot": "tobe/plan" },
+  "request": {
+    "text": "defs",
+    "items": [
+      { "changeId": "field:prioridade", "kind": "field", "op": "changed", "entity": "Tarefa", "source": "l4/tarefas/ontology.defs.ts" }
+    ]
+  },
+  "masters": [
+    { "project": "102020", "kind": "l2", "device": "web" }
+  ],
+  "perItem": [
+    {
+      "item": "field:prioridade",
+      "answers": [
+        {
+          "master": { "project": "102020", "kind": "l2", "device": "web" },
+          "item": "field:prioridade",
+          "status": "computed",
+          "create": [],
+          "regenerateDefs": [
+            { "kind": "page", "id": "minhas_tarefas", "path": "l2/tarefas/web/contracts/minhas_tarefas.defs.ts" }
+          ],
+          "materialize": [],
+          "remove": [],
+          "runAgents": [],
+          "contract": "keep"
+        }
+      ]
+    }
+  ],
+  "merged": {
+    "create": [],
+    "regenerateDefs": [
+      { "project": "102020", "kind": "page", "id": "minhas_tarefas", "path": "l2/tarefas/web/contracts/minhas_tarefas.defs.ts" }
+    ],
+    "materialize": [],
+    "remove": [],
+    "runAgents": [],
+    "abend": []
+  },
+  "untouched": { "count": 0, "sealHash": "fixture" },
+  "status": "simple"
+}

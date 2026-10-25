@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "2026-10-25-p4-change-effort-v2",
+  "module": "tarefas",
+  "base": { "baseId": "b", "revisionId": "r", "candidateRoot": "tobe/plan" },
+  "request": {
+    "text": "abend",
+    "items": [
+      { "changeId": "field:prioridade", "kind": "field", "op": "changed", "entity": "Tarefa", "source": "l4/tarefas/ontology.defs.ts" }
+    ]
+  },
+  "masters": [
+    { "project": "102020", "kind": "l2", "device": "web" }
+  ],
+  "perItem": [
+    {
+      "item": "field:prioridade",
+      "answers": [
+        {
+          "master": { "project": "102020", "kind": "l2", "device": "web" },
+          "item": "field:prioridade",
+          "status": "abend",
+          "create": [],
+          "regenerateDefs": [],
+          "materialize": [],
+          "remove": [],
+          "runAgents": [],
+          "contract": "keep",
+          "abend": { "reason": "module has no declared languages" }
+        }
+      ]
+    }
+  ],
+  "merged": {
+    "create": [],
+    "regenerateDefs": [],
+    "materialize": [],
+    "remove": [],
+    "runAgents": [],
+    "abend": [
+      {
+        "item": "field:prioridade",
+        "master": { "project": "102020", "kind": "l2", "device": "web" },
+        "reason": "module has no declared languages"
+      }
+    ]
+  },
+  "untouched": { "count": 0, "sealHash": "fixture" },
+  "status": "blocked"
+}

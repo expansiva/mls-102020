@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "2026-10-25-p4-change-effort-v2",
+  "module": "tarefas",
+  "base": { "baseId": "b", "revisionId": "r", "candidateRoot": "tobe/plan" },
+  "request": {
+    "text": "other master only",
+    "items": [
+      { "changeId": "field:prioridade", "kind": "field", "op": "changed", "entity": "Tarefa", "source": "l4/tarefas/ontology.defs.ts" }
+    ]
+  },
+  "masters": [
+    { "project": "102020", "kind": "l2", "device": "web" },
+    { "project": "102021", "kind": "l1", "device": "web" }
+  ],
+  "perItem": [
+    {
+      "item": "field:prioridade",
+      "answers": [
+        {
+          "master": { "project": "102020", "kind": "l2", "device": "web" },
+          "item": "field:prioridade",
+          "status": "computed",
+          "create": [],
+          "regenerateDefs": [],
+          "materialize": [],
+          "remove": [],
+          "runAgents": [],
+          "contract": "keep"
+        },
+        {
+          "master": { "project": "102021", "kind": "l1", "device": "web" },
+          "item": "field:prioridade",
+          "status": "computed",
+          "create": [],
+          "regenerateDefs": [],
+          "materialize": [
+            { "kind": "page", "id": "outra_pagina", "path": "l1/tarefas/layer_2_application/requests/outra_pagina.defs.ts" }
+          ],
+          "remove": [],
+          "runAgents": [],
+          "contract": "keep"
+        }
+      ]
+    }
+  ],
+  "merged": {
+    "create": [],
+    "regenerateDefs": [],
+    "materialize": [
+      { "project": "102021", "kind": "page", "id": "outra_pagina", "path": "l1/tarefas/layer_2_application/requests/outra_pagina.defs.ts" }
+    ],
+    "remove": [],
+    "runAgents": [],
+    "abend": []
+  },
+  "untouched": { "count": 0, "sealHash": "fixture" },
+  "status": "simple"
+}
