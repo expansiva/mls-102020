@@ -6,14 +6,23 @@ import test from 'node:test';
 import { planNewReleaseL2 } from '/_102020_/l2/agentNewReleaseL2/helpers/plan.js';
 import {
   NR_AGENT_NAME,
+  NR_CHECK_PLAN,
   NR_CLOSE_PLAN,
+  NR_DEFS_AGENT,
+  NR_DEFS_PLAN,
+  NR_DEFS_SCOPE,
   NR_HELP,
+  NR_MARKS_DIFFER,
   NR_MATERIALIZE_AGENT,
   NR_MATERIALIZE_PLAN,
   buildApplySteps,
+  buildRegenerateSteps,
   currentProjectNumber,
+  markedPageIds,
+  marksDifferMessage,
   materializerOutcome,
   parseNrInvocation,
+  reviewDefsRun,
 } from '/_102020_/l2/agentNewReleaseL2/helpers/steps.js';
 
 function fixture(name: string): { masters: Array<{ project: string }> } {
@@ -45,6 +54,57 @@ test('the materializer step carries the R1 pages and the current project, and cl
   assert.equal(close.agentName, NR_AGENT_NAME);
   assert.equal(close.planning?.planId, NR_CLOSE_PLAN);
   assert.deepEqual(close.planning?.dependsOn, [NR_MATERIALIZE_PLAN]);
+});
+
+test('regenerate adds the defs generator with scope all, and the check waits on it', () => {
+  const project = currentProjectNumber();
+  const [defs, check] = buildRegenerateSteps(project, 'alpha');
+  assert.equal(defs.agentName, NR_DEFS_AGENT);
+  assert.equal(defs.planning?.planId, NR_DEFS_PLAN);
+  assert.deepEqual(JSON.parse(defs.prompt || ''), { project, module: 'alpha', scope: NR_DEFS_SCOPE });
+  assert.equal(check.agentName, NR_AGENT_NAME);
+  assert.equal(check.planning?.planId, NR_CHECK_PLAN);
+  assert.deepEqual(check.planning?.dependsOn, [NR_DEFS_PLAN]);
+});
+
+test('a clean regenerate materializes the rebuilt pages and the materialize-only pages', () => {
+  const project = currentProjectNumber();
+  const [materialize] = buildApplySteps(project, 'alpha', ['beta'], ['gamma']);
+  assert.deepEqual(JSON.parse(materialize.prompt || ''), {
+    project,
+    module: 'alpha',
+    scope: { pages: ['beta', 'gamma'] },
+  });
+});
+
+test('pool marks must be the same set as the planned pages', () => {
+  const effort = { screens: [
+    { pageId: 'beta', status: 'toUpdate' },
+    { pageId: 'gamma', status: 'done' },
+    { pageId: 'delta', status: 'toCreate' },
+  ] };
+  assert.deepEqual(markedPageIds(effort), ['beta', 'delta']);
+  assert.equal(marksDifferMessage(['delta', 'beta'], ['beta', 'delta']), null);
+  const message = marksDifferMessage(['beta'], ['beta', 'delta']);
+  assert.equal(message, `${NR_MARKS_DIFFER}: marked [beta]; planned [beta, delta]`);
+});
+
+test('an outside path fails the check and does not add the materializer', () => {
+  const outside = reviewDefsRun(
+    { status: 'completed', message: 'defs written' },
+    { created: [], changed: ['l2/alpha/web/shared/other.defs.ts'], deleted: [], outside: ['l2/alpha/web/shared/other.defs.ts'] },
+  );
+  assert.equal(outside.addMaterialize, false);
+  assert.equal(outside.status, 'failed');
+  assert.match(outside.message, /outside: l2\/alpha\/web\/shared\/other\.defs\.ts/u);
+  const failedDefs = reviewDefsRun({ status: 'failed', message: 'generator stopped' }, {
+    created: [], changed: [], deleted: [], outside: [],
+  });
+  assert.deepEqual(failedDefs, { status: 'failed', message: 'generator stopped', addMaterialize: false });
+  const clean = reviewDefsRun({ status: 'completed', message: 'defs written' }, {
+    created: [], changed: [], deleted: [], outside: [],
+  });
+  assert.equal(clean.addMaterialize, true);
 });
 
 test('close copies the materializer status and its message', () => {

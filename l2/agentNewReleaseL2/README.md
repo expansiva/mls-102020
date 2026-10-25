@@ -1,6 +1,13 @@
 # agentNewReleaseL2
 
-Applies the frontend half of a change effort by materializing only the pages that effort already named. Run `@@agentNewReleaseL2 <module>`. The project is the current one. The agent reads `l4/<module>/pool/l4/changeEffort.json`, keeps the answers of this master, and adds one `agentMaterializeL2` step whose prompt is `{ project, module, scope: { pages } }`. A closing step of this agent waits on that step and finishes `completed` or `failed` with the materializer's message.
+Applies the frontend half of a change effort. Run `@@agentNewReleaseL2 <module>`. The project is the current one. The agent reads `l4/<module>/pool/l4/changeEffort.json` and keeps the answers of this master.
+
+Two paths:
+
+- **Materialize only.** No new page, no contract change, and no defs to regenerate. One `agentMaterializeL2` step gets `{ project, module, scope: { pages } }`. A closing step of this agent waits on it and finishes `completed` or `failed` with the materializer's message.
+- **Regenerate.** A page is created, a contract changes, or defs of kind `page`, `contract`, or `shared` must be regenerated. The L2 pool `l4/<module>/pool/l2/web/effort.json` must already mark `toCreate` or `toUpdate` on exactly those pages. The agent stores a sha256 snapshot of the product defs, adds an `agentDefsL2` step with `{ project, module, scope: "all" }`, then a check step that waits on it. If the generator failed, the check fails with that message and does not materialize. If it finished, the check reads the product defs again. A path created, changed, or deleted outside the regenerated pages fails the check with that list and does not materialize. A clean check adds `agentMaterializeL2` for the regenerated pages and the materialize-only pages, then the same closing step.
+
+The snapshot is `l2/<module>/pipeline/agentNewReleaseL2/snapshot.json`. The guard compares only product files `l2/<module>/web/contracts/<page>.defs.ts`, `shared/<page>.defs.ts`, `desktop/page11/<page>.defs.ts`, and `mobile/page11/<page>.defs.ts`. It ignores everything under `l2/<module>/pipeline/`, including the defs-generator receipts and this snapshot. Files of a materialize-only page are ignored when they did not change. A change on one of them is outside and stops the release.
 
 No model call. A missing module, an extra argument, a missing or invalid effort file, or a plan with nothing to apply ends on that message and adds no child step.
 
@@ -11,8 +18,8 @@ Refusals, and why:
 | usage line | the invocation is one module name |
 | `changeEffort.json is missing at …` | there is nothing to apply |
 | gate text | the file is not a change effort |
-| `not in this release step: …` | the answer asks to create, remove, regenerate defs, run agents, change the contract, or it ended in `abend` |
-| `nothing to apply` | this master has no page to materialize |
-| `The current project is unavailable.` | the materializer step must carry the current project |
-
-Creating a page, changing a contract, and removing a rule from the contract are not handled here. They need a later part of this agent, so the effort that asks for them is refused with the reason above, never skipped silently.
+| `not in this release step: …` | the answer removes a unit, creates a non-page, regenerates a defs kind this step does not own, runs agents, or ended in `abend` |
+| `nothing to apply` | this master has no page to materialize or regenerate |
+| `planner conversation not run or marks differ: …` | the pool effort does not mark `toCreate` or `toUpdate` on exactly the pages this plan regenerates; both lists are in the message |
+| `The current project is unavailable.` | the following step must carry the current project |
+| `outside: …` | a product defs file outside the regenerated pages changed; nothing is materialized |

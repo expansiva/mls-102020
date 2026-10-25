@@ -5,15 +5,26 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { planNewReleaseL2 } from '/_102020_/l2/agentNewReleaseL2/helpers/plan.js';
 import {
   NR_AGENT_NAME,
+  NR_CHECK_PLAN,
   NR_CLOSE_PLAN,
+  NR_DEFS_PLAN,
   NR_MATERIALIZE_PLAN,
   buildApplySteps,
+  buildRegenerateSteps,
   currentMasterProject,
   currentProjectNumber,
+  defsOutcome,
+  guardAfterDefs,
+  markedPageIds,
+  marksDifferMessage,
   materializerOutcome,
   parseNrInvocation,
   planIdOf,
   readChangeEffort,
+  readPoolEffort,
+  readProductSnapshot,
+  reviewDefsRun,
+  writeReleaseSnapshot,
 } from '/_102020_/l2/agentNewReleaseL2/helpers/steps.js';
 
 export function createAgent(): IAgentAsync {
@@ -21,7 +32,7 @@ export function createAgent(): IAgentAsync {
     agentName: NR_AGENT_NAME,
     agentProject: 102020,
     agentFolder: 'agentNewReleaseL2',
-    agentDescription: 'Applies a frontend change-effort by materializing only the listed pages.',
+    agentDescription: 'Applies a frontend change-effort by regenerating the marked pages or materializing them.',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,
@@ -47,8 +58,21 @@ async function beforePromptImplicit(
   const plan = planNewReleaseL2(loaded.effort, currentMasterProject());
   if (!plan.ok) return [statusMessage(agent, context, plan.reason)];
 
-  const steps = buildApplySteps(project, invocation.module, plan.pages).map(step => addStepIntent(context, step));
-  return [openMessage(agent, context, invocation.module, project), ...steps];
+  if (plan.mode === 'materialize') {
+    const steps = buildApplySteps(project, invocation.module, plan.pages).map(step => addStepIntent(context, step));
+    return [openMessage(agent, context, invocation.module, project, {}), ...steps];
+  }
+
+  const marked = markedPageIds(await readPoolEffort(invocation.module));
+  const differ = marksDifferMessage(marked, plan.pages);
+  if (differ) return [statusMessage(agent, context, differ)];
+
+  await writeReleaseSnapshot(invocation.module, await readProductSnapshot(invocation.module));
+  const steps = buildRegenerateSteps(project, invocation.module).map(step => addStepIntent(context, step));
+  return [openMessage(agent, context, invocation.module, project, {
+    nrPages: plan.pages.join(','),
+    nrMaterializeOnly: plan.materializeOnly.join(','),
+  }), ...steps];
 }
 
 async function beforePromptStep(
@@ -58,7 +82,9 @@ async function beforePromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
-  if (planIdOf(step) !== NR_CLOSE_PLAN) {
+  const planId = planIdOf(step);
+  if (planId === NR_CHECK_PLAN) return reviewCheck(context, parentStep, step, hookSequential);
+  if (planId !== NR_CLOSE_PLAN) {
     const notice = context.task?.iaCompressed?.longMemory?.notice || 'Deterministic message bootstrap completed.';
     return [updateStatus(context, parentStep, step, hookSequential, 'completed', notice)];
   }
@@ -67,11 +93,36 @@ async function beforePromptStep(
   return [updateStatus(context, parentStep, step, hookSequential, outcome.status, outcome.message)];
 }
 
+async function reviewCheck(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+): Promise<mls.msg.AgentIntent[]> {
+  const memory = context.task?.iaCompressed?.longMemory;
+  const moduleName = String(memory?.moduleName || '');
+  const pages = String(memory?.nrPages || '').split(',').map(id => id.trim()).filter(Boolean);
+  const materializeOnly = String(memory?.nrMaterializeOnly || '').split(',').map(id => id.trim()).filter(Boolean);
+  const defs = getAllSteps(context.task?.iaCompressed?.nextSteps).find(item => planIdOf(item) === NR_DEFS_PLAN);
+  const defsResult = defsOutcome(defs);
+  const guard = defsResult.status === 'completed' ? await guardAfterDefs(moduleName, pages) : null;
+  if (defsResult.status === 'completed' && !guard) {
+    return [updateStatus(context, parentStep, step, hookSequential, 'failed', 'release snapshot is missing')];
+  }
+  const review = reviewDefsRun(defsResult, guard || { created: [], changed: [], deleted: [], outside: [] });
+  const status = updateStatus(context, parentStep, step, hookSequential, review.status, review.message);
+  if (!review.addMaterialize) return [status];
+  const project = currentProjectNumber();
+  const added = buildApplySteps(project, moduleName, pages, materializeOnly).map(item => addStepIntent(context, item));
+  return [status, ...added];
+}
+
 function openMessage(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   moduleName: string,
   project: number,
+  extra: Record<string, string>,
 ): mls.msg.AgentIntentAddMessageAI {
   return {
     type: 'add-message-ai',
@@ -91,6 +142,7 @@ function openMessage(
         flowName: NR_AGENT_NAME,
         moduleName,
         project: String(project),
+        ...extra,
       },
     },
   };
