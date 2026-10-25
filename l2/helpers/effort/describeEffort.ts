@@ -168,17 +168,43 @@ function pageUnit(moduleName: string, pageId: string): EffortUnitRef {
   return { kind: 'page', id: pageId, path: contractPath(moduleName, pageId) };
 }
 
-/** A removed rule drops its id from each citing contract and from each shared `rules` list, then rematerializes those pages. */
+/** Ids a removed process or task looks for. A task id is `task:<processId>.<taskId>`: both the process id and the full id. */
+function removedNeedles(input: EffortInput): string[] | null {
+  if (input.item.op !== 'removed') return null;
+  const changeId = input.item.changeId;
+  if (input.item.kind === 'process') {
+    const processId = changeId.startsWith('process:') ? changeId.slice('process:'.length) : '';
+    return processId ? [processId] : [];
+  }
+  if (input.item.kind !== 'task') return null;
+  const full = changeId.startsWith('task:') ? changeId.slice('task:'.length) : '';
+  const dot = full.indexOf('.');
+  const processId = dot > 0 ? full.slice(0, dot) : '';
+  return [...new Set([processId, full].filter(id => id.length > 0))];
+}
+
+function textCites(text: string, ids: string[]): boolean {
+  return ids.some(id => text.includes(id));
+}
+
+/** A removed rule drops its id from each citing contract and from each shared `rules` list, then rematerializes those pages. A removed process or task uses the same pages, matching the id as text in each route and in the shared source. */
 function removedAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
-  const ruleId = ruleIdOf(input);
+  const needles = removedNeedles(input);
+  const ruleId = needles ? '' : ruleIdOf(input);
   const contractPages: string[] = [];
   for (const pageId of Object.keys(contracts).sort()) {
-    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
-    if (parsed.routes.some(route => route.rules.includes(ruleId))) contractPages.push(pageId);
+    const source = contracts[pageId] ?? '';
+    const parsed = parseD2ContractV2(source);
+    const cites = needles
+      ? parsed.routes.some(route => textCites(JSON.stringify(route), needles))
+      : parsed.routes.some(route => route.rules.includes(ruleId));
+    if (cites) contractPages.push(pageId);
   }
   const sharedPages: string[] = [];
   for (const pageId of Object.keys(shared).sort()) {
-    if (quotedList(shared[pageId] ?? '', 'rules').includes(ruleId)) sharedPages.push(pageId);
+    const source = shared[pageId] ?? '';
+    const cites = needles ? textCites(source, needles) : quotedList(source, 'rules').includes(ruleId);
+    if (cites) sharedPages.push(pageId);
   }
   const pages = [...new Set([...contractPages, ...sharedPages])].sort();
   const regenerateDefs: EffortUnitRef[] = [];
@@ -197,7 +223,9 @@ function removedAnswer(input: EffortInput, contracts: Record<string, string>, sh
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (isTextOnlyChange(input.item)) return textAnswer(input, sources);
   if (Object.keys(contracts).length === 0) return answer(input, [], `no generated L2 contracts for module ${input.module}`);
-  if (input.item.kind === 'rule' && input.item.op === 'removed') return removedAnswer(input, contracts, sources?.shared ?? {});
+  if ((input.item.kind === 'rule' || input.item.kind === 'process' || input.item.kind === 'task') && input.item.op === 'removed') {
+    return removedAnswer(input, contracts, sources?.shared ?? {});
+  }
   if (input.item.kind !== 'rule' || input.item.op !== 'changed') {
     return answer(input, [], `v1 computes only rule changed; ${input.item.kind} ${input.item.op} is not handled`);
   }
@@ -321,9 +349,12 @@ export function finishEffortFrom(input: EffortInput, contracts: Record<string, s
   chosen.sort((a, b) => a.page.localeCompare(b.page));
   created.sort();
   const materialize = chosen.map(row => pageUnit(input.module, row.page));
-  const regenerateDefs = chosen
-    .filter(row => row.change === 'newAction')
-    .map(row => pageUnit(input.module, row.page));
+  const regenerateDefs: EffortUnitRef[] = [];
+  for (const row of chosen) {
+    if (row.change !== 'newAction') continue;
+    regenerateDefs.push(pageUnit(input.module, row.page));
+    regenerateDefs.push({ kind: 'contract', id: row.page, path: contractPath(input.module, row.page) });
+  }
   const create = created.map(pageId => pageUnit(input.module, pageId));
   const contract = regenerateDefs.length > 0 || create.length > 0 ? 'change' : 'keep';
   return answer(input, materialize, undefined, [], regenerateDefs, create, contract);

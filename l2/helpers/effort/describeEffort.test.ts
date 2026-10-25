@@ -247,11 +247,11 @@ function defsIn(dir: URL): Record<string, string> {
   return out;
 }
 
-function removed(changeId: string): EffortInput {
+function removed(changeId: string, kind: 'rule' | 'process' | 'task' = 'rule'): EffortInput {
   return {
     module: 'tarefas',
     base: { baseId: 'mls-102047', revisionId: '537525a4' },
-    item: { changeId, kind: 'rule', op: 'removed', entity: '', source: 'l4/tarefas/rules.defs.ts' },
+    item: { changeId, kind, op: 'removed', entity: '', source: 'l4/tarefas/rules.defs.ts' },
   };
 }
 
@@ -299,6 +299,45 @@ void test('a removed rule drops its id from citing contracts and shared lists an
   assert.deepEqual(none.regenerateDefs, []);
   assert.deepEqual(none.materialize, []);
   assert.equal(none.abend, undefined);
+
+  const process = describeEffortFrom(removed('process:resumoDiarioTarefas', 'process'), pages, sources);
+  assert.equal(process.status, 'computed');
+  assert.equal(process.contract, 'keep');
+  assert.deepEqual(process.regenerateDefs, []);
+  assert.deepEqual(process.materialize, []);
+  assert.equal(process.abend, undefined);
+
+  const task = describeEffortFrom(removed('task:resumoDiarioTarefas.avisarVencendo', 'task'), pages, sources);
+  assert.equal(task.status, 'computed');
+  assert.equal(task.contract, 'keep');
+  assert.deepEqual(task.regenerateDefs, []);
+  assert.deepEqual(task.materialize, []);
+  assert.equal(task.abend, undefined);
+});
+
+void test('a removed process or task rematerializes the pages whose routes or shared text cite the id', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const shared = defsIn(TAREFAS_SHARED);
+  pages.inicio = pages.inicio.replace("'resumoDiarioOitoHoras'", "'resumoDiarioOitoHoras', 'resumoDiarioTarefas.avisarVencendo'");
+  shared.minhas_tarefas = `${shared.minhas_tarefas}\nresumoDiarioTarefas\n`;
+  const sources = { shared };
+
+  const process = describeEffortFrom(removed('process:resumoDiarioTarefas', 'process'), pages, sources);
+  assert.equal(process.status, 'computed');
+  assert.equal(process.contract, 'keep');
+  assert.deepEqual(process.regenerateDefs, [
+    contractUnit('inicio'),
+    sharedUnit('minhas_tarefas'),
+  ]);
+  assert.deepEqual(process.materialize, [pageUnit('inicio'), pageUnit('minhas_tarefas')]);
+
+  const task = describeEffortFrom(removed('task:resumoDiarioTarefas.avisarVencendo', 'task'), pages, sources);
+  assert.equal(task.status, 'computed');
+  assert.deepEqual(task.regenerateDefs, [
+    contractUnit('inicio'),
+    sharedUnit('minhas_tarefas'),
+  ]);
+  assert.deepEqual(task.materialize, [pageUnit('inicio'), pageUnit('minhas_tarefas')]);
 });
 
 void test('describeEffort reads shared defs for a removed rule', async () => {
@@ -384,7 +423,7 @@ void test('a recorded new-rule reply materializes, or rebuilds the page when the
   assert.equal(r4.status, 'computed');
   assert.equal(r4.contract, 'change');
   assert.deepEqual(r4.materialize, [pageUnit('tarefas_equipe')]);
-  assert.deepEqual(r4.regenerateDefs, [pageUnit('tarefas_equipe')]);
+  assert.deepEqual(r4.regenerateDefs, [pageUnit('tarefas_equipe'), contractUnit('tarefas_equipe')]);
   assert.deepEqual(r4.create, []);
 });
 
