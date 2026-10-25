@@ -25,9 +25,12 @@ function answer(
     master: { ...MASTER },
     item: input.item.changeId,
     status: reason ? 'abend' : 'computed',
+    create: [],
     regenerateDefs: [],
     materialize,
+    remove: [],
     runAgents,
+    contract: 'keep',
     ...(reason ? { abend: { reason } } : {}),
   };
 }
