@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/helpers/effort/describeEffort.ts" enhancement="_blank"/>
 
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
-import { isTextOnlyChange, type EffortAgentRef, type EffortAnswer, type EffortInput, type EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
+import { isTextOnlyChange, type EffortAgentRef, type EffortAnswer, type EffortInput, type EffortPromptRequest, type EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
 const MASTER = { project: '102020', kind: 'l2', device: 'web' } as const;
 const NO_LANGUAGES = 'module has no declared languages';
@@ -23,17 +23,19 @@ function answer(
   reason?: string,
   runAgents: EffortAgentRef[] = [],
   regenerateDefs: EffortUnitRef[] = [],
+  create: EffortUnitRef[] = [],
+  contract: 'keep' | 'change' = 'keep',
 ): EffortAnswer {
   return {
     master: { ...MASTER },
     item: input.item.changeId,
     status: reason ? 'abend' : 'computed',
-    create: [],
+    create,
     regenerateDefs,
     materialize,
     remove: [],
     runAgents,
-    contract: 'keep',
+    contract,
     ...(reason ? { abend: { reason } } : {}),
   };
 }
@@ -209,6 +211,124 @@ export function describeEffortFrom(input: EffortInput, contracts: Record<string,
   return answer(input, pages.map(pageId => pageUnit(input.module, pageId)));
 }
 
+function rulePhrase(input: EffortInput): string {
+  const after = input.item.after;
+  if (!after || typeof after !== 'object' || Array.isArray(after)) return '';
+  const description = (after as { description?: unknown }).description;
+  return typeof description === 'string' ? description : '';
+}
+
+function promptSchema(pageIds: string[]): object {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pages', 'create', 'reason'],
+    properties: {
+      pages: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['page', 'change'],
+          properties: {
+            page: { type: 'string', enum: pageIds },
+            change: { type: 'string', enum: ['materialize', 'newAction'] },
+          },
+        },
+      },
+      create: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['page'],
+          properties: { page: { type: 'string' } },
+        },
+      },
+      reason: { type: 'string' },
+    },
+  };
+}
+
+/** Pure. A new rule asks the model to pick screens from the contracts. Every other item needs no call. */
+export function effortPromptFrom(input: EffortInput, contracts: Record<string, string>): EffortPromptRequest | null {
+  if (input.item.kind !== 'rule' || input.item.op !== 'added') return null;
+  const pageIds = Object.keys(contracts).sort();
+  const pages = pageIds.map(pageId => {
+    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
+    const routes = parsed.routes.map(route => `  - ${route.route} ${route.kind} rules: ${route.rules.join(', ')}`);
+    return [`- ${pageId}`, ...routes].join('\n');
+  });
+  const prompt = [
+    `Rule ${ruleIdOf(input)}: ${rulePhrase(input)}`,
+    '',
+    'Pages of the module. Each route lists its id, kind (qry or cmd) and rules:',
+    pages.join('\n'),
+    '',
+    'For an existing page, choose one:',
+    '- materialize: only rematerialize the screen. It rereads the rule. The screen def and the contract stay.',
+    '- newAction: the screen needs an action or data the contract does not have. The contract changes.',
+    'A new screen goes in create. Nothing to do is pages: [] and create: [].',
+  ].join('\n');
+  return { prompt, schema: promptSchema(pageIds) };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+const PAGE_CHANGES = ['materialize', 'newAction'] as const;
+
+/** Pure. A model reply outside the schema, or a page id that does not match the contracts, abends. */
+export function finishEffortFrom(input: EffortInput, contracts: Record<string, string>, modelOutput: unknown): EffortAnswer {
+  if (!isRecord(modelOutput)) return answer(input, [], 'model output is outside the schema');
+  for (const key of Object.keys(modelOutput)) {
+    if (key !== 'pages' && key !== 'create' && key !== 'reason') {
+      return answer(input, [], `model output is outside the schema: ${key}`);
+    }
+  }
+  if (!Array.isArray(modelOutput.pages) || !Array.isArray(modelOutput.create) || typeof modelOutput.reason !== 'string') {
+    return answer(input, [], 'model output is outside the schema');
+  }
+  const known = new Set(Object.keys(contracts));
+  const chosen: Array<{ page: string; change: (typeof PAGE_CHANGES)[number] }> = [];
+  for (const item of modelOutput.pages) {
+    if (!isRecord(item)) return answer(input, [], 'model output is outside the schema: pages');
+    for (const key of Object.keys(item)) {
+      if (key !== 'page' && key !== 'change') return answer(input, [], `model output is outside the schema: ${key}`);
+    }
+    const change = item.change;
+    if (typeof item.page !== 'string' || item.page.length === 0 || (change !== 'materialize' && change !== 'newAction')) {
+      return answer(input, [], 'model output is outside the schema: pages');
+    }
+    if (!known.has(item.page)) return answer(input, [], `page ${item.page} does not exist`);
+    const prior = chosen.find(row => row.page === item.page);
+    if (!prior) chosen.push({ page: item.page, change });
+    else if (change === 'newAction') prior.change = 'newAction';
+  }
+  const created: string[] = [];
+  for (const item of modelOutput.create) {
+    if (!isRecord(item)) return answer(input, [], 'model output is outside the schema: create');
+    for (const key of Object.keys(item)) {
+      if (key !== 'page') return answer(input, [], `model output is outside the schema: ${key}`);
+    }
+    if (typeof item.page !== 'string' || item.page.length === 0) {
+      return answer(input, [], 'model output is outside the schema: create');
+    }
+    if (known.has(item.page)) return answer(input, [], `page ${item.page} already exists`);
+    if (!created.includes(item.page)) created.push(item.page);
+  }
+  chosen.sort((a, b) => a.page.localeCompare(b.page));
+  created.sort();
+  const materialize = chosen.map(row => pageUnit(input.module, row.page));
+  const regenerateDefs = chosen
+    .filter(row => row.change === 'newAction')
+    .map(row => pageUnit(input.module, row.page));
+  const create = created.map(pageId => pageUnit(input.module, pageId));
+  const contract = regenerateDefs.length > 0 || create.length > 0 ? 'change' : 'keep';
+  return answer(input, materialize, undefined, [], regenerateDefs, create, contract);
+}
+
 function projectId(input: EffortInput): number | undefined {
   const fromBase = /^mls-(\d+)$/u.exec(input.base.baseId);
   if (fromBase) {
@@ -233,6 +353,41 @@ interface StorFile {
 async function fileBody(file: StorFile): Promise<string | undefined> {
   const content = await file.getContent('');
   return typeof content === 'string' && content.length > 0 ? content : undefined;
+}
+
+async function moduleWebDefs(input: EffortInput): Promise<{ projectError?: string; contracts: Record<string, string>; shared: Record<string, string> }> {
+  const project = projectId(input);
+  if (project === undefined) {
+    return { projectError: `cannot resolve the project of base ${input.base.baseId}`, contracts: {}, shared: {} };
+  }
+  const contractsFolder = `${input.module}/web/contracts`;
+  const sharedFolder = `${input.module}/web/shared`;
+  const contracts: Record<string, string> = {};
+  const shared: Record<string, string> = {};
+  for (const file of Object.values(mls.stor.files) as StorFile[]) {
+    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts') continue;
+    const body = await fileBody(file);
+    if (!body) continue;
+    if (file.folder === contractsFolder) contracts[file.shortName] = body;
+    else if (file.folder === sharedFolder) shared[file.shortName] = body;
+  }
+  return { contracts, shared };
+}
+
+/** A new rule asks for a model call. Every other item returns null and does not read files. */
+export async function effortPrompt(input: EffortInput): Promise<EffortPromptRequest | null> {
+  if (input.item.kind !== 'rule' || input.item.op !== 'added') return null;
+  const loaded = await moduleWebDefs(input);
+  if (loaded.projectError) return null;
+  return effortPromptFrom(input, loaded.contracts);
+}
+
+/** Checks a recorded or live model reply for a new rule. Does not call a model. */
+export async function finishEffort(input: EffortInput, modelOutput: unknown): Promise<EffortAnswer> {
+  const loaded = await moduleWebDefs(input);
+  if (loaded.projectError) return answer(input, [], loaded.projectError);
+  return finishEffortFrom(input, loaded.contracts, modelOutput);
 }
 
 /** Reads shared defs, `module.defs.ts` and `l5/config.json`, then classifies the item. */
@@ -260,17 +415,6 @@ export async function describeEffort(input: EffortInput): Promise<EffortAnswer> 
     }
     return describeEffortFrom(input, {}, { needsSource, moduleSource, configSource });
   }
-  const contractsFolder = `${input.module}/web/contracts`;
-  const sharedFolder = `${input.module}/web/shared`;
-  const contracts: Record<string, string> = {};
-  const shared: Record<string, string> = {};
-  for (const file of Object.values(mls.stor.files) as StorFile[]) {
-    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
-    if (file.extension !== '.defs.ts') continue;
-    const body = await fileBody(file);
-    if (!body) continue;
-    if (file.folder === contractsFolder) contracts[file.shortName] = body;
-    else if (file.folder === sharedFolder) shared[file.shortName] = body;
-  }
-  return describeEffortFrom(input, contracts, { shared });
+  const loaded = await moduleWebDefs(input);
+  return describeEffortFrom(input, loaded.contracts, { shared: loaded.shared });
 }

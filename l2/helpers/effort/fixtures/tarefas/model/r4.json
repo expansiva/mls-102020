@@ -1,0 +1,5 @@
+{
+  "pages": [{ "page": "tarefas_equipe", "change": "newAction" }],
+  "create": [],
+  "reason": "The screen needs an export action the contract does not have."
+}

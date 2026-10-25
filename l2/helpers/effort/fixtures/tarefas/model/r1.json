@@ -1,0 +1,5 @@
+{
+  "pages": [{ "page": "minhas_tarefas", "change": "materialize" }],
+  "create": [],
+  "reason": "The create form already exists and rereads the rule."
+}

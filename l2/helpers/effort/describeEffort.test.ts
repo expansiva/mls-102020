@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
-import { describeEffort, describeEffortFrom } from '/_102020_/l2/helpers/effort/describeEffort.js';
+import { describeEffort, describeEffortFrom, effortPrompt, effortPromptFrom, finishEffortFrom } from '/_102020_/l2/helpers/effort/describeEffort.js';
 import type { EffortInput, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
 
 const FIXTURE = new URL('./fixtures/agendaClinica/contracts/', import.meta.url);
@@ -324,6 +324,108 @@ void test('describeEffort reads shared defs for a removed rule', async () => {
     assert.equal(row.status, 'computed');
     assert.deepEqual(row.regenerateDefs, [contractUnit('inicio'), sharedUnit('inicio')]);
     assert.deepEqual(row.materialize, [pageUnit('inicio')]);
+  } finally {
+    mls.stor.files = previous;
+  }
+});
+
+const R1_PHRASE = 'Uma tarefa criada sem prioridade assume a prioridade média.';
+const R4_PHRASE = 'O gestor pode exportar as tarefas filtradas em CSV.';
+const MODEL = new URL('./fixtures/tarefas/model/', import.meta.url);
+
+function added(changeId: string, description: string): EffortInput {
+  return {
+    module: 'tarefas',
+    base: { baseId: 'mls-102047', revisionId: '537525a4' },
+    item: {
+      changeId, kind: 'rule', op: 'added', entity: '', source: 'l4/tarefas/rules.defs.ts',
+      after: { ruleId: changeId.slice('rule:'.length), description },
+    },
+  };
+}
+
+function recorded(name: string): unknown {
+  return JSON.parse(readFileSync(new URL(name, MODEL), 'utf8'));
+}
+
+void test('a new rule asks the model to choose among the contract pages; other items do not', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const pageIds = Object.keys(pages).sort();
+  const request = effortPromptFrom(added('rule:novaTarefaPrioridadeMedia', R1_PHRASE), pages);
+  assert.ok(request);
+  assert.equal(request.prompt.includes('rule:novaTarefaPrioridadeMedia') || request.prompt.includes('novaTarefaPrioridadeMedia'), true);
+  assert.equal(request.prompt.includes(R1_PHRASE), true);
+  assert.equal(request.prompt.includes('materialize'), true);
+  assert.equal(request.prompt.includes('newAction'), true);
+  const schema = request.schema as { properties: { pages: { items: { properties: { page: { enum: string[] } } } } } };
+  assert.deepEqual(schema.properties.pages.items.properties.page.enum, pageIds);
+  for (const pageId of pageIds) assert.equal(request.prompt.includes(pageId), true, pageId);
+
+  assert.equal(effortPromptFrom(input({
+    changeId: 'rule:anotacaoObrigatoriaNoAtendimento', kind: 'rule', op: 'changed', entity: '',
+  }), pages), null);
+  assert.equal(effortPromptFrom(removed('rule:devolucaoExigeMotivo'), pages), null);
+  assert.equal(effortPromptFrom(input({
+    changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
+  }), pages), null);
+});
+
+void test('a recorded new-rule reply materializes, or rebuilds the page when the contract must change', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const r1 = finishEffortFrom(added('rule:novaTarefaPrioridadeMedia', R1_PHRASE), pages, recorded('r1.json'));
+  assert.equal(r1.status, 'computed');
+  assert.equal(r1.contract, 'keep');
+  assert.deepEqual(r1.materialize, [pageUnit('minhas_tarefas')]);
+  assert.deepEqual(r1.regenerateDefs, []);
+  assert.deepEqual(r1.create, []);
+  assert.deepEqual(r1.remove, []);
+
+  const r4 = finishEffortFrom(added('rule:gestorExportaCsv', R4_PHRASE), pages, recorded('r4.json'));
+  assert.equal(r4.status, 'computed');
+  assert.equal(r4.contract, 'change');
+  assert.deepEqual(r4.materialize, [pageUnit('tarefas_equipe')]);
+  assert.deepEqual(r4.regenerateDefs, [pageUnit('tarefas_equipe')]);
+  assert.deepEqual(r4.create, []);
+});
+
+void test('a new-rule reply abends when the page is unknown, already exists, or the shape is wrong', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const item = added('rule:novaTarefaPrioridadeMedia', R1_PHRASE);
+  const missing = finishEffortFrom(item, pages, {
+    pages: [{ page: 'nao_existe', change: 'materialize' }], create: [], reason: 'missing',
+  });
+  assert.equal(missing.status, 'abend');
+  assert.equal(missing.abend?.reason, 'page nao_existe does not exist');
+  assert.deepEqual(missing.materialize, []);
+
+  const exists = finishEffortFrom(item, pages, {
+    pages: [], create: [{ page: 'inicio' }], reason: 'dup',
+  });
+  assert.equal(exists.status, 'abend');
+  assert.equal(exists.abend?.reason, 'page inicio already exists');
+
+  const shape = finishEffortFrom(item, pages, { pages: [], create: [], note: 'extra' });
+  assert.equal(shape.status, 'abend');
+  assert.equal(shape.abend?.reason.includes('outside the schema'), true);
+  assert.equal(shape.materialize.length, 0);
+  assert.equal(shape.status === 'computed', false);
+});
+
+void test('effortPrompt reads the module contracts only for a new rule', async () => {
+  const previous = mls.stor.files;
+  const contract = readFileSync(new URL('inicio.defs.txt', TAREFAS_CONTRACTS), 'utf8');
+  mls.stor.files = {
+    contract: {
+      project: 102047, level: 2, status: 'active', folder: 'tarefas/web/contracts', extension: '.defs.ts', shortName: 'inicio',
+      getContent: async () => contract,
+    },
+  } as unknown as typeof mls.stor.files;
+  try {
+    const request = await effortPrompt(added('rule:novaTarefaPrioridadeMedia', R1_PHRASE));
+    assert.ok(request);
+    const schema = request.schema as { properties: { pages: { items: { properties: { page: { enum: string[] } } } } } };
+    assert.deepEqual(schema.properties.pages.items.properties.page.enum, ['inicio']);
+    assert.equal(await effortPrompt(removed('rule:devolucaoExigeMotivo')), null);
   } finally {
     mls.stor.files = previous;
   }
