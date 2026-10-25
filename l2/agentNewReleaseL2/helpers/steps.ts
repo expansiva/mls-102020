@@ -23,10 +23,71 @@ export const NR_MATERIALIZE_AGENT = 'agentMaterializeL2';
 export const NR_MATERIALIZE_PLAN = 'materialize';
 export const NR_CLOSE_PLAN = 'close';
 export const NR_MARKS_DIFFER = 'planner conversation not run or marks differ';
+export const NR_NOTHING_TO_APPLY = 'nothing to apply';
 
 export type NrInvocation =
   | { ok: true; module: string }
   | { ok: false; help: string };
+
+/** Help and an empty plan finish the task. Every other status message is a refusal. */
+export function statusKind(message: string): 'completed' | 'failed' {
+  if (message === NR_HELP || message === NR_NOTHING_TO_APPLY) return 'completed';
+  return 'failed';
+}
+
+/** Short motive for the collabmsg trace. The full text stays in the step result. */
+export function statusStepTitle(message: string): string {
+  const compact = message.replace(/\s+/gu, ' ').trim();
+  return compact.length <= 72 ? compact : `${compact.slice(0, 69)}...`;
+}
+
+export function statusIntents(
+  agentName: string,
+  threadId: string,
+  userMessage: string,
+  message: string,
+): mls.msg.AgentIntent[] {
+  const addMessage: mls.msg.AgentIntentAddMessageAI = {
+    type: 'add-message-ai',
+    skipRootLLM: true,
+    request: {
+      action: 'addMessageAI',
+      agentName,
+      inputAI: [
+        { type: 'system', content: message },
+        { type: 'human', content: message },
+      ],
+      taskTitle: NR_AGENT_NAME,
+      threadId,
+      userMessage,
+      longTermMemory: {
+        taskName: NR_AGENT_NAME,
+        flowName: NR_AGENT_NAME,
+        statusOnly: 'true',
+        notice: message,
+      },
+    },
+  };
+  const result: mls.msg.AIPayload = {
+    type: 'result',
+    stepId: 0,
+    status: statusKind(message),
+    interaction: null,
+    nextSteps: [],
+    stepTitle: statusStepTitle(message),
+    result: message,
+    planning: { planId: 'status', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+  } as mls.msg.AIResultStep;
+  const step: mls.msg.AgentIntentAddStep = {
+    type: 'add-step',
+    messageId: '',
+    threadId,
+    taskId: '',
+    parentStepId: 1,
+    step: result,
+  };
+  return [addMessage, step];
+}
 
 export function parseNrInvocation(value: string): NrInvocation {
   const raw = String(value || '').replace(/^@@agentNewReleaseL2\b/i, ' ').trim();

@@ -24,6 +24,7 @@ import {
   readPoolEffort,
   readProductSnapshot,
   reviewDefsRun,
+  statusIntents,
   writeReleaseSnapshot,
 } from '/_102020_/l2/agentNewReleaseL2/helpers/steps.js';
 
@@ -45,18 +46,18 @@ async function beforePromptImplicit(
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
   const invocation = parseNrInvocation(userPrompt || context.message.content || '');
-  if (!invocation.ok) return [statusMessage(agent, context, invocation.help)];
+  if (!invocation.ok) return statusMessage(agent, context, invocation.help);
 
   const project = currentProjectNumber();
   if (!Number.isSafeInteger(project) || project <= 0) {
-    return [statusMessage(agent, context, 'The current project is unavailable.')];
+    return statusMessage(agent, context, 'The current project is unavailable.');
   }
 
   const loaded = await readChangeEffort(invocation.module);
-  if (!loaded.ok) return [statusMessage(agent, context, loaded.reason)];
+  if (!loaded.ok) return statusMessage(agent, context, loaded.reason);
 
   const plan = planNewReleaseL2(loaded.effort, currentMasterProject());
-  if (!plan.ok) return [statusMessage(agent, context, plan.reason)];
+  if (!plan.ok) return statusMessage(agent, context, plan.reason);
 
   if (plan.mode === 'materialize') {
     const steps = buildApplySteps(project, invocation.module, plan.pages).map(step => addStepIntent(context, step));
@@ -65,7 +66,7 @@ async function beforePromptImplicit(
 
   const marked = markedPageIds(await readPoolEffort(invocation.module));
   const differ = marksDifferMessage(marked, plan.pages);
-  if (differ) return [statusMessage(agent, context, differ)];
+  if (differ) return statusMessage(agent, context, differ);
 
   await writeReleaseSnapshot(invocation.module, await readProductSnapshot(invocation.module));
   const steps = buildRegenerateSteps(project, invocation.module).map(step => addStepIntent(context, step));
@@ -152,28 +153,8 @@ function statusMessage(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   message: string,
-): mls.msg.AgentIntentAddMessageAI {
-  return {
-    type: 'add-message-ai',
-    skipRootLLM: true,
-    request: {
-      action: 'addMessageAI',
-      agentName: agent.agentName,
-      inputAI: [
-        { type: 'system', content: message },
-        { type: 'human', content: message },
-      ],
-      taskTitle: NR_AGENT_NAME,
-      threadId: context.message.threadId,
-      userMessage: context.message.content,
-      longTermMemory: {
-        taskName: NR_AGENT_NAME,
-        flowName: NR_AGENT_NAME,
-        statusOnly: 'true',
-        notice: message,
-      },
-    },
-  };
+): mls.msg.AgentIntent[] {
+  return statusIntents(agent.agentName, context.message.threadId, context.message.content, message);
 }
 
 function addStepIntent(context: mls.msg.ExecutionContext, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep {
