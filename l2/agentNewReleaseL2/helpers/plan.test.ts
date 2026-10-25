@@ -109,6 +109,36 @@ test('nothing to apply when this master has no page', () => {
   assert.deepEqual(planNewReleaseL2(fixture('nothing'), MASTER), { ok: false, reason: 'nothing to apply' });
 });
 
+test('R1 materializes this master when the client project is a different number', () => {
+  const previous = mls.actualProject;
+  mls.actualProject = 102047;
+  try {
+    assert.equal(String(mls.actualProject), '102047');
+    assert.deepEqual(planNewReleaseL2(fixture('r1'), MASTER), {
+      ok: true,
+      mode: 'materialize',
+      pages: ['minhas_tarefas'],
+      materializeOnly: [],
+    });
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('an effort whose answers are only from another master is a refusal', () => {
+  const effort = fixture('r1') as EffortFile;
+  for (const row of effort.perItem) {
+    for (const answer of row.answers) answer.master.project = '102021';
+  }
+  for (const master of (effort as EffortFile & { masters: Array<{ project: string }> }).masters) {
+    master.project = '102021';
+  }
+  assert.deepEqual(planNewReleaseL2(retie(effort), MASTER), {
+    ok: false,
+    reason: 'change effort has no answer from master 102020',
+  });
+});
+
 test('invalid file refuses with the gate reason', () => {
   const plan = planNewReleaseL2(fixture('invalid'), MASTER);
   assert.equal(plan.ok, false);

@@ -11,7 +11,6 @@ import {
   NR_MATERIALIZE_PLAN,
   buildApplySteps,
   buildRegenerateSteps,
-  currentMasterProject,
   currentProjectNumber,
   defsOutcome,
   guardAfterDefs,
@@ -56,7 +55,7 @@ async function beforePromptImplicit(
   const loaded = await readChangeEffort(invocation.module);
   if (!loaded.ok) return statusMessage(agent, context, loaded.reason);
 
-  const plan = planNewReleaseL2(loaded.effort, currentMasterProject());
+  const plan = planNewReleaseL2(loaded.effort, String(agent.agentProject));
   if (!plan.ok) return statusMessage(agent, context, plan.reason);
 
   if (plan.mode === 'materialize') {

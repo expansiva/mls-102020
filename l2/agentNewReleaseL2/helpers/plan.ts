@@ -60,9 +60,11 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
   const seenMaterialize = new Set<string>();
   const seenRegenerate = new Set<string>();
   let rebuild = false;
+  let sawMaster = false;
   for (const row of checked.file.perItem) {
     for (const answer of row.answers) {
       if (answer.master.project !== masterProject) continue;
+      sawMaster = true;
       for (const reason of outOfStep(answer)) blocks.push(`${answer.item} ${reason}`);
       if (citesDefs(answer)) {
         rebuild = true;
@@ -76,6 +78,7 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
     }
   }
   if (blocks.length > 0) return { ok: false, reason: `not in this release step: ${blocks.join('; ')}` };
+  if (!sawMaster) return { ok: false, reason: `change effort has no answer from master ${masterProject}` };
   const pages = rebuild ? regenerate : materialize;
   if (pages.length === 0) return { ok: false, reason: 'nothing to apply' };
   const materializeOnly = rebuild ? materialize.filter(id => !seenRegenerate.has(id)) : [];

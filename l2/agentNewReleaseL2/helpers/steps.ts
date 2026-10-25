@@ -96,10 +96,6 @@ export function parseNrInvocation(value: string): NrInvocation {
   return { ok: true, module: tokens[0] };
 }
 
-export function currentMasterProject(): string {
-  return String(mls.actualProject || '');
-}
-
 export function currentProjectNumber(): number {
   return Number(mls.actualProject || 0);
 }

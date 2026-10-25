@@ -69,22 +69,30 @@ test('invocation accepts one module and refuses a missing or extra argument', ()
 });
 
 test('the materializer step carries the R1 pages and the current project, and close depends on it', () => {
-  const effort = fixture('r1');
-  const plan = planNewReleaseL2(effort, effort.masters[0].project);
-  assert.equal(plan.ok, true);
-  if (!plan.ok) return;
-  const project = currentProjectNumber();
-  const [materialize, close] = buildApplySteps(project, 'alpha', plan.pages);
-  assert.equal(materialize.agentName, NR_MATERIALIZE_AGENT);
-  assert.equal(materialize.planning?.planId, NR_MATERIALIZE_PLAN);
-  assert.deepEqual(JSON.parse(materialize.prompt || ''), {
-    project,
-    module: 'alpha',
-    scope: { pages: plan.pages },
-  });
-  assert.equal(close.agentName, NR_AGENT_NAME);
-  assert.equal(close.planning?.planId, NR_CLOSE_PLAN);
-  assert.deepEqual(close.planning?.dependsOn, [NR_MATERIALIZE_PLAN]);
+  const previous = mls.actualProject;
+  mls.actualProject = 102047;
+  try {
+    const effort = fixture('r1');
+    assert.equal(currentProjectNumber(), 102047);
+    const plan = planNewReleaseL2(effort, '102020');
+    assert.equal(plan.ok, true);
+    if (!plan.ok) return;
+    const project = currentProjectNumber();
+    const [materialize, close] = buildApplySteps(project, 'alpha', plan.pages);
+    assert.equal(materialize.agentName, NR_MATERIALIZE_AGENT);
+    assert.equal(materialize.planning?.planId, NR_MATERIALIZE_PLAN);
+    assert.deepEqual(JSON.parse(materialize.prompt || ''), {
+      project,
+      module: 'alpha',
+      scope: { pages: plan.pages },
+    });
+    assert.equal(close.agentName, NR_AGENT_NAME);
+    assert.equal(close.planning?.planId, NR_CLOSE_PLAN);
+    assert.deepEqual(close.planning?.dependsOn, [NR_MATERIALIZE_PLAN]);
+    assert.deepEqual(plan.pages, ['minhas_tarefas']);
+  } finally {
+    mls.actualProject = previous;
+  }
 });
 
 test('regenerate adds the defs generator with scope all, and the check waits on it', () => {
