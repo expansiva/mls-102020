@@ -13,6 +13,8 @@ export interface DescribeEffortSources {
   moduleSource?: string;
   /** `l5/config.json` body. Absent means the module has no `userLanguage` there. */
   configSource?: string;
+  /** `l2/<module>/web/shared/<pageId>.defs.ts` bodies, keyed by page id. */
+  shared?: Record<string, string>;
 }
 
 function answer(
@@ -20,13 +22,14 @@ function answer(
   materialize: EffortUnitRef[],
   reason?: string,
   runAgents: EffortAgentRef[] = [],
+  regenerateDefs: EffortUnitRef[] = [],
 ): EffortAnswer {
   return {
     master: { ...MASTER },
     item: input.item.changeId,
     status: reason ? 'abend' : 'computed',
     create: [],
-    regenerateDefs: [],
+    regenerateDefs,
     materialize,
     remove: [],
     runAgents,
@@ -144,32 +147,66 @@ function textAnswer(input: EffortInput, sources: DescribeEffortSources | undefin
     shown.pages.map(pageId => ({
       kind: 'page' as const,
       id: pageId,
-      path: `l2/${input.module}/web/contracts/${pageId}.defs.ts`,
+      path: contractPath(input.module, pageId),
     })),
     undefined,
     [{ agent: 'agentAddLanguage', command }],
   );
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages. */
+function ruleIdOf(input: EffortInput): string {
+  return input.item.changeId.startsWith('rule:') ? input.item.changeId.slice('rule:'.length) : '';
+}
+
+function contractPath(moduleName: string, pageId: string): string {
+  return `l2/${moduleName}/web/contracts/${pageId}.defs.ts`;
+}
+
+function pageUnit(moduleName: string, pageId: string): EffortUnitRef {
+  return { kind: 'page', id: pageId, path: contractPath(moduleName, pageId) };
+}
+
+/** A removed rule drops its id from each citing contract and from each shared `rules` list, then rematerializes those pages. */
+function removedAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
+  const ruleId = ruleIdOf(input);
+  const contractPages: string[] = [];
+  for (const pageId of Object.keys(contracts).sort()) {
+    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
+    if (parsed.routes.some(route => route.rules.includes(ruleId))) contractPages.push(pageId);
+  }
+  const sharedPages: string[] = [];
+  for (const pageId of Object.keys(shared).sort()) {
+    if (quotedList(shared[pageId] ?? '', 'rules').includes(ruleId)) sharedPages.push(pageId);
+  }
+  const pages = [...new Set([...contractPages, ...sharedPages])].sort();
+  const regenerateDefs: EffortUnitRef[] = [];
+  for (const pageId of pages) {
+    if (contractPages.includes(pageId)) {
+      regenerateDefs.push({ kind: 'contract', id: pageId, path: contractPath(input.module, pageId) });
+    }
+    if (sharedPages.includes(pageId)) {
+      regenerateDefs.push({ kind: 'shared', id: pageId, path: `l2/${input.module}/web/shared/${pageId}.defs.ts` });
+    }
+  }
+  return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs);
+}
+
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (isTextOnlyChange(input.item)) return textAnswer(input, sources);
   if (Object.keys(contracts).length === 0) return answer(input, [], `no generated L2 contracts for module ${input.module}`);
+  if (input.item.kind === 'rule' && input.item.op === 'removed') return removedAnswer(input, contracts, sources?.shared ?? {});
   if (input.item.kind !== 'rule' || input.item.op !== 'changed') {
     return answer(input, [], `v1 computes only rule changed; ${input.item.kind} ${input.item.op} is not handled`);
   }
-  const ruleId = input.item.changeId.startsWith('rule:') ? input.item.changeId.slice('rule:'.length) : '';
+  const ruleId = ruleIdOf(input);
   const pages: string[] = [];
   for (const pageId of Object.keys(contracts).sort()) {
-    const parsed = parseD2ContractV2(contracts[pageId]);
+    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
     if (parsed.routes.some(route => route.rules.includes(ruleId))) pages.push(pageId);
   }
   if (pages.length === 0) return answer(input, [], `no route of any contract cites rule ${ruleId}`);
-  return answer(input, pages.map(pageId => ({
-    kind: 'page' as const,
-    id: pageId,
-    path: `l2/${input.module}/web/contracts/${pageId}.defs.ts`,
-  })));
+  return answer(input, pages.map(pageId => pageUnit(input.module, pageId)));
 }
 
 function projectId(input: EffortInput): number | undefined {
@@ -223,13 +260,17 @@ export async function describeEffort(input: EffortInput): Promise<EffortAnswer> 
     }
     return describeEffortFrom(input, {}, { needsSource, moduleSource, configSource });
   }
-  const folder = `${input.module}/web/contracts`;
+  const contractsFolder = `${input.module}/web/contracts`;
+  const sharedFolder = `${input.module}/web/shared`;
   const contracts: Record<string, string> = {};
+  const shared: Record<string, string> = {};
   for (const file of Object.values(mls.stor.files) as StorFile[]) {
     if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
-    if (file.folder !== folder || file.extension !== '.defs.ts') continue;
+    if (file.extension !== '.defs.ts') continue;
     const body = await fileBody(file);
-    if (body) contracts[file.shortName] = body;
+    if (!body) continue;
+    if (file.folder === contractsFolder) contracts[file.shortName] = body;
+    else if (file.folder === sharedFolder) shared[file.shortName] = body;
   }
-  return describeEffortFrom(input, contracts);
+  return describeEffortFrom(input, contracts, { shared });
 }

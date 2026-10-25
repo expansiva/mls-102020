@@ -75,6 +75,9 @@ void test('rule changed cites only the pages whose routes list the id', () => {
     kind: 'page', id: 'agenda_diaria', path: 'l2/agendaClinica/web/contracts/agenda_diaria.defs.ts',
   }]);
   assert.deepEqual(note.regenerateDefs, []);
+  assert.deepEqual(note.create, []);
+  assert.deepEqual(note.remove, []);
+  assert.equal(note.contract, 'keep');
   assert.deepEqual(note.runAgents, []);
   const golden = JSON.parse(readFileSync(GOLDEN, 'utf8')) as {
     perItem: Array<{ answers: Array<{ master: { kind: string }; materialize: Array<{ kind: string; id: string }> }> }>;
@@ -142,6 +145,9 @@ void test('text-only field change materializes the pages that read the entity an
   }), {}, textSources(plan));
   assert.equal(row.status, 'computed');
   assert.deepEqual(row.regenerateDefs, []);
+  assert.deepEqual(row.create, []);
+  assert.deepEqual(row.remove, []);
+  assert.equal(row.contract, 'keep');
   assert.deepEqual(row.materialize, [
     { kind: 'page', id: 'ficha', path: 'l2/agendaClinica/web/contracts/ficha.defs.ts' },
   ]);
@@ -224,6 +230,100 @@ void test('describeEffort reads needs, module.defs and l5 config for a text chan
     assert.equal(row.runAgents[0]?.command.includes('"fr"'), true);
     assert.equal(row.runAgents[0]?.command.includes('"es"'), false);
     assert.equal(row.runAgents[0]?.command.includes('force'), false);
+  } finally {
+    mls.stor.files = previous;
+  }
+});
+
+const TAREFAS_CONTRACTS = new URL('./fixtures/tarefas/contracts/', import.meta.url);
+const TAREFAS_SHARED = new URL('./fixtures/tarefas/shared/', import.meta.url);
+
+function defsIn(dir: URL): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.defs.txt')) continue;
+    out[name.slice(0, -'.defs.txt'.length)] = readFileSync(new URL(name, dir), 'utf8');
+  }
+  return out;
+}
+
+function removed(changeId: string): EffortInput {
+  return {
+    module: 'tarefas',
+    base: { baseId: 'mls-102047', revisionId: '537525a4' },
+    item: { changeId, kind: 'rule', op: 'removed', entity: '', source: 'l4/tarefas/rules.defs.ts' },
+  };
+}
+
+function contractUnit(pageId: string): { kind: 'contract'; id: string; path: string } {
+  return { kind: 'contract', id: pageId, path: `l2/tarefas/web/contracts/${pageId}.defs.ts` };
+}
+
+function sharedUnit(pageId: string): { kind: 'shared'; id: string; path: string } {
+  return { kind: 'shared', id: pageId, path: `l2/tarefas/web/shared/${pageId}.defs.ts` };
+}
+
+function pageUnit(pageId: string): { kind: 'page'; id: string; path: string } {
+  return { kind: 'page', id: pageId, path: `l2/tarefas/web/contracts/${pageId}.defs.ts` };
+}
+
+void test('a removed rule drops its id from citing contracts and shared lists and rematerializes those pages', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const shared = defsIn(TAREFAS_SHARED);
+  const sources = { shared };
+
+  const both = describeEffortFrom(removed('rule:devolucaoExigeMotivo'), pages, sources);
+  assert.equal(both.status, 'computed');
+  assert.equal(both.contract, 'keep');
+  assert.deepEqual(both.create, []);
+  assert.deepEqual(both.remove, []);
+  assert.deepEqual(both.regenerateDefs, [
+    contractUnit('inicio'),
+    sharedUnit('inicio'),
+    contractUnit('minhas_tarefas'),
+    sharedUnit('minhas_tarefas'),
+  ]);
+  assert.deepEqual(both.materialize, [pageUnit('inicio'), pageUnit('minhas_tarefas')]);
+
+  const inicio = describeEffortFrom(removed('rule:resumoDiarioOitoHoras'), pages, sources);
+  assert.equal(inicio.status, 'computed');
+  assert.equal(inicio.contract, 'keep');
+  assert.deepEqual(inicio.regenerateDefs, [contractUnit('inicio'), sharedUnit('inicio')]);
+  assert.deepEqual(inicio.materialize, [pageUnit('inicio')]);
+  assert.deepEqual(inicio.create, []);
+  assert.deepEqual(inicio.remove, []);
+
+  const none = describeEffortFrom(removed('rule:naoExiste'), pages, sources);
+  assert.equal(none.status, 'computed');
+  assert.equal(none.contract, 'keep');
+  assert.deepEqual(none.regenerateDefs, []);
+  assert.deepEqual(none.materialize, []);
+  assert.equal(none.abend, undefined);
+});
+
+void test('describeEffort reads shared defs for a removed rule', async () => {
+  const previous = mls.stor.files;
+  const contract = readFileSync(new URL('inicio.defs.txt', TAREFAS_CONTRACTS), 'utf8');
+  const shared = readFileSync(new URL('inicio.defs.txt', TAREFAS_SHARED), 'utf8');
+  mls.stor.files = {
+    contract: {
+      project: 102047, level: 2, status: 'active', folder: 'tarefas/web/contracts', extension: '.defs.ts', shortName: 'inicio',
+      getContent: async () => contract,
+    },
+    shared: {
+      project: 102047, level: 2, status: 'active', folder: 'tarefas/web/shared', extension: '.defs.ts', shortName: 'inicio',
+      getContent: async () => shared,
+    },
+    otherProject: {
+      project: 1, level: 2, status: 'active', folder: 'tarefas/web/shared', extension: '.defs.ts', shortName: 'minhas_tarefas',
+      getContent: async () => shared,
+    },
+  } as unknown as typeof mls.stor.files;
+  try {
+    const row = await describeEffort(removed('rule:resumoDiarioOitoHoras'));
+    assert.equal(row.status, 'computed');
+    assert.deepEqual(row.regenerateDefs, [contractUnit('inicio'), sharedUnit('inicio')]);
+    assert.deepEqual(row.materialize, [pageUnit('inicio')]);
   } finally {
     mls.stor.files = previous;
   }
