@@ -19,7 +19,13 @@ import {
   P2_EFFORT_SCHEMA_VERSION,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import { poolStamp, readPoolTraceAt, type PoolMessage } from '/_102035_/l2/solution/pool.js';
-import type { PoolEffortFile } from '/_102035_/l2/solution/poolPlan.js';
+import { changeEffortFileStatus, mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
+import {
+  CHANGE_EFFORT_SCHEMA_VERSION,
+  type ChangeEffortFile,
+  type EffortAnswer,
+  type PoolEffortFile,
+} from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
@@ -63,11 +69,43 @@ function seed(host: Host, opts: { project?: number; level?: number; folder: stri
   return file;
 }
 
+function changeEffortContent(changeId: string, answer: EffortAnswer): string {
+  const item = { changeId, kind: 'rule' as const, op: 'changed' as const, entity: '', source: 'rules.defs.ts' };
+  const perItem = [{ item: changeId, answers: [answer] }];
+  const file: ChangeEffortFile = {
+    schemaVersion: CHANGE_EFFORT_SCHEMA_VERSION,
+    module: MODULE,
+    base: { baseId: 'base', revisionId: 'rev', candidateRoot: CANDIDATE },
+    request: { text: 'export', items: [item] },
+    masters: [answer.master],
+    perItem,
+    merged: mergeChangeEffort(perItem),
+    untouched: { count: 0, sealHash: 'seal' },
+    status: changeEffortFileStatus(perItem),
+  };
+  return `${JSON.stringify(file, null, 2)}\n`;
+}
+
+function frontAnswer(item: string, patch: Partial<EffortAnswer> = {}): EffortAnswer {
+  return {
+    master: { project: '102020', kind: 'l2', device: 'web' },
+    item,
+    status: 'computed',
+    create: [],
+    regenerateDefs: [],
+    materialize: [],
+    remove: [],
+    runAgents: [],
+    contract: 'keep',
+    ...patch,
+  };
+}
+
 function installHost(): Host {
   const host: Host = { files: {}, deleted: [] };
   (globalThis as unknown as Record<string, unknown>).mls = {
     actualProject: PROJECT,
-    events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
+    events: { addEventListener() {}, removeEventListener() {}, dispatch() {}, fireFileAction() {} },
     stor: {
       files: host.files,
       getKeyToFile: keyOf,
@@ -295,9 +333,16 @@ void test('candidate effort attributes declared rules and warns on orphans', asy
       candidate: CANDIDATE,
       items: [
         { changeId: 'rule:situacaoMensalidadeDerivada', kind: 'rule', op: 'changed', entity: '', source: 'ontology/Mensalidade.defs.ts' },
-        { changeId: 'rule:alunoBloqueadoPorDuasMensalidadesVencidas', kind: 'rule', op: 'changed', entity: '', source: 'rules.defs.ts' },
       ],
     }, null, 2)}\n`,
+  });
+  seed(host, {
+    folder: `${CANDIDATE}/pool/l4`,
+    shortName: 'changeEffort',
+    content: changeEffortContent('rule:situacaoMensalidadeDerivada', frontAnswer('rule:situacaoMensalidadeDerivada', {
+      contract: 'change',
+      regenerateDefs: [{ kind: 'page', id: 'mensalidades_pagamentos', path: 'l2/mod/web/contracts/mensalidades_pagamentos.defs.ts' }],
+    })),
   });
   seed(host, {
     folder: `${CANDIDATE}/ontology`,
@@ -309,7 +354,7 @@ void test('candidate effort attributes declared rules and warns on orphans', asy
     folder: `${CANDIDATE}/ontology`,
     shortName: 'Mensalidade',
     extension: '.defs.ts',
-    content: `export const e = ${JSON.stringify({ entityId: 'Mensalidade', rules: ['situacaoMensalidadeDerivada'] })};\n`,
+    content: `export const e = ${JSON.stringify({ entityId: 'Mensalidade', rules: [] })};\n`,
   });
   const canonicalContent = host.files[keyOf({
     project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
@@ -318,8 +363,8 @@ void test('candidate effort attributes declared rules and warns on orphans', asy
   try {
     const result = await executeP2Effort(MODULE, AT);
     const written = JSON.parse(host.files[keyOf(p2EffortFile(MODULE))].content) as PoolEffortFile;
-    assert.equal(result.effort.unattributed.length, 1);
-    assert.equal(written.unattributed[0].changeId, 'rule:alunoBloqueadoPorDuasMensalidadesVencidas');
+    assert.equal(result.effort.unattributed.length, 0);
+    assert.equal(written.unattributed.length, 0);
     const payments = written.screens.find(screen => screen.pageId === 'mensalidades_pagamentos');
     const plans = written.screens.find(screen => screen.pageId === 'planos');
     assert.equal(payments?.status, 'toUpdate');
@@ -372,6 +417,14 @@ void test('beforePromptStep in candidate appends unattributed warnings and does 
       items: [{ changeId: 'rule:alunoBloqueadoPorDuasMensalidadesVencidas', kind: 'rule', op: 'changed', entity: '', source: 'rules.defs.ts' }],
     }, null, 2)}\n`,
   });
+  seed(host, {
+    folder: `${CANDIDATE}/pool/l4`,
+    shortName: 'changeEffort',
+    content: changeEffortContent(
+      'rule:alunoBloqueadoPorDuasMensalidadesVencidas',
+      frontAnswer('rule:alunoBloqueadoPorDuasMensalidadesVencidas'),
+    ),
+  });
   const canonicalBefore = host.files[keyOf({
     project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
   })].content;
@@ -398,9 +451,41 @@ void test('beforePromptStep in candidate appends unattributed warnings and does 
     };
     assert.equal(pipeline.status, 'complete');
     assert.ok((pipeline.warnings || []).some(line => line.includes('alunoBloqueadoPorDuasMensalidadesVencidas')));
+    assert.ok((pipeline.warnings || []).some(line => line.includes('front-end effort names no page')));
     assert.equal(host.files[keyOf({
       project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
     })].content, canonicalBefore);
+  } finally {
+    setModuleRoot(MODULE, null);
+  }
+});
+
+void test('candidate effort fails when changeEffort.json is missing or rejected', async () => {
+  const host = installHost();
+  seedReady(host);
+  const pipelineSeed = JSON.parse(host.files[keyOf({
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'pipeline', extension: '.json',
+  })].content) as { messageFile: string };
+  pipelineSeed.messageFile = `l4/${CANDIDATE}/pool/l2/${L1_SHORT}.json`;
+  seed(host, { folder: `${CANDIDATE}/pool/l2`, shortName: 'pipeline', level: 4, content: `${JSON.stringify(pipelineSeed, null, 2)}\n` });
+  seed(host, { folder: `${CANDIDATE}/pool/l2`, shortName: L1_SHORT, content: `${JSON.stringify({ ...JSON.parse(readFileSync(RECEIVED_PATH, 'utf8')) as Record<string, unknown>, mode: 'estimate' }, null, 2)}\n` });
+  seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'menu', content: `${readFileSync(MENU_PATH, 'utf8')}\n` });
+  seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'backend', content: `${readFileSync(BACKEND_PATH, 'utf8')}\n` });
+  seed(host, {
+    folder: `${CANDIDATE}/pool/l1/web`,
+    shortName: 'needs',
+    content: `${JSON.stringify({ schemaVersion: '2026-09-21-p2-needs-v1', moduleName: MODULE, device: 'web', pages: [], meta: {} }, null, 2)}\n`,
+  });
+  seed(host, {
+    folder: `${CANDIDATE}/pool/l2/web`,
+    shortName: 'l4diff',
+    content: `${JSON.stringify({ schemaVersion: '2026-09-21-p4-l4diff-v1', moduleName: MODULE, base: 'canonical', candidate: CANDIDATE, items: [] }, null, 2)}\n`,
+  });
+  setModuleRoot(MODULE, CANDIDATE);
+  try {
+    await assert.rejects(() => executeP2Effort(MODULE, AT), /pool\/l4\/changeEffort\.json is missing/);
+    seed(host, { folder: `${CANDIDATE}/pool/l4`, shortName: 'changeEffort', content: '{}\n' });
+    await assert.rejects(() => executeP2Effort(MODULE, AT), /pool\/l4\/changeEffort\.json rejected by gate: schema:schemaVersion/);
   } finally {
     setModuleRoot(MODULE, null);
   }

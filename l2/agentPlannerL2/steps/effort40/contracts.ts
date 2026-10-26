@@ -9,6 +9,9 @@ import {
   type MenuAction,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import type {
+  ChangeEffortFile,
+  EffortAnswer,
+  EffortUnitRef,
   MenuStampedNode,
   PoolBackendEndpoint,
   PoolBackendFile,
@@ -88,11 +91,18 @@ export interface P2EffortL4DiffFile {
   items: P2EffortL4DiffItem[];
 }
 
+/** `agentProject` of agentPlannerL2. Never `mls.actualProject`. */
+const FRONT_MASTER_PROJECT = '102020';
+const DEFS_PAGE_KINDS = new Set<EffortUnitRef['kind']>(['page', 'contract', 'shared']);
+const PAGE_KIND = new Set<EffortUnitRef['kind']>(['page']);
+const NO_PAGE_REASON = 'front-end effort names no page';
+
 export interface P2BuildEffortCandidate {
   canonicalMenu: PoolMenuFile | null;
   l4diff: P2EffortL4DiffFile;
   needs: PoolNeedsFile;
   entityRules: ReadonlyMap<string, readonly string[]>;
+  changeEffort: ChangeEffortFile;
 }
 
 /**
@@ -114,7 +124,7 @@ export interface P2BuildEffortInput {
   menu: PoolMenuFile;
   backend: P2BackendView;
   now: Date;
-  /** Present only in `/candidate`. Screen status then comes from canonical + l4diff, not menu action. */
+  /** Present only in `/candidate`. Screen status then comes from the front-end changeEffort plus the menu, not menu action. */
   candidate?: P2BuildEffortCandidate;
 }
 
@@ -174,11 +184,8 @@ export function buildP2EffortFile(input: P2BuildEffortInput): PoolEffortFile {
   // backend.json removes `usecase | port | table` (PoolBackendRemovedKind); effort.json lists `endpoint | usecase | table`
   // (PoolEffortRemovedKind) and its totals count no removal, so a removed port has no place in effort and is left out.
   const removed = input.backend.removed.flatMap(item => item.kind === 'port' ? [] : [copyRemoved({ ...item, kind: item.kind })]);
-  const attributed = input.candidate
-    ? attributeL4Diff(input.candidate.l4diff.items, input.candidate.needs, input.candidate.entityRules)
-    : { pageIds: new Set<string>(), unattributed: [] as PoolEffortUnattributed[] };
   const screens = input.candidate
-    ? collectScreensFromL4Diff(input.menu, endpoints, input.candidate, attributed.pageIds)
+    ? collectScreensFromL4Diff(input.menu, endpoints, input.candidate)
     : collectScreens(input.menu, endpoints);
   return {
     schemaVersion: P2_EFFORT_SCHEMA_VERSION,
@@ -196,7 +203,9 @@ export function buildP2EffortFile(input: P2BuildEffortInput): PoolEffortFile {
     tables,
     removed,
     testSupport: input.backend.testSupport.map(copyTestSupport),
-    unattributed: attributed.unattributed,
+    unattributed: input.candidate
+      ? unattributedFromChangeEffort(input.candidate.l4diff.items, input.candidate.changeEffort)
+      : [],
     meta: {
       sourceMenu: `pool/l2/${device}/menu.json`,
       sourceBackend: `pool/l2/${device}/backend.json`,
@@ -286,12 +295,80 @@ export function attributeL4Diff(
   return { pageIds, unattributed };
 }
 
+function frontAnswers(effort: ChangeEffortFile, changeId: string): EffortAnswer[] {
+  const row = effort.perItem.find(item => item.item === changeId);
+  if (!row) return [];
+  return row.answers.filter(answer => answer.master.project === FRONT_MASTER_PROJECT);
+}
+
+function answerNamesPage(answer: EffortAnswer): boolean {
+  return answer.regenerateDefs.some(unit => DEFS_PAGE_KINDS.has(unit.kind))
+    || answer.create.some(unit => unit.kind === 'page')
+    || answer.remove.some(unit => unit.kind === 'page')
+    || answer.materialize.length > 0;
+}
+
+function unattributedFromChangeEffort(
+  items: readonly P2EffortL4DiffItem[],
+  effort: ChangeEffortFile,
+): PoolEffortUnattributed[] {
+  const out: PoolEffortUnattributed[] = [];
+  for (const item of items) {
+    for (const answer of frontAnswers(effort, item.changeId)) {
+      if (answer.status === 'abend') {
+        out.push({
+          changeId: item.changeId,
+          kind: item.kind,
+          op: item.op,
+          reason: answer.abend?.reason ?? '',
+        });
+        continue;
+      }
+      if (!answerNamesPage(answer)) {
+        out.push({
+          changeId: item.changeId,
+          kind: item.kind,
+          op: item.op,
+          reason: NO_PAGE_REASON,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function addMarked(target: Set<string>, units: readonly EffortUnitRef[], kinds: ReadonlySet<string>): void {
+  for (const unit of units) {
+    if (kinds.has(unit.kind)) target.add(unit.id);
+  }
+}
+
+function screenMarksFromChangeEffort(effort: ChangeEffortFile): {
+  toUpdate: Set<string>;
+  toCreate: Set<string>;
+  toRemove: Set<string>;
+} {
+  const toUpdate = new Set<string>();
+  const toCreate = new Set<string>();
+  const toRemove = new Set<string>();
+  for (const row of effort.perItem) {
+    for (const answer of row.answers) {
+      if (answer.master.project !== FRONT_MASTER_PROJECT || answer.status === 'abend') continue;
+      addMarked(toUpdate, answer.regenerateDefs, DEFS_PAGE_KINDS);
+      addMarked(toCreate, answer.create, PAGE_KIND);
+      addMarked(toRemove, answer.remove, PAGE_KIND);
+      if (answer.contract === 'change') addMarked(toUpdate, answer.materialize, PAGE_KIND);
+    }
+  }
+  return { toUpdate, toCreate, toRemove };
+}
+
 function collectScreensFromL4Diff(
   menu: PoolMenuFile,
   endpoints: readonly PoolEffortEndpoint[],
   candidate: P2BuildEffortCandidate,
-  updatedIds: ReadonlySet<string>,
 ): PoolEffortScreen[] {
+  const marks = screenMarksFromChangeEffort(candidate.changeEffort);
   const pages = stampedPages(menu.tree);
   const canonicalPages = candidate.canonicalMenu ? stampedPages(candidate.canonicalMenu.tree) : [];
   const canonicalIds = new Set(canonicalPages.map(page => page.id));
@@ -304,9 +381,11 @@ function collectScreensFromL4Diff(
   const screens: PoolEffortScreen[] = [];
   for (const page of pages) {
     seen.add(page.id);
-    const status: P2EffortStatus = !canonicalIds.has(page.id)
+    const status: P2EffortStatus = !canonicalIds.has(page.id) || marks.toCreate.has(page.id)
       ? 'toCreate'
-      : updatedIds.has(page.id) ? 'toUpdate' : 'done';
+      : marks.toRemove.has(page.id)
+        ? 'toRemove'
+        : marks.toUpdate.has(page.id) ? 'toUpdate' : 'done';
     screens.push({
       pageId: page.id,
       label: page.label,

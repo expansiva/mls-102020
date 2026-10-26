@@ -22,8 +22,19 @@ import {
   type P2BuildEffortCandidate,
   type P2EffortL4DiffFile,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
+import { planNewReleaseL2 } from '/_102020_/l2/agentNewReleaseL2/helpers/plan.js';
 import { validateP2Effort } from '/_102020_/l2/agentPlannerL2/steps/effort40/gate.js';
-import type { PoolMenuFile, PoolNeedsFile, PoolNeedsRead } from '/_102035_/l2/solution/poolPlan.js';
+import { changeEffortFileStatus, mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
+import {
+  CHANGE_EFFORT_SCHEMA_VERSION,
+  type ChangeEffortFile,
+  type EffortAnswer,
+  type EffortUnitRef,
+  type L4DiffItem,
+  type PoolMenuFile,
+  type PoolNeedsFile,
+  type PoolNeedsRead,
+} from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
@@ -199,12 +210,55 @@ void test('changing only testSupport changes effort content hash, not effort tot
   assert.deepEqual({ ...changed, testSupport: [] }, { ...original, testSupport: [] });
 });
 
+function pageUnit(id: string, kind: EffortUnitRef['kind'] = 'page'): EffortUnitRef {
+  return { kind, id, path: `l2/mod/web/contracts/${id}.defs.ts` };
+}
+
+function effortAnswer(item: string, project: string, patch: Partial<EffortAnswer> = {}): EffortAnswer {
+  return {
+    master: { project, kind: project === '102021' ? 'l1' : 'l2', device: 'web' },
+    item,
+    status: 'computed',
+    create: [],
+    regenerateDefs: [],
+    materialize: [],
+    remove: [],
+    runAgents: [],
+    contract: 'keep',
+    ...patch,
+  };
+}
+
+function changeEffort(items: L4DiffItem[], answers: EffortAnswer[]): ChangeEffortFile {
+  const perItem = items.map(item => ({
+    item: item.changeId,
+    answers: answers.filter(answer => answer.item === item.changeId),
+  }));
+  const masters = [...new Map(answers.map(answer => [answer.master.project, answer.master])).values()];
+  return {
+    schemaVersion: CHANGE_EFFORT_SCHEMA_VERSION,
+    module: 'mensalidadesAcademia',
+    base: { baseId: 'base', revisionId: 'rev', candidateRoot: 'mensalidadesAcademia/tobe/plan' },
+    request: { text: 'export', items },
+    masters,
+    perItem,
+    merged: mergeChangeEffort(perItem),
+    untouched: { count: 0, sealHash: 'seal' },
+    status: changeEffortFileStatus(perItem),
+  };
+}
+
+function diffItem(changeId: string): L4DiffItem {
+  return { changeId, kind: 'rule', op: 'changed', entity: '', source: 'rules.defs.ts' };
+}
+
 function candidateOf(opts: {
   menu: PoolMenuFile;
   needs: PoolNeedsFile;
   items: P2EffortL4DiffFile['items'];
   rules: readonly { entityId: string; rules?: readonly string[] }[];
   canonicalMenu?: PoolMenuFile | null;
+  changeEffort: ChangeEffortFile;
 }): P2BuildEffortCandidate {
   return {
     canonicalMenu: opts.canonicalMenu === undefined ? opts.menu : opts.canonicalMenu,
@@ -217,18 +271,21 @@ function candidateOf(opts: {
     },
     needs: opts.needs,
     entityRules: p2EntityRulesMap(opts.rules),
+    changeEffort: opts.changeEffort,
   };
 }
 
-void test('candidate: situacaoMensalidadeDerivada updates pages that read Mensalidade; others stay done', () => {
+void test('candidate: R4 changeEffort marks tarefas_equipe toUpdate even when the rule is outside entity.rules[]', () => {
   const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
-  const needs = needsFile([
-    { pageId: 'minha_matricula', entities: ['Matricula'] },
-    { pageId: 'inicio_recepcao', entities: ['Mensalidade'] },
-    { pageId: 'matriculas', entities: ['Aluno', 'Matricula'] },
-    { pageId: 'mensalidades_pagamentos', entities: ['Mensalidade', 'Pagamento'] },
-    { pageId: 'planos', entities: ['Plano'] },
-    { pageId: 'inicio_gerencia', entities: ['IndicadoresAcademia'] },
+  const page = (id: string) => ({ id, kind: 'page' as const, label: id, organisms: [], action: 'keep' as const });
+  menu.tree = [...menu.tree, page('tarefas_equipe')];
+  const needs = needsFile(menu.tree.flatMap(node => node.kind === 'page' ? [{ pageId: node.id, entities: ['Other'] }] : []));
+  const items = [diffItem('rule:gestorExportaCsv')];
+  const effort = changeEffort(items, [
+    effortAnswer('rule:gestorExportaCsv', '102020', {
+      contract: 'change',
+      regenerateDefs: [pageUnit('tarefas_equipe')],
+    }),
   ]);
   const file = buildP2EffortFile({
     menu,
@@ -237,38 +294,32 @@ void test('candidate: situacaoMensalidadeDerivada updates pages that read Mensal
     candidate: candidateOf({
       menu,
       needs,
-      rules: [{ entityId: 'Mensalidade', rules: ['situacaoMensalidadeDerivada'] }],
-      items: [{
-        changeId: 'rule:situacaoMensalidadeDerivada',
-        kind: 'rule',
-        op: 'changed',
-        entity: '',
-        source: 'ontology/Mensalidade.defs.ts',
-      }],
+      rules: [],
+      items,
+      changeEffort: effort,
     }),
   });
-  assert.deepEqual(
-    Object.fromEntries(file.screens.map(screen => [screen.pageId, screen.status])),
-    {
-      minha_matricula: 'done',
-      inicio_recepcao: 'toUpdate',
-      matriculas: 'done',
-      mensalidades_pagamentos: 'toUpdate',
-      planos: 'done',
-      inicio_gerencia: 'done',
-    },
-  );
+  const byId = Object.fromEntries(file.screens.map(screen => [screen.pageId, screen.status]));
+  assert.equal(byId.tarefas_equipe, 'toUpdate');
+  assert.ok(Object.entries(byId).filter(([id]) => id !== 'tarefas_equipe').every(([, status]) => status === 'done'));
   assert.deepEqual(file.unattributed, []);
-  assert.deepEqual(file.totals.screens, { toCreate: 0, toUpdate: 2, toRemove: 0, done: 4 });
   const gate = validateP2Effort(file, menu, { screenStatusFromAction: false });
   assert.equal(gate.ok, true, gate.issues.map(issue => issue.message).join('\n'));
 });
 
-void test('candidate: orphan rule alunoBloqueadoPorDuasMensalidadesVencidas lands in unattributed', () => {
+void test('candidate: front-end answer with no page is unattributed; a 102021 answer does not mark', () => {
   const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
   const needs = needsFile([
     { pageId: 'mensalidades_pagamentos', entities: ['Mensalidade', 'Pagamento'] },
     { pageId: 'planos', entities: ['Plano'] },
+  ]);
+  const orphan = diffItem('rule:alunoBloqueadoPorDuasMensalidadesVencidas');
+  const backendOnly = diffItem('rule:onlyBackend');
+  const items = [orphan, backendOnly];
+  const effort = changeEffort(items, [
+    effortAnswer(orphan.changeId, '102020'),
+    effortAnswer(backendOnly.changeId, '102021', { regenerateDefs: [pageUnit('planos')] }),
+    effortAnswer('rule:absent', '102020', { status: 'abend', abend: { reason: 'master stopped' } }),
   ]);
   const file = buildP2EffortFile({
     menu,
@@ -278,24 +329,119 @@ void test('candidate: orphan rule alunoBloqueadoPorDuasMensalidadesVencidas land
       menu,
       needs,
       rules: [{ entityId: 'Mensalidade', rules: ['situacaoMensalidadeDerivada'] }],
-      items: [{
-        changeId: 'rule:alunoBloqueadoPorDuasMensalidadesVencidas',
-        kind: 'rule',
-        op: 'changed',
-        entity: '',
-        source: 'rules.defs.ts',
-      }],
+      items,
+      changeEffort: effort,
     }),
   });
-  assert.ok(file.screens.every(screen => screen.status === 'done' || screen.status === 'toCreate' || screen.status === 'toUpdate'));
   assert.ok(file.screens.every(screen => screen.status !== 'toUpdate'));
-  assert.equal(file.unattributed.length, 1);
-  assert.equal(file.unattributed[0].changeId, 'rule:alunoBloqueadoPorDuasMensalidadesVencidas');
-  assert.equal(file.unattributed[0].kind, 'rule');
-  assert.equal(file.unattributed[0].op, 'changed');
-  assert.match(file.unattributed[0].reason, /not in any entity\.rules\[\]/);
-  assert.equal(file.unattributed[0].reason.includes('Workshop'), false);
-  assert.equal(file.unattributed[0].reason.includes('bloqueado'), false);
+  assert.deepEqual(file.unattributed, [{
+    changeId: orphan.changeId,
+    kind: 'rule',
+    op: 'changed',
+    reason: 'front-end effort names no page',
+  }]);
+});
+
+void test('candidate: toUpdate and toCreate match planNewReleaseL2 regenerate pages', () => {
+  const canonical = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as PoolMenuFile;
+  const page = (id: string) => ({ id, kind: 'page' as const, label: id, organisms: [{ kind: 'list', text: id }], action: 'keep' as const });
+  canonical.tree = [page('tarefas_equipe'), page('outra'), page('so_material'), page('resto')];
+  const menu: PoolMenuFile = {
+    ...canonical,
+    tree: [...canonical.tree, page('nova')],
+    meta: { journeys: {}, processes: {}, removed: [] },
+  };
+  const cited = diffItem('rule:gestorExportaCsv');
+  const quiet = diffItem('rule:quiet');
+  const items = [cited, quiet];
+  const effort = changeEffort(items, [
+    effortAnswer(cited.changeId, '102020', {
+      contract: 'change',
+      regenerateDefs: [pageUnit('tarefas_equipe'), pageUnit('tarefas_equipe', 'contract')],
+      create: [pageUnit('nova')],
+      materialize: [pageUnit('outra')],
+    }),
+    effortAnswer(cited.changeId, '102021', { regenerateDefs: [pageUnit('resto')] }),
+    effortAnswer(quiet.changeId, '102020', { materialize: [pageUnit('so_material')], contract: 'keep' }),
+  ]);
+  const needs = needsFile([]);
+  const file = buildP2EffortFile({
+    menu,
+    backend: emptyBackend(),
+    now: AT,
+    candidate: candidateOf({ menu, canonicalMenu: canonical, needs, rules: [], items, changeEffort: effort }),
+  });
+  const marked = file.screens
+    .filter(screen => screen.status === 'toUpdate' || screen.status === 'toCreate')
+    .map(screen => screen.pageId)
+    .sort();
+  const plan = planNewReleaseL2(effort, '102020');
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.mode, 'regenerate');
+  assert.deepEqual(marked, [...plan.pages].sort());
+  assert.equal(file.screens.find(screen => screen.pageId === 'so_material')?.status, 'done');
+  assert.equal(file.screens.find(screen => screen.pageId === 'resto')?.status, 'done');
+});
+
+void test('candidate: screen marks follow master 102020 when mls.actualProject is 102047', () => {
+  const previous = (globalThis as { mls?: { actualProject?: number } }).mls;
+  (globalThis as { mls?: { actualProject?: number } }).mls = { actualProject: 102047 };
+  try {
+    const canonical = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as PoolMenuFile;
+    const page = (id: string) => ({ id, kind: 'page' as const, label: id, organisms: [{ kind: 'list', text: id }], action: 'keep' as const });
+    canonical.tree = [page('tarefas_equipe'), page('outra')];
+    const item = diffItem('rule:gestorExportaCsv');
+    const marked = changeEffort([item], [
+      effortAnswer(item.changeId, '102020', { regenerateDefs: [pageUnit('tarefas_equipe')], contract: 'change' }),
+    ]);
+    const ignored = changeEffort([item], [
+      effortAnswer(item.changeId, '102047', { regenerateDefs: [pageUnit('tarefas_equipe')], contract: 'change' }),
+    ]);
+    const build = (effort: ChangeEffortFile) => buildP2EffortFile({
+      menu: canonical,
+      backend: emptyBackend(),
+      now: AT,
+      candidate: candidateOf({
+        menu: canonical,
+        needs: needsFile([]),
+        rules: [],
+        items: [item],
+        changeEffort: effort,
+      }),
+    });
+    assert.equal(build(marked).screens.find(screen => screen.pageId === 'tarefas_equipe')?.status, 'toUpdate');
+    assert.equal(build(ignored).screens.find(screen => screen.pageId === 'tarefas_equipe')?.status, 'done');
+  } finally {
+    (globalThis as { mls?: { actualProject?: number } }).mls = previous;
+  }
+});
+
+void test('candidate: abend reason is unattributed and a removed page is toRemove', () => {
+  const canonical = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as PoolMenuFile;
+  const page = (id: string) => ({ id, kind: 'page' as const, label: id, organisms: [{ kind: 'list', text: id }], action: 'keep' as const });
+  canonical.tree = [page('fica'), page('sai')];
+  const menu: PoolMenuFile = { ...canonical, tree: [page('fica')], meta: { journeys: {}, processes: {}, removed: [] } };
+  const item = diffItem('rule:parada');
+  const effort = changeEffort([item], [
+    effortAnswer(item.changeId, '102020', { status: 'abend', abend: { reason: 'master stopped' }, remove: [pageUnit('fica')] }),
+  ]);
+  const file = buildP2EffortFile({
+    menu,
+    backend: emptyBackend(),
+    now: AT,
+    candidate: candidateOf({
+      menu,
+      canonicalMenu: canonical,
+      needs: needsFile([]),
+      rules: [],
+      items: [item],
+      changeEffort: effort,
+    }),
+  });
+  assert.equal(file.screens.find(screen => screen.pageId === 'sai')?.status, 'toRemove');
+  assert.equal(file.screens.find(screen => screen.pageId === 'fica')?.status, 'done');
+  assert.deepEqual(file.unattributed, [{ changeId: item.changeId, kind: 'rule', op: 'changed', reason: 'master stopped' }]);
 });
 
 void test('candidate: new page is toCreate, canonical page missing from candidate is toRemove', () => {
@@ -329,12 +475,15 @@ void test('candidate: new page is toCreate, canonical page missing from candidat
       canonicalMenu: canonical,
       needs,
       rules: [],
-      items: [],
+      items: [diffItem('rule:tira')],
+      changeEffort: changeEffort([diffItem('rule:tira')], [
+        effortAnswer('rule:tira', '102020', { remove: [pageUnit('changed_page')] }),
+      ]),
     }),
   });
   const byId = Object.fromEntries(file.screens.map(screen => [screen.pageId, screen.status]));
   assert.equal(byId.created_page, 'done');
-  assert.equal(byId.changed_page, 'done');
+  assert.equal(byId.changed_page, 'toRemove');
   assert.equal(byId.brand_new, 'toCreate');
   assert.equal(byId.kept_page, 'toRemove');
   assert.equal(byId.removed_page, undefined);

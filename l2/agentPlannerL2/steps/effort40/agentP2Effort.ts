@@ -8,6 +8,7 @@ import {
   readDefsJson,
   readJson,
   writeJson,
+  type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
 import {
   readPoolMessage,
@@ -206,11 +207,33 @@ async function loadCandidateEffort(moduleName: string, device: typeof P2_MENU_DE
   if (!needs) throw new Error(`pool/l1/${device}/needs.json is missing; the menu flow must run first.`);
   const canonicalMenu = await readJson<PoolMenuFile>(p2CanonicalMenuFile(moduleName, device));
   const entityRules = await loadEntityRules(moduleName);
+  const effortInfo = p2ChangeEffortFile(moduleName);
+  const rawEffort = await readJson<unknown>(effortInfo);
+  if (rawEffort === null) throw new Error('pool/l4/changeEffort.json is missing; the l4 change effort must run first.');
+  const { validateChangeEffort } = await import('/_102035_/l2/solution/gates/changeEffort/gate.js');
+  const checked = validateChangeEffort(rawEffort);
+  if (!checked.ok) {
+    const detail = checked.issues.map(issue => `${issue.code}:${issue.path}`).join(', ');
+    throw new Error(`pool/l4/changeEffort.json rejected by gate: ${detail}`);
+  }
   return {
     canonicalMenu,
     l4diff: parseP2L4DiffFile(rawDiff),
     needs,
     entityRules,
+    changeEffort: checked.file,
+  };
+}
+
+function p2ChangeEffortFile(moduleName: string): Ns5FileInfo {
+  const diff = p2L4DiffFile(moduleName);
+  const folder = diff.folder.replace(/\/pool\/l2\/[^/]+$/, '/pool/l4');
+  return {
+    project: diff.project,
+    level: diff.level,
+    folder,
+    shortName: 'changeEffort',
+    extension: '.json',
   };
 }
 
