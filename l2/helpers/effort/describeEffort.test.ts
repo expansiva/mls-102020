@@ -161,15 +161,21 @@ void test('text-only field change materializes the pages that read the entity an
   }]);
 });
 
-void test('a field whose type changed is not text and keeps the rule-only abend', () => {
+void test('a field whose type changed regenerates the pages whose contracts cite it', () => {
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente',
     before: { title: 'Name', type: 'string' }, after: { title: 'Name', type: 'number' },
   }), contracts(), textSources(needs([{ pageId: 'ficha', entities: ['Paciente'] }])));
-  assert.equal(row.status, 'abend');
-  assert.equal(row.abend?.reason, 'v1 computes only rule changed; field changed is not handled');
-  assert.deepEqual(row.materialize, []);
+  assert.equal(row.status, 'computed');
+  assert.equal(row.contract, 'change');
   assert.deepEqual(row.runAgents, []);
+  assert.deepEqual(row.materialize.map(unit => unit.id), ['agenda_diaria', 'consultas', 'pacientes', 'profissionais']);
+  assert.deepEqual(row.regenerateDefs.map(unit => `${unit.kind}:${unit.id}`), [
+    'page:agenda_diaria', 'contract:agenda_diaria',
+    'page:consultas', 'contract:consultas',
+    'page:pacientes', 'contract:pacientes',
+    'page:profissionais', 'contract:profissionais',
+  ]);
 });
 
 void test('a text field no page shows is computed with empty lists', () => {
@@ -468,6 +474,96 @@ void test('effortPrompt reads the module contracts only for a new rule', async (
   } finally {
     mls.stor.files = previous;
   }
+});
+
+function tarefasField(item: Pick<L4DiffItem, 'changeId' | 'kind' | 'op' | 'entity' | 'before' | 'after'>): EffortInput {
+  return {
+    module: 'tarefas',
+    base: { baseId: 'mls-102047', revisionId: '537525a4' },
+    item: { ...item, source: 'l4/tarefas/ontology/Tarefa.defs.ts' },
+  };
+}
+
+function pageIds(row: { materialize: Array<{ id: string }> }): string[] {
+  return row.materialize.map(unit => unit.id);
+}
+
+function defKeys(row: { regenerateDefs: Array<{ kind: string; id: string }> }): string[] {
+  return row.regenerateDefs.map(unit => `${unit.kind}:${unit.id}`);
+}
+
+void test('field classes on the tarefas contracts', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const cited = ['inicio', 'minhas_tarefas', 'tarefas_equipe'];
+  const citedDefs = cited.flatMap(id => [`page:${id}`, `contract:${id}`]);
+
+  const shape = describeEffortFrom(tarefasField({
+    changeId: 'field:prioridade', kind: 'field', op: 'changed', entity: 'Tarefa',
+    before: { type: 'enum', required: true, values: ['baixa', 'media', 'alta'] },
+    after: { type: 'enum', required: false, values: ['baixa', 'media', 'alta'] },
+  }), pages);
+  assert.equal(shape.status, 'computed');
+  assert.equal(shape.contract, 'change');
+  assert.deepEqual(pageIds(shape), cited);
+  assert.deepEqual(defKeys(shape), citedDefs);
+  assert.deepEqual(shape.runAgents, []);
+
+  const text = describeEffortFrom(tarefasField({
+    changeId: 'field:prazo', kind: 'field', op: 'changed', entity: 'Tarefa',
+    before: { title: 'Prazo', type: 'string' }, after: { title: 'Data limite', type: 'string' },
+  }), pages, textSources(needs([
+    { pageId: 'minhas_tarefas', entities: ['Tarefa'] },
+    { pageId: 'participantes', entities: ['Participante'] },
+  ]), MODULE_DEFS, CONFIG));
+  assert.equal(text.status, 'computed');
+  assert.equal(text.contract, 'keep');
+  assert.deepEqual(pageIds(text), ['minhas_tarefas']);
+  assert.deepEqual(text.regenerateDefs, []);
+  assert.equal(text.runAgents[0]?.agent, 'agentAddLanguage');
+
+  const added = describeEffortFrom(tarefasField({
+    changeId: 'field:details.estimativaHoras', kind: 'field', op: 'added', entity: 'Tarefa',
+    after: { type: 'number', required: false },
+  }), pages);
+  assert.equal(added.status, 'computed');
+  assert.equal(added.contract, 'change');
+  assert.deepEqual(pageIds(added), ['minhas_tarefas', 'tarefas_equipe']);
+  assert.deepEqual(defKeys(added), ['page:minhas_tarefas', 'contract:minhas_tarefas', 'page:tarefas_equipe', 'contract:tarefas_equipe']);
+
+  const enumCode = describeEffortFrom(tarefasField({
+    changeId: 'field:prioridade', kind: 'field', op: 'changed', entity: 'Tarefa',
+    before: { type: 'enum', values: ['baixa', 'media', 'alta'] },
+    after: { type: 'enum', values: ['baixa', 'media', 'alta', 'urgente'] },
+  }), pages);
+  assert.equal(enumCode.contract, 'change');
+  assert.deepEqual(pageIds(enumCode), cited);
+  assert.deepEqual(defKeys(enumCode), citedDefs);
+
+  const removedField = describeEffortFrom(tarefasField({
+    changeId: 'field:details.etiquetas', kind: 'field', op: 'removed', entity: 'Tarefa',
+    before: { type: 'string' },
+  }), pages);
+  assert.equal(removedField.contract, 'change');
+  assert.deepEqual(pageIds(removedField), ['minhas_tarefas']);
+  assert.deepEqual(defKeys(removedField), ['page:minhas_tarefas', 'contract:minhas_tarefas']);
+
+  const validation = describeEffortFrom(tarefasField({
+    changeId: 'field:titulo', kind: 'field', op: 'changed', entity: 'Tarefa',
+    before: { type: 'string', maxLength: 200 }, after: { type: 'string', maxLength: 100 },
+  }), pages);
+  assert.equal(validation.status, 'computed');
+  assert.equal(validation.contract, 'keep');
+  assert.deepEqual(pageIds(validation), ['minhas_tarefas']);
+  assert.deepEqual(validation.regenerateDefs, []);
+
+  const none = describeEffortFrom(tarefasField({
+    changeId: 'field:naoExiste', kind: 'field', op: 'removed', entity: 'Tarefa',
+    before: { type: 'string' },
+  }), pages);
+  assert.equal(none.status, 'computed');
+  assert.equal(none.contract, 'keep');
+  assert.deepEqual(none.materialize, []);
+  assert.deepEqual(none.regenerateDefs, []);
 });
 
 void test('describeEffort imports only helpers and the solution types, and does not write or fetch', () => {

@@ -187,6 +187,105 @@ function textCites(text: string, ids: string[]): boolean {
   return ids.some(id => text.includes(id));
 }
 
+const SHAPE_KEYS = new Set(['type', 'values', 'required', 'collection', 'to']);
+
+function fieldRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** A single differing key is text when the shared classifier says so, including an enum whose codes stay. */
+function keyIsText(key: string, before: unknown, after: unknown): boolean {
+  return isTextOnlyChange({
+    changeId: 'field:x',
+    kind: 'field',
+    op: 'changed',
+    entity: 'E',
+    source: '',
+    before: { [key]: before },
+    after: { [key]: after },
+  });
+}
+
+type FieldClass = 'added' | 'removed' | 'shape' | 'validation';
+
+/** `added` and `removed` come from `op`. A `changed` field is shape when a shape key differs, otherwise validation. Text keys are ignored. Shape wins when both differ. */
+function fieldClass(item: EffortInput['item']): FieldClass | undefined {
+  if (item.kind !== 'field') return undefined;
+  if (item.op === 'added') return 'added';
+  if (item.op === 'removed') return 'removed';
+  if (item.op !== 'changed') return undefined;
+  const before = fieldRecord(item.before);
+  const after = fieldRecord(item.after);
+  if (!before || !after) return undefined;
+  let shape = false;
+  let validation = false;
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (sameJson(before[key], after[key])) continue;
+    if (SHAPE_KEYS.has(key)) {
+      if (key === 'values' && keyIsText(key, before[key], after[key])) continue;
+      shape = true;
+      continue;
+    }
+    if (keyIsText(key, before[key], after[key])) continue;
+    validation = true;
+  }
+  if (shape) return 'shape';
+  if (validation) return 'validation';
+  return undefined;
+}
+
+function fieldSegments(changeId: string): string[] {
+  const rest = changeId.startsWith('field:') ? changeId.slice('field:'.length) : '';
+  return rest.split('.').filter(part => part.length > 0);
+}
+
+function citesSegment(text: string, segment: string): boolean {
+  const escaped = segment.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`(?<![A-Za-z0-9_])${escaped}\\??:`, 'u').test(text);
+}
+
+/** A projection belongs to the entity when its name is the entity, or the entity plus a capital letter. */
+function projectionOfEntity(name: string, entity: string): boolean {
+  if (!entity || !name.startsWith(entity)) return false;
+  const rest = name.slice(entity.length);
+  return rest.length === 0 || rest[0] !== rest[0].toLowerCase();
+}
+
+function contractUnits(moduleName: string, pageIds: string[]): EffortUnitRef[] {
+  const units: EffortUnitRef[] = [];
+  for (const pageId of pageIds) {
+    units.push(pageUnit(moduleName, pageId));
+    units.push({ kind: 'contract', id: pageId, path: contractPath(moduleName, pageId) });
+  }
+  return units;
+}
+
+/** Pages for a field change, read from each contract: a projection body or a route `input` (a write is a `cmd` input). */
+function fieldAnswer(input: EffortInput, contracts: Record<string, string>, kind: FieldClass): EffortAnswer {
+  const segments = fieldSegments(input.item.changeId);
+  const leaf = segments[segments.length - 1] ?? '';
+  const parent = segments.length > 1 ? segments[0] : undefined;
+  const pages: string[] = [];
+  for (const pageId of Object.keys(contracts).sort()) {
+    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
+    const hit = kind === 'validation'
+      ? parsed.routes.some(route => route.kind === 'cmd' && citesSegment(route.input, leaf))
+      : kind === 'added'
+        ? parsed.projections.some(projection => projectionOfEntity(projection.name, input.item.entity) && (parent === undefined || citesSegment(projection.body, parent)))
+        : parsed.projections.some(projection => citesSegment(projection.body, leaf)) || parsed.routes.some(route => citesSegment(route.input, leaf));
+    if (hit) pages.push(pageId);
+  }
+  if (pages.length === 0) return answer(input, []);
+  const materialize = pages.map(pageId => pageUnit(input.module, pageId));
+  if (kind === 'validation') return answer(input, materialize);
+  return answer(input, materialize, undefined, [], contractUnits(input.module, pages), [], 'change');
+}
+
 /** A removed rule drops its id from each citing contract and from each shared `rules` list, then rematerializes those pages. A removed process or task uses the same pages, matching the id as text in each route and in the shared source. */
 function removedAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
   const needles = removedNeedles(input);
@@ -223,6 +322,11 @@ function removedAnswer(input: EffortInput, contracts: Record<string, string>, sh
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (isTextOnlyChange(input.item)) return textAnswer(input, sources);
   if (Object.keys(contracts).length === 0) return answer(input, [], `no generated L2 contracts for module ${input.module}`);
+  const changedField = fieldClass(input.item);
+  if (input.item.kind === 'field') {
+    if (!changedField) return answer(input, [], `v1 computes only rule changed; ${input.item.kind} ${input.item.op} is not handled`);
+    return fieldAnswer(input, contracts, changedField);
+  }
   if ((input.item.kind === 'rule' || input.item.kind === 'process' || input.item.kind === 'task') && input.item.op === 'removed') {
     return removedAnswer(input, contracts, sources?.shared ?? {});
   }
