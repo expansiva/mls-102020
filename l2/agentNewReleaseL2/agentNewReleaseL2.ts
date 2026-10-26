@@ -15,6 +15,8 @@ import {
   closeNotice,
   commandLines,
   currentProjectNumber,
+  degreesFromMemory,
+  degreesOf,
   deletedPaths,
   defsOutcome,
   deleteGeneratedFiles,
@@ -29,6 +31,7 @@ import {
   readProductSnapshot,
   recordPhase,
   releasePages,
+  screenCostLines,
   reviewDefsRun,
   statusIntents,
   statusText,
@@ -82,11 +85,11 @@ async function beforePromptImplicit(
 
     if (plan.mode === 'materialize') {
       phase = 'steps';
-      const prepared = await prepareMaterialize(project, moduleName, plan.pages, plan.materializeOnly, plan.commands, plan.sharedPages);
+      const prepared = await prepareMaterialize(project, moduleName, plan.pages, plan.materializeOnly, plan.commands, plan.sharedPages, plan.degrees);
       if (!prepared.ok) return refuse(agent, context, moduleName, phase, prepared.message);
       await recordPhase(moduleName, phase, 'ok', stepsPhaseNote(prepared.steps.length, plan.commands));
       const steps = prepared.steps.map(step => addStepIntent(context, step, 1, false));
-      return [openMessage(agent, context, moduleName, project, {}), ...steps];
+      return [openMessage(agent, context, moduleName, project, { nrDegrees: JSON.stringify(plan.degrees) }), ...steps];
     }
 
     phase = 'marks';
@@ -108,6 +111,7 @@ async function beforePromptImplicit(
       nrMaterializeOnly: plan.materializeOnly.join(','),
       nrCommands: JSON.stringify(plan.commands),
       nrSharedPages: plan.sharedPages.join(','),
+      nrDegrees: JSON.stringify(plan.degrees),
     }), ...steps];
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : String(error);
@@ -140,7 +144,15 @@ async function beforePromptStep(
   const materialize = getAllSteps(context.task?.iaCompressed?.nextSteps).find(item => planIdOf(item) === NR_MATERIALIZE_PLAN);
   const outcome = materializerOutcome(materialize);
   const completed = outcome.status === 'completed';
-  const body = closeNotice(outcome.message, deletedPaths(step.prompt || ''), commandLines(step.prompt || ''), completed);
+  const prompt = step.prompt || '';
+  const degrees = degreesOf(prompt);
+  const body = closeNotice(
+    outcome.message,
+    deletedPaths(prompt),
+    commandLines(prompt),
+    completed,
+    screenCostLines(context.task?.iaCompressed?.nextSteps, degrees),
+  );
   const notice = statusText(body, completed ? 'done' : 'failed');
   return [updateStatus(context, parentStep, step, hookSequential, outcome.status, notice)];
 }
@@ -157,6 +169,7 @@ async function reviewCheck(
   const materializeOnly = String(memory?.nrMaterializeOnly || '').split(',').map(id => id.trim()).filter(Boolean);
   const sharedPages = String(memory?.nrSharedPages || '').split(',').map(id => id.trim()).filter(Boolean);
   const commands = commandsFromMemory(memory?.nrCommands);
+  const degrees = degreesFromMemory(memory?.nrDegrees);
   const defs = getAllSteps(context.task?.iaCompressed?.nextSteps).find(item => planIdOf(item) === NR_DEFS_PLAN);
   const defsResult = defsOutcome(defs);
   const guard = defsResult.status === 'completed' ? await guardAfterDefs(moduleName, pages) : null;
@@ -168,7 +181,7 @@ async function reviewCheck(
     return [updateStatus(context, parentStep, step, hookSequential, review.status, review.message)];
   }
   const project = currentProjectNumber();
-  const prepared = await prepareMaterialize(project, moduleName, pages, materializeOnly, commands, sharedPages);
+  const prepared = await prepareMaterialize(project, moduleName, pages, materializeOnly, commands, sharedPages, degrees);
   if (!prepared.ok) {
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', prepared.message)];
   }
@@ -200,10 +213,11 @@ async function prepareMaterialize(
   materializeOnly: readonly string[],
   commands: readonly string[],
   sharedPages: readonly string[],
+  degrees: Readonly<Record<string, number>>,
 ): Promise<{ ok: true; steps: mls.msg.AIAgentStep[] } | { ok: false; message: string }> {
   const removed = await deleteGeneratedFiles(moduleName, releasePages(pages, materializeOnly), currentStorFiles(), deleteFile, sharedPages);
   if (!removed.ok) return removed;
-  return { ok: true, steps: buildApplySteps(project, moduleName, removed.paths, commands) };
+  return { ok: true, steps: buildApplySteps(project, moduleName, removed.paths, commands, degrees) };
 }
 
 function openMessage(

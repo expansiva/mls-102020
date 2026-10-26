@@ -1,0 +1,84 @@
+[
+  {
+    "stepTitle": "Regenerate page defs",
+    "agentName": "agentDefsL2",
+    "interaction": { "cost": 9, "trace": ["cost:$9.00"] },
+    "nextSteps": [
+      {
+        "stepTitle": "Page11 minhas_tarefas",
+        "agentName": "agentD2PagesPage",
+        "interaction": { "cost": 0.4465, "trace": ["provider: anthropic inputTokens:50838 outputTokens:8435 cost:$0.4465 llmTime: 00:00:58.189"] },
+        "nextSteps": []
+      },
+      {
+        "stepTitle": "BFF minhas_tarefas",
+        "agentName": "agentD2BffPage",
+        "interaction": { "cost": 0.6547, "trace": ["provider: anthropic inputTokens:46468 outputTokens:17987 cost:$0.6547 llmTime: 00:01:58.133"] },
+        "nextSteps": []
+      },
+      {
+        "stepTitle": "BFF minhas_tarefas",
+        "agentName": "agentD2BffPage",
+        "interaction": { "cost": 0.7331, "trace": ["provider: anthropic inputTokens:63799 outputTokens:17785 cost:$0.7331 llmTime: 00:01:56.738"] },
+        "nextSteps": []
+      },
+      {
+        "stepTitle": "Page11 tarefas_equipe",
+        "agentName": "agentD2PagesPage",
+        "interaction": { "cost": 0.3375, "trace": ["provider: anthropic inputTokens:41279 outputTokens:5805 cost:$0.3375 llmTime: 00:00:40.929"] },
+        "nextSteps": []
+      }
+    ]
+  },
+  {
+    "stepTitle": "Materialize module",
+    "agentName": "agentMaterializeL2",
+    "interaction": { "cost": 1, "trace": ["pages written"] },
+    "nextSteps": [
+      {
+        "stepTitle": "minhas_tarefas",
+        "agentName": "agentM4ChainPage",
+        "interaction": null,
+        "nextSteps": [
+          {
+            "stepTitle": "Shared",
+            "agentName": "agentM4SharedPage",
+            "interaction": { "cost": 0.6501, "trace": ["provider: anthropic inputTokens:34686 outputTokens:47241 cost:$0.6501 llmTime: 00:04:29.368"] },
+            "nextSteps": []
+          },
+          {
+            "stepTitle": "Shared (repair 1)",
+            "agentName": "agentM4SharedPage",
+            "interaction": { "cost": 0.3821, "trace": ["provider: anthropic inputTokens:45082 outputTokens:22822 cost:$0.3821 llmTime: 00:01:49.846"] },
+            "nextSteps": []
+          },
+          {
+            "stepTitle": "Page desktop",
+            "agentName": "agentM4Page",
+            "interaction": { "cost": 0.2884, "trace": ["provider: openrouter inputTokens:55918 outputTokens:7962 cost:$0.2884 llmTime: 00:00:52.365"] },
+            "nextSteps": []
+          },
+          {
+            "stepTitle": "Page mobile",
+            "agentName": "agentM4Page",
+            "interaction": { "cost": 0.2972, "trace": ["provider: openrouter inputTokens:53621 outputTokens:9019 cost:$0.2972 llmTime: 00:01:02.543"] },
+            "nextSteps": []
+          }
+        ]
+      },
+      {
+        "stepTitle": "outra",
+        "agentName": "agentM4ChainPage",
+        "interaction": { "cost": 4, "trace": ["cost:$4.00"] },
+        "nextSteps": [
+          {
+            "stepTitle": "Page desktop",
+            "agentName": "agentM4Page",
+            "interaction": { "cost": 0.1, "trace": ["cost:$0.10"] },
+            "nextSteps": []
+          }
+        ]
+      }
+    ]
+  }
+]

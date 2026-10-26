@@ -407,6 +407,7 @@ export function buildApplySteps(
   moduleName: string,
   deleted: readonly string[] = [],
   commands: readonly string[] = [],
+  degrees: Readonly<Record<string, number>> = {},
 ): mls.msg.AIAgentStep[] {
   return [
     {
@@ -424,7 +425,7 @@ export function buildApplySteps(
       NR_CLOSE_PLAN,
       [NR_MATERIALIZE_PLAN],
       'Close release',
-      JSON.stringify({ planId: NR_CLOSE_PLAN, deleted, commands }),
+      JSON.stringify({ planId: NR_CLOSE_PLAN, deleted, commands, degrees }),
     ),
   ];
 }
@@ -444,17 +445,117 @@ export function commandLines(prompt: string): string[] {
   return stringList(parsed.commands);
 }
 
-/** Close text: the materializer message, the deleted files, then one line per command when it completed. */
+/** Close text: the materializer message, the deleted files, one cost line per planned page, then one line per command when it completed. */
 export function closeNotice(
   materializerMessage: string,
   deleted: readonly string[],
   commands: readonly string[] = [],
   completed = true,
+  costLines: readonly string[] = [],
 ): string {
   const listed = deleted.length ? deleted.join(', ') : 'none';
-  const head = `${materializerMessage}; deleted: ${listed}`;
-  if (!completed || commands.length === 0) return head;
-  return `${head}\n${commands.join('\n')}`;
+  const parts = [`${materializerMessage}; deleted: ${listed}`];
+  if (costLines.length > 0) parts.push(costLines.join('\n'));
+  if (completed && commands.length > 0) parts.push(commands.join('\n'));
+  return parts.join('\n');
+}
+
+export function degreesOf(prompt: string): Record<string, number> {
+  const parsed = JSON.parse(prompt || '{}') as { degrees?: unknown };
+  return degreeRecord(parsed.degrees);
+}
+
+export function degreesFromMemory(value: unknown): Record<string, number> {
+  if (value === undefined || value === '') return {};
+  return degreeRecord(JSON.parse(String(value)));
+}
+
+function degreeRecord(value: unknown): Record<string, number> {
+  if (value === undefined) return {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('degrees is not a page map');
+  const degrees: Record<string, number> = {};
+  for (const [pageId, degree] of Object.entries(value)) {
+    if (!Number.isInteger(degree)) throw new Error('degrees is not a page map');
+    degrees[pageId] = degree as number;
+  }
+  return degrees;
+}
+
+type CostStep = {
+  stepTitle?: string;
+  agentName?: string;
+  nextSteps?: CostStep[] | null;
+  interaction?: { trace?: string[] | null } | null;
+};
+
+const PAGE11_AGENT = 'agentD2PagesPage';
+const BFF_AGENT = 'agentD2BffPage';
+const CHAIN_AGENT = 'agentM4ChainPage';
+
+function traceMicros(step: CostStep): number[] {
+  const micros: number[] = [];
+  for (const line of step.interaction?.trace ?? []) {
+    for (const match of line.matchAll(/cost:\$([0-9]+(?:\.[0-9]+)?)/gu)) {
+      micros.push(Math.round(Number(match[1]) * 10000));
+    }
+  }
+  return micros;
+}
+
+function callKind(title: string): string | null {
+  if (title.startsWith('Page11 ')) return 'page11';
+  if (title.startsWith('BFF ')) return 'bff';
+  if (title.startsWith('Shared')) return 'shared';
+  if (title.startsWith('Page desktop')) return 'desktop';
+  if (title.startsWith('Page mobile')) return 'mobile';
+  return null;
+}
+
+function pageOf(step: CostStep, chainPage: string | null): { pageId: string; kind: string } | null {
+  const title = step.stepTitle || '';
+  const kind = callKind(title);
+  if (!kind) return null;
+  if (step.agentName === PAGE11_AGENT && kind === 'page11') return { pageId: title.slice('Page11 '.length).trim(), kind };
+  if (step.agentName === BFF_AGENT && kind === 'bff') return { pageId: title.slice('BFF '.length).trim(), kind };
+  if (chainPage && (kind === 'shared' || kind === 'desktop' || kind === 'mobile')) return { pageId: chainPage, kind };
+  return null;
+}
+
+/**
+ * One line per planned page, alphabetical.
+ * A repair is a title containing `(repair`, the second cost line of the same step, or the second call of the same agent, page, and device.
+ * Costs are summed in micro-dollars and rounded to cents once per page.
+ */
+export function screenCostLines(roots: readonly CostStep[] | undefined, degrees: Readonly<Record<string, number>>): string[] {
+  const totals = new Map<string, { calls: number; repairs: number; micros: number }>();
+  const seen = new Map<string, number>();
+  const visit = (steps: readonly CostStep[], chainPage: string | null): void => {
+    for (const step of steps) {
+      const nextChain = step.agentName === CHAIN_AGENT ? (step.stepTitle || '').trim() : chainPage;
+      const named = pageOf(step, chainPage);
+      if (named && Object.hasOwn(degrees, named.pageId)) {
+        const key = `${step.agentName}|${named.pageId}|${named.kind}`;
+        const titleRepair = (step.stepTitle || '').includes('(repair');
+        const row = totals.get(named.pageId) ?? { calls: 0, repairs: 0, micros: 0 };
+        let ordinal = seen.get(key) ?? 0;
+        for (const micros of traceMicros(step)) {
+          ordinal += 1;
+          row.calls += 1;
+          row.micros += micros;
+          if (titleRepair || ordinal >= 2) row.repairs += 1;
+        }
+        seen.set(key, ordinal);
+        totals.set(named.pageId, row);
+      }
+      if (step.nextSteps?.length) visit(step.nextSteps, nextChain);
+    }
+  };
+  visit(roots ?? [], null);
+  return Object.keys(degrees).sort((left, right) => left.localeCompare(right)).map(pageId => {
+    const row = totals.get(pageId) ?? { calls: 0, repairs: 0, micros: 0 };
+    const cost = (Math.round(row.micros / 100) / 100).toFixed(2);
+    return `${pageId} degrau ${degrees[pageId]}: ${row.calls} calls (${row.repairs} repair), ${cost} USD`;
+  });
 }
 
 export function stepsPhaseNote(count: number, commands: readonly string[]): string {

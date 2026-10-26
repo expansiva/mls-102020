@@ -42,6 +42,7 @@ test('R1 only materializes the named page and ignores the other master', () => {
     commands: [],
     sharedPages: [],
     bffPages: [],
+    degrees: { minhas_tarefas: 2 },
   });
 });
 
@@ -54,6 +55,7 @@ test('pages stay in first-seen order without repetition', () => {
     commands: [],
     sharedPages: [],
     bffPages: [],
+    degrees: { primeira: 2, segunda: 2 },
   });
 });
 
@@ -72,6 +74,7 @@ test('R3 regenerateDefs of contract and shared rebuilds those pages', () => {
     commands: [],
     sharedPages: ['minhas_tarefas', 'inicio'],
     bffPages: ['minhas_tarefas'],
+    degrees: { minhas_tarefas: 3, inicio: 4 },
   });
 });
 
@@ -89,6 +92,7 @@ test('R4 contract change rebuilds the cited page', () => {
     commands: [],
     sharedPages: [],
     bffPages: [],
+    degrees: { tarefas_equipe: 2 },
   });
 });
 
@@ -110,7 +114,39 @@ test('R1 and R4 in one file keep the materialize-only page beside the rebuild', 
     commands: [],
     sharedPages: [],
     bffPages: [],
+    degrees: { tarefas_equipe: 2, minhas_tarefas: 2 },
   });
+});
+
+test('a materialize-only effort has no defs pages and a mixed effort keeps degree 2 off bffPages', () => {
+  const only = planNewReleaseL2(fixture('r1'), MASTER);
+  assert.equal(only.ok, true);
+  if (!only.ok) return;
+  assert.equal(only.mode, 'materialize');
+  assert.deepEqual(only.degrees, { minhas_tarefas: 2 });
+  assert.deepEqual(only.bffPages, []);
+
+  const effort = fixture('r4') as EffortFile;
+  const rebuild = effort.perItem[0].answers[0];
+  rebuild.contract = 'change';
+  rebuild.regenerateDefs = [
+    { kind: 'contract', id: 'tarefas_equipe', path: 'l2/tarefas/web/contracts/tarefas_equipe.defs.ts' },
+    { kind: 'page', id: 'tarefas_equipe', path: 'l2/tarefas/web/shared/tarefas_equipe.defs.ts' },
+  ];
+  rebuild.materialize = [];
+  const keep = fixture('r1') as EffortFile;
+  const materializeAnswer = keep.perItem[0].answers.find(answer => answer.master.project === MASTER);
+  if (!materializeAnswer) throw new Error('R1 has no answer for this master');
+  effort.perItem[0].answers.push(materializeAnswer);
+  const mixed = planNewReleaseL2(retie(effort), MASTER);
+  assert.equal(mixed.ok, true);
+  if (!mixed.ok) return;
+  assert.equal(mixed.mode, 'regenerate');
+  assert.deepEqual(mixed.pages, ['tarefas_equipe']);
+  assert.deepEqual(mixed.materializeOnly, ['minhas_tarefas']);
+  assert.equal(mixed.degrees.tarefas_equipe, 6);
+  assert.equal(mixed.degrees.minhas_tarefas, 2);
+  assert.equal(mixed.bffPages.includes('minhas_tarefas'), false);
 });
 
 test('abend refuses with the master reason', () => {
@@ -137,6 +173,7 @@ test('R1 materializes this master when the client project is a different number'
       commands: [],
     sharedPages: [],
     bffPages: [],
+    degrees: { minhas_tarefas: 2 },
     });
   } finally {
     mls.actualProject = previous;
@@ -202,6 +239,7 @@ test('a text field with runAgents is accepted and the command is returned once',
     commands: [LANG_COMMAND],
     sharedPages: [],
     bffPages: [],
+    degrees: { minhas_tarefas: 2, tarefas_equipe: 2 },
   });
 });
 
@@ -233,6 +271,7 @@ test('the same command on two answers of this master is returned once, in answer
     commands: [LANG_COMMAND, '@@agentAddLanguage [{"languages":[{"code":"en","name":"en"}]}]'],
     sharedPages: [],
     bffPages: [],
+    degrees: { minhas_tarefas: 2 },
   });
 });
 
@@ -253,6 +292,7 @@ test('M1B pages: contract is in bffPages, page plus shared without contract is n
   assert.equal(plan.bffPages.includes('tarefas_equipe'), false);
   assert.deepEqual(plan.bffPages, ['minhas_tarefas']);
   assert.deepEqual(plan.sharedPages, ['tarefas_equipe', 'minhas_tarefas']);
+  assert.deepEqual(plan.degrees, { tarefas_equipe: 4, minhas_tarefas: 3 });
 });
 
 test('a created page is in bffPages and shared in materialize is in sharedPages', () => {
@@ -269,6 +309,7 @@ test('a created page is in bffPages and shared in materialize is in sharedPages'
   if (!plan.ok) return;
   assert.deepEqual(plan.bffPages, ['nova']);
   assert.deepEqual(plan.sharedPages, ['tarefas_equipe']);
+  assert.deepEqual(plan.degrees, { nova: 5 });
 });
 
 test('invalid file refuses with the gate reason', () => {

@@ -22,6 +22,8 @@ import {
   changeEffortInfo,
   closeNotice,
   commandLines,
+  degreesOf,
+  screenCostLines,
   stepsPhaseNote,
   currentProjectNumber,
   deleteGeneratedFiles,
@@ -125,6 +127,8 @@ test('the materializer step is the whole module, and close depends on it and lis
     assert.equal(stepsPhaseNote(2, [command]), `2 steps; ${command}`);
     assert.deepEqual(commandLines(JSON.stringify({ commands: [command] })), [command]);
     assert.deepEqual(plan.pages, ['minhas_tarefas']);
+    assert.equal(plan.mode, 'materialize');
+    assert.equal(buildApplySteps(project, 'tarefas', deleted, [], plan.degrees).some(step => step.agentName === NR_DEFS_AGENT), false);
   } finally {
     mls.actualProject = previous;
   }
@@ -650,6 +654,41 @@ test('the close text lists the command after a completed materializer and hides 
   assert.equal(failedUpdate.status, 'failed');
   assert.equal(failedUpdate.traceMsg?.includes(FIELD_COMMAND), false);
   assert.match(failedUpdate.traceMsg || '', /^failed: /);
+});
+
+test('a step with two trace lines counts the second as a repair and rounds the page once', () => {
+  const lines = screenCostLines([{
+    stepTitle: 'Page11 minhas_tarefas',
+    agentName: 'agentD2PagesPage',
+    interaction: {
+      trace: [
+        'provider: anthropic inputTokens:1 outputTokens:1 cost:$0.4465',
+        'provider: anthropic inputTokens:1 outputTokens:1 cost:$0.3375',
+      ],
+    },
+    nextSteps: [],
+  }], { minhas_tarefas: 4 });
+  assert.deepEqual(lines, ['minhas_tarefas degrau 4: 2 calls (1 repair), 0.78 USD']);
+});
+
+test('the close text lists each planned page cost before the commands', () => {
+  const tree = JSON.parse(readFileSync(new URL('./fixtures/m1b-cost-tree.json', import.meta.url), 'utf8'));
+  const degrees = { minhas_tarefas: 4, tarefas_equipe: 3, zero_page: 2 };
+  const lines = screenCostLines(tree, degrees);
+  assert.deepEqual(lines, [
+    'minhas_tarefas degrau 4: 7 calls (2 repair), 3.45 USD',
+    'tarefas_equipe degrau 3: 1 calls (0 repair), 0.34 USD',
+    'zero_page degrau 2: 0 calls (0 repair), 0.00 USD',
+  ]);
+  const deleted = ['l2/tarefas/web/desktop/page11/minhas_tarefas.ts'];
+  const prompt = JSON.stringify({ planId: NR_CLOSE_PLAN, deleted, commands: [FIELD_COMMAND], degrees });
+  assert.deepEqual(degreesOf(prompt), degrees);
+  const done = closeNotice('pages written', deleted, [FIELD_COMMAND], true, lines);
+  assert.equal(done.split('\n')[1], lines[0]);
+  assert.equal(done.split('\n').at(-1), FIELD_COMMAND);
+  const failed = closeNotice('pages written', deleted, [FIELD_COMMAND], false, lines);
+  assert.equal(failed.includes(FIELD_COMMAND), false);
+  assert.equal(failed.includes(lines[2]), true);
 });
 
 function terminalStepIds(steps: readonly mls.msg.AIPayload[]): Set<number> {

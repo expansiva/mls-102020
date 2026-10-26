@@ -16,6 +16,8 @@ export type NewReleaseL2Plan =
     sharedPages: string[];
     /** Pages with `contract` in `regenerateDefs`, plus pages in `create`. */
     bffPages: string[];
+    /** Highest degree of each planned page. Create 5, contract change 6, contract keep 3, page or shared defs 4, materialize only 2. */
+    degrees: Record<string, number>;
   }
   | { ok: false; reason: string };
 
@@ -59,6 +61,25 @@ function collectNamedPages(answer: EffortAnswer, sharedPages: string[], seenShar
   }
 }
 
+function raiseDegree(degrees: Map<string, number>, id: string, value: number): void {
+  degrees.set(id, Math.max(degrees.get(id) ?? 0, value));
+}
+
+/** Per master answer, the highest degree of each page it names. */
+function scoreDegrees(answer: EffortAnswer, degrees: Map<string, number>): void {
+  const contractPages = new Set(answer.regenerateDefs.filter(unit => unit.kind === 'contract').map(unit => unit.id));
+  for (const unit of answer.create) {
+    if (unit.kind === PAGE_KIND) raiseDegree(degrees, unit.id, 5);
+  }
+  for (const unit of answer.regenerateDefs) {
+    if (unit.kind === 'contract') raiseDegree(degrees, unit.id, answer.contract === 'change' ? 6 : 3);
+    if ((unit.kind === 'page' || unit.kind === 'shared') && !contractPages.has(unit.id)) raiseDegree(degrees, unit.id, 4);
+  }
+  for (const unit of answer.materialize) {
+    if (unit.kind === PAGE_KIND) raiseDegree(degrees, unit.id, 2);
+  }
+}
+
 function citesDefs(answer: EffortAnswer): boolean {
   return answer.contract === 'change'
     || answer.create.some(unit => unit.kind === PAGE_KIND)
@@ -96,6 +117,7 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
   const seenShared = new Set<string>();
   const bffPages: string[] = [];
   const seenBff = new Set<string>();
+  const degreeByPage = new Map<string, number>();
   let rebuild = false;
   let sawMaster = false;
   for (const row of checked.file.perItem) {
@@ -104,6 +126,7 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
       sawMaster = true;
       for (const agent of answer.runAgents) addCommand(commands, seenCommands, agent.command);
       collectNamedPages(answer, sharedPages, seenShared, bffPages, seenBff);
+      scoreDegrees(answer, degreeByPage);
       for (const reason of outOfStep(answer)) blocks.push(`${answer.item} ${reason}`);
       if (citesDefs(answer)) {
         rebuild = true;
@@ -121,5 +144,7 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
   const pages = rebuild ? regenerate : materialize;
   if (pages.length === 0) return { ok: false, reason: 'nothing to apply' };
   const materializeOnly = rebuild ? materialize.filter(id => !seenRegenerate.has(id)) : [];
-  return { ok: true, mode: rebuild ? 'regenerate' : 'materialize', pages, materializeOnly, commands, sharedPages, bffPages };
+  const degrees: Record<string, number> = {};
+  for (const id of [...pages, ...materializeOnly]) degrees[id] = degreeByPage.get(id) ?? 2;
+  return { ok: true, mode: rebuild ? 'regenerate' : 'materialize', pages, materializeOnly, commands, sharedPages, bffPages, degrees };
 }
