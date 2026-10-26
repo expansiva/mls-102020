@@ -13,7 +13,7 @@ import { readL4Module, renderL4Slice, resolveL4Refs } from '/_102020_/l2/agentMa
 import type { M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { m4DefsInfo, templateInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
-import { M4_REUSE_FINGERPRINT, readM4Snapshot, sharedDeclarationInfo, storedHash } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { M4_REUSE_FINGERPRINT, deleteGeneratedFile, readM4Snapshot, sharedDeclarationInfo, storedHash } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { pageReceiptInfo, pageSourceInfo, studioPagePort, type M4PagePort, type M4PageReceipt } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 
 export const M4_REVIEW_VERSION = '2026-10-05-materialize-l2-v4-review-v1' as const;
@@ -130,21 +130,27 @@ export async function recordM4Review(context: M4ReviewContext, answer: { summary
 }
 
 /**
- * settled: the unit has a review of its current context (done or failed): the step may finish.
+ * settled: a review receipt exists (done or failed): the step may finish.
  * reusable: settled and not failed: the next run does not review it again.
+ * The page file and its hashes do not decide. Generating the page deletes this receipt.
  */
 export async function m4ReviewState(identity: M4RunIdentity, pageId: string, device: L2Page11Device, port: M4PagePort = studioPagePort, snapshot?: M4InputSnapshot): Promise<{ settled: boolean; reusable: boolean }> {
-  try {
-    const receipt = await port.readJson<M4ReviewReceipt>(reviewReceiptInfo(identity, pageId, device));
-    if (!receipt || receipt.schemaVersion !== M4_REVIEW_VERSION) return { settled: false, reusable: false };
-    const context = await buildM4ReviewContext(identity, pageId, device, port, snapshot);
-    // A receipt from before 22/10/2026 is adopted: its review stands until the page or its data change.
-    if (receipt.fingerprint !== M4_REUSE_FINGERPRINT) await port.writeJson(reviewReceiptInfo(identity, pageId, device), { ...receipt, dataHash: context.dataHash, fingerprint: M4_REUSE_FINGERPRINT });
-    const settled = receipt.fingerprint !== M4_REUSE_FINGERPRINT || context.dataHash === receipt.dataHash;
-    return { settled, reusable: settled && !receipt.failed };
-  } catch {
-    return { settled: false, reusable: false };
-  }
+  void snapshot;
+  const info = reviewReceiptInfo(identity, pageId, device);
+  if (!port.exists(info)) return { settled: false, reusable: false };
+  const receipt = await port.readJson<M4ReviewReceipt>(info);
+  if (!receipt || receipt.schemaVersion !== M4_REVIEW_VERSION) return { settled: false, reusable: false };
+  return { settled: true, reusable: !receipt.failed };
+}
+
+/** A failed review from an older run still exists. Drop it before dispatching, so this run's chain stays open until a new receipt is written. */
+export async function dropFailedM4Review(identity: M4RunIdentity, pageId: string, device: L2Page11Device, port: M4PagePort = studioPagePort): Promise<void> {
+  const info = reviewReceiptInfo(identity, pageId, device);
+  if (!port.exists(info)) return;
+  const receipt = await port.readJson<M4ReviewReceipt>(info);
+  if (!receipt?.failed) return;
+  const remove = port.deleteText ?? deleteGeneratedFile;
+  await remove(info);
 }
 
 /** One line per finding, worst first, for the step trace. */

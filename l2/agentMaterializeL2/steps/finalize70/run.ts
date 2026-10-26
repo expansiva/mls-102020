@@ -11,8 +11,8 @@ import { m4OwnedFile, type M4RunIdentity } from '/_102020_/l2/agentMaterializeL2
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
-import { readM4Snapshot, storedHash } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
-import { pageReceiptInfo, pageSourceInfo, studioPagePort, type M4PagePort, type M4PageReceipt } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { readM4Snapshot } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { pageSourceInfo, studioPagePort, type M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { composeM4ModuleEntry, type M4FinalizePage } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
 
 export const M4_FINALIZE_VERSION = '2026-10-16-materialize-l2-finalize-v1' as const;
@@ -51,12 +51,9 @@ export function m4ModuleLanguages(source: string): { productLanguages: string[];
   return { productLanguages, userLanguage };
 }
 
-/** A page is registered when its page11 desktop receipt exists and the file it approved is still the one on disk. */
+/** A page is registered when its page11 desktop `.ts` exists. The receipt does not decide. */
 async function desktopApproved(identity: M4RunIdentity, pageId: string, port: M4FinalizePort): Promise<boolean> {
-  const receipt = await port.readJson<M4PageReceipt>(pageReceiptInfo(identity, pageId, 'desktop'));
-  const source = pageSourceInfo(identity, pageId, 'desktop');
-  if (!receipt || receipt.pageId !== pageId || !port.exists(source)) return false;
-  return await storedHash(await port.read(source)) === receipt.sourceHash;
+  return port.exists(pageSourceInfo(identity, pageId, 'desktop'));
 }
 
 export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePort = studioPagePort): Promise<{ receipt: M4FinalizeReceipt; path: string }> {

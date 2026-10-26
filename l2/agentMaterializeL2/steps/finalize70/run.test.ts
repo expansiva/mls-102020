@@ -6,8 +6,7 @@ import test from 'node:test';
 import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { m4OwnedFile } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
-import { storedHash } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
-import { pageReceiptInfo, pageSourceInfo } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { pageSourceInfo } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { configInfo, menuInfo, moduleDefsInfo, runM4Finalize, type M4FinalizePort } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
 
 const root = new URL('../../../../../mls-102047/', import.meta.url);
@@ -23,7 +22,7 @@ function frontendPage(id: string) {
   return { pageId: id, route: `/reembolsoDespesas/${id}`, source: `l2/reembolsoDespesas/web/desktop/page11/${id}.ts`, definition: `l2/reembolsoDespesas/web/desktop/page11/${id}.defs.ts`, componentTag: `reembolsoDespesas--web--desktop--page11--${id}-102047`, title: id, actors: ['colaborador'] };
 }
 
-/** An in-memory Studio with the real defs, menu and module of reembolsoDespesas, a CRLF config and pages50 receipts. */
+/** An in-memory Studio with the real defs, menu and module of reembolsoDespesas and a CRLF config. No page receipt. */
 async function memory(approved: string[], opts: { accepted?: string[]; current?: Record<string, unknown> } = {}): Promise<M4FinalizePort & { files: Map<string, string>; writes: string[] }> {
   const files = new Map<string, string>();
   const writes: string[] = [];
@@ -34,9 +33,7 @@ async function memory(approved: string[], opts: { accepted?: string[]; current?:
     put(m4DefsInfo(identity, 'desktop', pageId), disk(`l2/reembolsoDespesas/web/desktop/page11/${pageId}.defs.ts`));
     put(m4DefsInfo(identity, 'shared', pageId), disk(`l2/reembolsoDespesas/web/shared/${pageId}.defs.ts`));
     if (!approved.includes(pageId)) continue;
-    const source = `// page ${pageId}\n`;
-    put(pageSourceInfo(identity, pageId, 'desktop'), source);
-    put(pageReceiptInfo(identity, pageId, 'desktop'), JSON.stringify({ pageId, sourceHash: await storedHash(source) }));
+    put(pageSourceInfo(identity, pageId, 'desktop'), `// page ${pageId}\n`);
   }
   put(menuInfo(identity), disk('l4/reembolsoDespesas/pool/l2/web/menu.json'));
   put(moduleDefsInfo(identity), disk('l4/reembolsoDespesas/module.defs.ts'));
@@ -52,7 +49,7 @@ async function memory(approved: string[], opts: { accepted?: string[]; current?:
   };
 }
 
-test('registers the approved pages once, keeps the line ends and the other fields; a second run writes nothing', async () => {
+test('registers a desktop page that exists and has no receipt; keeps the line ends; a second run writes nothing', async () => {
   const port = await memory(PAGES);
   const first = await runM4Finalize(identity, port);
   assert.equal(first.receipt.written, true);

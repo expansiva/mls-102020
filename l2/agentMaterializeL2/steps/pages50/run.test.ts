@@ -6,6 +6,7 @@ import test from 'node:test';
 import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { approveM4Shared, buildM4SharedContext } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 import {
   M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, productLocales, reusableM4Page, type M4PagePort,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
@@ -70,6 +71,7 @@ async function studio(compileErrors: string[] = []) {
     readJson: async <T>(info: Ns5FileInfo) => { const text = files.get(key(info)); return text === undefined ? null : JSON.parse(text) as T; },
     writeText: async (info, text) => { files.set(key(info), text); },
     writeJson: async (info, value) => { files.set(key(info), JSON.stringify(value)); },
+    deleteText: async info => { files.delete(key(info)); },
     declarations: async () => [],
     listDefs: (project, folder, level) => listIn(files, project, folder, level),
     compile: async info => {
@@ -176,6 +178,15 @@ test('a page is skipped when its .ts exists; the page11 defs and the receipt do 
   assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'an existing file is kept');
   port.files.delete('102047/l2/controleEstoque/web/desktop/page11/produtos.ts');
   assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), false);
+});
+
+test('approving the page11 page deletes its review receipt', async () => {
+  const port = await studio();
+  const reviewKey = key(reviewReceiptInfo(identity, 'produtos', 'desktop'));
+  port.files.set(reviewKey, JSON.stringify({ schemaVersion: 'kept', summary: 'old' }));
+  const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
+  await approveM4Page(context, pageRef.source, 1, port);
+  assert.equal(port.files.has(reviewKey), false, 'the page generated in this run is reviewed again');
 });
 
 test('the receipt keeps the design answer and the design observations; a design choice is never a refusal', async () => {

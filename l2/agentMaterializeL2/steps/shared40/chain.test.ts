@@ -7,7 +7,8 @@ import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { approveM4Shared, buildM4SharedContext, sharedReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { m4ChainAfterPage, m4ChainSettled, m4ChainStart } from '/_102020_/l2/agentMaterializeL2/steps/shared40/chain.js';
-import type { M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { pageSourceInfo, type M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { M4_REVIEW_VERSION, reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 
 interface Fixture { project: number; module: string; pages: Record<string, { contract: string; shared: string; desktop: string; mobile: string }> }
 const fixture = JSON.parse(readFileSync(new URL('../input20/fixtures/controleEstoque.json', import.meta.url), 'utf8')) as Fixture;
@@ -79,4 +80,18 @@ test('after a page, the review comes only with --review', async () => {
   const review = await m4ChainAfterPage(identity, 'produtos', 'desktop', { review: true }, port);
   assert.deepEqual(titles(review), ['Review desktop']);
   assert.equal(args(review[0]).chain, true);
+});
+
+test('a failed review receipt is deleted before --review dispatches, and the chain stays open', async () => {
+  const port = await studio();
+  await approveM4Shared(await buildM4SharedContext(identity, 'produtos', port), reference, 1, port);
+  await port.writeText(pageSourceInfo(identity, 'produtos', 'desktop'), 'export class Produtos {}\n');
+  const info = reviewReceiptInfo(identity, 'produtos', 'desktop');
+  await port.writeJson(info, { schemaVersion: M4_REVIEW_VERSION, failed: 'M4_REVIEW_TOOL_JSON' });
+  const scope = { pages: ['produtos'], device: 'desktop' as const, review: true };
+  assert.equal((await m4ChainSettled(identity, scope, port)).settled, true);
+  const review = await m4ChainAfterPage(identity, 'produtos', 'desktop', scope, port);
+  assert.deepEqual(titles(review), ['Review desktop']);
+  assert.equal(port.files.has(key(info)), false, 'the failed receipt is deleted before the worker runs');
+  assert.equal((await m4ChainSettled(identity, scope, port)).settled, false);
 });

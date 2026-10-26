@@ -17,10 +17,8 @@ import { deleteGeneratedFile, readM4Snapshot, reusableM4Shared, sharedDeclaratio
 import { sharedWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/shared40/agentM4Shared.js';
 import { pageSourceInfo, reusableM4Page, studioPagePort, type M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { m4PageSlots, pageWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4Pages.js';
-import { m4ReviewState, reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
+import { dropFailedM4Review, m4ReviewState } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 import { reviewWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/review55/agentM4Review.js';
-
-const invalid = (reason: string) => ({ invalidated: reason, at: new Date().toISOString() });
 
 /** --force, once, at the start of the chains: the generated files in scope are deleted, then existence decides. */
 export async function m4ChainForce(identity: M4RunIdentity, scope: M4RunScope, pages: string[], port: M4PagePort = studioPagePort): Promise<void> {
@@ -43,8 +41,7 @@ export async function m4ChainForce(identity: M4RunIdentity, scope: M4RunScope, p
 /** The review worker of a unit, when --review asks for one and its review is not reusable. */
 async function reviewStep(identity: M4RunIdentity, pageId: string, device: L2Page11Device, scope: M4RunScope, snapshot: M4InputSnapshot | undefined, port: M4PagePort): Promise<mls.msg.AIAgentStep | null> {
   if (!scope.review || (await m4ReviewState(identity, pageId, device, port, snapshot)).reusable) return null;
-  // A failed review of an earlier run must not settle this one.
-  await port.writeJson(reviewReceiptInfo(identity, pageId, device), invalid('pending'));
+  await dropFailedM4Review(identity, pageId, device, port);
   return reviewWorkerStep({ ...identity, pageId, device, scope, chain: true });
 }
 

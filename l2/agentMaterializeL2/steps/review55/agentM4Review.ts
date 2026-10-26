@@ -11,7 +11,7 @@ import { displayPath } from '/_102035_/l2/solution/fs.js';
 import type { L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { readM4Snapshot } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { studioPagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
-import { m4ReviewState, reviewReceiptInfo, type M4ReviewReceipt } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
+import { dropFailedM4Review, m4ReviewState, reviewReceiptInfo, type M4ReviewReceipt } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: M4_REVIEW_AGENT_NAME, agentProject: 102020, agentFolder: 'agentMaterializeL2/steps/review55', agentDescription: 'Dispatch one review worker per generated page and device', visibility: 'private', beforePromptStep };
@@ -54,16 +54,17 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     const snapshot = await readM4Snapshot(identity, studioPagePort);
     const pages = m4ScopePages(snapshot.accepted, scope);
     const devices = m4ScopeDevices(scope);
-    // --force was applied once by the chains of shared40; a sweeper never invalidates again.
     const pending: Array<{ pageId: string; device: L2Page11Device }> = [];
-    for (const pageId of pages) for (const device of devices) if (!(await m4ReviewState(identity, pageId, device, studioPagePort, snapshot)).reusable) pending.push({ pageId, device });
+    for (const pageId of pages) for (const device of devices) {
+      if ((await m4ReviewState(identity, pageId, device, studioPagePort, snapshot)).reusable) continue;
+      await dropFailedM4Review(identity, pageId, device, studioPagePort);
+      pending.push({ pageId, device });
+    }
     const total = pages.length * devices.length;
     if (!pending.length) {
       const done = await m4ReviewDoneIntent(context, parentStep, identity, scope);
       return [...(done ? [done] : []), updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `review55 reused ${total} review(s) without an LLM call (${m4ScopeLabel(scope)}).`)];
     }
-    // A failed review left from an earlier run must not settle this one: clear it before dispatching.
-    for (const unit of pending) await studioPagePort.writeJson(reviewReceiptInfo(identity, unit.pageId, unit.device), { invalidated: 'pending', at: new Date().toISOString() });
     const workers = pending.map(unit => addAgentStep(context, parentStep.stepId, reviewWorkerStep({ ...identity, ...unit, scope })));
     return [...workers, updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `Dispatched ${pending.length} review worker(s) [${pending.map(unit => `${unit.pageId}/${unit.device}`).join(', ')}]; ${total - pending.length} reused (${m4ScopeLabel(scope)}).`)];
   } catch (error) {

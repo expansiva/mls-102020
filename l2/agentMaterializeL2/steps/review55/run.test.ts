@@ -7,6 +7,7 @@ import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { buildM4PlannedSteps, m4PlannedStepIds, parseM4MessageInvocation } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import type { M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { m4ChainAfterPage } from '/_102020_/l2/agentMaterializeL2/steps/shared40/chain.js';
 import {
   buildM4ReviewContext, formatM4Review, m4ReviewState, m4ReviewToolAnswer, m4ReviewToolSchema, recordM4Review, reviewReceiptInfo,
 } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
@@ -40,6 +41,7 @@ async function studio() {
     readJson: async <T>(info: Ns5FileInfo) => { const text = files.get(key(info)); return text === undefined ? null : JSON.parse(text) as T; },
     writeText: async (info, text) => { files.set(key(info), text); },
     writeJson: async (info, value) => { files.set(key(info), JSON.stringify(value)); },
+    deleteText: async info => { files.delete(key(info)); },
     compile: async () => ({ errors: [], declaration: null }),
     declarations: async () => [],
     listDefs: (project, folder, level) => list(project, folder, level),
@@ -87,15 +89,23 @@ test('report only: findings are recorded; a failed review settles the unit but i
   const receipt = await recordM4Review(context, answer, port);
   assert.match(formatM4Review(receipt), /^Review produtos\/desktop: 0 blocker, 1 major, 0 minor\. Works, but the title repeats\.\nmajor \[titles\]/u);
   assert.deepEqual(await m4ReviewState(identity, 'produtos', 'desktop', port), { settled: true, reusable: true });
-  // the page changes: the review is stale
+  // the page changes: the review stays. Existence decides, not the page hash.
   const pagePath = `${identity.project}/l2/${identity.module}/web/desktop/page11/produtos.ts`;
   port.files.set(pagePath, `${pageRef.source}\n// changed\n`);
-  assert.deepEqual(await m4ReviewState(identity, 'produtos', 'desktop', port), { settled: false, reusable: false });
+  assert.deepEqual(await m4ReviewState(identity, 'produtos', 'desktop', port), { settled: true, reusable: true });
+  assert.deepEqual(await m4ChainAfterPage(identity, 'produtos', 'desktop', { review: true }, port), [], 'a page that already has a review is not reviewed again');
   // a failed review: settled for this run, reviewed again next time
   const fresh = await buildM4ReviewContext(identity, 'produtos', 'desktop', port);
   await recordM4Review(fresh, { summary: '', findings: [], failed: 'M4_REVIEW_TOOL_JSON' }, port);
   assert.deepEqual(await m4ReviewState(identity, 'produtos', 'desktop', port), { settled: true, reusable: false });
   assert.ok(port.files.has(key(reviewReceiptInfo(identity, 'produtos', 'desktop'))));
+  const retried = await m4ChainAfterPage(identity, 'produtos', 'desktop', { review: true }, port);
+  assert.equal(retried.length, 1, 'a failed review is dispatched again');
+  assert.equal(port.files.has(key(reviewReceiptInfo(identity, 'produtos', 'desktop'))), false, 'the failed receipt is deleted before dispatch');
+  assert.deepEqual(await m4ReviewState(identity, 'produtos', 'desktop', port), { settled: false, reusable: false });
+  const dispatched = await m4ChainAfterPage(identity, 'produtos', 'desktop', { review: true }, port);
+  assert.equal(dispatched.length, 1, 'a page with no review receipt is reviewed when --review is on');
+  assert.deepEqual(await m4ChainAfterPage(identity, 'produtos', 'desktop', {}, port), [], 'without --review the receipt is not read');
 });
 
 test('the tool requires a basis for every finding', () => {
