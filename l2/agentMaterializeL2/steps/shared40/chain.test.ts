@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
-import { approveM4Shared, buildM4SharedContext } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { approveM4Shared, buildM4SharedContext, sharedReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { m4ChainAfterPage, m4ChainSettled, m4ChainStart } from '/_102020_/l2/agentMaterializeL2/steps/shared40/chain.js';
 import type { M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 
@@ -35,6 +35,7 @@ async function studio() {
     readJson: async <T>(info: Ns5FileInfo) => { const text = files.get(key(info)); return text === undefined ? null : JSON.parse(text) as T; },
     writeText: async (info, text) => { files.set(key(info), text); },
     writeJson: async (info, value) => { files.set(key(info), JSON.stringify(value)); },
+    deleteText: async info => { files.delete(key(info)); },
     compile: async () => ({ errors: [], declaration: 'export declare class ControleEstoqueProdutosShared {}\n' }),
     declarations: async () => [],
     listDefs: (project, folder, level) => list(project, folder, level),
@@ -61,9 +62,15 @@ test('a page whose shared is ready goes straight to its pages (chained), per dev
   assert.deepEqual(titles(both), ['Page desktop', 'Page mobile'], 'inside the page group the title names only the device');
   assert.ok(both.every(step => args(step).chain === true), 'chained page workers end the chain, not the pages50 sweeper');
   assert.deepEqual(titles((await m4ChainStart(identity, { pages: ['produtos'], device: 'mobile' }, port)).steps), ['Page mobile']);
-  // --force with --device keeps the shared; without --device it regenerates it
+  // --force with --device keeps the shared; without --device it deletes the generated shared and starts again
   assert.deepEqual(titles((await m4ChainStart(identity, { pages: ['produtos'], device: 'mobile', force: true }, port)).steps), ['Page mobile']);
+  const receiptKey = key(sharedReceiptInfo(identity, 'produtos'));
+  const receipt = port.files.get(receiptKey);
   assert.deepEqual(titles((await m4ChainStart(identity, { pages: ['produtos'], force: true }, port)).steps), ['Shared']);
+  assert.equal(port.files.has('102047/l2/controleEstoque/web/shared/produtos.ts'), false);
+  assert.equal(port.files.has('102047/l2/controleEstoque/web/shared/produtosDts.txt'), false);
+  assert.equal(port.files.has('102047/l2/controleEstoque/web/shared/produtos.defs.ts'), true, 'a defs file is not deleted');
+  assert.equal(port.files.get(receiptKey), receipt, 'the receipt is not rewritten');
 });
 
 test('after a page, the review comes only with --review', async () => {

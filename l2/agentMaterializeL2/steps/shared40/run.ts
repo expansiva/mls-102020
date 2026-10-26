@@ -3,8 +3,8 @@
 // shared40, one page: context and prompt for the LLM (defs, contract with its route comments, L4 slice),
 // then approval of its answer. The gaps the LLM completed (V5) come back as findings in the receipt.
 // Approval = gate → write web/shared/<pageId>.ts → Studio compile → write the declaration the Studio
-// emitted (web/shared/<pageId>Dts.txt, the context of pages50) → receipt. A unit whose receipt still
-// matches its inputs, prompt and files on disk is reused with no LLM call and no write.
+// emitted (web/shared/<pageId>Dts.txt, the context of pages50) → receipt. The unit is reused when that
+// `.ts` and that `Dts.txt` exist. The receipt is written and does not decide.
 
 import { displayPath, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { readStorText, storTextExists, writeStorText } from '/_102020_/l2/agentMaterializeL2/helpers/storText.js';
@@ -74,6 +74,8 @@ export interface M4SharedPort {
   readJson<T>(info: Ns5FileInfo): Promise<T | null>;
   writeText(info: Ns5FileInfo, text: string): Promise<void>;
   writeJson(info: Ns5FileInfo, value: unknown): Promise<unknown>;
+  /** Removes one generated file. Absent on ports that never apply `--force`. */
+  deleteText?(info: Ns5FileInfo): Promise<void>;
   compile(info: Ns5FileInfo, source: string): Promise<StudioDeclarationResult>;
   /** The Studio .d.ts of each `/_<project>_/…js` module (agentFix idea); a missing one is left out. */
   declarations(refs: string[]): Promise<Array<{ ref: string; declaration: string }>>;
@@ -95,6 +97,7 @@ export const studioSharedPort: M4SharedPort = {
   },
   writeText: writeStorText,
   writeJson: (info, value) => writeStorText(info, `${JSON.stringify(value, null, 2)}\n`),
+  deleteText: deleteGeneratedFile,
   compile: (info, source) => compileWithDeclaration(info, source),
   declarations: declarationsOf,
   listDefs: (project, folder, level) => Object.values(mls.stor.files)
@@ -295,39 +298,35 @@ export async function approveM4Shared(context: M4SharedContext, source: unknown,
 }
 
 export async function reusableM4Shared(identity: M4RunIdentity, pageId: string, port: M4SharedPort = studioSharedPort, snapshot?: M4InputSnapshot): Promise<boolean> {
-  return await m4SharedReuseBlocker(identity, pageId, port, snapshot) === null;
+  void snapshot;
+  return await m4SharedReuseBlocker(identity, pageId, port) === null;
 }
 
-/** Why the shared of a page cannot be reused, or null when it can. The reason is quoted by pages50. */
+/**
+ * Why the shared of a page cannot be reused, or null when it can. The generated `.ts` and `Dts.txt`
+ * exist, or they do not. The receipt is still written; it does not decide. A `.defs.ts` is not either file.
+ */
 export async function m4SharedReuseBlocker(identity: M4RunIdentity, pageId: string, port: M4SharedPort = studioSharedPort, snapshot?: M4InputSnapshot): Promise<string | null> {
-  try {
-    const receipt = await port.readJson<M4SharedReceipt>(sharedReceiptInfo(identity, pageId));
-    if (!receipt) return `no receipt at ${displayPath(sharedReceiptInfo(identity, pageId))}`;
-    if (receipt.schemaVersion !== M4_SHARED_VERSION || receipt.project !== identity.project || receipt.module !== identity.module || receipt.pageId !== pageId) return `receipt of another version or identity (${receipt.schemaVersion})`;
-    const snap = snapshot ?? await readM4Snapshot(identity, port);
-    const page = snap.pages.find(item => item.pageId === pageId && item.status === 'accepted');
-    const unit = page?.units.find(item => item.kind === 'shared');
-    if (!page || !unit) return 'page not accepted by input20';
-    // Only DATA decides (22/10/2026): the prompt, the input20 rules and the templates are agent material; a change of
-    // theirs regenerates nothing until --force. A receipt written before that is adopted when its files are unchanged.
-    const adopt = receipt.fingerprint !== M4_REUSE_FINGERPRINT;
-    if (!adopt && unit.inputHash !== receipt.unitInputHash) return 'contract, shared defs or L4 changed (data fingerprint)';
-    const sourceInfo = sharedSourceInfo(identity, pageId);
-    const declarationInfo = sharedDeclarationInfo(identity, pageId);
-    if (!port.exists(sourceInfo)) return `${displayPath(sourceInfo)} does not exist`;
-    if (!port.exists(declarationInfo)) return `${displayPath(declarationInfo)} does not exist`;
-    if (!await sameStored(await port.read(sourceInfo), receipt.sourceHash)) return `${displayPath(sourceInfo)} changed after approval`;
-    if (!await sameStored(await port.read(declarationInfo), receipt.declarationHash)) return `${displayPath(declarationInfo)} changed after approval`;
-    if (adopt) await port.writeJson(sharedReceiptInfo(identity, pageId), { ...receipt, unitInputHash: unit.inputHash, fingerprint: M4_REUSE_FINGERPRINT });
-    return null;
-  } catch (error) {
-    return `reuse check failed: ${error instanceof Error ? error.message : String(error)}`;
-  }
+  void snapshot;
+  const sourceInfo = sharedSourceInfo(identity, pageId);
+  const declarationInfo = sharedDeclarationInfo(identity, pageId);
+  if (!port.exists(sourceInfo)) return `${displayPath(sourceInfo)} does not exist`;
+  if (!port.exists(declarationInfo)) return `${displayPath(declarationInfo)} does not exist`;
+  return null;
 }
 
-/** Receipts written before 01/10 hashed the raw text; both forms are accepted so they are not regenerated. */
-async function sameStored(text: string, hash: string): Promise<boolean> {
-  return await storedHash(text) === hash || await sha256Text(text) === hash;
+/** Deletes one generated file from the Studio index. A missing file is already gone. A delete that throws names the path. */
+export async function deleteGeneratedFile(info: Ns5FileInfo): Promise<void> {
+  const { indexedFile } = await import('/_102035_/l2/solution/fs.js');
+  const indexed = indexedFile(info);
+  if (!indexed || indexed.status === 'deleted') return;
+  try {
+    const { deleteFile } = await import('/_102027_/l2/libStor.js');
+    await deleteFile(indexed);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`failed to delete ${displayPath(info)}: ${message}`);
+  }
 }
 
 /** Hash of a stored text, insensitive to CRLF and trailing whitespace the Studio may add on save. */

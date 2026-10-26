@@ -144,7 +144,7 @@ test('approval writes the source, compiles it, writes the declaration and a rece
   assert.equal(await reusableM4Shared(identity, 'produtos', port), true);
 
   port.files.set('102047/l2/controleEstoque/web/shared/produtos.ts', `${reference}// edited by hand\n`);
-  assert.equal(await reusableM4Shared(identity, 'produtos', port), false, 'a hand edit invalidates the receipt');
+  assert.equal(await reusableM4Shared(identity, 'produtos', port), true, 'a file that exists is kept');
 });
 
 test('a note change from input20 regenerates nothing: notes follow agent code (22/10)', async () => {
@@ -160,30 +160,24 @@ test('a note change from input20 regenerates nothing: notes follow agent code (2
   const unit = produtos.units.find((item: { kind: string }) => item.kind === 'shared');
   unit.inputHash = 'sha256:the-defs-changed';
   port.files.set(path, JSON.stringify(snapshot));
-  assert.match((await m4SharedReuseBlocker(identity, 'produtos', port))!, /data fingerprint/u, 'a data change still regenerates');
+  assert.equal(await m4SharedReuseBlocker(identity, 'produtos', port), null, 'a data change does not regenerate a file that exists');
 });
 
-test('a receipt from before the data fingerprint is adopted when its files are unchanged (22/10)', async () => {
+test('shared is skipped when the .ts and the Dts.txt exist, receipt or not; only the .defs.ts means generate', async () => {
   const port = await studio();
+  assert.equal(port.files.has('102047/l2/controleEstoque/web/shared/produtos.defs.ts'), true);
+  assert.equal(await reusableM4Shared(identity, 'produtos', port), false, 'only the .defs.ts is present');
+  assert.equal(await m4SharedReuseBlocker(identity, 'produtos', port), 'l2/controleEstoque/web/shared/produtos.ts does not exist');
   await approveM4Shared(await buildM4SharedContext(identity, 'produtos', port), reference, 1, port);
   const receiptKey = '102047/l2/controleEstoque/pipeline/agentMaterializeL2/shared40/produtos.json';
-  const { fingerprint: _fingerprint, ...old } = JSON.parse(port.files.get(receiptKey)!);
-  port.files.set(receiptKey, JSON.stringify({ ...old, unitInputHash: 'sha256:the-old-formula' }));
-  assert.equal(await m4SharedReuseBlocker(identity, 'produtos', port), null, 'adopted');
-  assert.equal(JSON.parse(port.files.get(receiptKey)!).fingerprint, 'data-v1');
-  assert.notEqual(JSON.parse(port.files.get(receiptKey)!).unitInputHash, 'sha256:the-old-formula');
-});
-
-test('the reuse check says why, and tolerates CRLF and trailing whitespace the Studio may add', async () => {
-  const port = await studio();
-  assert.match((await m4SharedReuseBlocker(identity, 'produtos', port))!, /^no receipt at l2\/controleEstoque\/pipeline\/agentMaterializeL2\/shared40\/produtos\.json$/u);
-  await approveM4Shared(await buildM4SharedContext(identity, 'produtos', port), reference, 1, port);
-  assert.equal(await m4SharedReuseBlocker(identity, 'produtos', port), null);
-  const path = '102047/l2/controleEstoque/web/shared/produtos.ts';
-  port.files.set(path, `${port.files.get(path)!.replace(/\n/gu, '\r\n')}\r\n\r\n`);
-  assert.equal(await m4SharedReuseBlocker(identity, 'produtos', port), null, 'line endings and trailing blank lines are not a change');
-  port.files.set(path, port.files.get(path)!.replace('get saldoAtual()', 'get saldoTotal()'));
-  assert.equal(await m4SharedReuseBlocker(identity, 'produtos', port), 'l2/controleEstoque/web/shared/produtos.ts changed after approval');
+  const receipt = JSON.parse(port.files.get(receiptKey)!);
+  port.files.set(receiptKey, JSON.stringify({ ...receipt, sourceHash: 'sha256:other', unitInputHash: 'sha256:other' }));
+  assert.equal(await reusableM4Shared(identity, 'produtos', port), true, 'a receipt with a different hash does not decide');
+  assert.equal(JSON.parse(port.files.get(receiptKey)!).sourceHash, 'sha256:other', 'reuse does not rewrite the receipt');
+  port.files.delete(receiptKey);
+  assert.equal(await reusableM4Shared(identity, 'produtos', port), true, 'no receipt');
+  port.files.delete('102047/l2/controleEstoque/web/shared/produtosDts.txt');
+  assert.equal(await m4SharedReuseBlocker(identity, 'produtos', port), 'l2/controleEstoque/web/shared/produtosDts.txt does not exist');
 });
 
 test('a prompt change regenerates nothing until --force (22/10)', async () => {

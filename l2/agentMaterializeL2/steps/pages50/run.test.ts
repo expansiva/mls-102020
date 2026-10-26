@@ -156,23 +156,26 @@ test('the reference page is approved, compiled and reused; only a data change re
   const declaration = '102047/l2/controleEstoque/web/shared/produtosDts.txt';
   assert.ok(port.files.has(declaration));
   port.files.set(declaration, `${port.files.get(declaration)}\nexport type Extra = string;\n`);
-  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), false, 'a new shared declaration (data) regenerates the page');
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'a page .ts that exists is kept');
 });
 
-test('a receipt from before the data fingerprint is adopted when its page is unchanged (22/10)', async () => {
+test('a page is skipped when its .ts exists; the page11 defs and the receipt do not decide', async () => {
   const port = await studio();
+  assert.equal(port.files.has('102047/l2/controleEstoque/web/desktop/page11/produtos.defs.ts'), true);
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), false, 'the defs file is not the page');
   const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
   await approveM4Page(context, pageRef.source, 1, port);
   const receiptKey = '102047/l2/controleEstoque/pipeline/agentMaterializeL2/pages50/produtosDesktop.json';
-  const { dataHash: _dataHash, fingerprint: _fingerprint, ...old } = JSON.parse(port.files.get(receiptKey)!);
-  port.files.set(receiptKey, JSON.stringify({ ...old, contextHash: 'sha256:an-old-prompt' }));
-  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'adopted');
-  const adopted = JSON.parse(port.files.get(receiptKey)!);
-  assert.equal(adopted.fingerprint, 'data-v1');
-  assert.equal(adopted.dataHash, context.dataHash);
-  port.files.set(receiptKey, JSON.stringify({ ...old, fingerprint: undefined }));
+  const receipt = JSON.parse(port.files.get(receiptKey)!);
+  port.files.set(receiptKey, JSON.stringify({ ...receipt, sourceHash: 'sha256:other', dataHash: 'sha256:other' }));
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'a receipt with a different hash does not decide');
+  assert.equal(JSON.parse(port.files.get(receiptKey)!).sourceHash, 'sha256:other', 'reuse does not rewrite the receipt');
+  port.files.delete(receiptKey);
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'no receipt');
   port.files.set('102047/l2/controleEstoque/web/desktop/page11/produtos.ts', `${pageRef.source}\n// edited by hand\n`);
-  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), false, 'a page edited after approval is not adopted');
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'an existing file is kept');
+  port.files.delete('102047/l2/controleEstoque/web/desktop/page11/produtos.ts');
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), false);
 });
 
 test('the receipt keeps the design answer and the design observations; a design choice is never a refusal', async () => {
@@ -230,10 +233,12 @@ test('the platform types the contract uses carry the meaning of each field, read
   assert.ok(repair.humanPrompt.includes('# Platform types') && repair.humanPrompt.includes('street and number'), 'the repair repeats the section');
 });
 
-test('a page waits for its shared: no receipt, no context', async () => {
+test('a page waits until the shared .ts and Dts.txt both exist', async () => {
   const port = await studio();
   port.files.delete('102047/l2/controleEstoque/pipeline/agentMaterializeL2/shared40/produtos.json');
-  await assert.rejects(buildM4PageContext(identity, 'produtos', 'desktop', port), /M4_PAGE_SHARED_NOT_READY/u);
+  await buildM4PageContext(identity, 'produtos', 'desktop', port);
+  port.files.delete('102047/l2/controleEstoque/web/shared/produtos.ts');
+  await assert.rejects(buildM4PageContext(identity, 'produtos', 'desktop', port), /M4_PAGE_SHARED_NOT_READY: the shared of produtos is not reusable \(l2\/controleEstoque\/web\/shared\/produtos\.ts does not exist\)/u);
 });
 
 test('a molecule tag with the project suffix is rewritten to the indexed tag, and its import, and recorded', async () => {
@@ -260,7 +265,8 @@ test('a gate refusal writes nothing; a compile error leaves no receipt; environm
   assert.ok(recorded.advisories.some(item => item.code === 'M4_PAGE_TEXT' && item.message.startsWith('[contract] ')));
   const failing = await studio(["line 3:5 - TS2339 - Property 'x' does not exist."]);
   await assert.rejects(approveM4Page(await buildM4PageContext(identity, 'produtos', 'desktop', failing), pageRef.source, 1, failing), /M4_PAGE_COMPILE:\nline 3:5/u);
-  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', failing), false);
+  assert.equal(failing.files.has('102047/l2/controleEstoque/pipeline/agentMaterializeL2/pages50/produtosDesktop.json'), false, 'a compile error leaves no receipt');
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', failing), true, 'the .ts was written before the compile failed, so it exists');
   assert.equal(m4PageEnvironmentFailure('M4_PAGE_COMPILE:\nStudio imports unavailable: _102040_/l2/molecules/x.ts'), true);
   assert.equal(m4PageEnvironmentFailure('M4_PAGE_COMPILE:\nline 1:1 - TS2339 - x'), false);
 });

@@ -390,21 +390,10 @@ export async function approveM4Page(context: M4PageContext, source: unknown, att
   return receipt;
 }
 
+/** The page `.ts` exists. A `page11/<page>.defs.ts` with the same short name does not count. The receipt does not decide. */
 export async function reusableM4Page(identity: M4RunIdentity, pageId: string, device: L2Page11Device, port: M4PagePort = studioPagePort, snapshot?: M4InputSnapshot, genome: string = L2_PRIMARY_GENOME): Promise<boolean> {
-  try {
-    const receipt = await port.readJson<M4PageReceipt>(pageReceiptInfo(identity, pageId, device, genome));
-    if (!receipt || receipt.schemaVersion !== M4_PAGE_VERSION || receipt.project !== identity.project || receipt.module !== identity.module || receipt.pageId !== pageId || receipt.device !== device) return false;
-    if ((receipt.genome ?? L2_PRIMARY_GENOME) !== genome) return false;
-    const info = pageSourceInfo(identity, pageId, device, genome);
-    if (!port.exists(info) || await storedHash(await port.read(info)) !== receipt.sourceHash) return false;
-    // Only DATA decides (22/10/2026); a receipt from before is adopted, its page being unchanged since approval.
-    const { dataHash } = await buildM4PageContext(identity, pageId, device, port, snapshot, genome);
-    if (receipt.fingerprint === M4_REUSE_FINGERPRINT) return dataHash === receipt.dataHash;
-    await port.writeJson(pageReceiptInfo(identity, pageId, device, genome), { ...receipt, dataHash, fingerprint: M4_REUSE_FINGERPRINT });
-    return true;
-  } catch {
-    return false;
-  }
+  void snapshot;
+  return port.exists(pageSourceInfo(identity, pageId, device, genome));
 }
 
 export async function recordM4PageAttempt(identity: M4RunIdentity, pageId: string, device: L2Page11Device, attempt: number, source: unknown, diagnostic: string, port: Pick<M4PagePort, 'writeText'> = studioPagePort, genome: string = L2_PRIMARY_GENOME): Promise<void> {

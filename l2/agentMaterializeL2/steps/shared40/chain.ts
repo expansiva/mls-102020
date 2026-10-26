@@ -6,32 +6,37 @@
 // An added step that is not waiting_dependency runs at once (skills/collab_messages.md), so each page moves
 // on as soon as its own previous unit is approved. `shared40-done` is emitted only when every chain in scope
 // is settled; pages50 and review55 stay in the plan as sweepers: they usually find everything done, and only
-// dispatch what a chain left behind (a resumed run). `--force` is applied here, once, at the start.
+// dispatch what a chain left behind (a resumed run). `--force` deletes the generated files in scope here, once.
 
 import { displayPath } from '/_102035_/l2/solution/fs.js';
 import { m4ScopeDevices, m4ScopeLabel, m4ScopePages, markM4Step, type M4RunIdentity, type M4RunScope } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { addAgentStep, agentResult } from '/_102020_/l2/agentMaterializeL2/helpers/intents.js';
 import { L2_PRIMARY_GENOME, type L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
-import { readM4Snapshot, reusableM4Shared, sharedReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { deleteGeneratedFile, readM4Snapshot, reusableM4Shared, sharedDeclarationInfo, sharedReceiptInfo, sharedSourceInfo } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { sharedWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/shared40/agentM4Shared.js';
-import { pageReceiptInfo, reusableM4Page, studioPagePort, type M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { pageSourceInfo, reusableM4Page, studioPagePort, type M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { m4PageSlots, pageWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4Pages.js';
 import { m4ReviewState, reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 import { reviewWorkerStep } from '/_102020_/l2/agentMaterializeL2/steps/review55/agentM4Review.js';
 
 const invalid = (reason: string) => ({ invalidated: reason, at: new Date().toISOString() });
 
-/** --force, once, at the start of the chains: the receipts in scope stop matching. */
+/** --force, once, at the start of the chains: the generated files in scope are deleted, then existence decides. */
 export async function m4ChainForce(identity: M4RunIdentity, scope: M4RunScope, pages: string[], port: M4PagePort = studioPagePort): Promise<void> {
   if (!scope.force) return;
   const devices = m4ScopeDevices(scope);
+  const remove = port.deleteText ?? deleteGeneratedFile;
   // With --device the shared is not in scope: a new shared would regenerate both devices.
-  if (!scope.device) for (const pageId of pages) await port.writeJson(sharedReceiptInfo(identity, pageId), invalid('force'));
+  if (!scope.device) {
+    for (const pageId of pages) {
+      await remove(sharedSourceInfo(identity, pageId));
+      await remove(sharedDeclarationInfo(identity, pageId));
+    }
+  }
   const snapshot = await readM4Snapshot(identity, port);
   for (const slot of m4PageSlots(snapshot, pages, devices, scope)) {
-    await port.writeJson(pageReceiptInfo(identity, slot.pageId, slot.device, slot.genome), invalid('force'));
-    if (scope.review && slot.genome === L2_PRIMARY_GENOME) await port.writeJson(reviewReceiptInfo(identity, slot.pageId, slot.device), invalid('force'));
+    await remove(pageSourceInfo(identity, slot.pageId, slot.device, slot.genome));
   }
 }
 
