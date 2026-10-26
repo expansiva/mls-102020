@@ -571,8 +571,8 @@ const defaultAfterSaveDeps: IAfterDraftSaveDeps = {
 /**
  * Post-save for one draft file, same cleanup as `serviceSave.afterUpdate`.
  * `inLocalStorage` goes false. A deletion clears local, cache, models, and the index.
- * A renamed file resets the model origin, then clears local and returns to `nochange`.
- * Anything else clears local and returns to `nochange`.
+ * A renamed file resets the model origin, then clears local.
+ * `changed`, `new`, and `renamed` stay as they are until publish.
  */
 export async function afterDraftSave(
   file: IPanelStorFile,
@@ -588,5 +588,4 @@ export async function afterDraftSave(
   }
   if (file.status === 'renamed') await deps.resetRenameOrigin(file);
   await deps.setLocal(file, null);
-  file.status = 'nochange';
 }

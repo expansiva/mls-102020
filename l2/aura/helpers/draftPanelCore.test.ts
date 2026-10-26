@@ -586,7 +586,7 @@ test('panelModel: draft block is current.files, empty when current is null; publ
   assert.deepEqual(noRelease.published, { count: 1, files: ['l2/a.ts'], release: null });
 });
 
-test('afterDraftSave clears a deleted file out of the browser and resets a changed file', async () => {
+test('afterDraftSave clears a deleted file and keeps changed and new after the send', async () => {
   const deleted = {
     project: 102047,
     status: 'deleted',
@@ -633,11 +633,27 @@ test('afterDraftSave clears a deleted file out of the browser and resets a chang
     resetRenameOrigin: () => { changedCalls.push('resetRenameOrigin'); },
   });
   assert.deepEqual(changedCalls, ['setLocal:a:null']);
-  assert.equal(changed.status, 'nochange');
+  assert.equal(changed.status, 'changed');
   assert.equal(changed.inLocalStorage, false);
+
+  const created = {
+    project: 102047,
+    status: 'new',
+    inLocalStorage: true as boolean | undefined,
+    shortName: 'b',
+  };
+  await afterDraftSave(created, {
+    setLocal: async () => {},
+    setCache: async () => {},
+    deleteModels: () => {},
+    removeFromFiles: () => {},
+    resetRenameOrigin: () => {},
+  });
+  assert.equal(created.status, 'new');
+  assert.equal(created.inLocalStorage, false);
 });
 
-test('afterDraftSave resets the origin of a renamed file and returns it to nochange', async () => {
+test('afterDraftSave resets the origin of a renamed file and keeps it renamed', async () => {
   const renamed = {
     project: 102047,
     status: 'renamed',
@@ -653,6 +669,6 @@ test('afterDraftSave resets the origin of a renamed file and returns it to nocha
     resetRenameOrigin: (file) => { calls.push(`resetRenameOrigin:${file.shortName}`); },
   });
   assert.deepEqual(calls, ['resetRenameOrigin:card', 'setLocal:card:null']);
-  assert.equal(renamed.status, 'nochange');
+  assert.equal(renamed.status, 'renamed');
   assert.equal(renamed.inLocalStorage, false);
 });

@@ -11,6 +11,8 @@ export interface IAutoSaveStorFile {
   extension: string;
   status: string;
   hasError: boolean;
+  /** False after a draft send. Absent still counts as local when no CRC can be read. */
+  inLocalStorage?: boolean;
 }
 
 export function buildAutoSaveStorFile(file: IAutoSaveStorFile): IAutoSaveStorFile {
@@ -22,13 +24,17 @@ export function buildAutoSaveStorFile(file: IAutoSaveStorFile): IAutoSaveStorFil
     extension: file.extension,
     status: file.status,
     hasError: file.hasError,
+    inLocalStorage: file.inLocalStorage,
   };
 }
 
 const SOURCE_LEVELS: ReadonlySet<number> = new Set([1, 2, 3]);
 
 /**
- * Site-project files that should go to the draft: l1–l3, dirty, no compile error, unless it is a deletion (nothing is sent but the delete).
+ * Site-project files that should go to the draft: l1–l3, not yet sent, no compile error.
+ * A deletion is always sent (nothing is sent but the delete).
+ * Anything else is pending only when its content CRC differs from the model baseline,
+ * or when that baseline cannot be read and the file is still local.
  * `.defs.ts` and `.test.ts` stay (they are source). `.d.ts` does not.
  */
 export function pendingFiles<T extends IAutoSaveStorFile>(storFiles: readonly T[], projectId: number): T[] {
@@ -36,12 +42,77 @@ export function pendingFiles<T extends IAutoSaveStorFile>(storFiles: readonly T[
   for (const file of storFiles) {
     if (file.project !== projectId) continue;
     if (file.status === 'nochange') continue;
+    if (!stillUnsent(file)) continue;
     if (file.hasError !== false && file.status !== 'deleted') continue;
     if (!SOURCE_LEVELS.has(file.level)) continue;
     if (isDeclaration(file)) continue;
     pending.push(file);
   }
   return pending;
+}
+
+type CrcDrift = 'same' | 'differs' | 'unknown';
+
+interface IBaselineModel {
+  originalCRC?: string;
+  model?: { getValue(): string };
+}
+
+interface IBaselineModels {
+  ts?: IBaselineModel;
+  test?: IBaselineModel;
+  html?: IBaselineModel;
+  style?: IBaselineModel;
+  defs?: IBaselineModel;
+}
+
+/** Sent content matches `originalCRC` (the baseline `moveCrcBaseline` writes). A deletion has no content to compare. */
+function stillUnsent(file: IAutoSaveStorFile): boolean {
+  if (file.status === 'deleted') return true;
+  const drift = crcDrift(file);
+  if (drift === 'differs') return true;
+  if (drift === 'same') return false;
+  return file.inLocalStorage !== false;
+}
+
+function crcDrift(file: IAutoSaveStorFile): CrcDrift {
+  const host = globalThis as {
+    mls?: {
+      editor?: {
+        getKeyModel?: (project: number, shortName: string, folder: string, level: number) => string;
+        models?: Record<string, IBaselineModels | undefined>;
+      };
+      common?: { crc?: { crc32?: (text: string) => number } };
+    };
+  };
+  const getKeyModel = host.mls?.editor?.getKeyModel;
+  const models = host.mls?.editor?.models;
+  const crc32 = host.mls?.common?.crc?.crc32;
+  if (!getKeyModel || !models || !crc32) return 'unknown';
+  let key: string;
+  try {
+    key = getKeyModel(file.project, file.shortName, file.folder, file.level);
+  } catch (err) {
+    console.error('studio auto-save could not read the model key', file.shortName, err);
+    return 'unknown';
+  }
+  const group = models[key];
+  if (!group) return 'unknown';
+  const list = [group.ts, group.test, group.html, group.style, group.defs];
+  let saw = false;
+  for (const model of list) {
+    if (!model?.model) continue;
+    saw = true;
+    let contentCrc: string;
+    try {
+      contentCrc = crc32(model.model.getValue()).toString(16);
+    } catch (err) {
+      console.error('studio auto-save could not read the CRC', file.shortName, err);
+      return 'unknown';
+    }
+    if (model.originalCRC !== contentCrc) return 'differs';
+  }
+  return saw ? 'same' : 'unknown';
 }
 
 export function autosaveMessage(files: readonly IAutoSaveStorFile[]): string {
