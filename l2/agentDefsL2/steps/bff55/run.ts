@@ -113,8 +113,8 @@ export async function bffUnitInputHash(context: D2BffContext): Promise<string> {
 }
 
 export function buildD2BffPrompt(context: D2BffContext, repair?: { diagnostic: string; previous: unknown }): { systemPrompt: string; humanPrompt: string; chars: number } {
-  const humanPrompt = JSON.stringify({ ...unitInput(context), approved: context.approved, repair: repair ?? null });
   const systemPrompt = `${D2_BFF_SYSTEM_PREFIX}\n\n${context.prompt}`;
+  const humanPrompt = JSON.stringify({ ...unitInput(context), approved: context.approved, repair: repair ?? null });
   const chars = systemPrompt.length + humanPrompt.length;
   if (chars > D2_BFF_PROMPT_LIMIT_CHARS) throw new Error(`D2_BFF_PROMPT_LIMIT: ${chars}`);
   return { systemPrompt, humanPrompt, chars };

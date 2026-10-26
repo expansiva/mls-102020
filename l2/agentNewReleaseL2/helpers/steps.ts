@@ -133,8 +133,8 @@ export function materializePrompt(project: number, moduleName: string): string {
   return JSON.stringify({ project, module: moduleName, scope: {} });
 }
 
-export function defsPrompt(project: number, moduleName: string): string {
-  return JSON.stringify({ project, module: moduleName, scope: NR_DEFS_SCOPE });
+export function defsPrompt(project: number, moduleName: string, bffPages: readonly string[]): string {
+  return JSON.stringify({ project, module: moduleName, scope: NR_DEFS_SCOPE, bffPages: [...bffPages] });
 }
 
 export type NrListedFile = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> & {
@@ -157,10 +157,16 @@ function isLiveListed(file: NrListedFile): boolean {
 
 /**
  * Generated files of one page that are in the current project index.
- * Shared `.ts`, shared `Dts.txt`, and `<pageId>.ts` under each device/genome folder that exists.
+ * `<pageId>.ts` under each device/genome folder that exists, always.
+ * Shared `.ts` and shared `Dts.txt` only when `pageId` is in `sharedPages`.
  * A `.defs.ts` is never included.
  */
-export function generatedFilesOf<T extends NrListedFile>(moduleName: string, pageId: string, existing: readonly T[]): T[] {
+export function generatedFilesOf<T extends NrListedFile>(
+  moduleName: string,
+  pageId: string,
+  existing: readonly T[],
+  sharedPages: readonly string[],
+): T[] {
   const web = `${moduleFolder(moduleName)}/web`;
   const slots = new Set<string>();
   for (const file of existing) {
@@ -171,10 +177,11 @@ export function generatedFilesOf<T extends NrListedFile>(moduleName: string, pag
     if (parts.length !== 2 || parts[0] === 'shared' || parts[0] === 'contracts') continue;
     slots.add(`${parts[0]}/${parts[1]}`);
   }
-  const wanted = new Set<string>([
-    `l2/${web}/shared/${pageId}.ts`,
-    `l2/${web}/shared/${pageId}Dts.txt`,
-  ]);
+  const wanted = new Set<string>();
+  if (sharedPages.includes(pageId)) {
+    wanted.add(`l2/${web}/shared/${pageId}.ts`);
+    wanted.add(`l2/${web}/shared/${pageId}Dts.txt`);
+  }
   for (const slot of [...slots].sort()) wanted.add(`l2/${web}/${slot}/${pageId}.ts`);
   const found: T[] = [];
   const seen = new Set<string>();
@@ -194,10 +201,11 @@ export async function deleteGeneratedFiles<T extends NrListedFile>(
   pageIds: readonly string[],
   existing: readonly T[],
   remove: (file: T) => Promise<void>,
+  sharedPages: readonly string[],
 ): Promise<{ ok: true; paths: string[] } | { ok: false; message: string }> {
   const paths: string[] = [];
   for (const pageId of pageIds) {
-    for (const file of generatedFilesOf(moduleName, pageId, existing)) {
+    for (const file of generatedFilesOf(moduleName, pageId, existing, sharedPages)) {
       const path = listedPath(file);
       try {
         await remove(file);
@@ -250,6 +258,8 @@ export interface NrRunPhaseLine {
   phase: NrRunPhase;
   status: 'ok' | 'refused' | 'failed';
   note: string;
+  bffPages?: string[];
+  sharedPages?: string[];
 }
 
 /** `l2/<module>/pipeline/agentNewReleaseL2/run.json` — each write is one host trace line. */
@@ -257,9 +267,19 @@ export function runInfo(moduleName: string): Ns5FileInfo {
   return { ...snapshotInfo(moduleName), shortName: 'run' };
 }
 
-export async function recordPhase(moduleName: string, phase: NrRunPhase, status: NrRunPhaseLine['status'], note: string): Promise<void> {
+export async function recordPhase(
+  moduleName: string,
+  phase: NrRunPhase,
+  status: NrRunPhaseLine['status'],
+  note: string,
+  lists?: { bffPages: readonly string[]; sharedPages: readonly string[] },
+): Promise<void> {
   const info = runInfo(moduleName);
   const line: NrRunPhaseLine = { phase, status, note };
+  if (phase === 'plan' && lists) {
+    line.bffPages = [...lists.bffPages];
+    line.sharedPages = [...lists.sharedPages];
+  }
   if (phase === 'effort-read') {
     await writeJson(info, { phases: [line] });
     return;
@@ -359,7 +379,7 @@ function agentStep(
 }
 
 /** Defs generator first (`scope: all`), then this agent's check step. The check waits on the defs plan id. */
-export function buildRegenerateSteps(project: number, moduleName: string): mls.msg.AIAgentStep[] {
+export function buildRegenerateSteps(project: number, moduleName: string, bffPages: readonly string[]): mls.msg.AIAgentStep[] {
   return [
     {
       ...agentStep(
@@ -367,7 +387,7 @@ export function buildRegenerateSteps(project: number, moduleName: string): mls.m
         NR_DEFS_PLAN,
         [],
         'Regenerate page defs',
-        defsPrompt(project, moduleName),
+        defsPrompt(project, moduleName, bffPages),
       ),
       onFailure: 'continue',
     },

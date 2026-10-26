@@ -88,8 +88,10 @@ export type D2MessageInvocation =
   | { kind: 'refusal'; diagnostic: string };
 
 export type D2StepInvocation =
-  | ({ kind: 'run'; scope: D2Scope } & D2RunIdentity)
+  | ({ kind: 'run'; scope: D2Scope; bffPages?: string[] } & D2RunIdentity)
   | { kind: 'refusal'; diagnostic: string };
+
+const D2_PAGE_ID = /^[a-z][A-Za-z0-9_]*$/u;
 
 const AGENT_PREFIXES = [
   /@@\s*_102020_\/l2\/agentDefsL2/gi,
@@ -143,7 +145,7 @@ export function parseD2StepInvocation(value: string, currentProject = currentD2P
     return { kind: 'refusal', diagnostic: 'agentDefsL2 step args must be an object.' };
   }
   const raw = parsed as Record<string, unknown>;
-  const allowed = new Set(['project', 'module', 'scope']);
+  const allowed = new Set(['project', 'module', 'scope', 'bffPages']);
   const unknown = Object.keys(raw).find(key => !allowed.has(key));
   if (unknown) return { kind: 'refusal', diagnostic: `Unknown step arg: ${unknown}.` };
   const project = typeof raw.project === 'number' ? raw.project : Number.NaN;
@@ -158,7 +160,13 @@ export function parseD2StepInvocation(value: string, currentProject = currentD2P
   if (!moduleTokenOk(module)) {
     return { kind: 'refusal', diagnostic: 'Step module must be lowerCamel and must not contain a path.' };
   }
-  return { kind: 'run', project, module, scope: raw.scope };
+  if (raw.bffPages === undefined) return { kind: 'run', project, module, scope: raw.scope };
+  if (!Array.isArray(raw.bffPages) || raw.bffPages.some(item => typeof item !== 'string' || !D2_PAGE_ID.test(item))) {
+    return { kind: 'refusal', diagnostic: 'bffPages must be a list of page ids.' };
+  }
+  const bffPages = raw.bffPages as string[];
+  if (new Set(bffPages).size !== bffPages.length) return { kind: 'refusal', diagnostic: 'bffPages repeats a page id.' };
+  return { kind: 'run', project, module, scope: raw.scope, bffPages };
 }
 
 export function isD2StepId(value: string): value is D2StepId {
@@ -170,7 +178,7 @@ export function d2StepIdOf(step: mls.msg.AIAgentStep): D2StepId | '' {
   return isD2StepId(planId) ? planId : '';
 }
 
-export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity & { scope: D2Scope }): mls.msg.AIAgentStep {
+export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity & { scope: D2Scope; bffPages?: string[] }): mls.msg.AIAgentStep {
   const dependsOn = stepId === 'finalize80'
     ? [identity.scope === 'pages' ? 'pages50-done' : 'contracts70-done']
     : [...D2_STEP_DEPENDS_ON[stepId]];
@@ -189,7 +197,12 @@ export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity & { 
       : stepId === 'contracts70' ? D2_CONTRACTS70_AGENT_NAME
       : stepId === 'finalize80' ? D2_FINALIZE_AGENT_NAME
       : D2_AGENT_NAME,
-    prompt: JSON.stringify({ project: identity.project, module: identity.module, scope: identity.scope }),
+    prompt: JSON.stringify({
+      project: identity.project,
+      module: identity.module,
+      scope: identity.scope,
+      ...(stepId === 'bff55' && identity.bffPages !== undefined ? { bffPages: identity.bffPages } : {}),
+    }),
     rags: [],
     planning: {
       planId: stepId,
@@ -200,7 +213,7 @@ export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity & { 
   };
 }
 
-export function buildD2PlannedSteps(identity: D2RunIdentity & { scope: D2Scope }): mls.msg.AIAgentStep[] {
+export function buildD2PlannedSteps(identity: D2RunIdentity & { scope: D2Scope; bffPages?: string[] }): mls.msg.AIAgentStep[] {
   const ids = identity.scope === 'pages' ? D2_PAGES_FLOW_STEP_IDS : D2_FLOW_STEP_IDS;
   return ids.map(stepId => createD2AgentStep(stepId, identity));
 }

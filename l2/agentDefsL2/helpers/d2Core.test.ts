@@ -18,6 +18,14 @@ void test('a bare module plans seven stages and /pages plans four', () => {
   assert.deepEqual(pages.map(step => step.planning?.dependsOn), [[], ['entry10-done'], ['input20-done'], ['pages50-done']]);
   assert.ok(full.every(step => JSON.parse(step.prompt || '{}').scope === 'all'));
   assert.ok(pages.every(step => JSON.parse(step.prompt || '{}').scope === 'pages'));
+  assert.ok(full.every(step => !('bffPages' in JSON.parse(step.prompt || '{}'))));
+  const kept = buildD2PlannedSteps({ project: 102047, module: 'sampleModule', scope: 'all', bffPages: ['pageB'] });
+  assert.deepEqual(JSON.parse(kept.find(step => step.planning?.planId === 'bff55')?.prompt || '{}').bffPages, ['pageB']);
+  const none = buildD2PlannedSteps({ project: 102047, module: 'sampleModule', scope: 'all', bffPages: [] });
+  assert.deepEqual(JSON.parse(none.find(step => step.planning?.planId === 'bff55')?.prompt || '{}').bffPages, []);
+  assert.ok(kept.filter(step => step.planning?.planId !== 'bff55').every(step => !('bffPages' in JSON.parse(step.prompt || '{}'))));
+  assert.deepEqual(parseD2StepInvocation('{"project":102047,"module":"sampleModule","scope":"all","bffPages":["pageB"]}', 102047), { kind: 'run', project: 102047, module: 'sampleModule', scope: 'all', bffPages: ['pageB'] });
+  assert.equal(parseD2StepInvocation('{"project":102047,"module":"sampleModule","scope":"all","bffPages":["Bad"]}', 102047).kind, 'refusal');
   assert.match(D2_HELP, /entry10, input20, pages50, bff55, shared60, contracts70 and finalize80/u);
   for (const command of ['@@agentDefsL2 sampleModule /candidate', '@@agentDefsL2 sampleModule /other', '@@agentDefsL2 ../bad']) {
     assert.equal(parseD2MessageInvocation(command, 102047).kind, 'refusal');

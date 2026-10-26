@@ -40,6 +40,8 @@ test('R1 only materializes the named page and ignores the other master', () => {
     pages: ['minhas_tarefas'],
     materializeOnly: [],
     commands: [],
+    sharedPages: [],
+    bffPages: [],
   });
 });
 
@@ -50,6 +52,8 @@ test('pages stay in first-seen order without repetition', () => {
     pages: ['segunda', 'primeira'],
     materializeOnly: [],
     commands: [],
+    sharedPages: [],
+    bffPages: [],
   });
 });
 
@@ -66,6 +70,8 @@ test('R3 regenerateDefs of contract and shared rebuilds those pages', () => {
     pages: ['minhas_tarefas', 'inicio'],
     materializeOnly: [],
     commands: [],
+    sharedPages: ['minhas_tarefas', 'inicio'],
+    bffPages: ['minhas_tarefas'],
   });
 });
 
@@ -81,6 +87,8 @@ test('R4 contract change rebuilds the cited page', () => {
     pages: ['tarefas_equipe'],
     materializeOnly: [],
     commands: [],
+    sharedPages: [],
+    bffPages: [],
   });
 });
 
@@ -100,6 +108,8 @@ test('R1 and R4 in one file keep the materialize-only page beside the rebuild', 
     pages: ['tarefas_equipe'],
     materializeOnly: ['minhas_tarefas'],
     commands: [],
+    sharedPages: [],
+    bffPages: [],
   });
 });
 
@@ -125,6 +135,8 @@ test('R1 materializes this master when the client project is a different number'
       pages: ['minhas_tarefas'],
       materializeOnly: [],
       commands: [],
+    sharedPages: [],
+    bffPages: [],
     });
   } finally {
     mls.actualProject = previous;
@@ -188,6 +200,8 @@ test('a text field with runAgents is accepted and the command is returned once',
     pages: ['minhas_tarefas', 'tarefas_equipe'],
     materializeOnly: [],
     commands: [LANG_COMMAND],
+    sharedPages: [],
+    bffPages: [],
   });
 });
 
@@ -217,7 +231,44 @@ test('the same command on two answers of this master is returned once, in answer
     pages: ['minhas_tarefas'],
     materializeOnly: [],
     commands: [LANG_COMMAND, '@@agentAddLanguage [{"languages":[{"code":"en","name":"en"}]}]'],
+    sharedPages: [],
+    bffPages: [],
   });
+});
+
+test('M1B pages: contract is in bffPages, page plus shared without contract is not', () => {
+  const effort = fixture('r1') as EffortFile;
+  const answer = effort.perItem[0].answers.find(row => row.master.project === MASTER);
+  if (!answer) throw new Error('missing master answer');
+  answer.materialize = [];
+  answer.regenerateDefs = [
+    { kind: 'page', id: 'tarefas_equipe', path: 'l2/tarefas/web/shared/tarefas_equipe.defs.ts' },
+    { kind: 'shared', id: 'tarefas_equipe', path: 'l2/tarefas/web/shared/tarefas_equipe.defs.ts' },
+    { kind: 'page', id: 'minhas_tarefas', path: 'l2/tarefas/web/shared/minhas_tarefas.defs.ts' },
+    { kind: 'contract', id: 'minhas_tarefas', path: 'l2/tarefas/web/contracts/minhas_tarefas.defs.ts' },
+  ];
+  const plan = planNewReleaseL2(retie(effort), MASTER);
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.bffPages.includes('tarefas_equipe'), false);
+  assert.deepEqual(plan.bffPages, ['minhas_tarefas']);
+  assert.deepEqual(plan.sharedPages, ['tarefas_equipe', 'minhas_tarefas']);
+});
+
+test('a created page is in bffPages and shared in materialize is in sharedPages', () => {
+  const effort = fixture('r1') as EffortFile;
+  const answer = effort.perItem[0].answers.find(row => row.master.project === MASTER);
+  if (!answer) throw new Error('missing master answer');
+  answer.create = [{ kind: 'page', id: 'nova', path: 'l2/tarefas/web/contracts/nova.defs.ts' }];
+  answer.materialize = [
+    { kind: 'page', id: 'tarefas_equipe', path: 'l2/tarefas/web/contracts/tarefas_equipe.defs.ts' },
+    { kind: 'shared', id: 'tarefas_equipe', path: 'l2/tarefas/web/shared/tarefas_equipe.defs.ts' },
+  ];
+  const plan = planNewReleaseL2(retie(effort), MASTER);
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.deepEqual(plan.bffPages, ['nova']);
+  assert.deepEqual(plan.sharedPages, ['tarefas_equipe']);
 });
 
 test('invalid file refuses with the gate reason', () => {

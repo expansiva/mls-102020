@@ -154,14 +154,12 @@ test('R1 deletes only the generated files of minhas_tarefas and never a defs fil
     const removed: string[] = [];
     const result = await deleteGeneratedFiles('tarefas', releasePages(plan.pages, plan.materializeOnly), files, async (file) => {
       removed.push(`${file.folder}/${file.shortName}${file.extension}`);
-    });
+    }, plan.sharedPages);
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.deepEqual(removed, [
       `${web}/desktop/page11/minhas_tarefas.ts`,
       `${web}/mobile/page11/minhas_tarefas.ts`,
-      `${web}/shared/minhas_tarefas.ts`,
-      `${web}/shared/minhas_tarefasDts.txt`,
     ]);
     assert.deepEqual(result.paths, removed.map(path => `l2/${path}`));
     assert.equal(removed.some(path => path.endsWith('.defs.ts')), false);
@@ -172,18 +170,142 @@ test('R1 deletes only the generated files of minhas_tarefas and never a defs fil
   }
 });
 
+test('M3 tarefas_equipe materialize without shared deletes both page11 files and keeps shared', async () => {
+  const previous = mls.actualProject;
+  mls.actualProject = 102047;
+  try {
+    const effort = fixture('r1') as {
+      perItem: Array<{ answers: Array<{ master: { project: string }; materialize: Array<{ kind: string; id: string; path: string }> }> }>;
+      merged: unknown;
+    };
+    const answer = effort.perItem[0].answers.find(row => row.master.project === '102020');
+    if (!answer) throw new Error('missing master answer');
+    answer.materialize = [
+      { kind: 'page', id: 'tarefas_equipe', path: 'l2/tarefas/web/contracts/tarefas_equipe.defs.ts' },
+    ];
+    effort.merged = mergeChangeEffort(effort.perItem as never);
+    const plan = planNewReleaseL2(effort, '102020');
+    assert.equal(plan.ok, true);
+    if (!plan.ok) return;
+    assert.deepEqual(plan.sharedPages, []);
+    const web = 'tarefas/web';
+    const files: NrListedFile[] = [
+      listed(`${web}/shared`, 'tarefas_equipe', '.ts'),
+      listed(`${web}/shared`, 'tarefas_equipeDts', '.txt'),
+      listed(`${web}/desktop/page11`, 'tarefas_equipe', '.ts'),
+      listed(`${web}/mobile/page11`, 'tarefas_equipe', '.ts'),
+    ];
+    const removed: string[] = [];
+    const result = await deleteGeneratedFiles('tarefas', releasePages(plan.pages, plan.materializeOnly), files, async (file) => {
+      removed.push(`${file.folder}/${file.shortName}${file.extension}`);
+    }, plan.sharedPages);
+    assert.equal(result.ok, true);
+    assert.deepEqual(removed, [
+      `${web}/desktop/page11/tarefas_equipe.ts`,
+      `${web}/mobile/page11/tarefas_equipe.ts`,
+    ]);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('shared named in regenerateDefs deletes the two page11 files and the shared pair', async () => {
+  const previous = mls.actualProject;
+  mls.actualProject = 102047;
+  try {
+    const effort = fixture('r3') as {
+      perItem: Array<{ answers: Array<{ regenerateDefs: Array<{ kind: string; id: string; path: string }> }> }>;
+      merged: unknown;
+      status: string;
+    };
+    effort.perItem[0].answers[0].regenerateDefs = [
+      { kind: 'shared', id: 'tarefas_equipe', path: 'l2/tarefas/web/shared/tarefas_equipe.defs.ts' },
+      { kind: 'page', id: 'tarefas_equipe', path: 'l2/tarefas/web/shared/tarefas_equipe.defs.ts' },
+    ];
+    effort.merged = mergeChangeEffort(effort.perItem as never);
+    effort.status = 'simple';
+    const plan = planNewReleaseL2(effort, '102020');
+    assert.equal(plan.ok, true);
+    if (!plan.ok) return;
+    assert.deepEqual(plan.sharedPages, ['tarefas_equipe']);
+    const web = 'tarefas/web';
+    const files: NrListedFile[] = [
+      listed(`${web}/shared`, 'tarefas_equipe', '.ts'),
+      listed(`${web}/shared`, 'tarefas_equipeDts', '.txt'),
+      listed(`${web}/desktop/page11`, 'tarefas_equipe', '.ts'),
+      listed(`${web}/mobile/page11`, 'tarefas_equipe', '.ts'),
+      listed(`${web}/desktop/page11`, 'tarefas_equipe', '.defs.ts'),
+    ];
+    const removed: string[] = [];
+    const result = await deleteGeneratedFiles('tarefas', plan.pages, files, async (file) => {
+      removed.push(`${file.folder}/${file.shortName}${file.extension}`);
+    }, plan.sharedPages);
+    assert.equal(result.ok, true);
+    assert.deepEqual(removed, [
+      `${web}/desktop/page11/tarefas_equipe.ts`,
+      `${web}/mobile/page11/tarefas_equipe.ts`,
+      `${web}/shared/tarefas_equipe.ts`,
+      `${web}/shared/tarefas_equipeDts.txt`,
+    ]);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('page plus contract in regenerateDefs deletes the shared pair', async () => {
+  const previous = mls.actualProject;
+  mls.actualProject = 102047;
+  try {
+    const effort = fixture('r3') as {
+      perItem: Array<{ answers: Array<{ regenerateDefs: Array<{ kind: string; id: string; path: string }> }> }>;
+      merged: unknown;
+      status: string;
+    };
+    effort.perItem[0].answers[0].regenerateDefs = [
+      { kind: 'page', id: 'tarefas_equipe', path: 'l2/tarefas/web/shared/tarefas_equipe.defs.ts' },
+      { kind: 'contract', id: 'tarefas_equipe', path: 'l2/tarefas/web/contracts/tarefas_equipe.defs.ts' },
+    ];
+    effort.merged = mergeChangeEffort(effort.perItem as never);
+    effort.status = 'simple';
+    const plan = planNewReleaseL2(effort, '102020');
+    assert.equal(plan.ok, true);
+    if (!plan.ok) return;
+    assert.deepEqual(plan.sharedPages, ['tarefas_equipe']);
+    const web = 'tarefas/web';
+    const files: NrListedFile[] = [
+      listed(`${web}/shared`, 'tarefas_equipe', '.ts'),
+      listed(`${web}/shared`, 'tarefas_equipeDts', '.txt'),
+      listed(`${web}/desktop/page11`, 'tarefas_equipe', '.ts'),
+      listed(`${web}/mobile/page11`, 'tarefas_equipe', '.ts'),
+    ];
+    const removed: string[] = [];
+    const result = await deleteGeneratedFiles('tarefas', plan.pages, files, async (file) => {
+      removed.push(`${file.folder}/${file.shortName}${file.extension}`);
+    }, plan.sharedPages);
+    assert.equal(result.ok, true);
+    assert.deepEqual(removed, [
+      `${web}/desktop/page11/tarefas_equipe.ts`,
+      `${web}/mobile/page11/tarefas_equipe.ts`,
+      `${web}/shared/tarefas_equipe.ts`,
+      `${web}/shared/tarefas_equipeDts.txt`,
+    ]);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
 test('a delete failure names the path and does not build the materializer step', async () => {
   const previous = mls.actualProject;
   mls.actualProject = 102047;
   try {
-    const files = [listed('tarefas/web/shared', 'minhas_tarefas', '.ts')];
+    const files = [listed('tarefas/web/desktop/page11', 'minhas_tarefas', '.ts')];
     const result = await deleteGeneratedFiles('tarefas', ['minhas_tarefas'], files, async () => {
       throw new Error('disk full');
-    });
+    }, []);
     assert.equal(result.ok, false);
     if (result.ok) return;
-    assert.match(result.message, /l2\/tarefas\/web\/shared\/minhas_tarefas\.ts/u);
-    assert.equal(generatedFilesOf('tarefas', 'minhas_tarefas', files).length, 1);
+    assert.match(result.message, /l2\/tarefas\/web\/desktop\/page11\/minhas_tarefas\.ts/u);
+    assert.equal(generatedFilesOf('tarefas', 'minhas_tarefas', files, []).length, 1);
   } finally {
     mls.actualProject = previous;
   }
@@ -191,10 +313,10 @@ test('a delete failure names the path and does not build the materializer step',
 
 test('regenerate adds the defs generator with scope all, and the check waits on it', () => {
   const project = currentProjectNumber();
-  const [defs, check] = buildRegenerateSteps(project, 'alpha');
+  const [defs, check] = buildRegenerateSteps(project, 'alpha', ['beta']);
   assert.equal(defs.agentName, NR_DEFS_AGENT);
   assert.equal(defs.planning?.planId, NR_DEFS_PLAN);
-  assert.deepEqual(JSON.parse(defs.prompt || ''), { project, module: 'alpha', scope: NR_DEFS_SCOPE });
+  assert.deepEqual(JSON.parse(defs.prompt || ''), { project, module: 'alpha', scope: NR_DEFS_SCOPE, bffPages: ['beta'] });
   assert.equal(check.agentName, NR_AGENT_NAME);
   assert.equal(check.planning?.planId, NR_CHECK_PLAN);
   assert.deepEqual(check.planning?.dependsOn, [NR_DEFS_PLAN]);
@@ -396,7 +518,7 @@ test('a second run on the same module keeps only that run in run.json', async ()
     const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
     assert.deepEqual(log.phases, [
       { phase: 'effort-read', status: 'ok', note: 'read' },
-      { phase: 'plan', status: 'ok', note: 'regenerate tarefas_equipe' },
+      { phase: 'plan', status: 'ok', note: 'regenerate tarefas_equipe', bffPages: [], sharedPages: [] },
       { phase: 'marks', status: 'refused', note: expected },
     ]);
   } finally {
@@ -443,6 +565,49 @@ test('materialize records the returned command and the close step carries it', a
     assert.deepEqual(commandLines(close.step.prompt || ''), [FIELD_COMMAND]);
     const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
     assert.equal(log.phases.find(line => line.phase === 'steps')?.note, stepsPhaseNote(2, [FIELD_COMMAND]));
+    const planLine = log.phases.find(line => line.phase === 'plan');
+    assert.deepEqual(planLine?.bffPages, []);
+    assert.deepEqual(planLine?.sharedPages, []);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('the defs step carries bffPages and the plan phase records both lists', async () => {
+  const previous = mls.actualProject;
+  installRunStor(102047);
+  const effort = fixture('r3') as {
+    perItem: Array<{ answers: Array<{ regenerateDefs: Array<{ kind: string; id: string; path: string }> }> }>;
+    merged: unknown;
+  };
+  effort.perItem[0].answers[0].regenerateDefs = [
+    { kind: 'page', id: 'tarefas_equipe', path: 'l2/tarefas/web/shared/tarefas_equipe.defs.ts' },
+    { kind: 'shared', id: 'tarefas_equipe', path: 'l2/tarefas/web/shared/tarefas_equipe.defs.ts' },
+    { kind: 'page', id: 'minhas_tarefas', path: 'l2/tarefas/web/shared/minhas_tarefas.defs.ts' },
+    { kind: 'contract', id: 'minhas_tarefas', path: 'l2/tarefas/web/contracts/minhas_tarefas.defs.ts' },
+  ];
+  effort.merged = mergeChangeEffort(effort.perItem as never);
+  plantJson(changeEffortInfo('tarefas'), JSON.stringify(effort));
+  plantJson(poolEffortInfo('tarefas'), JSON.stringify({
+    screens: [
+      { pageId: 'tarefas_equipe', status: 'toUpdate' },
+      { pageId: 'minhas_tarefas', status: 'toUpdate' },
+    ],
+  }));
+  plantJson(runInfo('tarefas'), '{}\n');
+  plantJson(snapshotInfo('tarefas'), '{}\n');
+  try {
+    const agent = createAgent();
+    const intents = await agent.beforePromptImplicit(agent, {
+      message: { threadId: 'thread-bff', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    } as mls.msg.ExecutionContext, '@@agentNewReleaseL2 tarefas');
+    const defs = intents.find(intent => intent.type === 'add-step' && intent.step.agentName === NR_DEFS_AGENT);
+    if (defs?.type !== 'add-step') assert.fail('missing defs step');
+    assert.deepEqual(JSON.parse(defs.step.prompt || '').bffPages, ['minhas_tarefas']);
+    const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
+    const planLine = log.phases.find(line => line.phase === 'plan');
+    assert.deepEqual(planLine?.bffPages, ['minhas_tarefas']);
+    assert.deepEqual(planLine?.sharedPages, ['tarefas_equipe', 'minhas_tarefas']);
   } finally {
     mls.actualProject = previous;
   }
@@ -533,7 +698,7 @@ test('the generator check hangs the materializer and the close step on the open 
   const previous = mls.actualProject;
   installRunStor(102047);
   plantJson(snapshotInfo('tarefas'), '{}\n');
-  const [defs, check] = buildRegenerateSteps(102047, 'tarefas');
+  const [defs, check] = buildRegenerateSteps(102047, 'tarefas', ['minhas_tarefas']);
   defs.status = 'completed';
   defs.interaction = { input: [], cost: 0, trace: ['defs written'], payload: null };
   const { context, root, check: running } = conferenceTree(defs, check, {
@@ -592,7 +757,7 @@ test('an outside path closes the check with the motive and adds no child', async
   const previous = mls.actualProject;
   installRunStor(102047);
   plantJson(snapshotInfo('tarefas'), JSON.stringify({ 'l2/tarefas/web/shared/other.defs.ts': 'abc' }));
-  const [defs, check] = buildRegenerateSteps(102047, 'tarefas');
+  const [defs, check] = buildRegenerateSteps(102047, 'tarefas', ['minhas_tarefas']);
   defs.status = 'completed';
   defs.interaction = { input: [], cost: 0, trace: ['defs written'], payload: null };
   const { context, root, check: running } = conferenceTree(defs, check, {

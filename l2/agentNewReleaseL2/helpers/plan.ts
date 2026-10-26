@@ -6,7 +6,17 @@ import { EFFORT_UNIT_KINDS, type EffortAnswer, type EffortUnitRef } from '/_1020
 export type NewReleaseL2Mode = 'materialize' | 'regenerate';
 
 export type NewReleaseL2Plan =
-  | { ok: true; mode: NewReleaseL2Mode; pages: string[]; materializeOnly: string[]; commands: string[] }
+  | {
+    ok: true;
+    mode: NewReleaseL2Mode;
+    pages: string[];
+    materializeOnly: string[];
+    commands: string[];
+    /** Pages with `shared` in `regenerateDefs` or `materialize`, or `contract` in `regenerateDefs`. */
+    sharedPages: string[];
+    /** Pages with `contract` in `regenerateDefs`, plus pages in `create`. */
+    bffPages: string[];
+  }
   | { ok: false; reason: string };
 
 const PAGE_KIND = EFFORT_UNIT_KINDS.find(kind => kind === 'page');
@@ -31,6 +41,22 @@ function addCommand(commands: string[], seen: Set<string>, command: string): voi
   if (!command || seen.has(command)) return;
   seen.add(command);
   commands.push(command);
+}
+
+function collectNamedPages(answer: EffortAnswer, sharedPages: string[], seenShared: Set<string>, bffPages: string[], seenBff: Set<string>): void {
+  for (const unit of answer.regenerateDefs) {
+    if (unit.kind === 'shared') addPage(sharedPages, seenShared, unit.id);
+    if (unit.kind === 'contract') {
+      addPage(bffPages, seenBff, unit.id);
+      addPage(sharedPages, seenShared, unit.id);
+    }
+  }
+  for (const unit of answer.materialize) {
+    if (unit.kind === 'shared') addPage(sharedPages, seenShared, unit.id);
+  }
+  for (const unit of answer.create) {
+    if (unit.kind === PAGE_KIND) addPage(bffPages, seenBff, unit.id);
+  }
 }
 
 function citesDefs(answer: EffortAnswer): boolean {
@@ -66,6 +92,10 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
   const seenRegenerate = new Set<string>();
   const commands: string[] = [];
   const seenCommands = new Set<string>();
+  const sharedPages: string[] = [];
+  const seenShared = new Set<string>();
+  const bffPages: string[] = [];
+  const seenBff = new Set<string>();
   let rebuild = false;
   let sawMaster = false;
   for (const row of checked.file.perItem) {
@@ -73,6 +103,7 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
       if (answer.master.project !== masterProject) continue;
       sawMaster = true;
       for (const agent of answer.runAgents) addCommand(commands, seenCommands, agent.command);
+      collectNamedPages(answer, sharedPages, seenShared, bffPages, seenBff);
       for (const reason of outOfStep(answer)) blocks.push(`${answer.item} ${reason}`);
       if (citesDefs(answer)) {
         rebuild = true;
@@ -90,5 +121,5 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
   const pages = rebuild ? regenerate : materialize;
   if (pages.length === 0) return { ok: false, reason: 'nothing to apply' };
   const materializeOnly = rebuild ? materialize.filter(id => !seenRegenerate.has(id)) : [];
-  return { ok: true, mode: rebuild ? 'regenerate' : 'materialize', pages, materializeOnly, commands };
+  return { ok: true, mode: rebuild ? 'regenerate' : 'materialize', pages, materializeOnly, commands, sharedPages, bffPages };
 }

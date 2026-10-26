@@ -75,11 +75,14 @@ async function beforePromptImplicit(
     phase = 'plan';
     const plan = planNewReleaseL2(loaded.effort, String(agent.agentProject));
     if (!plan.ok) return refuse(agent, context, moduleName, phase, plan.reason);
-    await recordPhase(moduleName, phase, 'ok', `${plan.mode} ${plan.pages.join(',')}`);
+    await recordPhase(moduleName, phase, 'ok', `${plan.mode} ${plan.pages.join(',')}`, {
+      bffPages: plan.bffPages,
+      sharedPages: plan.sharedPages,
+    });
 
     if (plan.mode === 'materialize') {
       phase = 'steps';
-      const prepared = await prepareMaterialize(project, moduleName, plan.pages, plan.materializeOnly, plan.commands);
+      const prepared = await prepareMaterialize(project, moduleName, plan.pages, plan.materializeOnly, plan.commands, plan.sharedPages);
       if (!prepared.ok) return refuse(agent, context, moduleName, phase, prepared.message);
       await recordPhase(moduleName, phase, 'ok', stepsPhaseNote(prepared.steps.length, plan.commands));
       const steps = prepared.steps.map(step => addStepIntent(context, step, 1, false));
@@ -97,13 +100,14 @@ async function beforePromptImplicit(
     await recordPhase(moduleName, phase, 'ok', 'written');
 
     phase = 'steps';
-    const built = buildRegenerateSteps(project, moduleName);
+    const built = buildRegenerateSteps(project, moduleName, plan.bffPages);
     await recordPhase(moduleName, phase, 'ok', stepsPhaseNote(built.length, plan.commands));
     const steps = built.map(step => addStepIntent(context, step, 1, false));
     return [openMessage(agent, context, moduleName, project, {
       nrPages: plan.pages.join(','),
       nrMaterializeOnly: plan.materializeOnly.join(','),
       nrCommands: JSON.stringify(plan.commands),
+      nrSharedPages: plan.sharedPages.join(','),
     }), ...steps];
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : String(error);
@@ -151,6 +155,7 @@ async function reviewCheck(
   const moduleName = String(memory?.moduleName || '');
   const pages = String(memory?.nrPages || '').split(',').map(id => id.trim()).filter(Boolean);
   const materializeOnly = String(memory?.nrMaterializeOnly || '').split(',').map(id => id.trim()).filter(Boolean);
+  const sharedPages = String(memory?.nrSharedPages || '').split(',').map(id => id.trim()).filter(Boolean);
   const commands = commandsFromMemory(memory?.nrCommands);
   const defs = getAllSteps(context.task?.iaCompressed?.nextSteps).find(item => planIdOf(item) === NR_DEFS_PLAN);
   const defsResult = defsOutcome(defs);
@@ -163,7 +168,7 @@ async function reviewCheck(
     return [updateStatus(context, parentStep, step, hookSequential, review.status, review.message)];
   }
   const project = currentProjectNumber();
-  const prepared = await prepareMaterialize(project, moduleName, pages, materializeOnly, commands);
+  const prepared = await prepareMaterialize(project, moduleName, pages, materializeOnly, commands, sharedPages);
   if (!prepared.ok) {
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', prepared.message)];
   }
@@ -194,8 +199,9 @@ async function prepareMaterialize(
   pages: readonly string[],
   materializeOnly: readonly string[],
   commands: readonly string[],
+  sharedPages: readonly string[],
 ): Promise<{ ok: true; steps: mls.msg.AIAgentStep[] } | { ok: false; message: string }> {
-  const removed = await deleteGeneratedFiles(moduleName, releasePages(pages, materializeOnly), currentStorFiles(), deleteFile);
+  const removed = await deleteGeneratedFiles(moduleName, releasePages(pages, materializeOnly), currentStorFiles(), deleteFile, sharedPages);
   if (!removed.ok) return removed;
   return { ok: true, steps: buildApplySteps(project, moduleName, removed.paths, commands) };
 }
