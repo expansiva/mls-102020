@@ -297,12 +297,15 @@ function citesQuotedId(text: string, id: string): boolean {
   return new RegExp(`['"]${escaped}['"]`, 'u').test(text);
 }
 
-/** Text when every differing key of `before`/`after` is `title` or `description`. Any other key, or a value that is not a record, is a real change. */
+/** Prose on a journey or a step, beyond `L4_TEXT_ATTRIBUTES`. Local to this master. */
+const JOURNEY_TEXT_KEYS = ['goal', 'outcome'] as const;
+
+/** Text when every differing key of `before`/`after` is `title`, `description`, `goal` or `outcome`. Any other key, or a value that is not a record, is a real change. */
 function textOnlyKeys(item: EffortInput['item']): boolean {
   const before = fieldRecord(item.before);
   const after = fieldRecord(item.after);
   if (!before || !after) return false;
-  const textKeys = new Set<string>(L4_TEXT_ATTRIBUTES);
+  const textKeys = new Set<string>([...L4_TEXT_ATTRIBUTES, ...JOURNEY_TEXT_KEYS]);
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
     if (sameJson(before[key], after[key])) continue;
     if (!textKeys.has(key)) return false;
@@ -372,10 +375,77 @@ function removedAnswer(input: EffortInput, contracts: Record<string, string>, sh
   return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs);
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. Text-only on any other kind is an empty computed answer. */
+/** A whole double-quoted token. A shorter id does not match a longer one. */
+function citesDoubleQuoted(text: string, id: string): boolean {
+  if (!id) return false;
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`"${escaped}"`, 'u').test(text);
+}
+
+/** `"<journeyId>/` in shared source. The id is whole: the next character is the slash. */
+function citesJourney(text: string, journeyId: string): boolean {
+  if (!journeyId) return false;
+  const escaped = journeyId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`"${escaped}/`, 'u').test(text);
+}
+
+function sharedPageIds(shared: Record<string, string>, cites: (text: string) => boolean): string[] {
+  const pages: string[] = [];
+  for (const pageId of Object.keys(shared).sort()) {
+    if (cites(shared[pageId] ?? '')) pages.push(pageId);
+  }
+  return pages;
+}
+
+function stepAct(item: EffortInput['item']): boolean {
+  const after = fieldRecord(item.after);
+  return after?.kind === 'act';
+}
+
+/**
+ * Journey and step, except a new journey (that one asks the model).
+ * Citation is a double-quoted step in shared source. A new step whose journey is absent from every shared returns empty.
+ */
+function journeyAnswer(input: EffortInput, shared: Record<string, string>): EffortAnswer | undefined {
+  const kind = input.item.kind;
+  if (kind !== 'journey' && kind !== 'step') return undefined;
+  const changeId = input.item.changeId;
+  const op = input.item.op;
+  if (kind === 'journey' && op === 'added') return undefined;
+  const prefix = kind === 'journey' ? 'journey:' : 'step:';
+  const rest = changeId.startsWith(prefix) ? changeId.slice(prefix.length) : '';
+  const slash = rest.indexOf('/');
+  const journeyId = kind === 'journey' ? rest : rest.slice(0, slash);
+  const stepId = kind === 'step' && slash > 0 ? rest.slice(slash + 1) : '';
+  if (!journeyId || (kind === 'step' && !stepId)) {
+    return answer(input, [], `v1 computes only rule changed; ${kind} ${op} is not handled`);
+  }
+  if (kind === 'journey' && op === 'changed' && textOnlyKeys(input.item)) return answer(input, []);
+  const stepToken = `${journeyId}/${stepId}`;
+  const journeyKnown = Object.values(shared).some(text => citesJourney(text, journeyId));
+  if (kind === 'step' && op === 'added' && !journeyKnown) return answer(input, []);
+  const citeStep = kind === 'step' && op !== 'added';
+  const pages = sharedPageIds(shared, text => citeStep ? citesDoubleQuoted(text, stepToken) : citesJourney(text, journeyId));
+  const textStep = kind === 'step' && op === 'changed' && textOnlyKeys(input.item);
+  const withContract = (kind === 'journey' && op === 'removed') || (kind === 'step' && op === 'added');
+  const contract = withContract && (kind === 'journey' || stepAct(input.item)) ? 'change' : 'keep';
+  const regenerateDefs: EffortUnitRef[] = [];
+  if (!textStep) {
+    for (const pageId of pages) {
+      regenerateDefs.push(pageUnit(input.module, pageId));
+      if (withContract) regenerateDefs.push({ kind: 'contract', id: pageId, path: contractPath(input.module, pageId) });
+      regenerateDefs.push({ kind: 'shared', id: pageId, path: sharedPath(input.module, pageId) });
+    }
+  }
+  return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs, [], contract);
+}
+
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. Text-only on any other kind is an empty computed answer. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (input.item.kind === 'grant') return grantAnswer(input, contracts, sources?.shared ?? {});
   if (input.item.kind === 'field' && isTextOnlyChange(input.item)) return textAnswer(input, sources);
+  const journey = journeyAnswer(input, sources?.shared ?? {});
+  if (journey) return journey;
   if (input.item.op === 'changed' && input.item.kind !== 'rule' && input.item.kind !== 'field' && textOnlyKeys(input.item)) {
     return answer(input, []);
   }

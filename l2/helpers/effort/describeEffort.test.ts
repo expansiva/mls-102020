@@ -669,6 +669,78 @@ void test('field classes on the tarefas contracts', () => {
   assert.deepEqual(none.regenerateDefs, []);
 });
 
+function journeyItem(
+  changeId: string,
+  kind: 'journey' | 'step',
+  op: 'added' | 'changed' | 'removed',
+  before?: Record<string, unknown>,
+  after?: Record<string, unknown>,
+): EffortInput {
+  return {
+    module: 'tarefas',
+    base: { baseId: 'mls-102047', revisionId: '537525a4' },
+    item: { changeId, kind, op, entity: '', source: 'l4/tarefas/journeys/criarTarefa.defs.ts', before, after },
+  };
+}
+
+const JOURNEY = { actorRef: 'membro', title: 'Create', goal: 'File a task', entry: 'start', outcome: { statement: 'Filed', evidence: 'row' } };
+const STEP = { journeyId: 'criarTarefa', stepId: 'preencherTarefa', kind: 'act', entity: 'Tarefa', effect: 'create', title: 'Fill', description: 'Fill the task' };
+
+void test('journey and step classes cite shared steps and leave a new journey to its own item', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const shared = defsIn(TAREFAS_SHARED);
+  const sources = { shared };
+
+  const textJourney = describeEffortFrom(journeyItem('journey:criarTarefa', 'journey', 'changed', JOURNEY, { ...JOURNEY, title: 'New', goal: 'Other', outcome: { statement: 'Done' } }), pages, sources);
+  assert.equal(textJourney.status, 'computed');
+  assert.equal(textJourney.contract, 'keep');
+  assert.deepEqual(textJourney.materialize, []);
+  assert.deepEqual(textJourney.regenerateDefs, []);
+
+  const removedStep = describeEffortFrom(journeyItem('step:criarTarefa/preencherTarefa', 'step', 'removed', STEP), pages, sources);
+  assert.equal(removedStep.status, 'computed');
+  assert.equal(removedStep.contract, 'keep');
+  assert.deepEqual(removedStep.regenerateDefs, [pageUnit('minhas_tarefas'), sharedUnit('minhas_tarefas')]);
+  assert.deepEqual(removedStep.materialize, [pageUnit('minhas_tarefas')]);
+
+  const removedJourney = describeEffortFrom(journeyItem('journey:criarTarefa', 'journey', 'removed', JOURNEY), pages, sources);
+  assert.equal(removedJourney.status, 'computed');
+  assert.equal(removedJourney.contract, 'change');
+  assert.deepEqual(removedJourney.regenerateDefs, [pageUnit('minhas_tarefas'), contractUnit('minhas_tarefas'), sharedUnit('minhas_tarefas')]);
+  assert.deepEqual(removedJourney.materialize, [pageUnit('minhas_tarefas')]);
+
+  const newJourneyStep = describeEffortFrom(journeyItem('step:jornadaNova/abrir', 'step', 'added', undefined, { ...STEP, journeyId: 'jornadaNova', stepId: 'abrir', kind: 'act' }), pages, sources);
+  assert.equal(newJourneyStep.status, 'computed');
+  assert.deepEqual(newJourneyStep.materialize, []);
+  assert.deepEqual(newJourneyStep.regenerateDefs, []);
+
+  const daily = describeEffortFrom(journeyItem('journey:resumoDiario', 'journey', 'changed', JOURNEY, { ...JOURNEY, entry: 'later' }), pages, sources);
+  assert.equal(daily.status, 'computed');
+  assert.equal(daily.contract, 'keep');
+  assert.deepEqual(daily.regenerateDefs, [
+    pageUnit('inicio'), sharedUnit('inicio'),
+    pageUnit('minhas_tarefas'), sharedUnit('minhas_tarefas'),
+  ]);
+  assert.deepEqual(daily.materialize, [pageUnit('inicio'), pageUnit('minhas_tarefas')]);
+
+  const textStep = describeEffortFrom(journeyItem('step:resumoDiario/lerResumo', 'step', 'changed', { ...STEP, journeyId: 'resumoDiario', stepId: 'lerResumo' }, { ...STEP, journeyId: 'resumoDiario', stepId: 'lerResumo', title: 'Read' }), pages, sources);
+  assert.equal(textStep.contract, 'keep');
+  assert.deepEqual(textStep.regenerateDefs, []);
+  assert.deepEqual(textStep.materialize, [pageUnit('inicio'), pageUnit('minhas_tarefas')]);
+
+  const addedAct = describeEffortFrom(journeyItem('step:criarTarefa/novo', 'step', 'added', undefined, { ...STEP, stepId: 'novo', kind: 'act' }), pages, sources);
+  assert.equal(addedAct.contract, 'change');
+  assert.deepEqual(addedAct.regenerateDefs, [pageUnit('minhas_tarefas'), contractUnit('minhas_tarefas'), sharedUnit('minhas_tarefas')]);
+
+  const addedRead = describeEffortFrom(journeyItem('step:criarTarefa/ver', 'step', 'added', undefined, { ...STEP, stepId: 'ver', kind: 'read' }), pages, sources);
+  assert.equal(addedRead.contract, 'keep');
+  assert.deepEqual(addedRead.regenerateDefs, [pageUnit('minhas_tarefas'), contractUnit('minhas_tarefas'), sharedUnit('minhas_tarefas')]);
+
+  const rule = describeEffortFrom(removed('rule:resumoDiarioOitoHoras'), pages, sources);
+  assert.deepEqual(rule.regenerateDefs, [contractUnit('inicio'), sharedUnit('inicio')]);
+  assert.deepEqual(rule.materialize, [pageUnit('inicio')]);
+});
+
 void test('describeEffort imports only helpers and the solution types, and does not write or fetch', () => {
   const text = readFileSync(new URL('./describeEffort.ts', import.meta.url), 'utf8');
   const allowed = ['/_102020_/l2/helpers/', '/_102035_/l2/solution/'];
