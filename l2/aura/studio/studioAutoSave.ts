@@ -1,6 +1,14 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioAutoSave.ts" enhancement="_blank" />
 // Which stor files are worth an auto-save, the comment text, and the debounce.
 // The injected `send` does the write; this module never touches mls.stor.
+// "Already sent" is the CRC map in studioDraftFiles. `originalCRC` is the published baseline.
+
+import {
+  draftContentCrc,
+  rememberSentCrc,
+  sentCrcOf,
+  sourceModelSlot,
+} from '/_102033_/l2/cbe/studioDraftFiles.js';
 
 /** Fields this decision reads off a stor file (`IFileInfo`). */
 export interface IAutoSaveStorFile {
@@ -33,8 +41,8 @@ const SOURCE_LEVELS: ReadonlySet<number> = new Set([1, 2, 3]);
 /**
  * Site-project files that should go to the draft: l1–l3, not yet sent, no compile error.
  * A deletion is always sent (nothing is sent but the delete).
- * Anything else is pending only when its content CRC differs from the model baseline,
- * or when that baseline cannot be read and the file is still local.
+ * Anything else is pending only when its content CRC differs from the last send,
+ * or when that send was not recorded and the file is still local.
  * `.defs.ts` and `.test.ts` stay (they are source). `.d.ts` does not.
  */
 export function pendingFiles<T extends IAutoSaveStorFile>(storFiles: readonly T[], projectId: number): T[] {
@@ -54,7 +62,6 @@ export function pendingFiles<T extends IAutoSaveStorFile>(storFiles: readonly T[
 type CrcDrift = 'same' | 'differs' | 'unknown';
 
 interface IBaselineModel {
-  originalCRC?: string;
   model?: { getValue(): string };
 }
 
@@ -66,7 +73,7 @@ interface IBaselineModels {
   defs?: IBaselineModel;
 }
 
-/** Sent content matches `originalCRC` (the baseline `moveCrcBaseline` writes). A deletion has no content to compare. */
+/** Sent content matches the last-send CRC. A deletion has no content to compare. */
 function stillUnsent(file: IAutoSaveStorFile): boolean {
   if (file.status === 'deleted') return true;
   const drift = crcDrift(file);
@@ -75,44 +82,60 @@ function stillUnsent(file: IAutoSaveStorFile): boolean {
   return file.inLocalStorage !== false;
 }
 
-function crcDrift(file: IAutoSaveStorFile): CrcDrift {
+/** Text of this file's open model. Undefined when the model is not open or cannot be read. */
+function openModelText(file: IAutoSaveStorFile): string | undefined {
+  const slot = sourceModelSlot(file.extension);
+  if (!slot) return undefined;
   const host = globalThis as {
     mls?: {
       editor?: {
         getKeyModel?: (project: number, shortName: string, folder: string, level: number) => string;
         models?: Record<string, IBaselineModels | undefined>;
       };
-      common?: { crc?: { crc32?: (text: string) => number } };
     };
   };
   const getKeyModel = host.mls?.editor?.getKeyModel;
   const models = host.mls?.editor?.models;
-  const crc32 = host.mls?.common?.crc?.crc32;
-  if (!getKeyModel || !models || !crc32) return 'unknown';
+  if (!getKeyModel || !models) return undefined;
   let key: string;
   try {
     key = getKeyModel(file.project, file.shortName, file.folder, file.level);
   } catch (err) {
     console.error('studio auto-save could not read the model key', file.shortName, err);
+    return undefined;
+  }
+  const model = models[key]?.[slot];
+  if (!model?.model) return undefined;
+  try {
+    return model.model.getValue();
+  } catch (err) {
+    console.error('studio auto-save could not read the CRC', file.shortName, err);
+    return undefined;
+  }
+}
+
+/** Remember the content just written to the draft. Does not touch `originalCRC`. */
+export function recordSentContent(file: IAutoSaveStorFile): void {
+  const text = openModelText(file);
+  if (text === undefined) return;
+  try {
+    rememberSentCrc(file, draftContentCrc(text, file.extension));
+  } catch (err) {
+    console.error('studio auto-save could not record the sent CRC', file.shortName, err);
+  }
+}
+
+function crcDrift(file: IAutoSaveStorFile): CrcDrift {
+  const sent = sentCrcOf(file);
+  if (sent === undefined) return 'unknown';
+  const text = openModelText(file);
+  if (text === undefined) return 'unknown';
+  try {
+    return draftContentCrc(text, file.extension) === sent ? 'same' : 'differs';
+  } catch (err) {
+    console.error('studio auto-save could not read the CRC', file.shortName, err);
     return 'unknown';
   }
-  const group = models[key];
-  if (!group) return 'unknown';
-  const list = [group.ts, group.test, group.html, group.style, group.defs];
-  let saw = false;
-  for (const model of list) {
-    if (!model?.model) continue;
-    saw = true;
-    let contentCrc: string;
-    try {
-      contentCrc = crc32(model.model.getValue()).toString(16);
-    } catch (err) {
-      console.error('studio auto-save could not read the CRC', file.shortName, err);
-      return 'unknown';
-    }
-    if (model.originalCRC !== contentCrc) return 'differs';
-  }
-  return saw ? 'same' : 'unknown';
 }
 
 export function autosaveMessage(files: readonly IAutoSaveStorFile[]): string {

@@ -20,6 +20,7 @@ import {
   autosaveMessage,
   createAutoSaver,
   pendingFiles,
+  recordSentContent,
 } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 import type { StudioEditor } from '/_102020_/l2/aura/studio/studioEditor.js';
 import type { StudioLiveUpdateWatcher } from '/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js';
@@ -124,28 +125,6 @@ function storFileFrom(ref: {
   return file ?? undefined;
 }
 
-/** The model listener compares against `originalCRC`. Only a model that already exists needs moving. */
-function moveCrcBaseline(file: mls.stor.IFileInfo): void {
-  let key: string;
-  try {
-    key = mls.editor.getKeyModel(file.project, file.shortName, file.folder, file.level);
-  } catch (err) {
-    console.error('[studio] auto-save could not read the model key', file.shortName, err);
-    return;
-  }
-  const models = mls.editor.models[key];
-  if (!models) return;
-  const list = [models.ts, models.test, models.html, models.style, models.defs];
-  for (const model of list) {
-    if (!model) continue;
-    try {
-      model.originalCRC = mls.common.crc.crc32(model.model.getValue()).toString(16);
-    } catch (err) {
-      console.error('[studio] auto-save could not move the CRC baseline', file.shortName, err);
-    }
-  }
-}
-
 class DraftAutoSave implements IDraftAutoSave {
   private listening = false;
   private readonly saver = createAutoSaver<mls.stor.IFileInfo>({
@@ -178,7 +157,8 @@ class DraftAutoSave implements IDraftAutoSave {
       );
       for (const file of batch) {
         if (file.status === 'deleted' || file.hasError) continue;
-        moveCrcBaseline(file);
+        // Last-send CRC only. `originalCRC` stays the published baseline.
+        recordSentContent(file);
       }
       publishPanel({
         on: this.listening,

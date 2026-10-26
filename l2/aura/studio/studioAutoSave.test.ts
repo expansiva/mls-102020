@@ -6,6 +6,7 @@ import {
   buildAutoSaveStorFile,
   createAutoSaver,
   pendingFiles,
+  recordSentContent,
   type IAutoSaveStorFile,
 } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
@@ -45,11 +46,11 @@ test('pending files are dirty l1–l3 of this project, including defs and tests'
   assert.equal(pending.includes(error), false);
 });
 
-test('a sent file stays out of pending until its content leaves the CRC baseline', () => {
+test('a sent file stays out of pending until its content leaves the last send', () => {
   const sent = file({ status: 'changed', inLocalStorage: false, shortName: 'order', folder: 'usecases' });
   const created = file({ status: 'new', inLocalStorage: false, shortName: 'order', folder: 'usecases' });
   const renamed = file({ status: 'renamed', inLocalStorage: false, shortName: 'order', folder: 'usecases' });
-  const removed = file({ status: 'deleted', inLocalStorage: false, shortName: 'order', folder: 'usecases' });
+  const removed = file({ status: 'deleted', inLocalStorage: false, shortName: 'gone', folder: '' });
   const host = globalThis as {
     mls?: {
       editor?: unknown;
@@ -59,24 +60,29 @@ test('a sent file stays out of pending until its content leaves the CRC baseline
   const previousEditor = host.mls?.editor;
   const previousCommon = host.mls?.common;
   let text = 'hi';
+  const open = { originalCRC: 'published', model: { getValue: () => text } };
   if (!host.mls) host.mls = {};
   host.mls.editor = {
     getKeyModel: (project: number, shortName: string, folder: string, level: number) =>
       `${project}/${level}/${folder}/${shortName}`,
     models: {
-      '7/1/usecases/order': {
-        ts: { originalCRC: '2', model: { getValue: () => text } },
-      },
+      '7/1/usecases/order': { ts: open },
     },
   };
   host.mls.common = { crc: { crc32: (value: string) => value.length } };
   try {
+    recordSentContent(sent);
+    assert.equal(open.originalCRC, 'published');
     assert.deepEqual(pendingFiles([sent, created, renamed], 7), []);
     text = 'hello';
     assert.deepEqual(pendingFiles([sent], 7), [sent]);
     assert.deepEqual(pendingFiles([created], 7), [created]);
     assert.deepEqual(pendingFiles([renamed], 7), [renamed]);
     assert.deepEqual(pendingFiles([removed], 7), [removed]);
+    text = 'hi';
+    assert.deepEqual(pendingFiles([sent], 7), []);
+    assert.equal(sent.status, 'changed');
+    assert.equal(open.originalCRC, 'published');
     const alreadyOnDraft = file({ status: 'changed', inLocalStorage: false, shortName: 'remote', folder: '' });
     assert.deepEqual(pendingFiles([alreadyOnDraft], 7), []);
   } finally {
