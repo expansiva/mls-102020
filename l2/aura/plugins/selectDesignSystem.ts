@@ -1409,7 +1409,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return html`
             <div class="grid grid-cols-[minmax(0,1fr)_24px_24px_18px] gap-1.5 items-center border-l-2 pl-1 ${this._changeBar('color', row.name, hoverNames)}"
                 @mouseenter=${() => this._hoverTokens(hoverNames ?? [row.name])} @mouseleave=${() => this._unhoverTokens()}>
-                ${this._usedMark(row.name, html`<input data-ds-token=${row.name.trim()} class="w-full min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
+                ${this._usedMark(row.name, html`<input data-ds-token=${row.name.trim()} class="w-full min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:cursor-default read-only:focus:border-transparent"
                     .value=${row.name} placeholder="token" ?readonly=${locked} title=${locked ? `${row.name} — ${this.msg.mandatoryHint}` : row.name}
                     @input=${(e: Event) => { row.name = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />`, lead, used, this._changeMark('color', row.name, hoverNames))}
                 ${this._colorCell(row, 'light')}
@@ -1614,7 +1614,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                     return html`
                     <div class="grid grid-cols-[1fr_1fr_18px] gap-1.5 items-center border-l-2 pl-1 ${this._changeBar(section, r.name)}"
                         @mouseenter=${() => this._hoverTokens([r.name])} @mouseleave=${() => this._unhoverTokens()}>
-                        ${this._usedMark(r.name, html`<input data-ds-token=${r.name.trim()} class="w-full min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
+                        ${this._usedMark(r.name, html`<input data-ds-token=${r.name.trim()} class="w-full min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:cursor-default read-only:focus:border-transparent"
                             .value=${r.name} placeholder="token" ?readonly=${locked} title=${locked ? `${r.name} — ${this.msg.mandatoryHint}` : r.name}
                             @input=${(e: Event) => { r.name = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />`, nothing, this._isUsed(r.name), this._changeMark(section, r.name))}
                         <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-400 rounded-md px-1.5 py-1.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:outline-none focus:border-indigo-400"
