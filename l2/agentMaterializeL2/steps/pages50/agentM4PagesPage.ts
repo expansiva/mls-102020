@@ -37,7 +37,7 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
   try {
     const args = parseArgs(step.prompt || '');
     const identity = { project: args.project, module: args.module };
-    if (await reusableM4Page(identity, args.pageId, args.device, undefined, undefined, genomeOf(args))) {
+    if (args.diagnostic === undefined && await reusableM4Page(identity, args.pageId, args.device, undefined, undefined, genomeOf(args))) {
       const { next, done } = await afterUnit(context, parentStep, identity, args);
       return [...next, ...(done ? [done] : []), updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `Page ${unitLabel(args)} reused without an LLM call or write.`)];
     }

@@ -274,11 +274,24 @@ export async function approveM4Shared(context: M4SharedContext, source: unknown,
   const issues = gateM4SharedSource(text, context.target);
   if (issues.length) throw new Error(`M4_SHARED_GATE:\n${issues.map(item => `${item.code}: ${item.message}`).join('\n')}`);
   const sourceInfo = sharedSourceInfo(context.identity, context.pageId);
+  const previousSource = port.exists(sourceInfo) ? await port.read(sourceInfo) : null;
   await port.writeText(sourceInfo, text);
-  const compiled = await port.compile(sourceInfo, text);
-  if (compiled.errors.length || !compiled.declaration) throw new Error(`M4_SHARED_COMPILE:\n${(compiled.errors.length ? compiled.errors : ['no declaration emitted']).join('\n')}`);
+  let compiled: StudioDeclarationResult;
+  try {
+    compiled = await port.compile(sourceInfo, text);
+  } catch (error) {
+    return undoGeneratedWrite(port, sourceInfo, previousSource, error);
+  }
+  if (compiled.errors.length || !compiled.declaration) {
+    return undoGeneratedWrite(port, sourceInfo, previousSource, new Error(`M4_SHARED_COMPILE:\n${(compiled.errors.length ? compiled.errors : ['no declaration emitted']).join('\n')}`));
+  }
   const declarationInfo = sharedDeclarationInfo(context.identity, context.pageId);
-  await port.writeText(declarationInfo, compiled.declaration);
+  const previousDeclaration = port.exists(declarationInfo) ? await port.read(declarationInfo) : null;
+  try {
+    await port.writeText(declarationInfo, compiled.declaration);
+  } catch (error) {
+    return undoGeneratedWrite(port, declarationInfo, previousDeclaration, error);
+  }
   // V5: the LLM's own report, plus what the declaration proves it added (it may forget, 05/10: fechamento).
   const allFindings = mergeM4Findings(findings, m4AddedMemberFindings(compiled.declaration, context.target));
   // Hash what the Studio actually stored, read back after the compile: it is what the reuse check reads.
@@ -313,6 +326,23 @@ export async function m4SharedReuseBlocker(identity: M4RunIdentity, pageId: stri
   if (!port.exists(sourceInfo)) return `${displayPath(sourceInfo)} does not exist`;
   if (!port.exists(declarationInfo)) return `${displayPath(declarationInfo)} does not exist`;
   return null;
+}
+
+/**
+ * A write that did not compile is not a finished file. Put the previous text back, or delete the file
+ * when there was none. The original failure is rethrown; a failed undo is appended to that message.
+ */
+export async function undoGeneratedWrite(port: Pick<M4SharedPort, 'writeText' | 'deleteText'>, info: Ns5FileInfo, previous: string | null, cause: unknown): Promise<never> {
+  const original = cause instanceof Error ? cause.message : String(cause);
+  try {
+    if (previous === null) await (port.deleteText ?? deleteGeneratedFile)(info);
+    else await port.writeText(info, previous);
+  } catch (undoError) {
+    const undo = undoError instanceof Error ? undoError.message : String(undoError);
+    throw new Error(`${original}\nfailed to undo ${displayPath(info)}: ${undo}`);
+  }
+  if (cause instanceof Error) throw cause;
+  throw new Error(original);
 }
 
 /** Deletes one generated file from the Studio index. A missing file is already gone. A delete that throws names the path. */

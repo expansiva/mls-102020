@@ -8,8 +8,9 @@ import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js
 import { approveM4Shared, buildM4SharedContext } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 import {
-  M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, productLocales, reusableM4Page, type M4PagePort,
+  M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, productLocales, reusableM4Page, studioPagePort, type M4PagePort,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { createAgent as createPageAgent } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4PagesPage.js';
 import { m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 
 interface Fixture { project: number; module: string; knownMolecules: string[]; pages: Record<string, { contract: string; shared: string; desktop: string; mobile: string }> }
@@ -277,7 +278,32 @@ test('a gate refusal writes nothing; a compile error leaves no receipt; environm
   const failing = await studio(["line 3:5 - TS2339 - Property 'x' does not exist."]);
   await assert.rejects(approveM4Page(await buildM4PageContext(identity, 'produtos', 'desktop', failing), pageRef.source, 1, failing), /M4_PAGE_COMPILE:\nline 3:5/u);
   assert.equal(failing.files.has('102047/l2/controleEstoque/pipeline/agentMaterializeL2/pages50/produtosDesktop.json'), false, 'a compile error leaves no receipt');
-  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', failing), true, 'the .ts was written before the compile failed, so it exists');
+  assert.equal(failing.files.has('102047/l2/controleEstoque/web/desktop/page11/produtos.ts'), false, 'a compile error removes the new file');
+  assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', failing), false);
+  const prior = `${pageRef.source}\n// previous\n`;
+  failing.files.set('102047/l2/controleEstoque/web/desktop/page11/produtos.ts', prior);
+  await assert.rejects(approveM4Page(await buildM4PageContext(identity, 'produtos', 'desktop', failing), pageRef.source, 1, failing), /M4_PAGE_COMPILE:\nline 3:5/u);
+  assert.equal(failing.files.get('102047/l2/controleEstoque/web/desktop/page11/produtos.ts'), prior, 'a compile error restores the previous file');
+  failing.compile = async () => { throw new Error('compiler crashed'); };
+  await assert.rejects(approveM4Page(await buildM4PageContext(identity, 'produtos', 'desktop', failing), pageRef.source, 1, failing), /compiler crashed/u);
+  assert.equal(failing.files.get('102047/l2/controleEstoque/web/desktop/page11/produtos.ts'), prior, 'a compile throw restores the previous file');
   assert.equal(m4PageEnvironmentFailure('M4_PAGE_COMPILE:\nStudio imports unavailable: _102040_/l2/molecules/x.ts'), true);
   assert.equal(m4PageEnvironmentFailure('M4_PAGE_COMPILE:\nline 1:1 - TS2339 - x'), false);
+});
+
+test('a repair with the page file present calls the model', async () => {
+  const port = await studio();
+  port.files.set('102047/l2/controleEstoque/web/desktop/page11/produtos.ts', pageRef.source);
+  const saved = { ...studioPagePort };
+  Object.assign(studioPagePort, port);
+  try {
+    const agent = createPageAgent();
+    const ctx = { message: { orderAt: '1', threadId: 't' }, task: { PK: 'task' } } as mls.msg.ExecutionContext;
+    const parent = { stepId: 1 } as mls.msg.AIAgentStep;
+    const repair = JSON.stringify({ project: identity.project, module: identity.module, pageId: 'produtos', device: 'desktop', attempt: 2, diagnostic: 'TS2339', previous: pageRef.source });
+    const intents = await agent.beforePromptStep!({} as never, ctx, parent, { prompt: repair, stepId: 2 } as mls.msg.AIAgentStep, 1);
+    assert.equal(intents[0]?.type, 'prompt_ready');
+  } finally {
+    Object.assign(studioPagePort, saved);
+  }
 });

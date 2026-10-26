@@ -25,7 +25,7 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
   try {
     const args = parseArgs(step.prompt || '');
     const identity = { project: args.project, module: args.module };
-    if (await reusableM4Shared(identity, args.pageId)) {
+    if (args.diagnostic === undefined && await reusableM4Shared(identity, args.pageId)) {
       const next = (await m4ChainAfterShared(identity, args.pageId, args.scope ?? {})).map(worker => addAgentStep(context, parentStep.stepId, worker));
       const done = next.length ? null : await m4ChainDoneIntent(context, parentStep, identity, args.scope);
       return [...next, ...(done ? [done] : []), updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `Shared ${args.pageId} reused without an LLM call or write.`)];

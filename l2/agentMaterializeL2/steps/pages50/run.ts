@@ -18,7 +18,7 @@ import { parseL2Contract } from '/_102020_/l2/agentMaterializeL2/helpers/defs/co
 import { m4OwnedFile, type M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { loadMoleculeCatalog, m4DefsInfo, moleculeIndexInfo, templateInfo, type M4InputPort } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
-import { M4_REUSE_FINGERPRINT, deleteGeneratedFile, m4SharedReuseBlocker, readM4Snapshot, sharedDeclarationInfo, sharedSourceInfo, storedHash, studioSharedPort, type M4SharedPort } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { M4_REUSE_FINGERPRINT, deleteGeneratedFile, m4SharedReuseBlocker, readM4Snapshot, sharedDeclarationInfo, sharedSourceInfo, storedHash, studioSharedPort, undoGeneratedWrite, type M4SharedPort } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { m4SharedClassName } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
 import {
   M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
@@ -373,9 +373,15 @@ export async function approveM4Page(context: M4PageContext, source: unknown, att
   const refusing = M4_PAGE_GATE_ENFORCED ? errors : errors.filter(item => item.always);
   if (refusing.length) throw new Error(`M4_PAGE_GATE:\n${refusing.map(item => `${item.code}: ${item.message}`).join('\n')}`);
   const info = pageSourceInfo(context.identity, context.pageId, context.device, context.genome);
+  const previous = port.exists(info) ? await port.read(info) : null;
   await port.writeText(info, text);
-  const compiled = await port.compile(info, text);
-  if (compiled.errors.length) throw new Error(`M4_PAGE_COMPILE:\n${compiled.errors.join('\n')}`);
+  let compiled: Awaited<ReturnType<M4PagePort['compile']>>;
+  try {
+    compiled = await port.compile(info, text);
+  } catch (error) {
+    return undoGeneratedWrite(port, info, previous, error);
+  }
+  if (compiled.errors.length) return undoGeneratedWrite(port, info, previous, new Error(`M4_PAGE_COMPILE:\n${compiled.errors.join('\n')}`));
   const receipt: M4PageReceipt = {
     schemaVersion: M4_PAGE_VERSION, ...context.identity, pageId: context.pageId, device: context.device,
     ...(context.genome === L2_PRIMARY_GENOME ? {} : { genome: context.genome }),

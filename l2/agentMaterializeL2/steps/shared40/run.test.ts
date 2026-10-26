@@ -6,8 +6,9 @@ import test from 'node:test';
 import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import {
-  M4_SHARED_RUNTIME_REFS, approveM4Shared, m4SharedRules, buildM4SharedContext, buildM4SharedPrompt, buildM4SharedRepairPrompt, m4AddedMemberFindings, m4SharedEnvironmentFailure, m4SharedReuseBlocker, mergeM4Findings, m4SharedToolFindings, m4SharedToolSchema, m4SharedToolSource, recordM4SharedAttempt, reusableM4Shared, type M4SharedPort,
+  M4_SHARED_RUNTIME_REFS, approveM4Shared, m4SharedRules, buildM4SharedContext, buildM4SharedPrompt, buildM4SharedRepairPrompt, m4AddedMemberFindings, m4SharedEnvironmentFailure, m4SharedReuseBlocker, mergeM4Findings, m4SharedToolFindings, m4SharedToolSchema, m4SharedToolSource, recordM4SharedAttempt, reusableM4Shared, studioSharedPort, type M4SharedPort,
 } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { createAgent as createSharedAgent } from '/_102020_/l2/agentMaterializeL2/steps/shared40/agentM4SharedPage.js';
 
 interface Fixture {
   project: number; module: string; defsPipelineStatus: string; knownMolecules: string[]; knownTemplates: string[];
@@ -61,6 +62,7 @@ async function studio(compileErrors: string[] = []) {
     readJson: async <T>(info: Ns5FileInfo) => { const text = files.get(key(info)); return text === undefined ? null : JSON.parse(text) as T; },
     writeText: async (info, text) => { files.set(key(info), text); },
     writeJson: async (info, value) => { files.set(key(info), JSON.stringify(value)); },
+    deleteText: async info => { files.delete(key(info)); },
     listDefs: (project, folder, level) => listIn(files, project, folder, level),
     compile: async (info, source) => { compiled.push(key(info)); return compileErrors.length ? { errors: compileErrors, declaration: null } : { errors: [], declaration: source.includes('export class') ? DECLARATION : '' }; },
   };
@@ -195,7 +197,45 @@ test('a gate refusal writes nothing; a compile error leaves no receipt', async (
 
   const failing = await studio(["produtos.ts(10,1): error TS2304: Cannot find name 'x'."]);
   await assert.rejects(approveM4Shared(await buildM4SharedContext(identity, 'produtos', failing), reference, 1, failing), /M4_SHARED_COMPILE:\n.*TS2304/u);
+  assert.equal(failing.files.has('102047/l2/controleEstoque/web/shared/produtos.ts'), false, 'a compile error removes the new file');
   assert.equal(await reusableM4Shared(identity, 'produtos', failing), false);
+  const prior = `${reference}\n// previous\n`;
+  const priorDts = 'export declare class Previous {}\n';
+  failing.files.set('102047/l2/controleEstoque/web/shared/produtos.ts', prior);
+  failing.files.set('102047/l2/controleEstoque/web/shared/produtosDts.txt', priorDts);
+  await assert.rejects(approveM4Shared(await buildM4SharedContext(identity, 'produtos', failing), reference, 1, failing), /M4_SHARED_COMPILE:\n.*TS2304/u);
+  assert.equal(failing.files.get('102047/l2/controleEstoque/web/shared/produtos.ts'), prior, 'a compile error restores the previous file');
+  assert.equal(failing.files.get('102047/l2/controleEstoque/web/shared/produtosDts.txt'), priorDts, 'the declaration is left until it is written');
+  failing.compile = async () => { throw new Error('compiler crashed'); };
+  await assert.rejects(approveM4Shared(await buildM4SharedContext(identity, 'produtos', failing), reference, 1, failing), /compiler crashed/u);
+  assert.equal(failing.files.get('102047/l2/controleEstoque/web/shared/produtos.ts'), prior);
+  const writing = await studio();
+  writing.files.set('102047/l2/controleEstoque/web/shared/produtosDts.txt', priorDts);
+  let declarationWrites = 0;
+  writing.writeText = async (info, text) => {
+    if (info.extension === '.txt' && declarationWrites++ === 0) throw new Error('declaration write failed');
+    writing.files.set(`${info.project}/l${info.level}/${info.folder}/${info.shortName}${info.extension}`, text);
+  };
+  await assert.rejects(approveM4Shared(await buildM4SharedContext(identity, 'produtos', writing), reference, 1, writing), /declaration write failed/u);
+  assert.equal(writing.files.get('102047/l2/controleEstoque/web/shared/produtosDts.txt'), priorDts, 'a failed declaration write restores the previous declaration');
+  assert.equal(writing.files.has('102047/l2/controleEstoque/web/shared/produtos.ts'), true, 'the compiled source stays');
+});
+
+test('a repair with the shared files present calls the model', async () => {
+  const port = await studio();
+  await approveM4Shared(await buildM4SharedContext(identity, 'produtos', port), reference, 1, port);
+  const saved = { ...studioSharedPort };
+  Object.assign(studioSharedPort, port);
+  try {
+    const agent = createSharedAgent();
+    const ctx = { message: { orderAt: '1', threadId: 't' }, task: { PK: 'task' } } as mls.msg.ExecutionContext;
+    const parent = { stepId: 1 } as mls.msg.AIAgentStep;
+    const repair = JSON.stringify({ project: identity.project, module: identity.module, pageId: 'produtos', attempt: 2, diagnostic: 'TS2304', previous: reference });
+    const intents = await agent.beforePromptStep!({} as never, ctx, parent, { prompt: repair, stepId: 2 } as mls.msg.AIAgentStep, 1);
+    assert.equal(intents[0]?.type, 'prompt_ready');
+  } finally {
+    Object.assign(studioSharedPort, saved);
+  }
 });
 
 test('a refused answer is kept for diagnosis next to the receipts', async () => {
