@@ -168,12 +168,16 @@ function pageUnit(moduleName: string, pageId: string): EffortUnitRef {
   return { kind: 'page', id: pageId, path: contractPath(moduleName, pageId) };
 }
 
-/** Ids a process or task looks for in contracts and shared. A task id is `task:<processId>.<taskId>`: both the process id and the full id. */
+/** Ids a process, task or published event looks for in contracts and shared. A task id is `task:<processId>.<taskId>`: both the process id and the full id. A published event uses the whole id after `outbound:`. */
 function citeNeedles(input: EffortInput): string[] | null {
   const changeId = input.item.changeId;
   if (input.item.kind === 'process') {
     const processId = changeId.startsWith('process:') ? changeId.slice('process:'.length) : '';
     return processId ? [processId] : [];
+  }
+  if (input.item.kind === 'outbound') {
+    const eventId = changeId.startsWith('outbound:') ? changeId.slice('outbound:'.length) : '';
+    return eventId ? [eventId] : [];
   }
   if (input.item.kind !== 'task') return null;
   const full = changeId.startsWith('task:') ? changeId.slice('task:'.length) : '';
@@ -342,6 +346,28 @@ function grantAnswer(input: EffortInput, contracts: Record<string, string>, shar
   return answer(input, [], undefined, [], regenerateDefs);
 }
 
+/** Pages whose contract route or shared source cites the published event id. Each one regenerates its page and its shared, then materializes. The contract stays. */
+function outboundAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
+  const needles = citeNeedles(input) ?? [];
+  const pages: string[] = [];
+  for (const pageId of Object.keys(contracts).sort()) {
+    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
+    if (parsed.routes.some(route => textCites(JSON.stringify(route), needles))) pages.push(pageId);
+  }
+  for (const pageId of Object.keys(shared).sort()) {
+    if (pages.includes(pageId)) continue;
+    if (textCites(shared[pageId] ?? '', needles)) pages.push(pageId);
+  }
+  pages.sort();
+  if (pages.length === 0) return answer(input, []);
+  const regenerateDefs: EffortUnitRef[] = [];
+  for (const pageId of pages) {
+    regenerateDefs.push(pageUnit(input.module, pageId));
+    regenerateDefs.push({ kind: 'shared', id: pageId, path: sharedPath(input.module, pageId) });
+  }
+  return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs);
+}
+
 /** A removed rule drops its id from each citing contract and from each shared `rules` list, then rematerializes those pages. A process or task uses the same pages, matching the id as text in each route and in the shared source. */
 function removedAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
   const needles = citeNeedles(input);
@@ -474,8 +500,9 @@ function transitionAnswer(input: EffortInput, contracts: Record<string, string>)
   return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs, [], withContract ? 'change' : 'keep');
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. Text-only on any other kind is an empty computed answer. */
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. An inbound change abends. Text-only on any other kind is an empty computed answer. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
+  if (input.item.kind === 'inbound') return answer(input, [], 'inbound integration change is not handled yet');
   if (input.item.kind === 'grant') return grantAnswer(input, contracts, sources?.shared ?? {});
   if (input.item.kind === 'field' && isTextOnlyChange(input.item)) return textAnswer(input, sources);
   const journey = journeyAnswer(input, sources?.shared ?? {});
@@ -487,6 +514,7 @@ export function describeEffortFrom(input: EffortInput, contracts: Record<string,
   if (input.item.kind === 'process' || input.item.kind === 'task') {
     return removedAnswer(input, contracts, sources?.shared ?? {});
   }
+  if (input.item.kind === 'outbound') return outboundAnswer(input, contracts, sources?.shared ?? {});
   if (Object.keys(contracts).length === 0) return answer(input, [], `no generated L2 contracts for module ${input.module}`);
   const changedField = fieldClass(input.item);
   if (input.item.kind === 'field') {

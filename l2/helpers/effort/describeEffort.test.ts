@@ -877,6 +877,97 @@ void test('process, task and transition classes cite pages or stay empty', () =>
   assert.equal(grant.status, 'computed');
 });
 
+function outboundItem(
+  changeId: string,
+  op: 'added' | 'changed' | 'removed',
+  before?: Record<string, unknown>,
+  after?: Record<string, unknown>,
+): EffortInput {
+  return {
+    module: 'tarefas',
+    base: { baseId: 'mls-102047', revisionId: '537525a4' },
+    item: { changeId, kind: 'outbound', op, entity: '', source: 'l4/tarefas/integration.defs.ts', before, after },
+  };
+}
+
+function contractCiting(pageId: string, eventId: string): string {
+  const pascal = pageId.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+  return `/// <mls fileReference="_102047_/l2/tarefas/web/contracts/${pageId}.defs.ts" enhancement="_blank"/>\n\nexport interface ${pascal}Contracts {\n  'tarefas.${pageId}.qryPainel': {\n    kind: 'qry';\n    input: { event: '${eventId}' };\n    output: {};\n    rules: [];\n    access: { actors: []; grants: []; scope: 'organization' };\n  };\n}\n`;
+}
+
+void test('a published event is empty unless a page cites it; an inbound change abends', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const sources = { shared: defsIn(TAREFAS_SHARED) };
+
+  const i1 = describeEffortFrom(outboundItem('outbound:tarefaConcluida', 'changed', { description: 'a' }, { description: 'b' }), pages, sources);
+  const i2 = describeEffortFrom(outboundItem('outbound:tarefaConcluida', 'changed', { entityRefs: ['Tarefa', 'ListaTarefas'] }, { entityRefs: ['Tarefa'] }), pages, sources);
+  const i3 = describeEffortFrom(outboundItem('outbound:tarefaReatribuida', 'added', undefined, { id: 'tarefaReatribuida', on: 'Tarefa.update' }), pages, sources);
+  const i4 = describeEffortFrom(outboundItem('outbound:tarefaCancelada', 'removed', { id: 'tarefaCancelada' }), pages, sources);
+  for (const row of [i1, i2, i3, i4]) {
+    assert.equal(row.status, 'computed');
+    assert.equal(row.contract, 'keep');
+    assert.equal(row.abend, undefined);
+    assert.deepEqual(row.materialize, []);
+    assert.deepEqual(row.regenerateDefs, []);
+  }
+
+  const eventId = 'tarefaConcluida';
+  const cited = describeEffortFrom(outboundItem('outbound:tarefaConcluida', 'changed', { entityRefs: ['Tarefa', 'ListaTarefas'] }, { entityRefs: ['Tarefa'] }), {
+    painel: contractCiting('painel', eventId),
+    quadro: `/// <mls fileReference="_102047_/l2/tarefas/web/contracts/quadro.defs.ts" enhancement="_blank"/>\n\nexport {};\n`,
+    outra: contractCiting('outra', 'outroEvento'),
+  }, {
+    shared: { quadro: `export const quadroShared = { listen: "${eventId}" };\n` },
+  });
+  assert.equal(cited.status, 'computed');
+  assert.equal(cited.contract, 'keep');
+  assert.deepEqual(cited.materialize, [pageUnit('painel'), pageUnit('quadro')]);
+  assert.deepEqual(cited.regenerateDefs, [
+    pageUnit('painel'), sharedUnit('painel'),
+    pageUnit('quadro'), sharedUnit('quadro'),
+  ]);
+
+  const inboundText = describeEffortFrom(input({
+    changeId: 'inbound:avisoExterno', kind: 'inbound', op: 'changed', entity: '',
+    before: { description: 'a' }, after: { description: 'b' },
+  }), pages, sources);
+  const inboundAdded = describeEffortFrom(input({
+    changeId: 'inbound:avisoExterno', kind: 'inbound', op: 'added', entity: '',
+    after: { id: 'avisoExterno' },
+  }), pages, sources);
+  for (const row of [inboundText, inboundAdded]) {
+    assert.equal(row.status, 'abend');
+    assert.equal(row.abend?.reason, 'inbound integration change is not handled yet');
+    assert.deepEqual(row.materialize, []);
+  }
+
+  const rule = describeEffortFrom(removed('rule:resumoDiarioOitoHoras'), pages, sources);
+  assert.equal(rule.status, 'computed');
+  assert.deepEqual(rule.materialize, [pageUnit('inicio')]);
+
+  const field = describeEffortFrom(tarefasField({
+    changeId: 'field:titulo', kind: 'field', op: 'changed', entity: 'Tarefa',
+    before: { title: 'Title', type: 'string' }, after: { title: 'Title', type: 'number' },
+  }), pages, sources);
+  assert.equal(field.contract, 'change');
+  assert.ok(field.materialize.length > 0);
+
+  const grant = describeEffortFrom(grantItem({
+    changeId: 'grant:membroTarefasProprias', op: 'changed',
+    before: GRANT, after: { ...GRANT, dataScope: { mode: 'all', anchorEntity: 'Participante' } },
+  }), pages, sources);
+  assert.equal(grant.status, 'computed');
+  assert.ok(grant.regenerateDefs.length > 0);
+
+  const journey = describeEffortFrom(journeyItem('journey:criarTarefa', 'journey', 'removed', JOURNEY), pages, sources);
+  assert.equal(journey.contract, 'change');
+  assert.ok(journey.materialize.length > 0);
+
+  const workflow = describeEffortFrom(workflowItem('process:resumoDiarioTarefas', 'process', 'changed', '', { trigger: { schedule: '8h' } }, { trigger: { schedule: '9h' } }), pages, sources);
+  assert.equal(workflow.status, 'computed');
+  assert.deepEqual(workflow.materialize, []);
+});
+
 void test('describeEffort imports only helpers and the solution types, and does not write or fetch', () => {
   const text = readFileSync(new URL('./describeEffort.ts', import.meta.url), 'utf8');
   const allowed = ['/_102020_/l2/helpers/', '/_102035_/l2/solution/'];
