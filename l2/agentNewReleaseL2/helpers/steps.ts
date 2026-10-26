@@ -446,6 +446,15 @@ export function planIdOf(step: { planning?: { planId?: string } | null }): strin
   return step.planning?.planId || '';
 }
 
+/** A new step can hang only on a parent that is still open. `completed` and `failed` are terminal. */
+export function closedParentReason(parentStep: { stepId?: number; status?: string } | null | undefined): string | null {
+  if (!parentStep?.stepId) return 'parent step is missing';
+  if (parentStep.status === 'completed' || parentStep.status === 'failed') {
+    return `parent step ${parentStep.stepId} is already ${parentStep.status}`;
+  }
+  return null;
+}
+
 function namedOutcome(step: mls.msg.AIPayload | undefined, label: string): { status: 'completed' | 'failed'; message: string } {
   if (!step) return { status: 'failed', message: `${label} step is missing` };
   const traces = step.interaction?.trace?.map(line => line.trim()).filter(Boolean) ?? [];

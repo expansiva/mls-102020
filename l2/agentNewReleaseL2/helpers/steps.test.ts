@@ -436,8 +436,10 @@ test('materialize records the returned command and the close step carries it', a
     const intents = await agent.beforePromptImplicit(agent, {
       message: { threadId: 'thread-m1', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
     } as mls.msg.ExecutionContext, '@@agentNewReleaseL2 tarefas');
-    const close = intents.find(intent => intent.type === 'add-step' && intent.step.planning?.planId === NR_CLOSE_PLAN);
+    const added = intents.filter(intent => intent.type === 'add-step');
+    const close = added.find(intent => intent.step.planning?.planId === NR_CLOSE_PLAN);
     if (close?.type !== 'add-step') assert.fail('missing close step');
+    assert.ok(added.every(intent => intent.type === 'add-step' && intent.parentStepId === 1 && intent.messageId === '' && intent.taskId === ''));
     assert.deepEqual(commandLines(close.step.prompt || ''), [FIELD_COMMAND]);
     const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
     assert.equal(log.phases.find(line => line.phase === 'steps')?.note, stepsPhaseNote(2, [FIELD_COMMAND]));
@@ -515,7 +517,69 @@ test('the generator check copies stored commands onto the close step', async () 
     const intents = await agent.beforePromptStep(agent, context, { stepId: 1 } as mls.msg.AIAgentStep, check, 0);
     const close = intents.find(intent => intent.type === 'add-step' && intent.step.planning?.planId === NR_CLOSE_PLAN);
     if (close?.type !== 'add-step') assert.fail('missing close step');
+    assert.equal(close.parentStepId, 1);
+    assert.equal(close.messageId, '1');
+    assert.equal(close.taskId, 'task');
+    const updateAt = intents.findIndex(intent => intent.type === 'update-status');
+    const materializeAt = intents.findIndex(intent => intent.type === 'add-step' && intent.step.planning?.planId === NR_MATERIALIZE_PLAN);
+    assert.ok(materializeAt >= 0 && materializeAt < updateAt);
     assert.deepEqual(commandLines(close.step.prompt || ''), [FIELD_COMMAND]);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('a terminal parent fails the check before any file is deleted', async () => {
+  const previous = mls.actualProject;
+  installRunStor(102047);
+  plantJson(snapshotInfo('tarefas'), '{}\n');
+  const page = {
+    project: 102047,
+    level: 2,
+    folder: 'tarefas/web/shared',
+    shortName: 'minhas_tarefas',
+    extension: '.ts',
+    status: 'changed',
+  };
+  mls.stor.files[fileKey(page)] = page as unknown as mls.stor.IFileInfo;
+  let deleted = 0;
+  mls.stor.localStor = {
+    ...mls.stor.localStor,
+    deleteFile: async () => {
+      deleted += 1;
+    },
+  } as typeof mls.stor.localStor;
+  const [defs, check] = buildRegenerateSteps(102047, 'tarefas');
+  defs.status = 'completed';
+  defs.interaction = { input: [], cost: 0, trace: ['defs written'], payload: null };
+  defs.stepId = 4;
+  check.stepId = 5;
+  const context = {
+    message: { threadId: 'thread-gen', content: '@@agentNewReleaseL2 tarefas', orderAt: '9' },
+    task: {
+      PK: 'task',
+      iaCompressed: {
+        nextSteps: [defs, check],
+        longMemory: {
+          moduleName: 'tarefas',
+          nrPages: 'minhas_tarefas',
+          nrMaterializeOnly: '',
+          nrCommands: '[]',
+        },
+      },
+    },
+  } as mls.msg.ExecutionContext;
+  try {
+    const agent = createAgent();
+    if (!agent.beforePromptStep) assert.fail('missing beforePromptStep');
+    const intents = await agent.beforePromptStep(agent, context, { stepId: 7, status: 'completed' } as mls.msg.AIAgentStep, check, 0);
+    assert.equal(intents.length, 1);
+    const update = intents[0];
+    if (update?.type !== 'update-status') assert.fail('missing failed update');
+    assert.equal(update.status, 'failed');
+    assert.match(update.traceMsg || '', /^failed: parent step 7 is already completed/);
+    assert.equal(deleted, 0);
+    assert.equal((mls.stor.files[fileKey(page)] as { status?: string }).status, 'changed');
   } finally {
     mls.actualProject = previous;
   }

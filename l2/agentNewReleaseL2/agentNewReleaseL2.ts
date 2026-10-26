@@ -6,6 +6,7 @@ import { deleteFile } from '/_102027_/l2/libStor.js';
 import { planNewReleaseL2 } from '/_102020_/l2/agentNewReleaseL2/helpers/plan.js';
 import {
   NR_AGENT_NAME,
+  closedParentReason,
   NR_CHECK_PLAN,
   NR_CLOSE_PLAN,
   NR_DEFS_PLAN,
@@ -82,7 +83,7 @@ async function beforePromptImplicit(
       const prepared = await prepareMaterialize(project, moduleName, plan.pages, plan.materializeOnly, plan.commands);
       if (!prepared.ok) return refuse(agent, context, moduleName, phase, prepared.message);
       await recordPhase(moduleName, phase, 'ok', stepsPhaseNote(prepared.steps.length, plan.commands));
-      const steps = prepared.steps.map(step => addStepIntent(context, step));
+      const steps = prepared.steps.map(step => addStepIntent(context, step, 1, false));
       return [openMessage(agent, context, moduleName, project, {}), ...steps];
     }
 
@@ -99,7 +100,7 @@ async function beforePromptImplicit(
     phase = 'steps';
     const built = buildRegenerateSteps(project, moduleName);
     await recordPhase(moduleName, phase, 'ok', stepsPhaseNote(built.length, plan.commands));
-    const steps = built.map(step => addStepIntent(context, step));
+    const steps = built.map(step => addStepIntent(context, step, 1, false));
     return [openMessage(agent, context, moduleName, project, {
       nrPages: plan.pages.join(','),
       nrMaterializeOnly: plan.materializeOnly.join(','),
@@ -162,14 +163,18 @@ async function reviewCheck(
   if (!review.addMaterialize) {
     return [updateStatus(context, parentStep, step, hookSequential, review.status, review.message)];
   }
+  const closed = closedParentReason(parentStep);
+  if (closed) {
+    return [updateStatus(context, parentStep, step, hookSequential, 'failed', statusText(closed, 'failed'))];
+  }
   const project = currentProjectNumber();
   const prepared = await prepareMaterialize(project, moduleName, pages, materializeOnly, commands);
   if (!prepared.ok) {
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', prepared.message)];
   }
   const status = updateStatus(context, parentStep, step, hookSequential, review.status, review.message);
-  const added = prepared.steps.map(item => addStepIntent(context, item));
-  return [status, ...added];
+  const added = prepared.steps.map(item => addStepIntent(context, item, parentStep.stepId, true));
+  return [...added, status];
 }
 
 function currentStorFiles(): mls.stor.IFileInfo[] {
@@ -249,13 +254,18 @@ async function refuse(
   return statusMessage(agent, context, message, 'refused');
 }
 
-function addStepIntent(context: mls.msg.ExecutionContext, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep {
+function addStepIntent(
+  context: mls.msg.ExecutionContext,
+  step: mls.msg.AIPayload,
+  parentStepId: number,
+  bound: boolean,
+): mls.msg.AgentIntentAddStep {
   return {
     type: 'add-step',
-    messageId: '',
+    messageId: bound ? context.message.orderAt : '',
     threadId: context.message.threadId,
-    taskId: '',
-    parentStepId: 1,
+    taskId: bound ? context.task?.PK || '' : '',
+    parentStepId,
     step,
   };
 }
