@@ -17,14 +17,19 @@ import {
   NR_MATERIALIZE_PLAN,
   buildApplySteps,
   buildRegenerateSteps,
+  closeNotice,
   currentProjectNumber,
+  deleteGeneratedFiles,
+  generatedFilesOf,
   markedPageIds,
   marksDifferMessage,
   materializerOutcome,
   NR_NOTHING_TO_APPLY,
   parseNrInvocation,
+  releasePages,
   reviewDefsRun,
   statusIntents,
+  type NrListedFile,
 } from '/_102020_/l2/agentNewReleaseL2/helpers/steps.js';
 
 function fixture(name: string): { masters: Array<{ project: string }> } {
@@ -68,7 +73,11 @@ test('invocation accepts one module and refuses a missing or extra argument', ()
   assert.deepEqual(parseNrInvocation('@@agentNewReleaseL2 alpha extra'), { ok: false, help: NR_HELP });
 });
 
-test('the materializer step carries the R1 pages and the current project, and close depends on it', () => {
+function listed(folder: string, shortName: string, extension: string, project = 102047, status = 'changed'): NrListedFile {
+  return { project, level: 2, folder, shortName, extension, status };
+}
+
+test('the materializer step is the whole module, and close depends on it and lists the deleted files', () => {
   const previous = mls.actualProject;
   mls.actualProject = 102047;
   try {
@@ -78,18 +87,80 @@ test('the materializer step carries the R1 pages and the current project, and cl
     assert.equal(plan.ok, true);
     if (!plan.ok) return;
     const project = currentProjectNumber();
-    const [materialize, close] = buildApplySteps(project, 'alpha', plan.pages);
+    const deleted = ['l2/tarefas/web/shared/minhas_tarefas.ts'];
+    const [materialize, close] = buildApplySteps(project, 'tarefas', deleted);
     assert.equal(materialize.agentName, NR_MATERIALIZE_AGENT);
     assert.equal(materialize.planning?.planId, NR_MATERIALIZE_PLAN);
     assert.deepEqual(JSON.parse(materialize.prompt || ''), {
       project,
-      module: 'alpha',
-      scope: { pages: plan.pages },
+      module: 'tarefas',
+      scope: {},
     });
+    assert.equal(Object.hasOwn(JSON.parse(materialize.prompt || ''), 'pages'), false);
     assert.equal(close.agentName, NR_AGENT_NAME);
     assert.equal(close.planning?.planId, NR_CLOSE_PLAN);
     assert.deepEqual(close.planning?.dependsOn, [NR_MATERIALIZE_PLAN]);
+    assert.equal(closeNotice('pages written', deleted), 'pages written; deleted: l2/tarefas/web/shared/minhas_tarefas.ts');
     assert.deepEqual(plan.pages, ['minhas_tarefas']);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('R1 deletes only the generated files of minhas_tarefas and never a defs file', async () => {
+  const previous = mls.actualProject;
+  mls.actualProject = 102047;
+  try {
+    const plan = planNewReleaseL2(fixture('r1'), '102020');
+    assert.equal(plan.ok, true);
+    if (!plan.ok) return;
+    const web = 'tarefas/web';
+    const files: NrListedFile[] = [
+      listed(`${web}/shared`, 'minhas_tarefas', '.ts'),
+      listed(`${web}/shared`, 'minhas_tarefasDts', '.txt'),
+      listed(`${web}/shared`, 'minhas_tarefas', '.defs.ts'),
+      listed(`${web}/desktop/page11`, 'minhas_tarefas', '.ts'),
+      listed(`${web}/desktop/page11`, 'minhas_tarefas', '.defs.ts'),
+      listed(`${web}/mobile/page11`, 'minhas_tarefas', '.ts'),
+      listed(`${web}/mobile/page11`, 'minhas_tarefas', '.defs.ts'),
+      listed(`${web}/shared`, 'outra', '.ts'),
+      listed(`${web}/desktop/page11`, 'outra', '.ts'),
+      listed(`${web}/desktop/page11`, 'minhas_tarefas', '.ts', 102099),
+      listed(`${web}/shared`, 'minhas_tarefas', '.ts', 102047, 'deleted'),
+    ];
+    const removed: string[] = [];
+    const result = await deleteGeneratedFiles('tarefas', releasePages(plan.pages, plan.materializeOnly), files, async (file) => {
+      removed.push(`${file.folder}/${file.shortName}${file.extension}`);
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(removed, [
+      `${web}/desktop/page11/minhas_tarefas.ts`,
+      `${web}/mobile/page11/minhas_tarefas.ts`,
+      `${web}/shared/minhas_tarefas.ts`,
+      `${web}/shared/minhas_tarefasDts.txt`,
+    ]);
+    assert.deepEqual(result.paths, removed.map(path => `l2/${path}`));
+    assert.equal(removed.some(path => path.endsWith('.defs.ts')), false);
+    const [materialize] = buildApplySteps(102047, 'tarefas', result.paths);
+    assert.equal('pages' in JSON.parse(materialize.prompt || '').scope, false);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('a delete failure names the path and does not build the materializer step', async () => {
+  const previous = mls.actualProject;
+  mls.actualProject = 102047;
+  try {
+    const files = [listed('tarefas/web/shared', 'minhas_tarefas', '.ts')];
+    const result = await deleteGeneratedFiles('tarefas', ['minhas_tarefas'], files, async () => {
+      throw new Error('disk full');
+    });
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.match(result.message, /l2\/tarefas\/web\/shared\/minhas_tarefas\.ts/u);
+    assert.equal(generatedFilesOf('tarefas', 'minhas_tarefas', files).length, 1);
   } finally {
     mls.actualProject = previous;
   }
@@ -106,14 +177,16 @@ test('regenerate adds the defs generator with scope all, and the check waits on 
   assert.deepEqual(check.planning?.dependsOn, [NR_DEFS_PLAN]);
 });
 
-test('a clean regenerate materializes the rebuilt pages and the materialize-only pages', () => {
+test('a clean regenerate materializes the whole module and the close step keeps the deleted paths', () => {
   const project = currentProjectNumber();
-  const [materialize] = buildApplySteps(project, 'alpha', ['beta'], ['gamma']);
+  const [materialize, close] = buildApplySteps(project, 'alpha', ['l2/alpha/web/shared/beta.ts']);
   assert.deepEqual(JSON.parse(materialize.prompt || ''), {
     project,
     module: 'alpha',
-    scope: { pages: ['beta', 'gamma'] },
+    scope: {},
   });
+  assert.deepEqual(JSON.parse(close.prompt || '').deleted, ['l2/alpha/web/shared/beta.ts']);
+  assert.deepEqual(releasePages(['beta'], ['gamma']), ['beta', 'gamma']);
 });
 
 test('pool marks must be the same set as the planned pages', () => {

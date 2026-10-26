@@ -2,6 +2,7 @@
 
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { deleteFile } from '/_102027_/l2/libStor.js';
 import { planNewReleaseL2 } from '/_102020_/l2/agentNewReleaseL2/helpers/plan.js';
 import {
   NR_AGENT_NAME,
@@ -11,8 +12,11 @@ import {
   NR_MATERIALIZE_PLAN,
   buildApplySteps,
   buildRegenerateSteps,
+  closeNotice,
   currentProjectNumber,
+  deletedPaths,
   defsOutcome,
+  deleteGeneratedFiles,
   guardAfterDefs,
   markedPageIds,
   marksDifferMessage,
@@ -22,6 +26,7 @@ import {
   readChangeEffort,
   readPoolEffort,
   readProductSnapshot,
+  releasePages,
   reviewDefsRun,
   statusIntents,
   writeReleaseSnapshot,
@@ -59,7 +64,9 @@ async function beforePromptImplicit(
   if (!plan.ok) return statusMessage(agent, context, plan.reason);
 
   if (plan.mode === 'materialize') {
-    const steps = buildApplySteps(project, invocation.module, plan.pages).map(step => addStepIntent(context, step));
+    const prepared = await prepareMaterialize(project, invocation.module, plan.pages, plan.materializeOnly);
+    if (!prepared.ok) return statusMessage(agent, context, prepared.message);
+    const steps = prepared.steps.map(step => addStepIntent(context, step));
     return [openMessage(agent, context, invocation.module, project, {}), ...steps];
   }
 
@@ -90,7 +97,8 @@ async function beforePromptStep(
   }
   const materialize = getAllSteps(context.task?.iaCompressed?.nextSteps).find(item => planIdOf(item) === NR_MATERIALIZE_PLAN);
   const outcome = materializerOutcome(materialize);
-  return [updateStatus(context, parentStep, step, hookSequential, outcome.status, outcome.message)];
+  const notice = closeNotice(outcome.message, deletedPaths(step.prompt || ''));
+  return [updateStatus(context, parentStep, step, hookSequential, outcome.status, notice)];
 }
 
 async function reviewCheck(
@@ -110,11 +118,33 @@ async function reviewCheck(
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', 'release snapshot is missing')];
   }
   const review = reviewDefsRun(defsResult, guard || { created: [], changed: [], deleted: [], outside: [] });
-  const status = updateStatus(context, parentStep, step, hookSequential, review.status, review.message);
-  if (!review.addMaterialize) return [status];
+  if (!review.addMaterialize) {
+    return [updateStatus(context, parentStep, step, hookSequential, review.status, review.message)];
+  }
   const project = currentProjectNumber();
-  const added = buildApplySteps(project, moduleName, pages, materializeOnly).map(item => addStepIntent(context, item));
+  const prepared = await prepareMaterialize(project, moduleName, pages, materializeOnly);
+  if (!prepared.ok) {
+    return [updateStatus(context, parentStep, step, hookSequential, 'failed', prepared.message)];
+  }
+  const status = updateStatus(context, parentStep, step, hookSequential, review.status, review.message);
+  const added = prepared.steps.map(item => addStepIntent(context, item));
   return [status, ...added];
+}
+
+function currentStorFiles(): mls.stor.IFileInfo[] {
+  return Object.values(mls.stor.files).filter((file): file is mls.stor.IFileInfo => !!file);
+}
+
+/** Deletes the generated files of the effort pages, then builds the whole-module materializer. */
+async function prepareMaterialize(
+  project: number,
+  moduleName: string,
+  pages: readonly string[],
+  materializeOnly: readonly string[],
+): Promise<{ ok: true; steps: mls.msg.AIAgentStep[] } | { ok: false; message: string }> {
+  const removed = await deleteGeneratedFiles(moduleName, releasePages(pages, materializeOnly), currentStorFiles(), deleteFile);
+  if (!removed.ok) return removed;
+  return { ok: true, steps: buildApplySteps(project, moduleName, removed.paths) };
 }
 
 function openMessage(

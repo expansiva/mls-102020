@@ -120,15 +120,89 @@ export async function readChangeEffort(moduleName: string): Promise<{ ok: true; 
   return { ok: true, effort };
 }
 
-export function materializePrompt(project: number, moduleName: string, pages: string[]): string {
-  return JSON.stringify({ project, module: moduleName, scope: { pages } });
+export function materializePrompt(project: number, moduleName: string): string {
+  return JSON.stringify({ project, module: moduleName, scope: {} });
 }
 
 export function defsPrompt(project: number, moduleName: string): string {
   return JSON.stringify({ project, module: moduleName, scope: NR_DEFS_SCOPE });
 }
 
-/** Pages the materializer must write: rebuilt pages, then materialize-only pages not already listed. */
+export type NrListedFile = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> & {
+  status?: string;
+};
+
+function listedPath(file: NrListedFile): string {
+  return displayPath({
+    project: Number(file.project || 0),
+    level: Number(file.level || 0),
+    folder: String(file.folder || ''),
+    shortName: String(file.shortName || ''),
+    extension: String(file.extension || ''),
+  });
+}
+
+function isLiveListed(file: NrListedFile): boolean {
+  return file.status !== 'deleted' && Number(file.level) === 2 && Number(file.project) === currentProjectNumber();
+}
+
+/**
+ * Generated files of one page that are in the current project index.
+ * Shared `.ts`, shared `Dts.txt`, and `<pageId>.ts` under each device/genome folder that exists.
+ * A `.defs.ts` is never included.
+ */
+export function generatedFilesOf<T extends NrListedFile>(moduleName: string, pageId: string, existing: readonly T[]): T[] {
+  const web = `${moduleFolder(moduleName)}/web`;
+  const slots = new Set<string>();
+  for (const file of existing) {
+    if (!isLiveListed(file)) continue;
+    const rest = String(file.folder || '').slice(web.length + 1);
+    if (!String(file.folder || '').startsWith(`${web}/`)) continue;
+    const parts = rest.split('/');
+    if (parts.length !== 2 || parts[0] === 'shared' || parts[0] === 'contracts') continue;
+    slots.add(`${parts[0]}/${parts[1]}`);
+  }
+  const wanted = new Set<string>([
+    `l2/${web}/shared/${pageId}.ts`,
+    `l2/${web}/shared/${pageId}Dts.txt`,
+  ]);
+  for (const slot of [...slots].sort()) wanted.add(`l2/${web}/${slot}/${pageId}.ts`);
+  const found: T[] = [];
+  const seen = new Set<string>();
+  for (const file of existing) {
+    if (!isLiveListed(file) || file.extension === '.defs.ts') continue;
+    const path = listedPath(file);
+    if (!wanted.has(path) || seen.has(path)) continue;
+    seen.add(path);
+    found.push(file);
+  }
+  return [...found].sort((left, right) => listedPath(left).localeCompare(listedPath(right)));
+}
+
+/** Deletes the generated files of the effort pages. The first failure stops and names that path. */
+export async function deleteGeneratedFiles<T extends NrListedFile>(
+  moduleName: string,
+  pageIds: readonly string[],
+  existing: readonly T[],
+  remove: (file: T) => Promise<void>,
+): Promise<{ ok: true; paths: string[] } | { ok: false; message: string }> {
+  const paths: string[] = [];
+  for (const pageId of pageIds) {
+    for (const file of generatedFilesOf(moduleName, pageId, existing)) {
+      const path = listedPath(file);
+      try {
+        await remove(file);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return { ok: false, message: `failed to delete ${path}: ${detail}` };
+      }
+      paths.push(path);
+    }
+  }
+  return { ok: true, paths };
+}
+
+/** Pages whose generated files are deleted before the whole module is materialized. */
 export function releasePages(pages: readonly string[], materializeOnly: readonly string[]): string[] {
   const seen = new Set(pages);
   const combined = [...pages];
@@ -272,12 +346,11 @@ export function buildRegenerateSteps(project: number, moduleName: string): mls.m
   ];
 }
 
-/** Materializer first, then this agent's close step. The close step waits on the materializer plan id. */
+/** Materializer for the whole module, then this agent's close step. The close step waits on the materializer plan id. */
 export function buildApplySteps(
   project: number,
   moduleName: string,
-  pages: string[],
-  materializeOnly: readonly string[] = [],
+  deleted: readonly string[] = [],
 ): mls.msg.AIAgentStep[] {
   return [
     {
@@ -285,8 +358,8 @@ export function buildApplySteps(
         NR_MATERIALIZE_AGENT,
         NR_MATERIALIZE_PLAN,
         [],
-        'Materialize pages',
-        materializePrompt(project, moduleName, releasePages(pages, materializeOnly)),
+        'Materialize module',
+        materializePrompt(project, moduleName),
       ),
       onFailure: 'continue',
     },
@@ -295,9 +368,21 @@ export function buildApplySteps(
       NR_CLOSE_PLAN,
       [NR_MATERIALIZE_PLAN],
       'Close release',
-      JSON.stringify({ planId: NR_CLOSE_PLAN }),
+      JSON.stringify({ planId: NR_CLOSE_PLAN, deleted }),
     ),
   ];
+}
+
+export function deletedPaths(prompt: string): string[] {
+  const parsed = JSON.parse(prompt || '{}') as { deleted?: unknown };
+  if (!Array.isArray(parsed.deleted)) return [];
+  return parsed.deleted.filter((item): item is string => typeof item === 'string');
+}
+
+/** Close text: the materializer message plus every generated file this release deleted. */
+export function closeNotice(materializerMessage: string, deleted: readonly string[]): string {
+  const listed = deleted.length ? deleted.join(', ') : 'none';
+  return `${materializerMessage}; deleted: ${listed}`;
 }
 
 export function planIdOf(step: { planning?: { planId?: string } | null }): string {
