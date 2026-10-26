@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/helpers/contractV2/render.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseD2ContractV2, renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2ContractV2Definition } from '/_102020_/l2/helpers/contractV2/types.js';
@@ -116,4 +117,19 @@ void test('fromSupervisorL1: a contract cut short throws, at any cut, instead of
   assert.throws(() => parseD2ContractV2(source.slice(0, Math.floor(source.length / 2))), /D2_CONTRACT_V2_SOURCE_SHAPE/u);
   // The empty contract of a page without endpoints is not a cut one.
   assert.deepEqual(parseD2ContractV2('/// <mls fileReference="_1_/l2/alpha/web/contracts/hub.defs.ts" enhancement="_blank"/>\n\nexport {};\n').routes, []);
+});
+
+void test('d2_142: a real minhas_tarefas route splits actors, grants and scope, and render then parse is stable', () => {
+  const source = readFileSync(new URL('../effort/fixtures/tarefas/contracts/minhas_tarefas.defs.txt', import.meta.url), 'utf8');
+  const parsed = parseD2ContractV2(source);
+  const route = parsed.routes.find(item => item.route === 'tarefas.minhas_tarefas.qryMinhasTarefas');
+  assert.ok(route);
+  assert.deepEqual(route.access, {
+    actors: ['membroEquipe'],
+    grants: ['membroTarefasProprias', 'membroChecklistPropria', 'membroEscolherResponsavel', 'membroConsultarListas'],
+    scope: 'own',
+  });
+  for (const token of [...route.access.actors, ...route.access.grants]) assert.equal(token.includes("'") || token.includes('['), false);
+  const again = parseD2ContractV2(renderD2ContractV2({ project: 102047, module: parsed.module, pageId: parsed.pageId }, parsed));
+  assert.deepEqual(again, parsed);
 });

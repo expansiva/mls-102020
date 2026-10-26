@@ -75,8 +75,8 @@ export function parseD2ContractV2(source: string): D2ContractV2Definition {
     const output = /output: ([\s\S]*?);\n    (?:meta|rules):/u.exec(body)?.[1]?.trim() ?? '{}';
     const metaSource = /meta: ([\s\S]*?);\n    rules:/u.exec(body)?.[1]?.trim();
     const rules = splitLits(/rules: \[([^\n]*)\]/u.exec(body)?.[1] ?? '');
-    const actors = splitLits(/actors: \[([^\n]*)\]/u.exec(body)?.[1] ?? '');
-    const grants = splitLits(/grants: \[([^\n]*)\]/u.exec(body)?.[1] ?? '');
+    const actors = splitLits(/actors: \[([^\]]*)\]/u.exec(body)?.[1] ?? '');
+    const grants = splitLits(/grants: \[([^\]]*)\]/u.exec(body)?.[1] ?? '');
     const scope = /scope: '([^']+)'/u.exec(body)?.[1] ?? 'organization';
     routes.push({
       route, kind, ...(writes ? { writes } : {}), input, output, meta: metaSource ? parseMeta(metaSource) : { output: {}, lists: {}, params: {} }, rules,
