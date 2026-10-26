@@ -6,7 +6,6 @@ import { deleteFile } from '/_102027_/l2/libStor.js';
 import { planNewReleaseL2 } from '/_102020_/l2/agentNewReleaseL2/helpers/plan.js';
 import {
   NR_AGENT_NAME,
-  closedParentReason,
   NR_CHECK_PLAN,
   NR_CLOSE_PLAN,
   NR_DEFS_PLAN,
@@ -163,18 +162,12 @@ async function reviewCheck(
   if (!review.addMaterialize) {
     return [updateStatus(context, parentStep, step, hookSequential, review.status, review.message)];
   }
-  const closed = closedParentReason(parentStep);
-  if (closed) {
-    return [updateStatus(context, parentStep, step, hookSequential, 'failed', statusText(closed, 'failed'))];
-  }
   const project = currentProjectNumber();
   const prepared = await prepareMaterialize(project, moduleName, pages, materializeOnly, commands);
   if (!prepared.ok) {
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', prepared.message)];
   }
-  const status = updateStatus(context, parentStep, step, hookSequential, review.status, review.message);
-  const added = prepared.steps.map(item => addStepIntent(context, item, parentStep.stepId, true));
-  return [...added, status];
+  return prepared.steps.map(item => addStepIntent(context, item, step.stepId, true));
 }
 
 function currentStorFiles(): mls.stor.IFileInfo[] {

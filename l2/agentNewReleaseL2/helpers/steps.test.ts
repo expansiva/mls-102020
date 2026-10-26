@@ -487,99 +487,126 @@ test('the close text lists the command after a completed materializer and hides 
   assert.match(failedUpdate.traceMsg || '', /^failed: /);
 });
 
-test('the generator check copies stored commands onto the close step', async () => {
+function terminalStepIds(steps: readonly mls.msg.AIPayload[]): Set<number> {
+  const ids = new Set<number>();
+  const queue = [...steps];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    if (current.status === 'completed' || current.status === 'failed') ids.add(current.stepId);
+    if (current.nextSteps) queue.push(...current.nextSteps);
+  }
+  return ids;
+}
+
+/** Root 1 is already completed. The check (step 3) is still running under it. */
+function conferenceTree(
+  defs: mls.msg.AIAgentStep,
+  check: mls.msg.AIAgentStep,
+  memory: Record<string, string>,
+): { context: mls.msg.ExecutionContext; root: mls.msg.AIAgentStep; check: mls.msg.AIAgentStep } {
+  defs.stepId = 4;
+  defs.parentStepId = 1;
+  check.stepId = 3;
+  check.status = 'in_progress';
+  check.parentStepId = 1;
+  const root = {
+    type: 'agent',
+    stepId: 1,
+    status: 'completed',
+    parentStepId: 0,
+    nextSteps: [defs, check],
+    agentName: NR_AGENT_NAME,
+    prompt: '',
+    rags: [],
+    interaction: null,
+    stepTitle: 'release',
+  } as mls.msg.AIAgentStep;
+  const context = {
+    message: { threadId: 'thread-gen', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    task: { PK: 'task', iaCompressed: { nextSteps: [root], longMemory: memory } },
+  } as mls.msg.ExecutionContext;
+  return { context, root, check };
+}
+
+test('the generator check hangs the materializer and the close step on the open check', async () => {
   const previous = mls.actualProject;
   installRunStor(102047);
   plantJson(snapshotInfo('tarefas'), '{}\n');
   const [defs, check] = buildRegenerateSteps(102047, 'tarefas');
   defs.status = 'completed';
   defs.interaction = { input: [], cost: 0, trace: ['defs written'], payload: null };
-  defs.stepId = 4;
-  check.stepId = 5;
-  const context = {
-    message: { threadId: 'thread-gen', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
-    task: {
-      PK: 'task',
-      iaCompressed: {
-        nextSteps: [defs, check],
-        longMemory: {
-          moduleName: 'tarefas',
-          nrPages: 'minhas_tarefas,tarefas_equipe',
-          nrMaterializeOnly: '',
-          nrCommands: JSON.stringify([FIELD_COMMAND]),
-        },
-      },
-    },
-  } as mls.msg.ExecutionContext;
+  const { context, root, check: running } = conferenceTree(defs, check, {
+    moduleName: 'tarefas',
+    nrPages: 'minhas_tarefas,tarefas_equipe',
+    nrMaterializeOnly: '',
+    nrCommands: JSON.stringify([FIELD_COMMAND]),
+  });
   try {
     const agent = createAgent();
     if (!agent.beforePromptStep) assert.fail('missing beforePromptStep');
-    const intents = await agent.beforePromptStep(agent, context, { stepId: 1 } as mls.msg.AIAgentStep, check, 0);
-    const close = intents.find(intent => intent.type === 'add-step' && intent.step.planning?.planId === NR_CLOSE_PLAN);
+    const intents = await agent.beforePromptStep(agent, context, root, running, 0);
+    const terminal = terminalStepIds(context.task?.iaCompressed?.nextSteps || []);
+    const added = intents.filter(intent => intent.type === 'add-step');
+    assert.ok(added.length > 0);
+    assert.ok(added.every(intent => intent.parentStepId === 3 && !terminal.has(intent.parentStepId)));
+    assert.equal(intents.some(intent => intent.type === 'update-status' && intent.stepId === 3), false);
+    const close = added.find(intent => intent.step.planning?.planId === NR_CLOSE_PLAN);
     if (close?.type !== 'add-step') assert.fail('missing close step');
-    assert.equal(close.parentStepId, 1);
     assert.equal(close.messageId, '1');
     assert.equal(close.taskId, 'task');
-    const updateAt = intents.findIndex(intent => intent.type === 'update-status');
-    const materializeAt = intents.findIndex(intent => intent.type === 'add-step' && intent.step.planning?.planId === NR_MATERIALIZE_PLAN);
-    assert.ok(materializeAt >= 0 && materializeAt < updateAt);
     assert.deepEqual(commandLines(close.step.prompt || ''), [FIELD_COMMAND]);
+    const materialize = {
+      type: 'agent',
+      stepId: 8,
+      status: 'completed',
+      parentStepId: 3,
+      interaction: { input: [], cost: 0, trace: ['pages written'], payload: null },
+      nextSteps: [],
+      planning: { planId: NR_MATERIALIZE_PLAN, dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+      agentName: NR_MATERIALIZE_AGENT,
+      prompt: '',
+      rags: [],
+      stepTitle: 'Materialize module',
+    } as mls.msg.AIAgentStep;
+    running.nextSteps = [materialize];
+    const closeStep = close.step as mls.msg.AIAgentStep;
+    closeStep.stepId = 9;
+    closeStep.parentStepId = 3;
+    const done = await agent.beforePromptStep(agent, context, running, closeStep, 0);
+    const doneUpdate = done[0];
+    if (doneUpdate?.type !== 'update-status') assert.fail('missing close update');
+    assert.equal(doneUpdate.status, 'completed');
+    assert.match(doneUpdate.traceMsg || '', /^done: pages written/);
   } finally {
     mls.actualProject = previous;
   }
 });
 
-test('a terminal parent fails the check before any file is deleted', async () => {
+test('an outside path closes the check with the motive and adds no child', async () => {
   const previous = mls.actualProject;
   installRunStor(102047);
-  plantJson(snapshotInfo('tarefas'), '{}\n');
-  const page = {
-    project: 102047,
-    level: 2,
-    folder: 'tarefas/web/shared',
-    shortName: 'minhas_tarefas',
-    extension: '.ts',
-    status: 'changed',
-  };
-  mls.stor.files[fileKey(page)] = page as unknown as mls.stor.IFileInfo;
-  let deleted = 0;
-  mls.stor.localStor = {
-    ...mls.stor.localStor,
-    deleteFile: async () => {
-      deleted += 1;
-    },
-  } as typeof mls.stor.localStor;
+  plantJson(snapshotInfo('tarefas'), JSON.stringify({ 'l2/tarefas/web/shared/other.defs.ts': 'abc' }));
   const [defs, check] = buildRegenerateSteps(102047, 'tarefas');
   defs.status = 'completed';
   defs.interaction = { input: [], cost: 0, trace: ['defs written'], payload: null };
-  defs.stepId = 4;
-  check.stepId = 5;
-  const context = {
-    message: { threadId: 'thread-gen', content: '@@agentNewReleaseL2 tarefas', orderAt: '9' },
-    task: {
-      PK: 'task',
-      iaCompressed: {
-        nextSteps: [defs, check],
-        longMemory: {
-          moduleName: 'tarefas',
-          nrPages: 'minhas_tarefas',
-          nrMaterializeOnly: '',
-          nrCommands: '[]',
-        },
-      },
-    },
-  } as mls.msg.ExecutionContext;
+  const { context, root, check: running } = conferenceTree(defs, check, {
+    moduleName: 'tarefas',
+    nrPages: 'minhas_tarefas,tarefas_equipe',
+    nrMaterializeOnly: '',
+    nrCommands: '[]',
+  });
   try {
     const agent = createAgent();
     if (!agent.beforePromptStep) assert.fail('missing beforePromptStep');
-    const intents = await agent.beforePromptStep(agent, context, { stepId: 7, status: 'completed' } as mls.msg.AIAgentStep, check, 0);
+    const intents = await agent.beforePromptStep(agent, context, root, running, 0);
     assert.equal(intents.length, 1);
+    assert.equal(intents.some(intent => intent.type === 'add-step'), false);
     const update = intents[0];
     if (update?.type !== 'update-status') assert.fail('missing failed update');
+    assert.equal(update.stepId, 3);
     assert.equal(update.status, 'failed');
-    assert.match(update.traceMsg || '', /^failed: parent step 7 is already completed/);
-    assert.equal(deleted, 0);
-    assert.equal((mls.stor.files[fileKey(page)] as { status?: string }).status, 'changed');
+    assert.match(update.traceMsg || '', /outside: l2\/tarefas\/web\/shared\/other\.defs\.ts/);
   } finally {
     mls.actualProject = previous;
   }
