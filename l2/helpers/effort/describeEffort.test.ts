@@ -484,6 +484,58 @@ void test('a new-rule reply abends when the page is unknown, already exists, or 
   assert.equal(shape.status === 'computed', false);
 });
 
+const J3_AFTER = {
+  actorRef: 'membro',
+  goal: 'Review the week',
+  steps: [{ stepId: 'abrir', entity: 'Tarefa', effect: 'read' }],
+};
+
+void test('a new journey asks the model for a page; the recorded reply rebuilds that page', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const shared = defsIn(TAREFAS_SHARED);
+  const pageIds = Object.keys(pages).sort();
+  const item = journeyItem('journey:revisarSemana', 'journey', 'added', undefined, J3_AFTER);
+  const request = effortPromptFrom(item, pages, shared);
+  assert.ok(request);
+  assert.equal(request.prompt.includes('revisarSemana'), true);
+  assert.equal(request.prompt.includes('membro'), true);
+  assert.equal(request.prompt.includes('Review the week'), true);
+  assert.equal(request.prompt.includes('abrir'), true);
+  assert.equal(request.prompt.includes('Tarefa'), true);
+  for (const pageId of pageIds) assert.equal(request.prompt.includes(pageId), true, pageId);
+  const schema = request.schema as { properties: { pages: { items: { properties: { page: { enum: string[] } } } } } };
+  assert.deepEqual(schema.properties.pages.items.properties.page.enum, pageIds);
+  assert.equal(request.prompt.includes('- painel_tarefas\n  actors: gestor\n'), true);
+  assert.equal(request.prompt.includes('- inicio\n  actors: membroEquipe\n'), true);
+  const actorLines = request.prompt.split('\n').filter(line => line.trimStart().startsWith('actors:'));
+  assert.ok(actorLines.length > 0);
+  for (const line of actorLines) {
+    assert.equal(line.includes('grants'), false, line);
+    assert.equal(line.includes(']'), false, line);
+    assert.equal(line.includes("'"), false, line);
+  }
+
+  const recordedReply = finishEffortFrom(item, pages, recorded('j3.json'));
+  assert.equal(recordedReply.status, 'computed');
+  assert.equal(recordedReply.contract, 'change');
+  assert.deepEqual(recordedReply.materialize, [pageUnit('minhas_tarefas')]);
+  assert.deepEqual(recordedReply.regenerateDefs, [
+    pageUnit('minhas_tarefas'),
+    contractUnit('minhas_tarefas'),
+    sharedUnit('minhas_tarefas'),
+  ]);
+
+  const empty = finishEffortFrom(item, pages, { pages: [], create: [], reason: '' });
+  assert.equal(empty.status, 'abend');
+  assert.equal(empty.abend?.reason, 'empty answer needs a reason');
+
+  const missing = finishEffortFrom(item, pages, {
+    pages: [{ page: 'nao_existe', change: 'newAction' }], create: [], reason: 'missing',
+  });
+  assert.equal(missing.status, 'abend');
+  assert.equal(missing.abend?.reason, 'page nao_existe does not exist');
+});
+
 void test('effortPrompt reads the module contracts only for a new rule', async () => {
   const previous = mls.stor.files;
   const contract = readFileSync(new URL('inicio.defs.txt', TAREFAS_CONTRACTS), 'utf8');

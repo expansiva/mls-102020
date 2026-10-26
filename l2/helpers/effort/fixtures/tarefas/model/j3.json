@@ -1,0 +1,5 @@
+{
+  "pages": [{ "page": "minhas_tarefas", "change": "newAction" }],
+  "create": [],
+  "reason": "The new journey is a new action on the task screen."
+}

@@ -510,16 +510,52 @@ function promptSchema(pageIds: string[]): object {
   };
 }
 
-/** Pure. A new rule asks the model to pick screens from the contracts. Every other item needs no call. */
-export function effortPromptFrom(input: EffortInput, contracts: Record<string, string>): EffortPromptRequest | null {
-  if (input.item.kind !== 'rule' || input.item.op !== 'added') return null;
-  const pageIds = Object.keys(contracts).sort();
+/** Actors inside each `access: { actors: [...] }`. Stops at the first `]`, so a later `grants` list on the same line stays out. */
+function pageActors(source: string): string[] {
+  const actors: string[] = [];
+  for (const match of source.matchAll(/access: \{ actors: \[([^\]]*)\]/gu)) {
+    for (const part of (match[1] ?? '').split(',')) {
+      const actor = part.trim().replace(/^['"]|['"]$/gu, '');
+      if (actor && !actors.includes(actor)) actors.push(actor);
+    }
+  }
+  actors.sort();
+  return actors;
+}
+
+/** `"step": "<journey>/<step>"` tokens in one shared source, once each, sorted. */
+function sharedStepTokens(text: string): string[] {
+  const steps: string[] = [];
+  for (const match of text.matchAll(/"step": "([^"]+)"/gu)) {
+    const step = match[1] ?? '';
+    if (step && !steps.includes(step)) steps.push(step);
+  }
+  steps.sort();
+  return steps;
+}
+
+function journeySteps(after: Record<string, unknown> | undefined): string[] {
+  if (!after || !Array.isArray(after.steps)) return [];
+  const lines: string[] = [];
+  for (const step of after.steps) {
+    const row = fieldRecord(step);
+    if (!row) continue;
+    const stepId = typeof row.stepId === 'string' ? row.stepId : '';
+    const entity = typeof row.entity === 'string' ? row.entity : '';
+    const effect = typeof row.effect === 'string' ? row.effect : '';
+    if (!stepId) continue;
+    lines.push(`- ${stepId} entity ${entity} effect ${effect}`);
+  }
+  return lines;
+}
+
+function rulePrompt(input: EffortInput, contracts: Record<string, string>, pageIds: string[]): string {
   const pages = pageIds.map(pageId => {
     const parsed = parseD2ContractV2(contracts[pageId] ?? '');
     const routes = parsed.routes.map(route => `  - ${route.route} ${route.kind} rules: ${route.rules.join(', ')}`);
     return [`- ${pageId}`, ...routes].join('\n');
   });
-  const prompt = [
+  return [
     `Rule ${ruleIdOf(input)}: ${rulePhrase(input)}`,
     '',
     'Pages of the module. Each route lists its id, kind (qry or cmd) and rules:',
@@ -530,6 +566,40 @@ export function effortPromptFrom(input: EffortInput, contracts: Record<string, s
     '- newAction: the screen needs an action or data the contract does not have. The contract changes.',
     'A new screen goes in create. Nothing to do is pages: [] and create: [].',
   ].join('\n');
+}
+
+function journeyPrompt(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>, pageIds: string[]): string {
+  const after = fieldRecord(input.item.after);
+  const actor = typeof after?.actorRef === 'string' ? after.actorRef : '';
+  const goal = typeof after?.goal === 'string' ? after.goal : '';
+  const journeyId = input.item.changeId.startsWith('journey:') ? input.item.changeId.slice('journey:'.length) : '';
+  const steps = journeySteps(after);
+  const pages = pageIds.map(pageId => {
+    const actors = pageActors(contracts[pageId] ?? '').join(', ');
+    const cited = sharedStepTokens(shared[pageId] ?? '').join(', ');
+    return `- ${pageId}\n  actors: ${actors}\n  steps: ${cited}`;
+  });
+  return [
+    `Journey ${journeyId}. Actor ${actor}. Goal ${goal}.`,
+    steps.length > 0 ? ['Steps:', ...steps].join('\n') : 'Steps: none listed.',
+    '',
+    'Pages of the module. Each page lists its id, the actors of its access, and the journey steps its shared already has:',
+    pages.join('\n'),
+    '',
+    'For an existing page, choose one:',
+    '- materialize: only rematerialize the screen. The screen def and the contract stay.',
+    '- newAction: the screen offers the journey as a new action. The contract changes.',
+    'A new screen goes in create. Nothing to do is pages: [] and create: [], with a reason.',
+  ].join('\n');
+}
+
+/** Pure. A new rule or a new journey asks the model to pick screens. Every other item needs no call. */
+export function effortPromptFrom(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string> = {}): EffortPromptRequest | null {
+  const addedRule = input.item.kind === 'rule' && input.item.op === 'added';
+  const addedJourney = input.item.kind === 'journey' && input.item.op === 'added';
+  if (!addedRule && !addedJourney) return null;
+  const pageIds = Object.keys(contracts).sort();
+  const prompt = addedRule ? rulePrompt(input, contracts, pageIds) : journeyPrompt(input, contracts, shared, pageIds);
   return { prompt, schema: promptSchema(pageIds) };
 }
 
@@ -580,12 +650,17 @@ export function finishEffortFrom(input: EffortInput, contracts: Record<string, s
   }
   chosen.sort((a, b) => a.page.localeCompare(b.page));
   created.sort();
+  if (chosen.length === 0 && created.length === 0 && modelOutput.reason.trim().length === 0 && input.item.kind === 'journey') {
+    return answer(input, [], 'empty answer needs a reason');
+  }
   const materialize = chosen.map(row => pageUnit(input.module, row.page));
+  const journeyAdded = input.item.kind === 'journey' && input.item.op === 'added';
   const regenerateDefs: EffortUnitRef[] = [];
   for (const row of chosen) {
     if (row.change !== 'newAction') continue;
     regenerateDefs.push(pageUnit(input.module, row.page));
     regenerateDefs.push({ kind: 'contract', id: row.page, path: contractPath(input.module, row.page) });
+    if (journeyAdded) regenerateDefs.push({ kind: 'shared', id: row.page, path: sharedPath(input.module, row.page) });
   }
   const create = created.map(pageId => pageUnit(input.module, pageId));
   const contract = regenerateDefs.length > 0 || create.length > 0 ? 'change' : 'keep';
@@ -638,12 +713,13 @@ async function moduleWebDefs(input: EffortInput): Promise<{ projectError?: strin
   return { contracts, shared };
 }
 
-/** A new rule asks for a model call. Every other item returns null and does not read files. */
+/** A new rule or a new journey asks for a model call. Every other item returns null and does not read files. */
 export async function effortPrompt(input: EffortInput): Promise<EffortPromptRequest | null> {
-  if (input.item.kind !== 'rule' || input.item.op !== 'added') return null;
+  const asks = (input.item.kind === 'rule' || input.item.kind === 'journey') && input.item.op === 'added';
+  if (!asks) return null;
   const loaded = await moduleWebDefs(input);
   if (loaded.projectError) return null;
-  return effortPromptFrom(input, loaded.contracts);
+  return effortPromptFrom(input, loaded.contracts, loaded.shared);
 }
 
 /** Checks a recorded or live model reply for a new rule. Does not call a model. */
