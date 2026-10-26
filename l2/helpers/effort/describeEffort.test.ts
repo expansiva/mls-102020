@@ -48,22 +48,31 @@ const CONFIG = JSON.stringify({
   },
 });
 
-function needs(pages: Array<{ pageId: string; entities: string[] }>): string {
-  return JSON.stringify({
-    pages: pages.map(page => ({
-      pageId: page.pageId,
-      reads: page.entities.map(entity => ({ entity })),
-    })),
-  });
-}
-
 const NAME = 'field:name';
 const TEXT_BEFORE = { title: 'Name', type: 'string' };
 const TEXT_AFTER = { title: 'Full name', type: 'string' };
 
-function textSources(needsSource: string | undefined, moduleSource: string | undefined = MODULE_DEFS, configSource: string | undefined = CONFIG) {
-  return { needsSource, moduleSource, configSource };
+function textSources(_unused?: string, moduleSource: string | undefined = MODULE_DEFS, configSource: string | undefined = CONFIG) {
+  return { moduleSource, configSource };
 }
+
+/** One page whose `Paciente` projection cites `name`. */
+const FICHA_CONTRACT = `/// <mls fileReference="_102047_/l2/agendaClinica/web/contracts/ficha.defs.ts" enhancement="_blank"/>
+
+export interface PacienteNome {
+  name: string;
+}
+
+export interface FichaContracts {
+  'qryNome': {
+    kind: 'qry';
+    input: {};
+    output: { item: PacienteNome };
+    rules: [];
+    access: { actors: []; grants: []; scope: 'organization' };
+  };
+}
+`;
 
 void test('rule changed cites only the pages whose routes list the id', () => {
   const pages = contracts();
@@ -131,14 +140,10 @@ void test('describeEffort abends without reading files when the project is unres
   }
 });
 
-void test('text-only field change materializes the pages that read the entity and then agentAddLanguage', () => {
-  const plan = needs([
-    { pageId: 'ficha', entities: ['Paciente'] },
-    { pageId: 'outras', entities: ['Consulta'] },
-  ]);
+void test('text-only field change materializes the pages whose contract cites the field and then agentAddLanguage', () => {
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
-  }), {}, textSources(plan));
+  }), { ficha: FICHA_CONTRACT }, textSources());
   assert.equal(row.status, 'computed');
   assert.deepEqual(row.regenerateDefs, []);
   assert.deepEqual(row.create, []);
@@ -159,7 +164,7 @@ void test('text-only field change materializes the pages that read the entity an
 
 void test('a title-only process or task is an empty computed answer and does not ask for a translation', () => {
   const pages = contracts();
-  const sources = textSources(needs([{ pageId: 'ficha', entities: ['Paciente'] }]));
+  const sources = textSources();
   for (const item of [
     { changeId: 'process:avisar', kind: 'process' as const, op: 'changed' as const, entity: '', before: { title: 'Avisar', description: 'a' }, after: { title: 'Avisar o paciente', description: 'a' } },
     { changeId: 'task:avisar.ligar', kind: 'task' as const, op: 'changed' as const, entity: '', before: { title: 'Ligar' }, after: { title: 'Ligar agora' } },
@@ -189,7 +194,7 @@ void test('a field whose type changed regenerates the pages whose contracts cite
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente',
     before: { title: 'Name', type: 'string' }, after: { title: 'Name', type: 'number' },
-  }), contracts(), textSources(needs([{ pageId: 'ficha', entities: ['Paciente'] }])));
+  }), contracts(), textSources());
   assert.equal(row.status, 'computed');
   assert.equal(row.contract, 'change');
   assert.deepEqual(row.runAgents, []);
@@ -205,7 +210,7 @@ void test('a field whose type changed regenerates the pages whose contracts cite
 void test('a text field no page shows is computed with empty lists', () => {
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
-  }), {}, textSources(needs([{ pageId: 'outras', entities: ['Consulta'] }])));
+  }), {}, textSources());
   assert.equal(row.status, 'computed');
   assert.deepEqual(row.regenerateDefs, []);
   assert.deepEqual(row.materialize, []);
@@ -213,27 +218,11 @@ void test('a text field no page shows is computed with empty lists', () => {
   assert.equal(row.abend, undefined);
 });
 
-void test('a module without needs abends with the missing path', () => {
-  const row = describeEffortFrom(input({
-    changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
-  }), {}, textSources(undefined));
-  assert.equal(row.status, 'abend');
-  assert.equal(row.abend?.reason, 'l4/agendaClinica/pool/l1/web/needs.json');
-});
-
-void test('a needs file the parser rejects abends with the path and the parser error', () => {
-  const row = describeEffortFrom(input({
-    changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
-  }), {}, textSources('{'));
-  assert.equal(row.status, 'abend');
-  assert.match(row.abend?.reason ?? '', /^l4\/agendaClinica\/pool\/l1\/web\/needs\.json: /u);
-});
-
 void test('a module with no language in module.defs or l5 config abends', () => {
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
-  }), {}, textSources(
-    needs([{ pageId: 'ficha', entities: ['Paciente'] }]),
+  }), { ficha: FICHA_CONTRACT }, textSources(
+    undefined,
     'export const module = { "title": "Agenda", "userLanguage": "es" };\n',
     JSON.stringify({ projects: { '102047': { modules: [{ moduleId: 'agendaClinica' }] } } }),
   ));
@@ -241,14 +230,12 @@ void test('a module with no language in module.defs or l5 config abends', () => 
   assert.equal(row.abend?.reason, 'module has no declared languages');
 });
 
-void test('describeEffort reads needs, module.defs and l5 config for a text change', async () => {
+void test('describeEffort reads the contract, module.defs and l5 config for a text change', async () => {
   const previous = mls.stor.files;
-  const body = needs([{ pageId: 'ficha', entities: ['Paciente'] }, { pageId: 'outras', entities: ['Consulta'] }]);
   mls.stor.files = {
-    a: { project: 102047, level: 4, status: 'active', folder: 'agendaClinica/pool/l1/web', extension: '.json', shortName: 'needs', getContent: async () => body },
     b: { project: 102047, level: 4, status: 'active', folder: 'agendaClinica', extension: '.defs.ts', shortName: 'module', getContent: async () => MODULE_DEFS },
     c: { project: 102047, level: 5, status: 'active', folder: '', extension: '.json', shortName: 'config', getContent: async () => CONFIG },
-    d: { project: 102047, level: 2, status: 'active', folder: 'agendaClinica/web/contracts', extension: '.defs.ts', shortName: 'ficha', getContent: async () => 'contract' },
+    d: { project: 102047, level: 2, status: 'active', folder: 'agendaClinica/web/contracts', extension: '.defs.ts', shortName: 'ficha', getContent: async () => FICHA_CONTRACT },
   } as unknown as typeof mls.stor.files;
   try {
     const row = await describeEffort(input({
@@ -665,15 +652,20 @@ void test('field classes on the tarefas contracts', () => {
   const text = describeEffortFrom(tarefasField({
     changeId: 'field:prazo', kind: 'field', op: 'changed', entity: 'Tarefa',
     before: { title: 'Prazo', type: 'string' }, after: { title: 'Data limite', type: 'string' },
-  }), pages, textSources(needs([
-    { pageId: 'minhas_tarefas', entities: ['Tarefa'] },
-    { pageId: 'participantes', entities: ['Participante'] },
-  ]), MODULE_DEFS, CONFIG));
+  }), pages, textSources(undefined, MODULE_DEFS, CONFIG));
   assert.equal(text.status, 'computed');
   assert.equal(text.contract, 'keep');
-  assert.deepEqual(pageIds(text), ['minhas_tarefas']);
+  assert.deepEqual(pageIds(text), ['minhas_tarefas', 'tarefas_equipe']);
   assert.deepEqual(text.regenerateDefs, []);
   assert.equal(text.runAgents[0]?.agent, 'agentAddLanguage');
+
+  const detailsText = describeEffortFrom(tarefasField({
+    changeId: 'field:details.etiquetas', kind: 'field', op: 'changed', entity: 'Tarefa',
+    before: { title: 'Etiquetas', type: 'string' }, after: { title: 'Marcas', type: 'string' },
+  }), pages, textSources(undefined, MODULE_DEFS, CONFIG));
+  assert.equal(detailsText.status, 'computed');
+  assert.equal(detailsText.contract, 'keep');
+  assert.deepEqual(pageIds(detailsText), ['minhas_tarefas']);
 
   const added = describeEffortFrom(tarefasField({
     changeId: 'field:details.estimativaHoras', kind: 'field', op: 'added', entity: 'Tarefa',

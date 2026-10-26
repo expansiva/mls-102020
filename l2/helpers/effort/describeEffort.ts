@@ -7,8 +7,6 @@ const MASTER = { project: '102020', kind: 'l2', device: 'web' } as const;
 const NO_LANGUAGES = 'module has no declared languages';
 
 export interface DescribeEffortSources {
-  /** `l4/<module>/pool/l1/web/needs.json` body. Absent abends with that path. */
-  needsSource?: string;
   /** `l4/<module>/module.defs.ts` body. Absent is the same as a file with no languages. */
   moduleSource?: string;
   /** `l5/config.json` body. Absent means the module has no `userLanguage` there. */
@@ -43,10 +41,6 @@ function answer(
 function fieldPath(input: EffortInput): string {
   const fieldId = input.item.changeId.startsWith('field:') ? input.item.changeId.slice('field:'.length) : '';
   return `${input.item.entity}.${fieldId}`;
-}
-
-function needsPath(moduleName: string): string {
-  return `l4/${moduleName}/pool/l1/web/needs.json`;
 }
 
 function quoted(source: string, name: string): string | undefined {
@@ -102,38 +96,31 @@ function moduleLanguages(moduleSource: string | undefined, configSource: string 
   return { codes };
 }
 
-/** Pages whose `reads[].entity` is the entity of the field (`fieldPath` up to the first `.`). */
-function pagesShowingField(input: EffortInput, sources: DescribeEffortSources | undefined): { pages: string[]; error?: string } {
-  const entity = fieldPath(input).split('.')[0] ?? '';
-  const path = needsPath(input.module);
-  const source = sources?.needsSource;
-  if (!source) return { pages: [], error: path };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(source);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { pages: [], error: `${path}: ${message}` };
-  }
-  const pagesRaw = parsed && typeof parsed === 'object' ? (parsed as { pages?: unknown }).pages : undefined;
-  if (!Array.isArray(pagesRaw)) return { pages: [], error: `${path}: pages` };
+/**
+ * Pages for a text-only field change. A projection of the entity whose body cites the leaf
+ * (and, for `a.b`, the parent in that same body), or any route `input` that cites the leaf.
+ */
+function textPages(input: EffortInput, contracts: Record<string, string>): string[] {
+  const segments = fieldSegments(input.item.changeId);
+  const leaf = segments[segments.length - 1] ?? '';
+  const parent = segments.length > 1 ? segments[0] : undefined;
+  const entity = input.item.entity || (fieldPath(input).split('.')[0] ?? '');
   const pages: string[] = [];
-  for (const page of pagesRaw) {
-    if (!page || typeof page !== 'object') continue;
-    const pageId = (page as { pageId?: unknown }).pageId;
-    const reads = (page as { reads?: unknown }).reads;
-    if (typeof pageId !== 'string' || !Array.isArray(reads)) continue;
-    const shows = reads.some(read => !!read && typeof read === 'object' && (read as { entity?: unknown }).entity === entity);
-    if (shows && !pages.includes(pageId)) pages.push(pageId);
+  for (const pageId of Object.keys(contracts).sort()) {
+    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
+    const onProjection = parsed.projections.some(projection =>
+      projectionOfEntity(projection.name, entity)
+      && citesSegment(projection.body, leaf)
+      && (parent === undefined || citesSegment(projection.body, parent)));
+    const onRoute = parsed.routes.some(route => citesSegment(route.input, leaf));
+    if (onProjection || onRoute) pages.push(pageId);
   }
-  pages.sort();
-  return { pages };
+  return pages;
 }
 
-function textAnswer(input: EffortInput, sources: DescribeEffortSources | undefined): EffortAnswer {
-  const shown = pagesShowingField(input, sources);
-  if (shown.error) return answer(input, [], shown.error);
-  if (shown.pages.length === 0) return answer(input, []);
+function textAnswer(input: EffortInput, contracts: Record<string, string>, sources: DescribeEffortSources | undefined): EffortAnswer {
+  const pages = textPages(input, contracts);
+  if (pages.length === 0) return answer(input, []);
   const project = projectId(input);
   if (project === undefined) return answer(input, [], `cannot resolve the project of base ${input.base.baseId}`);
   const languages = moduleLanguages(sources?.moduleSource, sources?.configSource, project, input.module);
@@ -146,7 +133,7 @@ function textAnswer(input: EffortInput, sources: DescribeEffortSources | undefin
   }]);
   return answer(
     input,
-    shown.pages.map(pageId => ({
+    pages.map(pageId => ({
       kind: 'page' as const,
       id: pageId,
       path: contractPath(input.module, pageId),
@@ -504,7 +491,7 @@ function transitionAnswer(input: EffortInput, contracts: Record<string, string>)
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (input.item.kind === 'inbound') return answer(input, [], 'inbound integration change is not handled yet');
   if (input.item.kind === 'grant') return grantAnswer(input, contracts, sources?.shared ?? {});
-  if (input.item.kind === 'field' && isTextOnlyChange(input.item)) return textAnswer(input, sources);
+  if (input.item.kind === 'field' && isTextOnlyChange(input.item)) return textAnswer(input, contracts, sources);
   const journey = journeyAnswer(input, sources?.shared ?? {});
   if (journey) return journey;
   if (input.item.op === 'changed' && input.item.kind !== 'rule' && input.item.kind !== 'field' && textOnlyKeys(input.item)) {
@@ -795,21 +782,16 @@ export async function finishEffort(input: EffortInput, modelOutput: unknown): Pr
   return finishEffortFrom(input, loaded.contracts, modelOutput);
 }
 
-/** Reads shared defs, `module.defs.ts` and `l5/config.json`, then classifies the item. */
+/** Reads contracts, shared defs, and for a text field also `module.defs.ts` and `l5/config.json`. */
 export async function describeEffort(input: EffortInput): Promise<EffortAnswer> {
   const project = projectId(input);
   if (project === undefined) return answer(input, [], `cannot resolve the project of base ${input.base.baseId}`);
+  const loaded = await moduleWebDefs(input);
   if (input.item.kind === 'field' && isTextOnlyChange(input.item)) {
-    let needsSource: string | undefined;
     let moduleSource: string | undefined;
     let configSource: string | undefined;
-    const needsFolder = `${input.module}/pool/l1/web`;
     for (const file of Object.values(mls.stor.files) as StorFile[]) {
       if (!file || file.project !== project || file.status === 'deleted') continue;
-      if (file.level === 4 && file.folder === needsFolder && file.extension === '.json' && file.shortName === 'needs') {
-        needsSource = await fileBody(file);
-        continue;
-      }
       if (file.level === 4 && file.folder === input.module && file.extension === '.defs.ts' && file.shortName === 'module') {
         moduleSource = await fileBody(file);
         continue;
@@ -818,8 +800,7 @@ export async function describeEffort(input: EffortInput): Promise<EffortAnswer> 
         configSource = await fileBody(file);
       }
     }
-    return describeEffortFrom(input, {}, { needsSource, moduleSource, configSource });
+    return describeEffortFrom(input, loaded.contracts, { moduleSource, configSource, shared: loaded.shared });
   }
-  const loaded = await moduleWebDefs(input);
   return describeEffortFrom(input, loaded.contracts, { shared: loaded.shared });
 }
