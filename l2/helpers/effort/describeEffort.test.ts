@@ -160,6 +160,32 @@ void test('text-only field change materializes the pages that read the entity an
   }]);
 });
 
+void test('a title-only process or task is an empty computed answer and does not ask for a translation', () => {
+  const pages = contracts();
+  const sources = textSources(needs([{ pageId: 'ficha', entities: ['Paciente'] }]));
+  for (const item of [
+    { changeId: 'process:avisar', kind: 'process' as const, op: 'changed' as const, entity: '', before: { title: 'Avisar', description: 'a' }, after: { title: 'Avisar o paciente', description: 'a' } },
+    { changeId: 'task:avisar.ligar', kind: 'task' as const, op: 'changed' as const, entity: '', before: { title: 'Ligar' }, after: { title: 'Ligar agora' } },
+    { changeId: 'entity:Consulta', kind: 'entity' as const, op: 'changed' as const, entity: 'Consulta', before: { description: 'Antes' }, after: { description: 'Depois' } },
+  ]) {
+    const row = describeEffortFrom(input(item), pages, sources);
+    assert.equal(row.status, 'computed', item.changeId);
+    assert.equal(row.contract, 'keep', item.changeId);
+    assert.equal(row.abend, undefined, item.changeId);
+    assert.deepEqual(row.materialize, [], item.changeId);
+    assert.deepEqual(row.runAgents, [], item.changeId);
+    assert.deepEqual(row.regenerateDefs, [], item.changeId);
+  }
+
+  const structural = describeEffortFrom(input({
+    changeId: 'process:avisar', kind: 'process', op: 'changed', entity: '',
+    before: { title: 'Avisar', steps: ['a'] }, after: { title: 'Avisar o paciente', steps: ['b'] },
+  }), pages, sources);
+  assert.equal(structural.status, 'abend');
+  assert.equal(structural.abend?.reason, 'v1 computes only rule changed; process changed is not handled');
+  assert.deepEqual(structural.runAgents, []);
+});
+
 void test('a field whose type changed regenerates the pages whose contracts cite it', () => {
   const row = describeEffortFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente',

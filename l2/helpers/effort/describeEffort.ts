@@ -298,7 +298,7 @@ function citesQuotedId(text: string, id: string): boolean {
 }
 
 /** Text when every differing key of `before`/`after` is `title` or `description`. Any other key, or a value that is not a record, is a real change. */
-function grantTextOnly(item: EffortInput['item']): boolean {
+function textOnlyKeys(item: EffortInput['item']): boolean {
   const before = fieldRecord(item.before);
   const after = fieldRecord(item.after);
   if (!before || !after) return false;
@@ -317,7 +317,7 @@ function sharedPath(moduleName: string, pageId: string): string {
 /** A grant whose text changed, or a new grant, changes nothing. A changed or removed grant regenerates the contract and the shared of each page that quotes the id. */
 function grantAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
   const op = input.item.op;
-  if (op === 'added' || (op === 'changed' && grantTextOnly(input.item))) return answer(input, []);
+  if (op === 'added' || (op === 'changed' && textOnlyKeys(input.item))) return answer(input, []);
   const grantId = grantIdOf(input);
   const contractPages: string[] = [];
   for (const pageId of Object.keys(contracts).sort()) {
@@ -372,10 +372,13 @@ function removedAnswer(input: EffortInput, contracts: Record<string, string>, sh
   return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs);
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. */
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. Text-only on any other kind is an empty computed answer. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (input.item.kind === 'grant') return grantAnswer(input, contracts, sources?.shared ?? {});
-  if (isTextOnlyChange(input.item)) return textAnswer(input, sources);
+  if (input.item.kind === 'field' && isTextOnlyChange(input.item)) return textAnswer(input, sources);
+  if (input.item.op === 'changed' && input.item.kind !== 'rule' && input.item.kind !== 'field' && textOnlyKeys(input.item)) {
+    return answer(input, []);
+  }
   if (Object.keys(contracts).length === 0) return answer(input, [], `no generated L2 contracts for module ${input.module}`);
   const changedField = fieldClass(input.item);
   if (input.item.kind === 'field') {
@@ -584,7 +587,7 @@ export async function finishEffort(input: EffortInput, modelOutput: unknown): Pr
 export async function describeEffort(input: EffortInput): Promise<EffortAnswer> {
   const project = projectId(input);
   if (project === undefined) return answer(input, [], `cannot resolve the project of base ${input.base.baseId}`);
-  if (isTextOnlyChange(input.item)) {
+  if (input.item.kind === 'field' && isTextOnlyChange(input.item)) {
     let needsSource: string | undefined;
     let moduleSource: string | undefined;
     let configSource: string | undefined;
