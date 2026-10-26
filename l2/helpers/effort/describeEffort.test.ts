@@ -960,6 +960,107 @@ void test('a published event is empty unless a page cites it; an inbound change 
   assert.deepEqual(workflow.materialize, []);
 });
 
+function entityItem(before: Record<string, unknown>, after: Record<string, unknown>, op: 'added' | 'changed' | 'removed' = 'changed'): EffortInput {
+  return {
+    module: 'tarefas',
+    base: { baseId: 'mls-102047', revisionId: '537525a4' },
+    item: {
+      changeId: 'entity:Tarefa', kind: 'entity', op, entity: 'Tarefa', source: 'l4/tarefas/ontology/Tarefa.defs.ts',
+      before, after,
+    },
+  };
+}
+
+void test('a changed entity answers by attribute: a leaving rule cites its pages, a capability cites as text, other keys abend', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const sources = { shared: defsIn(TAREFAS_SHARED) };
+  const description = { title: 'Task', description: 'Old' };
+  const leavingRule = {
+    ...description,
+    description: 'New',
+    rules: ['resumoDiarioOitoHoras', 'outra'],
+    capabilities: ['tarefas.resumoDiario', 'tarefas.outra'],
+  };
+  const after = {
+    ...description,
+    description: 'Newer',
+    rules: ['outra', 'entra'],
+    capabilities: ['tarefas.outra'],
+  };
+
+  const mixed = describeEffortFrom(entityItem(leavingRule, after), pages, sources);
+  assert.equal(mixed.status, 'computed');
+  assert.equal(mixed.contract, 'keep');
+  assert.equal(mixed.abend, undefined);
+  assert.deepEqual(mixed.regenerateDefs, [contractUnit('inicio'), sharedUnit('inicio')]);
+  assert.deepEqual(mixed.materialize, [pageUnit('inicio')]);
+  assert.deepEqual(mixed.create, []);
+  assert.deepEqual(mixed.remove, []);
+
+  const text = describeEffortFrom(entityItem(description, { ...description, description: 'Only text', title: 'Name' }), pages, sources);
+  assert.equal(text.status, 'computed');
+  assert.equal(text.contract, 'keep');
+  assert.deepEqual(text.materialize, []);
+  assert.deepEqual(text.regenerateDefs, []);
+  assert.equal(text.abend, undefined);
+
+  const other = describeEffortFrom(entityItem(
+    { entityId: 'Tarefa', initialData: { a: 1 } },
+    { entityId: 'Tarefa', initialData: { a: 2 } },
+  ), pages, sources);
+  assert.equal(other.status, 'abend');
+  assert.equal(other.abend?.reason, 'entity Tarefa changed in initialData; not handled yet');
+  assert.deepEqual(other.materialize, []);
+
+  const added = describeEffortFrom(entityItem({}, { title: 'Task' }, 'added'), pages, sources);
+  assert.equal(added.status, 'abend');
+  assert.equal(added.abend?.reason, 'v1 computes only rule changed; entity added is not handled');
+
+  const capabilityId = 'tarefas.resumoDiario';
+  const cited = describeEffortFrom(entityItem(
+    { title: 'Task', capabilities: [capabilityId] },
+    { title: 'Task', capabilities: [] },
+  ), {
+    ...pages,
+    painel: contractCiting('painel', capabilityId),
+  }, {
+    shared: { ...sources.shared, quadro: `export const quadroShared = { listen: "${capabilityId}" };\n` },
+  });
+  assert.equal(cited.status, 'computed');
+  assert.equal(cited.contract, 'keep');
+  assert.deepEqual(cited.materialize, [pageUnit('painel'), pageUnit('quadro')]);
+  assert.deepEqual(cited.regenerateDefs, [
+    pageUnit('painel'), sharedUnit('painel'),
+    pageUnit('quadro'), sharedUnit('quadro'),
+  ]);
+
+  const rule = describeEffortFrom(removed('rule:resumoDiarioOitoHoras'), pages, sources);
+  assert.equal(rule.status, 'computed');
+  assert.deepEqual(rule.materialize, [pageUnit('inicio')]);
+
+  const field = describeEffortFrom(tarefasField({
+    changeId: 'field:titulo', kind: 'field', op: 'changed', entity: 'Tarefa',
+    before: { title: 'Title', type: 'string' }, after: { title: 'Title', type: 'number' },
+  }), pages, sources);
+  assert.equal(field.contract, 'change');
+  assert.ok(field.materialize.length > 0);
+
+  const grant = describeEffortFrom(grantItem({
+    changeId: 'grant:membroTarefasProprias', op: 'changed',
+    before: GRANT, after: { ...GRANT, dataScope: { mode: 'all', anchorEntity: 'Participante' } },
+  }), pages, sources);
+  assert.equal(grant.status, 'computed');
+  assert.ok(grant.regenerateDefs.length > 0);
+
+  const journey = describeEffortFrom(journeyItem('journey:criarTarefa', 'journey', 'removed', JOURNEY), pages, sources);
+  assert.equal(journey.contract, 'change');
+  assert.ok(journey.materialize.length > 0);
+
+  const workflow = describeEffortFrom(workflowItem('process:resumoDiarioTarefas', 'process', 'changed', '', { trigger: { schedule: '8h' } }, { trigger: { schedule: '9h' } }), pages, sources);
+  assert.equal(workflow.status, 'computed');
+  assert.deepEqual(workflow.materialize, []);
+});
+
 void test('describeEffort imports only helpers and the solution types, and does not write or fetch', () => {
   const text = readFileSync(new URL('./describeEffort.ts', import.meta.url), 'utf8');
   const allowed = ['/_102020_/l2/helpers/', '/_102035_/l2/solution/'];

@@ -487,7 +487,70 @@ function transitionAnswer(input: EffortInput, contracts: Record<string, string>)
   return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs, [], withContract ? 'change' : 'keep');
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. An inbound change abends. Text-only on any other kind is an empty computed answer. */
+function stringIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids: string[] = [];
+  for (const item of value) {
+    if (typeof item === 'string' && item.length > 0 && !ids.includes(item)) ids.push(item);
+  }
+  return ids;
+}
+
+function idsOnlyIn(source: unknown, other: unknown): string[] {
+  const skip = new Set(stringIds(other));
+  return stringIds(source).filter(id => !skip.has(id));
+}
+
+function pushUnits(into: EffortUnitRef[], units: EffortUnitRef[]): void {
+  for (const unit of units) {
+    if (into.some(item => item.kind === unit.kind && item.id === unit.id && item.path === unit.path)) continue;
+    into.push(unit);
+  }
+}
+
+/**
+ * A changed entity answers by attribute. Text stays empty. Each rule id that leaves uses the removed-rule path.
+ * Each capability id that enters or leaves regenerates page and shared where the id is cited as text, then materializes.
+ * Any other differing key abends. Added or removed entities stay on the generic path.
+ */
+function entityAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
+  const before = fieldRecord(input.item.before);
+  const after = fieldRecord(input.item.after);
+  if (!before || !after) {
+    return answer(input, [], `v1 computes only rule changed; ${input.item.kind} ${input.item.op} is not handled`);
+  }
+  const textKeys = new Set<string>(L4_TEXT_ATTRIBUTES);
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (sameJson(before[key], after[key])) continue;
+    if (textKeys.has(key) || key === 'rules' || key === 'capabilities') continue;
+    return answer(input, [], `entity ${input.item.entity} changed in ${key}; not handled yet`);
+  }
+  const regenerateDefs: EffortUnitRef[] = [];
+  const materialize: EffortUnitRef[] = [];
+  for (const ruleId of idsOnlyIn(before.rules, after.rules)) {
+    const row = removedAnswer({
+      ...input,
+      item: { ...input.item, changeId: `rule:${ruleId}`, kind: 'rule', op: 'removed' },
+    }, contracts, shared);
+    pushUnits(regenerateDefs, row.regenerateDefs);
+    pushUnits(materialize, row.materialize);
+  }
+  const capabilityIds = [
+    ...idsOnlyIn(before.capabilities, after.capabilities),
+    ...idsOnlyIn(after.capabilities, before.capabilities),
+  ];
+  for (const capabilityId of capabilityIds) {
+    const row = outboundAnswer({
+      ...input,
+      item: { ...input.item, changeId: `outbound:${capabilityId}`, kind: 'outbound', op: 'changed' },
+    }, contracts, shared);
+    pushUnits(regenerateDefs, row.regenerateDefs);
+    pushUnits(materialize, row.materialize);
+  }
+  return answer(input, materialize, undefined, [], regenerateDefs);
+}
+
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. An inbound change abends. A changed entity answers by attribute. Text-only on any other kind is an empty computed answer. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (input.item.kind === 'inbound') return answer(input, [], 'inbound integration change is not handled yet');
   if (input.item.kind === 'grant') return grantAnswer(input, contracts, sources?.shared ?? {});
@@ -496,6 +559,9 @@ export function describeEffortFrom(input: EffortInput, contracts: Record<string,
   if (journey) return journey;
   if (input.item.op === 'changed' && input.item.kind !== 'rule' && input.item.kind !== 'field' && textOnlyKeys(input.item)) {
     return answer(input, []);
+  }
+  if (input.item.kind === 'entity' && input.item.op === 'changed') {
+    return entityAnswer(input, contracts, sources?.shared ?? {});
   }
   if (input.item.kind === 'transition') return transitionAnswer(input, contracts);
   if (input.item.kind === 'process' || input.item.kind === 'task') {
