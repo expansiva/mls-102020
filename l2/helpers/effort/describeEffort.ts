@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/helpers/effort/describeEffort.ts" enhancement="_blank"/>
 
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
-import { isTextOnlyChange, type EffortAgentRef, type EffortAnswer, type EffortInput, type EffortPromptRequest, type EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
+import { isTextOnlyChange, L4_TEXT_ATTRIBUTES, type EffortAgentRef, type EffortAnswer, type EffortInput, type EffortPromptRequest, type EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
 const MASTER = { project: '102020', kind: 'l2', device: 'web' } as const;
 const NO_LANGUAGES = 'module has no declared languages';
@@ -286,6 +286,60 @@ function fieldAnswer(input: EffortInput, contracts: Record<string, string>, kind
   return answer(input, materialize, undefined, [], contractUnits(input.module, pages), [], 'change');
 }
 
+function grantIdOf(input: EffortInput): string {
+  return input.item.changeId.startsWith('grant:') ? input.item.changeId.slice('grant:'.length) : '';
+}
+
+/** The id is a whole quoted token. A shorter id does not match a longer one. */
+function citesQuotedId(text: string, id: string): boolean {
+  if (!id) return false;
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`['"]${escaped}['"]`, 'u').test(text);
+}
+
+/** Text when every differing key of `before`/`after` is `title` or `description`. Any other key, or a value that is not a record, is a real change. */
+function grantTextOnly(item: EffortInput['item']): boolean {
+  const before = fieldRecord(item.before);
+  const after = fieldRecord(item.after);
+  if (!before || !after) return false;
+  const textKeys = new Set<string>(L4_TEXT_ATTRIBUTES);
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (sameJson(before[key], after[key])) continue;
+    if (!textKeys.has(key)) return false;
+  }
+  return true;
+}
+
+function sharedPath(moduleName: string, pageId: string): string {
+  return `l2/${moduleName}/web/shared/${pageId}.defs.ts`;
+}
+
+/** A grant whose text changed, or a new grant, changes nothing. A changed or removed grant regenerates the contract and the shared of each page that quotes the id. */
+function grantAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
+  const op = input.item.op;
+  if (op === 'added' || (op === 'changed' && grantTextOnly(input.item))) return answer(input, []);
+  const grantId = grantIdOf(input);
+  const contractPages: string[] = [];
+  for (const pageId of Object.keys(contracts).sort()) {
+    if (citesQuotedId(contracts[pageId] ?? '', grantId)) contractPages.push(pageId);
+  }
+  const sharedPages: string[] = [];
+  for (const pageId of Object.keys(shared).sort()) {
+    if (citesQuotedId(shared[pageId] ?? '', grantId)) sharedPages.push(pageId);
+  }
+  const pages = [...new Set([...contractPages, ...sharedPages])].sort();
+  const regenerateDefs: EffortUnitRef[] = [];
+  for (const pageId of pages) {
+    if (contractPages.includes(pageId)) {
+      regenerateDefs.push({ kind: 'contract', id: pageId, path: contractPath(input.module, pageId) });
+    }
+    if (sharedPages.includes(pageId)) {
+      regenerateDefs.push({ kind: 'shared', id: pageId, path: sharedPath(input.module, pageId) });
+    }
+  }
+  return answer(input, [], undefined, [], regenerateDefs);
+}
+
 /** A removed rule drops its id from each citing contract and from each shared `rules` list, then rematerializes those pages. A removed process or task uses the same pages, matching the id as text in each route and in the shared source. */
 function removedAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
   const needles = removedNeedles(input);
@@ -312,14 +366,15 @@ function removedAnswer(input: EffortInput, contracts: Record<string, string>, sh
       regenerateDefs.push({ kind: 'contract', id: pageId, path: contractPath(input.module, pageId) });
     }
     if (sharedPages.includes(pageId)) {
-      regenerateDefs.push({ kind: 'shared', id: pageId, path: `l2/${input.module}/web/shared/${pageId}.defs.ts` });
+      regenerateDefs.push({ kind: 'shared', id: pageId, path: sharedPath(input.module, pageId) });
     }
   }
   return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs);
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code. */
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
+  if (input.item.kind === 'grant') return grantAnswer(input, contracts, sources?.shared ?? {});
   if (isTextOnlyChange(input.item)) return textAnswer(input, sources);
   if (Object.keys(contracts).length === 0) return answer(input, [], `no generated L2 contracts for module ${input.module}`);
   const changedField = fieldClass(input.item);

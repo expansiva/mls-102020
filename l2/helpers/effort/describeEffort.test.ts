@@ -102,7 +102,6 @@ void test('a rule no route cites, other kinds, and a module without contracts ab
 
   for (const item of [
     { changeId: 'field:anotacao', kind: 'field' as const, op: 'changed' as const, entity: 'Consulta' },
-    { changeId: 'grant:verAgenda', kind: 'grant' as const, op: 'changed' as const, entity: '' },
     { changeId: 'task:avisar', kind: 'task' as const, op: 'added' as const, entity: '' },
   ]) {
     const row = describeEffortFrom(input(item), pages);
@@ -413,6 +412,9 @@ void test('a new rule asks the model to choose among the contract pages; other i
   assert.equal(effortPromptFrom(input({
     changeId: NAME, kind: 'field', op: 'changed', entity: 'Paciente', before: TEXT_BEFORE, after: TEXT_AFTER,
   }), pages), null);
+  assert.equal(effortPromptFrom(grantItem({
+    changeId: 'grant:membroTarefasProprias', op: 'changed', before: GRANT, after: { ...GRANT, dataScope: { mode: 'all' } },
+  }), pages), null);
 });
 
 void test('a recorded new-rule reply materializes, or rebuilds the page when the contract must change', () => {
@@ -491,6 +493,81 @@ function pageIds(row: { materialize: Array<{ id: string }> }): string[] {
 function defKeys(row: { regenerateDefs: Array<{ kind: string; id: string }> }): string[] {
   return row.regenerateDefs.map(unit => `${unit.kind}:${unit.id}`);
 }
+
+const GRANT = {
+  grantId: 'membroTarefasProprias',
+  actorRef: 'membroEquipe',
+  title: 'Minhas tarefas',
+  description: 'O membro vê as tarefas dele.',
+  entityRefs: ['Tarefa'],
+  dataScope: { mode: 'own', anchorEntity: 'Participante' },
+  disclosure: { mode: 'fullRecord' },
+};
+
+function grantItem(item: Pick<L4DiffItem, 'changeId' | 'op' | 'before' | 'after'>): EffortInput {
+  return {
+    module: 'tarefas',
+    base: { baseId: 'mls-102047', revisionId: '537525a4' },
+    item: { ...item, kind: 'grant', entity: '', source: 'l4/tarefas/access.defs.ts' },
+  };
+}
+
+function assertGrantEmpty(row: ReturnType<typeof describeEffortFrom>): void {
+  assert.equal(row.status, 'computed');
+  assert.equal(row.contract, 'keep');
+  assert.equal(row.abend, undefined);
+  assert.deepEqual(row.regenerateDefs, []);
+  assert.deepEqual(row.materialize, []);
+  assert.deepEqual(row.create, []);
+  assert.deepEqual(row.remove, []);
+  assert.deepEqual(row.runAgents, []);
+}
+
+void test('grant classes on the tarefas contracts and shared defs', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const sources = { shared: defsIn(TAREFAS_SHARED) };
+
+  const text = describeEffortFrom(grantItem({
+    changeId: 'grant:membroTarefasProprias', op: 'changed',
+    before: GRANT, after: { ...GRANT, title: 'Tarefas do membro', description: 'Texto novo.' },
+  }), pages, sources);
+  assertGrantEmpty(text);
+
+  const changed = describeEffortFrom(grantItem({
+    changeId: 'grant:membroTarefasProprias', op: 'changed',
+    before: GRANT, after: { ...GRANT, dataScope: { mode: 'all', anchorEntity: 'Participante' } },
+  }), pages, sources);
+  assert.equal(changed.status, 'computed');
+  assert.equal(changed.contract, 'keep');
+  assert.deepEqual(changed.materialize, []);
+  assert.deepEqual(changed.create, []);
+  assert.deepEqual(changed.remove, []);
+  assert.deepEqual(changed.regenerateDefs, [
+    contractUnit('inicio'), sharedUnit('inicio'),
+    contractUnit('minhas_tarefas'), sharedUnit('minhas_tarefas'),
+  ]);
+
+  const added = describeEffortFrom(grantItem({
+    changeId: 'grant:membroVeParticipantes', op: 'added',
+    after: { ...GRANT, grantId: 'membroVeParticipantes', entityRefs: ['Participante'], dataScope: { mode: 'organization' } },
+  }), pages, sources);
+  assertGrantEmpty(added);
+
+  const removedGrant = describeEffortFrom(grantItem({
+    changeId: 'grant:membroChecklistPropria', op: 'removed',
+    before: { ...GRANT, grantId: 'membroChecklistPropria', entityRefs: ['ItemChecklist'] },
+  }), pages, sources);
+  assert.equal(removedGrant.status, 'computed');
+  assert.equal(removedGrant.contract, 'keep');
+  assert.deepEqual(removedGrant.materialize, []);
+  assert.deepEqual(removedGrant.regenerateDefs, [contractUnit('minhas_tarefas'), sharedUnit('minhas_tarefas')]);
+
+  const prefix = describeEffortFrom(grantItem({
+    changeId: 'grant:membroTarefas', op: 'changed',
+    before: GRANT, after: { ...GRANT, actorRef: 'gestor' },
+  }), pages, sources);
+  assertGrantEmpty(prefix);
+});
 
 void test('field classes on the tarefas contracts', () => {
   const pages = defsIn(TAREFAS_CONTRACTS);
