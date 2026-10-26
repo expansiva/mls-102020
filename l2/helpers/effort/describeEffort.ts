@@ -168,9 +168,8 @@ function pageUnit(moduleName: string, pageId: string): EffortUnitRef {
   return { kind: 'page', id: pageId, path: contractPath(moduleName, pageId) };
 }
 
-/** Ids a removed process or task looks for. A task id is `task:<processId>.<taskId>`: both the process id and the full id. */
-function removedNeedles(input: EffortInput): string[] | null {
-  if (input.item.op !== 'removed') return null;
+/** Ids a process or task looks for in contracts and shared. A task id is `task:<processId>.<taskId>`: both the process id and the full id. */
+function citeNeedles(input: EffortInput): string[] | null {
   const changeId = input.item.changeId;
   if (input.item.kind === 'process') {
     const processId = changeId.startsWith('process:') ? changeId.slice('process:'.length) : '';
@@ -343,9 +342,9 @@ function grantAnswer(input: EffortInput, contracts: Record<string, string>, shar
   return answer(input, [], undefined, [], regenerateDefs);
 }
 
-/** A removed rule drops its id from each citing contract and from each shared `rules` list, then rematerializes those pages. A removed process or task uses the same pages, matching the id as text in each route and in the shared source. */
+/** A removed rule drops its id from each citing contract and from each shared `rules` list, then rematerializes those pages. A process or task uses the same pages, matching the id as text in each route and in the shared source. */
 function removedAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
-  const needles = removedNeedles(input);
+  const needles = citeNeedles(input);
   const ruleId = needles ? '' : ruleIdOf(input);
   const contractPages: string[] = [];
   for (const pageId of Object.keys(contracts).sort()) {
@@ -440,7 +439,42 @@ function journeyAnswer(input: EffortInput, shared: Record<string, string>): Effo
   return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs, [], contract);
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. Text-only on any other kind is an empty computed answer. */
+function transitionIdOf(input: EffortInput): string {
+  return input.item.changeId.startsWith('transition:') ? input.item.changeId.slice('transition:'.length) : '';
+}
+
+/** Pages whose contract has a route `writes: '<entity>.<transitionId>'`. */
+function pagesWritingTransition(contracts: Record<string, string>, entity: string, transitionId: string): string[] {
+  if (!entity || !transitionId) return [];
+  const writes = `${entity}.${transitionId}`;
+  const pages: string[] = [];
+  for (const pageId of Object.keys(contracts).sort()) {
+    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
+    if (parsed.routes.some(route => route.writes === writes)) pages.push(pageId);
+  }
+  return pages;
+}
+
+/**
+ * A new transition asks for a page choice. A removed one regenerates page, contract and shared of each writing page.
+ * A real change regenerates page and shared of those pages and keeps the contract.
+ */
+function transitionAnswer(input: EffortInput, contracts: Record<string, string>): EffortAnswer {
+  if (input.item.op === 'added') {
+    return answer(input, [], 'a new transition needs a page choice; not handled yet');
+  }
+  const pages = pagesWritingTransition(contracts, input.item.entity, transitionIdOf(input));
+  const withContract = input.item.op === 'removed';
+  const regenerateDefs: EffortUnitRef[] = [];
+  for (const pageId of pages) {
+    regenerateDefs.push(pageUnit(input.module, pageId));
+    if (withContract) regenerateDefs.push({ kind: 'contract', id: pageId, path: contractPath(input.module, pageId) });
+    regenerateDefs.push({ kind: 'shared', id: pageId, path: sharedPath(input.module, pageId) });
+  }
+  return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs, [], withContract ? 'change' : 'keep');
+}
+
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. Text-only on any other kind is an empty computed answer. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (input.item.kind === 'grant') return grantAnswer(input, contracts, sources?.shared ?? {});
   if (input.item.kind === 'field' && isTextOnlyChange(input.item)) return textAnswer(input, sources);
@@ -449,13 +483,17 @@ export function describeEffortFrom(input: EffortInput, contracts: Record<string,
   if (input.item.op === 'changed' && input.item.kind !== 'rule' && input.item.kind !== 'field' && textOnlyKeys(input.item)) {
     return answer(input, []);
   }
+  if (input.item.kind === 'transition') return transitionAnswer(input, contracts);
+  if (input.item.kind === 'process' || input.item.kind === 'task') {
+    return removedAnswer(input, contracts, sources?.shared ?? {});
+  }
   if (Object.keys(contracts).length === 0) return answer(input, [], `no generated L2 contracts for module ${input.module}`);
   const changedField = fieldClass(input.item);
   if (input.item.kind === 'field') {
     if (!changedField) return answer(input, [], `v1 computes only rule changed; ${input.item.kind} ${input.item.op} is not handled`);
     return fieldAnswer(input, contracts, changedField);
   }
-  if ((input.item.kind === 'rule' || input.item.kind === 'process' || input.item.kind === 'task') && input.item.op === 'removed') {
+  if (input.item.kind === 'rule' && input.item.op === 'removed') {
     return removedAnswer(input, contracts, sources?.shared ?? {});
   }
   if (input.item.kind !== 'rule' || input.item.op !== 'changed') {

@@ -100,15 +100,12 @@ void test('a rule no route cites, other kinds, and a module without contracts ab
   assert.equal(missing.status, 'abend');
   assert.equal(missing.abend?.reason, 'no route of any contract cites rule naoExiste');
 
-  for (const item of [
-    { changeId: 'field:anotacao', kind: 'field' as const, op: 'changed' as const, entity: 'Consulta' },
-    { changeId: 'task:avisar', kind: 'task' as const, op: 'added' as const, entity: '' },
-  ]) {
-    const row = describeEffortFrom(input(item), pages);
-    assert.equal(row.status, 'abend', item.changeId);
-    assert.equal(row.abend?.reason, `v1 computes only rule changed; ${item.kind} ${item.op} is not handled`);
-    assert.deepEqual(row.materialize, []);
-  }
+  const field = describeEffortFrom(input({
+    changeId: 'field:anotacao', kind: 'field', op: 'changed', entity: 'Consulta',
+  }), pages);
+  assert.equal(field.status, 'abend');
+  assert.equal(field.abend?.reason, 'v1 computes only rule changed; field changed is not handled');
+  assert.deepEqual(field.materialize, []);
 
   const empty = describeEffortFrom(input({
     changeId: 'rule:anotacaoObrigatoriaNoAtendimento', kind: 'rule', op: 'changed', entity: '',
@@ -181,8 +178,10 @@ void test('a title-only process or task is an empty computed answer and does not
     changeId: 'process:avisar', kind: 'process', op: 'changed', entity: '',
     before: { title: 'Avisar', steps: ['a'] }, after: { title: 'Avisar o paciente', steps: ['b'] },
   }), pages, sources);
-  assert.equal(structural.status, 'abend');
-  assert.equal(structural.abend?.reason, 'v1 computes only rule changed; process changed is not handled');
+  assert.equal(structural.status, 'computed');
+  assert.equal(structural.contract, 'keep');
+  assert.deepEqual(structural.materialize, []);
+  assert.deepEqual(structural.regenerateDefs, []);
   assert.deepEqual(structural.runAgents, []);
 });
 
@@ -791,6 +790,91 @@ void test('journey and step classes cite shared steps and leave a new journey to
   const rule = describeEffortFrom(removed('rule:resumoDiarioOitoHoras'), pages, sources);
   assert.deepEqual(rule.regenerateDefs, [contractUnit('inicio'), sharedUnit('inicio')]);
   assert.deepEqual(rule.materialize, [pageUnit('inicio')]);
+});
+
+function workflowItem(
+  changeId: string,
+  kind: 'process' | 'task' | 'transition',
+  op: 'added' | 'changed' | 'removed',
+  entity = '',
+  before?: Record<string, unknown>,
+  after?: Record<string, unknown>,
+): EffortInput {
+  return {
+    module: 'tarefas',
+    base: { baseId: 'mls-102047', revisionId: '537525a4' },
+    item: { changeId, kind, op, entity, source: 'l4/tarefas/workflows.defs.ts', before, after },
+  };
+}
+
+void test('process, task and transition classes cite pages or stay empty', () => {
+  const pages = defsIn(TAREFAS_CONTRACTS);
+  const shared = defsIn(TAREFAS_SHARED);
+  const sources = { shared };
+
+  const w1 = describeEffortFrom(workflowItem('process:processoTarefa', 'process', 'changed', '', { title: 'A', description: 'old' }, { title: 'A', description: 'new' }), pages, sources);
+  assert.equal(w1.status, 'computed');
+  assert.deepEqual(w1.materialize, []);
+  assert.deepEqual(w1.regenerateDefs, []);
+  assert.equal(w1.contract, 'keep');
+
+  const w2 = describeEffortFrom(workflowItem('process:resumoDiarioTarefas', 'process', 'changed', '', { trigger: { schedule: '8h' } }, { trigger: { schedule: '9h' } }), pages, sources);
+  assert.equal(w2.status, 'computed');
+  assert.deepEqual(w2.materialize, []);
+  assert.deepEqual(w2.regenerateDefs, []);
+
+  const w3 = describeEffortFrom(workflowItem('task:processoTarefa.avisarConclusao', 'task', 'added', '', undefined, { kind: 'alert' }), pages, sources);
+  assert.equal(w3.status, 'computed');
+  assert.deepEqual(w3.materialize, []);
+  assert.deepEqual(w3.regenerateDefs, []);
+
+  const w4Transition = describeEffortFrom(workflowItem('transition:retomar', 'transition', 'removed', 'Tarefa'), pages, sources);
+  assert.equal(w4Transition.status, 'computed');
+  assert.equal(w4Transition.contract, 'change');
+  assert.deepEqual(w4Transition.regenerateDefs, [
+    pageUnit('inicio'), contractUnit('inicio'), sharedUnit('inicio'),
+    pageUnit('minhas_tarefas'), contractUnit('minhas_tarefas'), sharedUnit('minhas_tarefas'),
+  ]);
+  assert.deepEqual(w4Transition.materialize, [pageUnit('inicio'), pageUnit('minhas_tarefas')]);
+
+  const w4Journey = describeEffortFrom(journeyItem('journey:retomarTarefa', 'journey', 'removed', { actorRef: 'membro', title: 'Resume' }), pages, sources);
+  assert.equal(w4Journey.contract, 'change');
+  assert.deepEqual(w4Journey.regenerateDefs, [
+    pageUnit('inicio'), contractUnit('inicio'), sharedUnit('inicio'),
+    pageUnit('minhas_tarefas'), contractUnit('minhas_tarefas'), sharedUnit('minhas_tarefas'),
+  ]);
+
+  const changedTransition = describeEffortFrom(workflowItem('transition:retomar', 'transition', 'changed', 'Tarefa', { to: 'emAndamento' }, { to: 'aberta' }), pages, sources);
+  assert.equal(changedTransition.status, 'computed');
+  assert.equal(changedTransition.contract, 'keep');
+  assert.deepEqual(changedTransition.regenerateDefs, [
+    pageUnit('inicio'), sharedUnit('inicio'),
+    pageUnit('minhas_tarefas'), sharedUnit('minhas_tarefas'),
+  ]);
+  assert.deepEqual(changedTransition.materialize, [pageUnit('inicio'), pageUnit('minhas_tarefas')]);
+
+  const textTransition = describeEffortFrom(workflowItem('transition:retomar', 'transition', 'changed', 'Tarefa', { title: 'A' }, { title: 'B' }), pages, sources);
+  assert.equal(textTransition.status, 'computed');
+  assert.deepEqual(textTransition.materialize, []);
+  assert.deepEqual(textTransition.regenerateDefs, []);
+
+  const addedTransition = describeEffortFrom(workflowItem('transition:nova', 'transition', 'added', 'Tarefa', undefined, { to: 'x' }), pages, sources);
+  assert.equal(addedTransition.status, 'abend');
+  assert.equal(addedTransition.abend?.reason, 'a new transition needs a page choice; not handled yet');
+  assert.deepEqual(addedTransition.materialize, []);
+
+  const field = describeEffortFrom(tarefasField({
+    changeId: 'field:titulo', kind: 'field', op: 'changed', entity: 'Tarefa',
+    before: { title: 'Title', type: 'string' }, after: { title: 'Title', type: 'number' },
+  }), pages, sources);
+  assert.equal(field.status, 'computed');
+  assert.equal(field.contract, 'change');
+
+  const grant = describeEffortFrom(grantItem({
+    changeId: 'grant:membroTarefasProprias', op: 'changed',
+    before: GRANT, after: { ...GRANT, dataScope: { mode: 'all', anchorEntity: 'Participante' } },
+  }), pages, sources);
+  assert.equal(grant.status, 'computed');
 });
 
 void test('describeEffort imports only helpers and the solution types, and does not write or fetch', () => {
