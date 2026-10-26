@@ -39,6 +39,7 @@ test('R1 only materializes the named page and ignores the other master', () => {
     mode: 'materialize',
     pages: ['minhas_tarefas'],
     materializeOnly: [],
+    commands: [],
   });
 });
 
@@ -48,6 +49,7 @@ test('pages stay in first-seen order without repetition', () => {
     mode: 'materialize',
     pages: ['segunda', 'primeira'],
     materializeOnly: [],
+    commands: [],
   });
 });
 
@@ -63,6 +65,7 @@ test('R3 regenerateDefs of contract and shared rebuilds those pages', () => {
     mode: 'regenerate',
     pages: ['minhas_tarefas', 'inicio'],
     materializeOnly: [],
+    commands: [],
   });
 });
 
@@ -77,6 +80,7 @@ test('R4 contract change rebuilds the cited page', () => {
     mode: 'regenerate',
     pages: ['tarefas_equipe'],
     materializeOnly: [],
+    commands: [],
   });
 });
 
@@ -95,6 +99,7 @@ test('R1 and R4 in one file keep the materialize-only page beside the rebuild', 
     mode: 'regenerate',
     pages: ['tarefas_equipe'],
     materializeOnly: ['minhas_tarefas'],
+    commands: [],
   });
 });
 
@@ -119,6 +124,7 @@ test('R1 materializes this master when the client project is a different number'
       mode: 'materialize',
       pages: ['minhas_tarefas'],
       materializeOnly: [],
+      commands: [],
     });
   } finally {
     mls.actualProject = previous;
@@ -136,6 +142,81 @@ test('an effort whose answers are only from another master is a refusal', () => 
   assert.deepEqual(planNewReleaseL2(retie(effort), MASTER), {
     ok: false,
     reason: 'change effort has no answer from master 102020',
+  });
+});
+
+const LANG_COMMAND = '@@agentAddLanguage [{"languages":[{"code":"pt","name":"pt"}],"projectId":102047,"moduleName":"tarefas"}]';
+
+function withCommands(name: string, commands: string[][]): EffortFile {
+  const effort = fixture(name) as EffortFile & {
+    request: { items: Array<{ changeId: string; kind: string; op: string; entity: string; source: string }> };
+  };
+  const source = effort.perItem[0].answers.find(answer => answer.master.project === MASTER);
+  if (!source) throw new Error('missing master answer');
+  (source as Answer & { runAgents: Array<{ agent: string; command: string }> }).runAgents =
+    (commands[0] || []).map(command => ({ agent: 'agentAddLanguage', command }));
+  const other = effort.perItem[0].answers.find(answer => answer.master.project !== MASTER);
+  if (other) {
+    (other as Answer & { runAgents: Array<{ agent: string; command: string }> }).runAgents = [
+      { agent: 'agentAddLanguage', command: '@@agentAddLanguage [{"languages":[{"code":"es","name":"es"}]}]' },
+    ];
+  }
+  effort.perItem[0].item = 'field:prazo';
+  for (const answer of effort.perItem[0].answers) answer.item = 'field:prazo';
+  effort.request.items = [{
+    changeId: 'field:prazo',
+    kind: 'field',
+    op: 'changed',
+    entity: 'Tarefa',
+    source: 'l4/tarefas/ontology.defs.ts',
+  }];
+  return effort;
+}
+
+test('a text field with runAgents is accepted and the command is returned once', () => {
+  const effort = withCommands('r1', [[LANG_COMMAND]]);
+  const answer = effort.perItem[0].answers.find(row => row.master.project === MASTER);
+  if (!answer) throw new Error('missing master answer');
+  answer.item = 'field:prazo';
+  answer.materialize = [
+    { kind: 'page', id: 'minhas_tarefas', path: 'l2/tarefas/web/contracts/minhas_tarefas.defs.ts' },
+    { kind: 'page', id: 'tarefas_equipe', path: 'l2/tarefas/web/contracts/tarefas_equipe.defs.ts' },
+  ];
+  assert.deepEqual(planNewReleaseL2(retie(effort), MASTER), {
+    ok: true,
+    mode: 'materialize',
+    pages: ['minhas_tarefas', 'tarefas_equipe'],
+    materializeOnly: [],
+    commands: [LANG_COMMAND],
+  });
+});
+
+test('the same command on two answers of this master is returned once, in answer order', () => {
+  const effort = withCommands('r1', [[LANG_COMMAND]]) as EffortFile & {
+    request: { items: Array<{ changeId: string; kind: string; op: string; entity: string; source: string }> };
+  };
+  const first = effort.perItem[0].answers.find(row => row.master.project === MASTER);
+  if (!first) throw new Error('missing master answer');
+  const second = structuredClone(first);
+  second.item = 'field:titulo';
+  (second as Answer & { runAgents: Array<{ agent: string; command: string }> }).runAgents = [
+    { agent: 'agentAddLanguage', command: LANG_COMMAND },
+    { agent: 'agentAddLanguage', command: '@@agentAddLanguage [{"languages":[{"code":"en","name":"en"}]}]' },
+  ];
+  effort.perItem.push({ item: 'field:titulo', answers: [second] });
+  effort.request.items.push({
+    changeId: 'field:titulo',
+    kind: 'field',
+    op: 'changed',
+    entity: 'Tarefa',
+    source: 'l4/tarefas/ontology.defs.ts',
+  });
+  assert.deepEqual(planNewReleaseL2(retie(effort), MASTER), {
+    ok: true,
+    mode: 'materialize',
+    pages: ['minhas_tarefas'],
+    materializeOnly: [],
+    commands: [LANG_COMMAND, '@@agentAddLanguage [{"languages":[{"code":"en","name":"en"}]}]'],
   });
 });
 

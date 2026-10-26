@@ -386,6 +386,7 @@ export function buildApplySteps(
   project: number,
   moduleName: string,
   deleted: readonly string[] = [],
+  commands: readonly string[] = [],
 ): mls.msg.AIAgentStep[] {
   return [
     {
@@ -403,21 +404,42 @@ export function buildApplySteps(
       NR_CLOSE_PLAN,
       [NR_MATERIALIZE_PLAN],
       'Close release',
-      JSON.stringify({ planId: NR_CLOSE_PLAN, deleted }),
+      JSON.stringify({ planId: NR_CLOSE_PLAN, deleted, commands }),
     ),
   ];
 }
 
-export function deletedPaths(prompt: string): string[] {
-  const parsed = JSON.parse(prompt || '{}') as { deleted?: unknown };
-  if (!Array.isArray(parsed.deleted)) return [];
-  return parsed.deleted.filter((item): item is string => typeof item === 'string');
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
 }
 
-/** Close text: the materializer message plus every generated file this release deleted. */
-export function closeNotice(materializerMessage: string, deleted: readonly string[]): string {
+export function deletedPaths(prompt: string): string[] {
+  const parsed = JSON.parse(prompt || '{}') as { deleted?: unknown };
+  return stringList(parsed.deleted);
+}
+
+export function commandLines(prompt: string): string[] {
+  const parsed = JSON.parse(prompt || '{}') as { commands?: unknown };
+  return stringList(parsed.commands);
+}
+
+/** Close text: the materializer message, the deleted files, then one line per command when it completed. */
+export function closeNotice(
+  materializerMessage: string,
+  deleted: readonly string[],
+  commands: readonly string[] = [],
+  completed = true,
+): string {
   const listed = deleted.length ? deleted.join(', ') : 'none';
-  return `${materializerMessage}; deleted: ${listed}`;
+  const head = `${materializerMessage}; deleted: ${listed}`;
+  if (!completed || commands.length === 0) return head;
+  return `${head}\n${commands.join('\n')}`;
+}
+
+export function stepsPhaseNote(count: number, commands: readonly string[]): string {
+  const base = `${count} steps`;
+  return commands.length === 0 ? base : `${base}; ${commands.join('\n')}`;
 }
 
 export function planIdOf(step: { planning?: { planId?: string } | null }): string {

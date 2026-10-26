@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
 import { createAgent } from '/_102020_/l2/agentNewReleaseL2/agentNewReleaseL2.js';
 import { planNewReleaseL2 } from '/_102020_/l2/agentNewReleaseL2/helpers/plan.js';
 import {
@@ -20,6 +21,8 @@ import {
   buildRegenerateSteps,
   changeEffortInfo,
   closeNotice,
+  commandLines,
+  stepsPhaseNote,
   currentProjectNumber,
   deleteGeneratedFiles,
   generatedFilesOf,
@@ -32,6 +35,7 @@ import {
   releasePages,
   reviewDefsRun,
   runInfo,
+  snapshotInfo,
   statusIntents,
   statusText,
   type NrListedFile,
@@ -112,6 +116,14 @@ test('the materializer step is the whole module, and close depends on it and lis
     assert.equal(close.planning?.planId, NR_CLOSE_PLAN);
     assert.deepEqual(close.planning?.dependsOn, [NR_MATERIALIZE_PLAN]);
     assert.equal(closeNotice('pages written', deleted), 'pages written; deleted: l2/tarefas/web/shared/minhas_tarefas.ts');
+    const command = '@@agentAddLanguage [{"languages":[{"code":"pt","name":"pt"}]}]';
+    assert.equal(
+      closeNotice('pages written', deleted, [command], true),
+      `pages written; deleted: l2/tarefas/web/shared/minhas_tarefas.ts\n${command}`,
+    );
+    assert.equal(closeNotice('pages written', deleted, [command], false), 'pages written; deleted: l2/tarefas/web/shared/minhas_tarefas.ts');
+    assert.equal(stepsPhaseNote(2, [command]), `2 steps; ${command}`);
+    assert.deepEqual(commandLines(JSON.stringify({ commands: [command] })), [command]);
     assert.deepEqual(plan.pages, ['minhas_tarefas']);
   } finally {
     mls.actualProject = previous;
@@ -387,6 +399,123 @@ test('a second run on the same module keeps only that run in run.json', async ()
       { phase: 'plan', status: 'ok', note: 'regenerate tarefas_equipe' },
       { phase: 'marks', status: 'refused', note: expected },
     ]);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+const FIELD_COMMAND = '@@agentAddLanguage [{"languages":[{"code":"pt","name":"pt"}],"projectId":102047,"moduleName":"tarefas"}]';
+
+function textFieldEffort(): unknown {
+  const effort = fixture('r1') as {
+    request: { items: Array<{ changeId: string }> };
+    perItem: Array<{ item: string; answers: Array<{ master: { project: string }; item: string; materialize: Array<{ kind: string; id: string; path: string }>; runAgents: Array<{ agent: string; command: string }> }> }>;
+    merged: { runAgents: unknown[] };
+  };
+  const answer = effort.perItem[0].answers.find(row => row.master.project === '102020');
+  if (!answer) throw new Error('missing master answer');
+  effort.request.items[0].changeId = 'field:prazo';
+  effort.perItem[0].item = 'field:prazo';
+  for (const row of effort.perItem[0].answers) row.item = 'field:prazo';
+  answer.materialize = [
+    { kind: 'page', id: 'minhas_tarefas', path: 'l2/tarefas/web/contracts/minhas_tarefas.defs.ts' },
+    { kind: 'page', id: 'tarefas_equipe', path: 'l2/tarefas/web/contracts/tarefas_equipe.defs.ts' },
+  ];
+  answer.runAgents = [{ agent: 'agentAddLanguage', command: FIELD_COMMAND }];
+  effort.merged = mergeChangeEffort(effort.perItem as never);
+  return effort;
+}
+
+test('materialize records the returned command and the close step carries it', async () => {
+  const previous = mls.actualProject;
+  installRunStor(102047);
+  plantJson(changeEffortInfo('tarefas'), JSON.stringify(textFieldEffort()));
+  plantJson(runInfo('tarefas'), '{}\n');
+  try {
+    const agent = createAgent();
+    const intents = await agent.beforePromptImplicit(agent, {
+      message: { threadId: 'thread-m1', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    } as mls.msg.ExecutionContext, '@@agentNewReleaseL2 tarefas');
+    const close = intents.find(intent => intent.type === 'add-step' && intent.step.planning?.planId === NR_CLOSE_PLAN);
+    if (close?.type !== 'add-step') assert.fail('missing close step');
+    assert.deepEqual(commandLines(close.step.prompt || ''), [FIELD_COMMAND]);
+    const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
+    assert.equal(log.phases.find(line => line.phase === 'steps')?.note, stepsPhaseNote(2, [FIELD_COMMAND]));
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('the close text lists the command after a completed materializer and hides it after a failure', async () => {
+  const agent = createAgent();
+  const deleted = ['l2/tarefas/web/shared/minhas_tarefas.ts'];
+  const [, close] = buildApplySteps(102047, 'tarefas', deleted, [FIELD_COMMAND]);
+  close.stepId = 2;
+  const parent = { stepId: 1 } as mls.msg.AIAgentStep;
+  const materialize = {
+    type: 'agent',
+    stepId: 3,
+    status: 'completed',
+    interaction: { input: [], cost: 0, trace: ['pages written'], payload: null },
+    nextSteps: [],
+    planning: { planId: NR_MATERIALIZE_PLAN, dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+    agentName: NR_MATERIALIZE_AGENT,
+    prompt: '',
+    rags: [],
+    stepTitle: 'Materialize module',
+  } as mls.msg.AIAgentStep;
+  const context = {
+    message: { threadId: 'thread-close', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    task: { PK: 'task', iaCompressed: { nextSteps: [materialize, close] } },
+  } as mls.msg.ExecutionContext;
+  if (!agent.beforePromptStep) assert.fail('missing beforePromptStep');
+  const done = await agent.beforePromptStep(agent, context, parent, close, 0);
+  const doneUpdate = done[0];
+  if (doneUpdate?.type !== 'update-status') assert.fail('missing close update');
+  assert.equal(doneUpdate.traceMsg, statusText(closeNotice('pages written', deleted, [FIELD_COMMAND], true), 'done'));
+  assert.match(doneUpdate.traceMsg || '', new RegExp(`^done: pages written; deleted: ${deleted[0]}\\n`));
+  assert.equal(doneUpdate.traceMsg?.split('\n')[1], FIELD_COMMAND);
+  materialize.status = 'failed';
+  materialize.interaction = null;
+  const failed = await agent.beforePromptStep(agent, context, parent, close, 0);
+  const failedUpdate = failed[0];
+  if (failedUpdate?.type !== 'update-status') assert.fail('missing failed update');
+  assert.equal(failedUpdate.status, 'failed');
+  assert.equal(failedUpdate.traceMsg?.includes(FIELD_COMMAND), false);
+  assert.match(failedUpdate.traceMsg || '', /^failed: /);
+});
+
+test('the generator check copies stored commands onto the close step', async () => {
+  const previous = mls.actualProject;
+  installRunStor(102047);
+  plantJson(snapshotInfo('tarefas'), '{}\n');
+  const [defs, check] = buildRegenerateSteps(102047, 'tarefas');
+  defs.status = 'completed';
+  defs.interaction = { input: [], cost: 0, trace: ['defs written'], payload: null };
+  defs.stepId = 4;
+  check.stepId = 5;
+  const context = {
+    message: { threadId: 'thread-gen', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    task: {
+      PK: 'task',
+      iaCompressed: {
+        nextSteps: [defs, check],
+        longMemory: {
+          moduleName: 'tarefas',
+          nrPages: 'minhas_tarefas,tarefas_equipe',
+          nrMaterializeOnly: '',
+          nrCommands: JSON.stringify([FIELD_COMMAND]),
+        },
+      },
+    },
+  } as mls.msg.ExecutionContext;
+  try {
+    const agent = createAgent();
+    if (!agent.beforePromptStep) assert.fail('missing beforePromptStep');
+    const intents = await agent.beforePromptStep(agent, context, { stepId: 1 } as mls.msg.AIAgentStep, check, 0);
+    const close = intents.find(intent => intent.type === 'add-step' && intent.step.planning?.planId === NR_CLOSE_PLAN);
+    if (close?.type !== 'add-step') assert.fail('missing close step');
+    assert.deepEqual(commandLines(close.step.prompt || ''), [FIELD_COMMAND]);
   } finally {
     mls.actualProject = previous;
   }

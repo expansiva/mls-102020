@@ -13,6 +13,7 @@ import {
   buildApplySteps,
   buildRegenerateSteps,
   closeNotice,
+  commandLines,
   currentProjectNumber,
   deletedPaths,
   defsOutcome,
@@ -30,6 +31,8 @@ import {
   releasePages,
   reviewDefsRun,
   statusIntents,
+  statusText,
+  stepsPhaseNote,
   writeReleaseSnapshot,
   type NrRunPhase,
   type NrStatusPrefix,
@@ -76,9 +79,9 @@ async function beforePromptImplicit(
 
     if (plan.mode === 'materialize') {
       phase = 'steps';
-      const prepared = await prepareMaterialize(project, moduleName, plan.pages, plan.materializeOnly);
+      const prepared = await prepareMaterialize(project, moduleName, plan.pages, plan.materializeOnly, plan.commands);
       if (!prepared.ok) return refuse(agent, context, moduleName, phase, prepared.message);
-      await recordPhase(moduleName, phase, 'ok', `${prepared.steps.length} steps`);
+      await recordPhase(moduleName, phase, 'ok', stepsPhaseNote(prepared.steps.length, plan.commands));
       const steps = prepared.steps.map(step => addStepIntent(context, step));
       return [openMessage(agent, context, moduleName, project, {}), ...steps];
     }
@@ -95,11 +98,12 @@ async function beforePromptImplicit(
 
     phase = 'steps';
     const built = buildRegenerateSteps(project, moduleName);
-    await recordPhase(moduleName, phase, 'ok', `${built.length} steps`);
+    await recordPhase(moduleName, phase, 'ok', stepsPhaseNote(built.length, plan.commands));
     const steps = built.map(step => addStepIntent(context, step));
     return [openMessage(agent, context, moduleName, project, {
       nrPages: plan.pages.join(','),
       nrMaterializeOnly: plan.materializeOnly.join(','),
+      nrCommands: JSON.stringify(plan.commands),
     }), ...steps];
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : String(error);
@@ -131,7 +135,9 @@ async function beforePromptStep(
   }
   const materialize = getAllSteps(context.task?.iaCompressed?.nextSteps).find(item => planIdOf(item) === NR_MATERIALIZE_PLAN);
   const outcome = materializerOutcome(materialize);
-  const notice = closeNotice(outcome.message, deletedPaths(step.prompt || ''));
+  const completed = outcome.status === 'completed';
+  const body = closeNotice(outcome.message, deletedPaths(step.prompt || ''), commandLines(step.prompt || ''), completed);
+  const notice = statusText(body, completed ? 'done' : 'failed');
   return [updateStatus(context, parentStep, step, hookSequential, outcome.status, notice)];
 }
 
@@ -145,6 +151,7 @@ async function reviewCheck(
   const moduleName = String(memory?.moduleName || '');
   const pages = String(memory?.nrPages || '').split(',').map(id => id.trim()).filter(Boolean);
   const materializeOnly = String(memory?.nrMaterializeOnly || '').split(',').map(id => id.trim()).filter(Boolean);
+  const commands = commandsFromMemory(memory?.nrCommands);
   const defs = getAllSteps(context.task?.iaCompressed?.nextSteps).find(item => planIdOf(item) === NR_DEFS_PLAN);
   const defsResult = defsOutcome(defs);
   const guard = defsResult.status === 'completed' ? await guardAfterDefs(moduleName, pages) : null;
@@ -156,7 +163,7 @@ async function reviewCheck(
     return [updateStatus(context, parentStep, step, hookSequential, review.status, review.message)];
   }
   const project = currentProjectNumber();
-  const prepared = await prepareMaterialize(project, moduleName, pages, materializeOnly);
+  const prepared = await prepareMaterialize(project, moduleName, pages, materializeOnly, commands);
   if (!prepared.ok) {
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', prepared.message)];
   }
@@ -170,15 +177,25 @@ function currentStorFiles(): mls.stor.IFileInfo[] {
 }
 
 /** Deletes the generated files of the effort pages, then builds the whole-module materializer. */
+function commandsFromMemory(value: unknown): string[] {
+  if (value === undefined || value === '') return [];
+  const parsed = JSON.parse(String(value)) as unknown;
+  if (!Array.isArray(parsed) || parsed.some(item => typeof item !== 'string')) {
+    throw new Error('nrCommands is not a list of strings');
+  }
+  return parsed;
+}
+
 async function prepareMaterialize(
   project: number,
   moduleName: string,
   pages: readonly string[],
   materializeOnly: readonly string[],
+  commands: readonly string[],
 ): Promise<{ ok: true; steps: mls.msg.AIAgentStep[] } | { ok: false; message: string }> {
   const removed = await deleteGeneratedFiles(moduleName, releasePages(pages, materializeOnly), currentStorFiles(), deleteFile);
   if (!removed.ok) return removed;
-  return { ok: true, steps: buildApplySteps(project, moduleName, removed.paths) };
+  return { ok: true, steps: buildApplySteps(project, moduleName, removed.paths, commands) };
 }
 
 function openMessage(

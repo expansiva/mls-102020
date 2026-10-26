@@ -6,7 +6,7 @@ import { EFFORT_UNIT_KINDS, type EffortAnswer, type EffortUnitRef } from '/_1020
 export type NewReleaseL2Mode = 'materialize' | 'regenerate';
 
 export type NewReleaseL2Plan =
-  | { ok: true; mode: NewReleaseL2Mode; pages: string[]; materializeOnly: string[] }
+  | { ok: true; mode: NewReleaseL2Mode; pages: string[]; materializeOnly: string[]; commands: string[] }
   | { ok: false; reason: string };
 
 const PAGE_KIND = EFFORT_UNIT_KINDS.find(kind => kind === 'page');
@@ -18,7 +18,6 @@ function outOfStep(answer: EffortAnswer): string[] {
   if (answer.remove.length > 0) reasons.push('remove');
   if (answer.create.some(unit => unit.kind !== PAGE_KIND)) reasons.push('create');
   if (answer.regenerateDefs.some(unit => !DEFS_KINDS.has(unit.kind))) reasons.push('regenerateDefs');
-  if (answer.runAgents.length > 0) reasons.push('runAgents');
   return reasons;
 }
 
@@ -26,6 +25,12 @@ function addPage(pages: string[], seen: Set<string>, id: string): void {
   if (seen.has(id)) return;
   seen.add(id);
   pages.push(id);
+}
+
+function addCommand(commands: string[], seen: Set<string>, command: string): void {
+  if (!command || seen.has(command)) return;
+  seen.add(command);
+  commands.push(command);
 }
 
 function citesDefs(answer: EffortAnswer): boolean {
@@ -59,12 +64,15 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
   const regenerate: string[] = [];
   const seenMaterialize = new Set<string>();
   const seenRegenerate = new Set<string>();
+  const commands: string[] = [];
+  const seenCommands = new Set<string>();
   let rebuild = false;
   let sawMaster = false;
   for (const row of checked.file.perItem) {
     for (const answer of row.answers) {
       if (answer.master.project !== masterProject) continue;
       sawMaster = true;
+      for (const agent of answer.runAgents) addCommand(commands, seenCommands, agent.command);
       for (const reason of outOfStep(answer)) blocks.push(`${answer.item} ${reason}`);
       if (citesDefs(answer)) {
         rebuild = true;
@@ -82,5 +90,5 @@ export function planNewReleaseL2(effort: unknown, masterProject: string): NewRel
   const pages = rebuild ? regenerate : materialize;
   if (pages.length === 0) return { ok: false, reason: 'nothing to apply' };
   const materializeOnly = rebuild ? materialize.filter(id => !seenRegenerate.has(id)) : [];
-  return { ok: true, mode: rebuild ? 'regenerate' : 'materialize', pages, materializeOnly };
+  return { ok: true, mode: rebuild ? 'regenerate' : 'materialize', pages, materializeOnly, commands };
 }
