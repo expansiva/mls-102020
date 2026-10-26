@@ -550,7 +550,12 @@ test('the generator check hangs the materializer and the close step on the open 
     const added = intents.filter(intent => intent.type === 'add-step');
     assert.ok(added.length > 0);
     assert.ok(added.every(intent => intent.parentStepId === 3 && !terminal.has(intent.parentStepId)));
-    assert.equal(intents.some(intent => intent.type === 'update-status' && intent.stepId === 3), false);
+    const checkUpdate = intents.at(-1);
+    if (checkUpdate?.type !== 'update-status') assert.fail('missing check update');
+    assert.equal(checkUpdate.stepId, 3);
+    assert.equal(checkUpdate.status, 'completed');
+    assert.equal(checkUpdate.traceMsg, 'done: defs stayed inside the planned pages');
+    assert.equal(intents.slice(0, -1).every(intent => intent.type === 'add-step'), true);
     const close = added.find(intent => intent.step.planning?.planId === NR_CLOSE_PLAN);
     if (close?.type !== 'add-step') assert.fail('missing close step');
     assert.equal(close.messageId, '1');

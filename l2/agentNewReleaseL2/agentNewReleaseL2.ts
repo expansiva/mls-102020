@@ -167,7 +167,11 @@ async function reviewCheck(
   if (!prepared.ok) {
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', prepared.message)];
   }
-  return prepared.steps.map(item => addStepIntent(context, item, step.stepId, true));
+  const added = prepared.steps.map(item => addStepIntent(context, item, step.stepId, true));
+  return [
+    ...added,
+    updateStatus(context, parentStep, step, hookSequential, 'completed', statusText(review.message, 'done')),
+  ];
 }
 
 function currentStorFiles(): mls.stor.IFileInfo[] {
