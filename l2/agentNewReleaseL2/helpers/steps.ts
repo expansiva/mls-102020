@@ -29,13 +29,20 @@ export type NrInvocation =
   | { ok: true; module: string }
   | { ok: false; help: string };
 
-/** Help and an empty plan finish the task. Every other status message is a refusal. */
-export function statusKind(message: string): 'completed' | 'failed' {
-  if (message === NR_HELP || message === NR_NOTHING_TO_APPLY) return 'completed';
-  return 'failed';
+/** Picks the text prefix. The step status itself is always `completed` — the host drops any other terminal value. */
+export type NrStatusPrefix = 'done' | 'refused' | 'failed';
+
+export function statusKind(message: string): NrStatusPrefix {
+  if (message === NR_HELP || message === NR_NOTHING_TO_APPLY) return 'done';
+  return 'refused';
 }
 
-/** Short motive for the collabmsg trace. The full text stays in the step result. */
+export function statusText(message: string, kind: NrStatusPrefix = statusKind(message)): string {
+  const prefix = `${kind}: `;
+  return message.startsWith(prefix) ? message : `${prefix}${message}`;
+}
+
+/** Short motive. The full text stays in the step result. Both start with the same prefix. */
 export function statusStepTitle(message: string): string {
   const compact = message.replace(/\s+/gu, ' ').trim();
   return compact.length <= 72 ? compact : `${compact.slice(0, 69)}...`;
@@ -46,7 +53,9 @@ export function statusIntents(
   threadId: string,
   userMessage: string,
   message: string,
+  kind?: NrStatusPrefix,
 ): mls.msg.AgentIntent[] {
+  const text = statusText(message, kind);
   const addMessage: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
     skipRootLLM: true,
@@ -54,8 +63,8 @@ export function statusIntents(
       action: 'addMessageAI',
       agentName,
       inputAI: [
-        { type: 'system', content: message },
-        { type: 'human', content: message },
+        { type: 'system', content: text },
+        { type: 'human', content: text },
       ],
       taskTitle: NR_AGENT_NAME,
       threadId,
@@ -64,19 +73,19 @@ export function statusIntents(
         taskName: NR_AGENT_NAME,
         flowName: NR_AGENT_NAME,
         statusOnly: 'true',
-        notice: message,
+        notice: text,
       },
     },
   };
   const result: mls.msg.AIPayload = {
     type: 'result',
     stepId: 0,
-    status: statusKind(message),
+    status: 'completed',
     interaction: null,
     nextSteps: [],
-    stepTitle: statusStepTitle(message),
-    result: message,
-    planning: { planId: 'status', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+    stepTitle: statusStepTitle(text),
+    result: text,
+    planning: { planId: 'status', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep;
   const step: mls.msg.AgentIntentAddStep = {
     type: 'add-step',
@@ -233,6 +242,32 @@ export function snapshotInfo(moduleName: string): Ns5FileInfo {
     shortName: 'snapshot',
     extension: '.json',
   };
+}
+
+export type NrRunPhase = 'effort-read' | 'plan' | 'marks' | 'snapshot' | 'steps';
+
+export interface NrRunPhaseLine {
+  phase: NrRunPhase;
+  status: 'ok' | 'refused' | 'failed';
+  note: string;
+}
+
+/** `l2/<module>/pipeline/agentNewReleaseL2/run.json` — each write is one host trace line. */
+export function runInfo(moduleName: string): Ns5FileInfo {
+  return { ...snapshotInfo(moduleName), shortName: 'run' };
+}
+
+export async function recordPhase(moduleName: string, phase: NrRunPhase, status: NrRunPhaseLine['status'], note: string): Promise<void> {
+  const info = runInfo(moduleName);
+  const line: NrRunPhaseLine = { phase, status, note };
+  if (phase === 'effort-read') {
+    await writeJson(info, { phases: [line] });
+    return;
+  }
+  const current = await readJson<{ phases?: NrRunPhaseLine[] }>(info);
+  const phases = Array.isArray(current?.phases) ? [...current.phases] : [];
+  phases.push(line);
+  await writeJson(info, { phases });
 }
 
 /** `toCreate` and `toUpdate` page ids from the L2 pool effort. Anything else counts as unmarked. */

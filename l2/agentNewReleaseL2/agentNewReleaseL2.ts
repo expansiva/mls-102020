@@ -26,10 +26,13 @@ import {
   readChangeEffort,
   readPoolEffort,
   readProductSnapshot,
+  recordPhase,
   releasePages,
   reviewDefsRun,
   statusIntents,
   writeReleaseSnapshot,
+  type NrRunPhase,
+  type NrStatusPrefix,
 } from '/_102020_/l2/agentNewReleaseL2/helpers/steps.js';
 
 export function createAgent(): IAgentAsync {
@@ -49,37 +52,68 @@ async function beforePromptImplicit(
   context: mls.msg.ExecutionContext,
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  const invocation = parseNrInvocation(userPrompt || context.message.content || '');
-  if (!invocation.ok) return statusMessage(agent, context, invocation.help);
+  let moduleName = '';
+  let phase: NrRunPhase = 'effort-read';
+  try {
+    const invocation = parseNrInvocation(userPrompt || context.message.content || '');
+    if (!invocation.ok) return statusMessage(agent, context, invocation.help);
+    moduleName = invocation.module;
 
-  const project = currentProjectNumber();
-  if (!Number.isSafeInteger(project) || project <= 0) {
-    return statusMessage(agent, context, 'The current project is unavailable.');
+    const project = currentProjectNumber();
+    if (!Number.isSafeInteger(project) || project <= 0) {
+      return statusMessage(agent, context, 'The current project is unavailable.');
+    }
+
+    phase = 'effort-read';
+    const loaded = await readChangeEffort(moduleName);
+    if (!loaded.ok) return refuse(agent, context, moduleName, phase, loaded.reason);
+    await recordPhase(moduleName, phase, 'ok', 'read');
+
+    phase = 'plan';
+    const plan = planNewReleaseL2(loaded.effort, String(agent.agentProject));
+    if (!plan.ok) return refuse(agent, context, moduleName, phase, plan.reason);
+    await recordPhase(moduleName, phase, 'ok', `${plan.mode} ${plan.pages.join(',')}`);
+
+    if (plan.mode === 'materialize') {
+      phase = 'steps';
+      const prepared = await prepareMaterialize(project, moduleName, plan.pages, plan.materializeOnly);
+      if (!prepared.ok) return refuse(agent, context, moduleName, phase, prepared.message);
+      await recordPhase(moduleName, phase, 'ok', `${prepared.steps.length} steps`);
+      const steps = prepared.steps.map(step => addStepIntent(context, step));
+      return [openMessage(agent, context, moduleName, project, {}), ...steps];
+    }
+
+    phase = 'marks';
+    const marked = markedPageIds(await readPoolEffort(moduleName));
+    const differ = marksDifferMessage(marked, plan.pages);
+    if (differ) return refuse(agent, context, moduleName, phase, differ);
+    await recordPhase(moduleName, phase, 'ok', 'match');
+
+    phase = 'snapshot';
+    await writeReleaseSnapshot(moduleName, await readProductSnapshot(moduleName));
+    await recordPhase(moduleName, phase, 'ok', 'written');
+
+    phase = 'steps';
+    const built = buildRegenerateSteps(project, moduleName);
+    await recordPhase(moduleName, phase, 'ok', `${built.length} steps`);
+    const steps = built.map(step => addStepIntent(context, step));
+    return [openMessage(agent, context, moduleName, project, {
+      nrPages: plan.pages.join(','),
+      nrMaterializeOnly: plan.materializeOnly.join(','),
+    }), ...steps];
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : String(error);
+    let note = message;
+    if (moduleName) {
+      try {
+        await recordPhase(moduleName, phase, 'failed', message);
+      } catch (writeError) {
+        const extra = writeError instanceof Error && writeError.message ? writeError.message : String(writeError);
+        note = `${message}; run log: ${extra}`;
+      }
+    }
+    return statusMessage(agent, context, note, 'failed');
   }
-
-  const loaded = await readChangeEffort(invocation.module);
-  if (!loaded.ok) return statusMessage(agent, context, loaded.reason);
-
-  const plan = planNewReleaseL2(loaded.effort, String(agent.agentProject));
-  if (!plan.ok) return statusMessage(agent, context, plan.reason);
-
-  if (plan.mode === 'materialize') {
-    const prepared = await prepareMaterialize(project, invocation.module, plan.pages, plan.materializeOnly);
-    if (!prepared.ok) return statusMessage(agent, context, prepared.message);
-    const steps = prepared.steps.map(step => addStepIntent(context, step));
-    return [openMessage(agent, context, invocation.module, project, {}), ...steps];
-  }
-
-  const marked = markedPageIds(await readPoolEffort(invocation.module));
-  const differ = marksDifferMessage(marked, plan.pages);
-  if (differ) return statusMessage(agent, context, differ);
-
-  await writeReleaseSnapshot(invocation.module, await readProductSnapshot(invocation.module));
-  const steps = buildRegenerateSteps(project, invocation.module).map(step => addStepIntent(context, step));
-  return [openMessage(agent, context, invocation.module, project, {
-    nrPages: plan.pages.join(','),
-    nrMaterializeOnly: plan.materializeOnly.join(','),
-  }), ...steps];
 }
 
 async function beforePromptStep(
@@ -182,8 +216,20 @@ function statusMessage(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   message: string,
+  kind?: NrStatusPrefix,
 ): mls.msg.AgentIntent[] {
-  return statusIntents(agent.agentName, context.message.threadId, context.message.content, message);
+  return statusIntents(agent.agentName, context.message.threadId, context.message.content, message, kind);
+}
+
+async function refuse(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  moduleName: string,
+  phase: NrRunPhase,
+  message: string,
+): Promise<mls.msg.AgentIntent[]> {
+  await recordPhase(moduleName, phase, 'refused', message);
+  return statusMessage(agent, context, message, 'refused');
 }
 
 function addStepIntent(context: mls.msg.ExecutionContext, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep {
