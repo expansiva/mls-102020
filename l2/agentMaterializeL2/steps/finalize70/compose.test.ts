@@ -57,6 +57,27 @@ test('tarefas: the minha_area hub is flattened, meus_avisos gets both actors, ea
   assert.ok(changes.includes('navigation') && changes.includes('frontend'));
 });
 
+test('a stale page already in the current entry stays in menu order; approved pages are composed as usual', () => {
+  const all = sources('reembolsoDespesas', ['minhas_despesas']);
+  const current = {
+    navigation: [
+      { id: 'minhas_despesas', label: 'Minhas', href: '/reembolsoDespesas/minhas_despesas', description: 'old', actors: ['colaborador'] },
+      { id: 'inicio', label: 'Inicio', href: '/reembolsoDespesas/inicio', description: 'kept', actors: ['colaborador'], landing: true as const },
+      { id: 'despesas_da_equipe', label: 'Equipe', href: '/reembolsoDespesas/despesas_da_equipe', description: 'kept', actors: ['gestor'] },
+    ],
+    landings: [{ actorId: 'colaborador', pageId: 'inicio', route: '/reembolsoDespesas/inicio' }],
+    frontend: { pages: [
+      { pageId: 'inicio', route: '/reembolsoDespesas/inicio', title: 'Inicio' },
+      { pageId: 'despesas_da_equipe', route: '/reembolsoDespesas/despesas_da_equipe', title: 'Equipe' },
+    ] },
+  };
+  const { entry } = composeM4ModuleEntry({ ...all, keepPageIds: ['inicio', 'despesas_da_equipe'] }, current);
+  const navigation = entry.navigation as Array<{ id: string; description: string }>;
+  assert.deepEqual(navigation.map(item => item.id), ['minhas_despesas', 'inicio', 'despesas_da_equipe']);
+  assert.equal(navigation[1].description, 'kept');
+  assert.deepEqual(entry.landings, [{ actorId: 'colaborador', pageId: 'inicio', route: '/reembolsoDespesas/inicio' }]);
+});
+
 test('a page that pages50 did not approve is left out; a page the menu does not list goes last, labelled from its id', () => {
   const all = sources('reembolsoDespesas', ['despesas_aprovadas', 'inicio']);
   const { entry } = composeM4ModuleEntry({ ...all, pages: [...all.pages, { pageId: 'relatorio_mensal', intent: 'Mostra o mês. Detalhe.', sharedActors: ['financeiro'] }] });

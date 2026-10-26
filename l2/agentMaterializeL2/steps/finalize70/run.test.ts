@@ -16,12 +16,20 @@ const identity = { project: 102047, module: 'reembolsoDespesas' };
 const key = (info: Ns5FileInfo) => `${info.project}/l${info.level}/${info.folder}/${info.shortName}${info.extension}`;
 const PAGES = ['despesas_aprovadas', 'despesas_da_equipe', 'inicio', 'minhas_despesas'];
 
+function navItem(id: string) {
+  return { id, label: id, href: `/reembolsoDespesas/${id}`, description: id, actors: ['colaborador'] };
+}
+function frontendPage(id: string) {
+  return { pageId: id, route: `/reembolsoDespesas/${id}`, source: `l2/reembolsoDespesas/web/desktop/page11/${id}.ts`, definition: `l2/reembolsoDespesas/web/desktop/page11/${id}.defs.ts`, componentTag: `reembolsoDespesas--web--desktop--page11--${id}-102047`, title: id, actors: ['colaborador'] };
+}
+
 /** An in-memory Studio with the real defs, menu and module of reembolsoDespesas, a CRLF config and pages50 receipts. */
-async function memory(approved: string[]): Promise<M4FinalizePort & { files: Map<string, string>; writes: string[] }> {
+async function memory(approved: string[], opts: { accepted?: string[]; current?: Record<string, unknown> } = {}): Promise<M4FinalizePort & { files: Map<string, string>; writes: string[] }> {
   const files = new Map<string, string>();
   const writes: string[] = [];
   const put = (info: Ns5FileInfo, text: string) => files.set(key(info), text);
-  put(m4OwnedFile(identity, 'input'), JSON.stringify({ accepted: PAGES, pages: [] }));
+  const accepted = opts.accepted ?? PAGES;
+  put(m4OwnedFile(identity, 'input'), JSON.stringify({ accepted, pages: [] }));
   for (const pageId of PAGES) {
     put(m4DefsInfo(identity, 'desktop', pageId), disk(`l2/reembolsoDespesas/web/desktop/page11/${pageId}.defs.ts`));
     put(m4DefsInfo(identity, 'shared', pageId), disk(`l2/reembolsoDespesas/web/shared/${pageId}.defs.ts`));
@@ -32,7 +40,7 @@ async function memory(approved: string[]): Promise<M4FinalizePort & { files: Map
   }
   put(menuInfo(identity), disk('l4/reembolsoDespesas/pool/l2/web/menu.json'));
   put(moduleDefsInfo(identity), disk('l4/reembolsoDespesas/module.defs.ts'));
-  const config = { projects: { 102047: { type: 'client', modules: [{ moduleId: 'outro', basePath: '/outro' }, { moduleId: 'reembolsoDespesas', basePath: '/reembolsoDespesas', backendControllers: './l1/x' }] } } };
+  const config = { projects: { 102047: { type: 'client', modules: [{ moduleId: 'outro', basePath: '/outro' }, { moduleId: 'reembolsoDespesas', basePath: '/reembolsoDespesas', backendControllers: './l1/x', ...opts.current }] } } };
   put(configInfo(102047), `${JSON.stringify(config, null, 2)}\n`.replace(/\n/gu, '\r\n'));
   return {
     files, writes,
@@ -62,11 +70,43 @@ test('registers the approved pages once, keeps the line ends and the other field
   assert.deepEqual(port.writes, ['102047/l5//config.json'], 'nothing written the second time');
 });
 
-test('a page with no approved desktop page is left out and reported', async () => {
-  const port = await memory(['inicio', 'minhas_despesas']);
+test('a registered page with a stale desktop receipt stays in the menu and is reported as kept', async () => {
+  const registered = ['minhas_despesas', 'inicio', 'despesas_da_equipe', 'despesas_aprovadas'];
+  const port = await memory(['inicio', 'minhas_despesas'], {
+    current: { navigation: registered.map(navItem), frontend: { pages: registered.map(frontendPage) } },
+  });
   const { receipt } = await runM4Finalize(identity, port);
   assert.deepEqual(receipt.pages, ['inicio', 'minhas_despesas']);
   assert.deepEqual(receipt.notApproved, ['despesas_aprovadas', 'despesas_da_equipe']);
+  assert.deepEqual(receipt.kept, ['despesas_aprovadas', 'despesas_da_equipe']);
+  const entry = JSON.parse(port.files.get('102047/l5//config.json')!).projects['102047'].modules[1];
+  assert.deepEqual(entry.navigation.map((item: { id: string }) => item.id), registered);
+});
+
+test('five stale registered pages and one approved stay in menu order', async () => {
+  const extra = ['relatorio_mensal', 'painel'];
+  const registered = ['minhas_despesas', 'inicio', 'despesas_da_equipe', 'despesas_aprovadas', ...extra];
+  const port = await memory(['minhas_despesas'], {
+    accepted: registered,
+    current: { navigation: registered.map(navItem), frontend: { pages: registered.map(frontendPage) } },
+  });
+  const { receipt } = await runM4Finalize(identity, port);
+  assert.deepEqual(receipt.pages, ['minhas_despesas']);
+  assert.deepEqual(receipt.notApproved, ['inicio', 'despesas_da_equipe', 'despesas_aprovadas', ...extra]);
+  assert.deepEqual(receipt.kept, receipt.notApproved);
+  const entry = JSON.parse(port.files.get('102047/l5//config.json')!).projects['102047'].modules[1];
+  assert.deepEqual(entry.navigation.map((item: { id: string }) => item.id), registered);
+});
+
+test('a registered page that left accepted is dropped', async () => {
+  const registered = ['minhas_despesas', 'inicio', 'despesas_da_equipe'];
+  const port = await memory(['minhas_despesas'], {
+    accepted: ['minhas_despesas', 'inicio'],
+    current: { navigation: registered.map(navItem), frontend: { pages: registered.map(frontendPage) } },
+  });
+  const { receipt } = await runM4Finalize(identity, port);
+  assert.deepEqual(receipt.notApproved, ['inicio']);
+  assert.deepEqual(receipt.kept, ['inicio']);
   const entry = JSON.parse(port.files.get('102047/l5//config.json')!).projects['102047'].modules[1];
   assert.deepEqual(entry.navigation.map((item: { id: string }) => item.id), ['minhas_despesas', 'inicio']);
 });

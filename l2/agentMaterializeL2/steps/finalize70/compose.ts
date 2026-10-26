@@ -29,6 +29,8 @@ export interface M4FinalizeSources {
   module: string;
   /** Approved pages only, in the input20 order. */
   pages: M4FinalizePage[];
+  /** Accepted pages whose desktop receipt is stale, already in the current module entry. */
+  keepPageIds?: string[];
   /** l4/<module>/pool/l2/web/menu.json, or null when the planning has none. */
   menu: unknown;
   productLanguages: string[];
@@ -118,13 +120,31 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
   const { order, hubs } = m4MenuPages(sources.menu);
   const menuActors = m4MenuActors(sources.menu, hubs);
   const approved = new Map(sources.pages.map(page => [page.pageId, page]));
+  const keepIds = new Set(sources.keepPageIds ?? []);
+  const currentNav = Array.isArray(current?.navigation) ? current.navigation as M4NavigationItem[] : [];
+  const currentFrontendPages = (() => {
+    const frontend = current?.frontend && typeof current.frontend === 'object' ? current.frontend as Record<string, unknown> : {};
+    return Array.isArray(frontend.pages) ? frontend.pages as Array<Record<string, unknown>> : [];
+  })();
+  const currentNavById = new Map(currentNav.filter(item => item && typeof item.id === 'string').map(item => [item.id, item]));
+  const currentPageById = new Map(currentFrontendPages.filter(item => typeof item.pageId === 'string').map(item => [String(item.pageId), item]));
+  const keepable = (pageId: string) => keepIds.has(pageId) && (currentNavById.has(pageId) || currentPageById.has(pageId));
   const ordered = [
-    ...order.filter(item => approved.has(item.pageId)),
+    ...order.filter(item => approved.has(item.pageId) || keepable(item.pageId)),
     ...sources.pages.filter(page => !order.some(item => item.pageId === page.pageId)).map(page => ({ pageId: page.pageId, label: m4HumanizeId(page.pageId) })),
+    ...[...keepIds].filter(pageId => !order.some(item => item.pageId === pageId) && !approved.has(pageId) && keepable(pageId)).map(pageId => ({
+      pageId, label: currentNavById.get(pageId)?.label || m4HumanizeId(pageId),
+    })),
   ];
 
   const navigation: M4NavigationItem[] = ordered.map(({ pageId, label }) => {
-    const page = approved.get(pageId)!;
+    const page = approved.get(pageId);
+    if (!page) {
+      const existing = currentNavById.get(pageId);
+      if (existing) return { ...existing, actors: [...(existing.actors ?? [])] };
+      const stored = currentPageById.get(pageId)!;
+      return { id: pageId, label, href: String(stored.route ?? `${basePath}/${pageId}`), description: '', actors: Array.isArray(stored.actors) ? [...stored.actors as string[]] : [] };
+    }
     const actors = menuActors.get(pageId) ?? [...page.sharedActors];
     return { id: pageId, label, href: `${basePath}/${pageId}`, description: m4FirstSentence(page.intent), actors };
   });
@@ -132,8 +152,17 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
   // an actor the menu does not list lands on its first page in menu order. tarefas (16/10/2026): by menu order alone the
   // gestor would land on meus_avisos, which sits in the membro hub before "Painel da equipe".
   const firstByActor = m4MenuFirstPages(sources.menu, hubs);
-  const landings: Array<{ actorId: string; pageId: string; route: string }> = [];
+  const navIds = new Set(navigation.map(item => item.id));
+  const currentLandings = Array.isArray(current?.landings) ? current.landings as Array<{ actorId: string; pageId: string; route: string }> : [];
+  const landings: Array<{ actorId: string; pageId: string; route: string }> = currentLandings
+    .filter(landing => keepable(landing.pageId) && navIds.has(landing.pageId))
+    .map(landing => ({ ...landing }));
+  for (const landing of landings) {
+    const target = navigation.find(item => item.id === landing.pageId);
+    if (target) target.landing = true;
+  }
   for (const item of navigation) {
+    if (!approved.has(item.id)) continue;
     for (const actor of item.actors) {
       if (landings.some(landing => landing.actorId === actor)) continue;
       const preferred = firstByActor.get(actor)?.find(pageId => navigation.some(other => other.id === pageId && other.actors.includes(actor)));
@@ -142,15 +171,21 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
       target.landing = true;
     }
   }
-  const pages = navigation.map(item => ({
-    pageId: item.id,
-    route: item.href,
-    source: `l2/${module}/web/desktop/page11/${item.id}.ts`,
-    definition: `l2/${module}/web/desktop/page11/${item.id}.defs.ts`,
-    componentTag: m4PageTag(project, module, 'desktop', item.id),
-    title: item.label,
-    actors: item.actors,
-  }));
+  const pages = navigation.map(item => {
+    if (!approved.has(item.id)) {
+      const stored = currentPageById.get(item.id);
+      if (stored) return { ...stored };
+    }
+    return {
+      pageId: item.id,
+      route: item.href,
+      source: `l2/${module}/web/desktop/page11/${item.id}.ts`,
+      definition: `l2/${module}/web/desktop/page11/${item.id}.defs.ts`,
+      componentTag: m4PageTag(project, module, 'desktop', item.id),
+      title: item.label,
+      actors: item.actors,
+    };
+  });
 
   const before = current ?? {};
   const entry: Record<string, unknown> = current ? structuredClone(current) : { moduleId: module };

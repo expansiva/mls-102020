@@ -27,6 +27,8 @@ export interface M4FinalizeReceipt {
   pages: string[];
   /** Accepted pages left out because pages50 has no approved desktop page for them. */
   notApproved: string[];
+  /** notApproved pages kept because they are already in the current module entry. */
+  kept: string[];
   changes: string[];
   written: boolean;
 }
@@ -80,7 +82,17 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
   if (!client) throw new Error(`M4_FINALIZE_PROJECT_MISSING: ${displayPath(info)} has no projects["${identity.project}"].`);
   client.modules ??= [];
   const index = client.modules.findIndex(item => item.moduleId === identity.module);
-  const { entry, changes } = composeM4ModuleEntry({ ...identity, pages, menu, ...languages }, index >= 0 ? client.modules[index] : undefined);
+  const current = index >= 0 ? client.modules[index] : undefined;
+  const registered = new Set<string>();
+  if (Array.isArray(current?.navigation)) {
+    for (const item of current.navigation as Array<{ id?: unknown }>) if (typeof item?.id === 'string') registered.add(item.id);
+  }
+  const currentFrontend = current?.frontend && typeof current.frontend === 'object' ? current.frontend as { pages?: unknown } : undefined;
+  if (Array.isArray(currentFrontend?.pages)) {
+    for (const item of currentFrontend.pages as Array<{ pageId?: unknown }>) if (typeof item?.pageId === 'string') registered.add(item.pageId);
+  }
+  const kept = notApproved.filter(pageId => registered.has(pageId));
+  const { entry, changes } = composeM4ModuleEntry({ ...identity, pages, keepPageIds: kept, menu, ...languages }, current);
   if (index >= 0) client.modules[index] = entry;
   else client.modules.push(entry);
 
@@ -88,7 +100,7 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
   if (written) await port.writeText(info, `${JSON.stringify(config, null, 2)}\n`.replace(/\n/gu, eol));
   const receipt: M4FinalizeReceipt = {
     schemaVersion: M4_FINALIZE_VERSION, ...identity, configPath: displayPath(info),
-    pages: pages.map(page => page.pageId), notApproved, changes: written ? changes : [], written,
+    pages: pages.map(page => page.pageId), notApproved, kept, changes: written ? changes : [], written,
   };
   const path = m4OwnedFile(identity, 'finalize70');
   await port.writeJson(path, { ...receipt, sourcesHash: await sha256Text(JSON.stringify({ pages, menu, languages })) });
