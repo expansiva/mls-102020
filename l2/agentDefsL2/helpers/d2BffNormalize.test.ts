@@ -269,3 +269,20 @@ void test('d2_121: a platform object of a known MDM type becomes that type', () 
   const kept = normalizeD2BffDesign(design(endpoint('qry', [leaf('blob', 'Thing.details.blob', 'string'), leaf('other', 'Thing.details.other', 'string')], '')), { Thing: bare });
   assert.deepEqual(kept.endpoints[0].input.map(item => item.type), ['string', 'string']);
 });
+
+void test('d2_155: origin null is absent; a value leaf with it is refused', () => {
+  const jsdoc = { purpose: 'load', input: 'none', processing: 'none', output: 'the row' };
+  const bindingsEmpty = { organisms: [], commands: [], selections: [], journeys: [], updates: [] };
+  const value = {
+    types: [], endpoints: [{ id: 'load', kind: 'qry', when: 'onLoad', input: [], output: [{ name: 'n', type: 'string', origin: null }], rules: [], jsdoc }], bindings: bindingsEmpty,
+  };
+  assert.throws(() => buildD2BffDesign(value), /D2_BFF_ASSERT: endpoints\.load\.output\.n\.origin: a value leaf names its origin/u);
+  const typed = {
+    types: [{ name: 'Row', description: 'a row', fields: [{ name: 'id', type: 'string', origin: { kind: 'field', paths: ['Tarefa.id'] } }] }],
+    endpoints: [{ id: 'load', kind: 'qry', when: 'onLoad', input: [], output: [{ name: 'row', type: 'Row', origin: null }], rules: [], jsdoc }],
+    bindings: bindingsEmpty,
+  };
+  const parsed = buildD2BffDesign(typed);
+  assert.equal(parsed.endpoints[0].output[0].origin, undefined);
+  assert.equal(parsed.types[0].fields[0].origin?.paths[0], 'Tarefa.id');
+});

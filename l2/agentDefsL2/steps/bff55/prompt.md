@@ -30,6 +30,7 @@ Types and origins:
   total, no cursor). A list that is not paged stays a plain list.
 - Every value leaf names its origin: field with the one Entity.path it carries; aggregate with every Entity.path the
   value is computed from; context for a value that comes from the URL or a selection and fills no stored field.
+- A leaf that names another type carries origin: null. A value leaf never carries null.
 - The person who calls is never an input: the server knows who is logged in, fills the creator or the person of
   their own records with them and filters the records that are theirs. Do not ask the page for that person, in a command or a query.
 - A cmd input leaf that fills a stored field uses field with that field's Entity.path, never context.

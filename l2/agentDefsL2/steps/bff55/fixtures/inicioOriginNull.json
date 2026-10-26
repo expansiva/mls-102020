@@ -1,0 +1,976 @@
+{
+  "types": [
+    {
+      "name": "ParticipanteIdentificacaoResumo",
+      "description": "Identifica\u00e7\u00e3o de um participante reduzida ao nome lido da plataforma.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Participante.details.identification.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "ParticipanteNomeDetalhes",
+      "description": "Detalhes de um participante com apenas a identifica\u00e7\u00e3o pelo nome.",
+      "fields": [
+        {
+          "name": "identification",
+          "type": "ParticipanteIdentificacaoResumo",
+          "origin": null
+        }
+      ]
+    },
+    {
+      "name": "ParticipanteNome",
+      "description": "Participante identificado pelo nome, como respons\u00e1vel ou quem criou uma tarefa.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Participante.id"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "ParticipanteNomeDetalhes",
+          "origin": null
+        }
+      ]
+    },
+    {
+      "name": "ListaTarefasNome",
+      "description": "Lista de tarefas (projeto ou \u00e1rea) identificada pelo nome.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ListaTarefas.id"
+            ]
+          }
+        },
+        {
+          "name": "nome",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ListaTarefas.nome"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "PendenciaTarefaDetalhes",
+      "description": "Detalhes calculados de uma tarefa pendente: quem age agora, devolu\u00e7\u00e3o, progresso da checklist e vencimento.",
+      "fields": [
+        {
+          "name": "quemAgeAgora",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.quemAgeAgora"
+            ]
+          }
+        },
+        {
+          "name": "devolvidaPendente",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.devolvidaPendente"
+            ]
+          }
+        },
+        {
+          "name": "motivoDevolucao",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.motivoDevolucao"
+            ]
+          }
+        },
+        {
+          "name": "progressoChecklist",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.progressoChecklist"
+            ]
+          }
+        },
+        {
+          "name": "venceHoje",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.venceHoje"
+            ]
+          }
+        },
+        {
+          "name": "atrasada",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.atrasada"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "PendenciaTarefa",
+      "description": "Tarefa que depende de uma pessoa agora, com situa\u00e7\u00e3o, prazo, prioridade, lista, respons\u00e1vel, quem criou, progresso da checklist e motivo da devolu\u00e7\u00e3o.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.version"
+            ]
+          }
+        },
+        {
+          "name": "titulo",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.titulo"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'aFazer' | 'emAndamento' | 'emRevisao' | 'concluida' | 'cancelada'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.status"
+            ]
+          }
+        },
+        {
+          "name": "prazo",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.prazo"
+            ]
+          }
+        },
+        {
+          "name": "prioridade",
+          "type": "'baixa' | 'media' | 'alta'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.prioridade"
+            ]
+          }
+        },
+        {
+          "name": "listaId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.listaId"
+            ]
+          }
+        },
+        {
+          "name": "responsavelId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.responsavelId"
+            ]
+          }
+        },
+        {
+          "name": "criadorId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.criadorId"
+            ]
+          }
+        },
+        {
+          "name": "criadaEm",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.criadaEm"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "PendenciaTarefaDetalhes",
+          "origin": null
+        },
+        {
+          "name": "listaTarefas",
+          "type": "ListaTarefasNome",
+          "origin": null
+        },
+        {
+          "name": "responsavel",
+          "type": "ParticipanteNome",
+          "origin": null
+        },
+        {
+          "name": "criador",
+          "type": "ParticipanteNome",
+          "origin": null
+        }
+      ]
+    },
+    {
+      "name": "AlertaPrazoDetalhes",
+      "description": "Detalhes calculados de vencimento e progresso de uma tarefa aberta.",
+      "fields": [
+        {
+          "name": "aberta",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.aberta"
+            ]
+          }
+        },
+        {
+          "name": "venceHoje",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.venceHoje"
+            ]
+          }
+        },
+        {
+          "name": "atrasada",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.atrasada"
+            ]
+          }
+        },
+        {
+          "name": "progressoChecklist",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.progressoChecklist"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AlertaPrazo",
+      "description": "Tarefa aberta que vence hoje ou est\u00e1 atrasada, com t\u00edtulo, prazo e situa\u00e7\u00e3o.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.id"
+            ]
+          }
+        },
+        {
+          "name": "titulo",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.titulo"
+            ]
+          }
+        },
+        {
+          "name": "prazo",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.prazo"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'aFazer' | 'emAndamento' | 'emRevisao' | 'concluida' | 'cancelada'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.status"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "AlertaPrazoDetalhes",
+          "origin": null
+        }
+      ]
+    },
+    {
+      "name": "IndicadoresTarefas",
+      "description": "Contadores das tarefas de uma pessoa: abertas, que vencem hoje, atrasadas e devolvidas aguardando retomada.",
+      "fields": [
+        {
+          "name": "abertas",
+          "type": "number",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Tarefa.details.aberta"
+            ]
+          }
+        },
+        {
+          "name": "vencemHoje",
+          "type": "number",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Tarefa.details.venceHoje"
+            ]
+          }
+        },
+        {
+          "name": "atrasadas",
+          "type": "number",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Tarefa.details.atrasada"
+            ]
+          }
+        },
+        {
+          "name": "devolvidasPendentes",
+          "type": "number",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Tarefa.details.devolvidaPendente"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "PermissoesTarefas",
+      "description": "Marcas efetivas de aceitar e de criar tarefas de um participante.",
+      "fields": [
+        {
+          "name": "aceitaTarefasEfetivo",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Participante.details.tarefas.aceitaTarefasEfetivo"
+            ]
+          }
+        },
+        {
+          "name": "podeCriarTarefasEfetivo",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Participante.details.tarefas.podeCriarTarefasEfetivo"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "PermissoesParticipanteDetalhes",
+      "description": "Nome e marcas efetivas de tarefas de um participante.",
+      "fields": [
+        {
+          "name": "identification",
+          "type": "ParticipanteIdentificacaoResumo",
+          "origin": null
+        },
+        {
+          "name": "tarefas",
+          "type": "PermissoesTarefas",
+          "origin": null
+        }
+      ]
+    },
+    {
+      "name": "PermissoesParticipante",
+      "description": "Participante com seu nome e se aceita e pode criar tarefas (efetivo).",
+      "fields": [
+        {
+          "name": "details",
+          "type": "PermissoesParticipanteDetalhes",
+          "origin": null
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "carregarInicio",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [],
+      "output": [
+        {
+          "name": "pendencias",
+          "type": "PendenciaTarefa[]",
+          "origin": null
+        },
+        {
+          "name": "alertas",
+          "type": "AlertaPrazo[]",
+          "origin": null
+        },
+        {
+          "name": "indicadores",
+          "type": "IndicadoresTarefas",
+          "origin": null
+        },
+        {
+          "name": "permissoes",
+          "type": "PermissoesParticipante",
+          "origin": null
+        }
+      ],
+      "rules": [
+        "membroVeResponsavelOuCriador",
+        "quemAgeAgoraPorSituacao",
+        "retomarSoAposDevolucao",
+        "tarefaAbertaVencimento",
+        "participanteNaoConfiguradoAceitaECria"
+      ],
+      "jsdoc": {
+        "purpose": "Carrega de uma vez a tela inicial do membro: o que depende dele agora, os prazos de hoje e atrasados, os contadores das suas tarefas e as suas marcas de aceitar e criar tarefas.",
+        "input": "Nenhuma entrada; a pessoa da sess\u00e3o \u00e9 identificada pelo servidor.",
+        "processing": "Restringe \u00e0s tarefas vis\u00edveis ao membro (membroVeResponsavelOuCriador). Pend\u00eancias: tarefas cujo quemAgeAgora calculado \u00e9 a pessoa da sess\u00e3o (quemAgeAgoraPorSituacao) \u2014 a fazer ou em andamento como respons\u00e1vel, em revis\u00e3o como quem criou \u2014 incluindo as em andamento devolvidas e ainda n\u00e3o retomadas (devolvidaPendente, retomarSoAposDevolucao), ordenadas por prazo e criadaEm, com nome da lista, nomes do respons\u00e1vel e de quem criou e progressoChecklist calculado pela contagem dos itens. Alertas: tarefas abertas de que a pessoa \u00e9 respons\u00e1vel que vencem hoje ou est\u00e3o atrasadas (tarefaAbertaVencimento), ordenadas por prazo. Indicadores: contagens no servidor de abertas, vencem hoje, atrasadas e devolvidas pendentes entre as tarefas de que a pessoa \u00e9 respons\u00e1vel (tarefaAbertaVencimento). Permiss\u00f5es: l\u00ea o participante da sess\u00e3o e calcula aceitaTarefasEfetivo e podeCriarTarefasEfetivo como a marca do gestor ou sim quando n\u00e3o configurado (participanteNaoConfiguradoAceitaECria). Campos derivados s\u00e3o calculados, nunca gravados.",
+        "output": "Lista de pend\u00eancias com situa\u00e7\u00e3o, prazo, prioridade, lista, respons\u00e1vel, quem criou, progresso e motivo da devolu\u00e7\u00e3o; lista de alertas de prazo com t\u00edtulo e prazo; os quatro contadores j\u00e1 calculados; e o nome com as marcas efetivas da pessoa da sess\u00e3o."
+      }
+    },
+    {
+      "id": "iniciarTarefa",
+      "kind": "cmd",
+      "when": "iniciarTarefa",
+      "writes": "Tarefa.iniciar",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.version"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "tarefa",
+          "type": "PendenciaTarefa",
+          "origin": null
+        },
+        {
+          "name": "indicadores",
+          "type": "IndicadoresTarefas",
+          "origin": null
+        }
+      ],
+      "rules": [
+        "apenasResponsavelExecuta",
+        "quemAgeAgoraPorSituacao"
+      ],
+      "jsdoc": {
+        "purpose": "Inicia uma tarefa a fazer de que a pessoa da sess\u00e3o \u00e9 respons\u00e1vel.",
+        "input": "id: tarefa a iniciar; version: vers\u00e3o lida, para controle de concorr\u00eancia.",
+        "processing": "Recusa se a pessoa da sess\u00e3o n\u00e3o for o respons\u00e1vel (apenasResponsavelExecuta), se a situa\u00e7\u00e3o n\u00e3o for aFazer ou se a vers\u00e3o divergir. Executa a transi\u00e7\u00e3o iniciar para emAndamento; o respons\u00e1vel continua sendo quem age agora (quemAgeAgoraPorSituacao, calculado). Recalcula os contadores da pessoa.",
+        "output": "A tarefa na nova situa\u00e7\u00e3o em andamento, com lista, nomes, progresso e campos derivados recalculados, e os contadores atualizados da pessoa."
+      }
+    },
+    {
+      "id": "enviarRevisao",
+      "kind": "cmd",
+      "when": "enviarRevisao",
+      "writes": "Tarefa.enviarParaRevisao",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.version"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "tarefa",
+          "type": "PendenciaTarefa",
+          "origin": null
+        },
+        {
+          "name": "indicadores",
+          "type": "IndicadoresTarefas",
+          "origin": null
+        }
+      ],
+      "rules": [
+        "apenasResponsavelExecuta",
+        "avisarQuemAgeAgora",
+        "avisoNaoSobrepostoPorPessoa",
+        "quemAgeAgoraPorSituacao"
+      ],
+      "jsdoc": {
+        "purpose": "Envia para revis\u00e3o (ou reenvia ap\u00f3s devolu\u00e7\u00e3o) uma tarefa em andamento de que a pessoa da sess\u00e3o \u00e9 respons\u00e1vel.",
+        "input": "id: tarefa a enviar; version: vers\u00e3o lida, para controle de concorr\u00eancia.",
+        "processing": "Recusa se a pessoa da sess\u00e3o n\u00e3o for o respons\u00e1vel (apenasResponsavelExecuta), se a situa\u00e7\u00e3o n\u00e3o for emAndamento ou se a vers\u00e3o divergir. Executa a transi\u00e7\u00e3o enviarParaRevisao para emRevisao; quem criou passa a ser quem age agora (quemAgeAgoraPorSituacao) e \u00e9 avisado pelo processo da tarefa (avisarQuemAgeAgora), sem iniciar novo aviso para quem j\u00e1 tem um em andamento (avisoNaoSobrepostoPorPessoa). Recalcula os contadores.",
+        "output": "A tarefa em revis\u00e3o, com quem age agora j\u00e1 sendo quem criou, e os contadores atualizados da pessoa."
+      }
+    },
+    {
+      "id": "aceitarTarefa",
+      "kind": "cmd",
+      "when": "aceitarTarefa",
+      "writes": "Tarefa.aceitar",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.version"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "tarefa",
+          "type": "PendenciaTarefa",
+          "origin": null
+        },
+        {
+          "name": "indicadores",
+          "type": "IndicadoresTarefas",
+          "origin": null
+        }
+      ],
+      "rules": [
+        "apenasCriadorRevisa",
+        "quemAgeAgoraPorSituacao"
+      ],
+      "jsdoc": {
+        "purpose": "Aceita a entrega de uma tarefa em revis\u00e3o criada pela pessoa da sess\u00e3o, concluindo-a.",
+        "input": "id: tarefa a aceitar; version: vers\u00e3o lida, para controle de concorr\u00eancia.",
+        "processing": "Recusa se a pessoa da sess\u00e3o n\u00e3o for quem criou (apenasCriadorRevisa), se a situa\u00e7\u00e3o n\u00e3o for emRevisao ou se a vers\u00e3o divergir. Executa a transi\u00e7\u00e3o aceitar para concluida; quem age agora passa a ser ningu\u00e9m e a tarefa deixa de ser aberta (calculados). Recalcula os contadores.",
+        "output": "A tarefa conclu\u00edda, sem quem aja agora, e os contadores atualizados da pessoa."
+      }
+    },
+    {
+      "id": "devolverTarefa",
+      "kind": "cmd",
+      "when": "devolverTarefa",
+      "writes": "Tarefa.devolver",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.version"
+            ]
+          }
+        },
+        {
+          "name": "details.motivoDevolucao",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.details.motivoDevolucao"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "tarefa",
+          "type": "PendenciaTarefa",
+          "origin": null
+        },
+        {
+          "name": "indicadores",
+          "type": "IndicadoresTarefas",
+          "origin": null
+        }
+      ],
+      "rules": [
+        "apenasCriadorRevisa",
+        "devolucaoExigeMotivo",
+        "avisarQuemAgeAgora",
+        "avisoNaoSobrepostoPorPessoa",
+        "quemAgeAgoraPorSituacao"
+      ],
+      "jsdoc": {
+        "purpose": "Devolve ao respons\u00e1vel, com o motivo, uma tarefa em revis\u00e3o criada pela pessoa da sess\u00e3o.",
+        "input": "id: tarefa a devolver; version: vers\u00e3o lida; details.motivoDevolucao: texto obrigat\u00f3rio explicando o que corrigir.",
+        "processing": "Recusa se a pessoa da sess\u00e3o n\u00e3o for quem criou (apenasCriadorRevisa), se a situa\u00e7\u00e3o n\u00e3o for emRevisao, se a vers\u00e3o divergir ou se o motivo vier vazio (devolucaoExigeMotivo). Executa a transi\u00e7\u00e3o devolver para emAndamento gravando o motivo; o sistema preenche devolvidaEm. O respons\u00e1vel passa a agir agora (quemAgeAgoraPorSituacao) e \u00e9 avisado (avisarQuemAgeAgora, sem sobrepor aviso em andamento \u2014 avisoNaoSobrepostoPorPessoa). devolvidaPendente passa a verdadeiro por c\u00e1lculo. Recalcula os contadores.",
+        "output": "A tarefa em andamento com o motivo da devolu\u00e7\u00e3o e quem age agora sendo o respons\u00e1vel, e os contadores atualizados da pessoa."
+      }
+    },
+    {
+      "id": "retomarTarefa",
+      "kind": "cmd",
+      "when": "retomarTarefa",
+      "writes": "Tarefa.retomar",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tarefa.version"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "tarefa",
+          "type": "PendenciaTarefa",
+          "origin": null
+        },
+        {
+          "name": "indicadores",
+          "type": "IndicadoresTarefas",
+          "origin": null
+        }
+      ],
+      "rules": [
+        "apenasResponsavelExecuta",
+        "retomarSoAposDevolucao"
+      ],
+      "jsdoc": {
+        "purpose": "Retoma uma tarefa devolvida de que a pessoa da sess\u00e3o \u00e9 respons\u00e1vel, para continuar o trabalho.",
+        "input": "id: tarefa a retomar; version: vers\u00e3o lida, para controle de concorr\u00eancia.",
+        "processing": "Recusa se a pessoa da sess\u00e3o n\u00e3o for o respons\u00e1vel (apenasResponsavelExecuta), se a vers\u00e3o divergir ou se a tarefa n\u00e3o estiver em andamento devolvida e ainda n\u00e3o retomada ap\u00f3s a devolu\u00e7\u00e3o (retomarSoAposDevolucao). Executa a transi\u00e7\u00e3o retomar, mantendo emAndamento; o sistema preenche retomadaEm e devolvidaPendente passa a falso por c\u00e1lculo. Recalcula os contadores.",
+        "output": "A tarefa em andamento j\u00e1 retomada, com o motivo da \u00faltima devolu\u00e7\u00e3o, e os contadores atualizados da pessoa."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "pendenciasAgora",
+        "reads": "carregarInicio.pendencias"
+      },
+      {
+        "organism": "indicadoresTarefas",
+        "reads": "carregarInicio.indicadores"
+      },
+      {
+        "organism": "indicadoresTarefas",
+        "reads": "carregarInicio.alertas"
+      },
+      {
+        "organism": "minhasPermissoes",
+        "reads": "carregarInicio.permissoes"
+      }
+    ],
+    "commands": [
+      {
+        "endpoint": "iniciarTarefa",
+        "refreshes": []
+      },
+      {
+        "endpoint": "enviarRevisao",
+        "refreshes": []
+      },
+      {
+        "endpoint": "aceitarTarefa",
+        "refreshes": [
+          "carregarInicio"
+        ]
+      },
+      {
+        "endpoint": "devolverTarefa",
+        "refreshes": []
+      },
+      {
+        "endpoint": "retomarTarefa",
+        "refreshes": []
+      }
+    ],
+    "selections": [],
+    "journeys": [
+      {
+        "step": "executarTarefa/abrirTarefa",
+        "organisms": [
+          "pendenciasAgora"
+        ],
+        "endpoints": [
+          "carregarInicio"
+        ],
+        "continuesIn": "minhas_tarefas"
+      },
+      {
+        "step": "executarTarefa/verTarefa",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "minhas_tarefas"
+      },
+      {
+        "step": "executarTarefa/iniciarTarefa",
+        "organisms": [
+          "pendenciasAgora"
+        ],
+        "endpoints": [
+          "iniciarTarefa"
+        ]
+      },
+      {
+        "step": "executarTarefa/marcarItem",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "minhas_tarefas"
+      },
+      {
+        "step": "executarTarefa/enviarRevisao",
+        "organisms": [
+          "pendenciasAgora"
+        ],
+        "endpoints": [
+          "enviarRevisao"
+        ]
+      },
+      {
+        "step": "retomarTarefa/lerMotivo",
+        "organisms": [
+          "pendenciasAgora"
+        ],
+        "endpoints": [
+          "carregarInicio"
+        ]
+      },
+      {
+        "step": "retomarTarefa/retomar",
+        "organisms": [
+          "pendenciasAgora"
+        ],
+        "endpoints": [
+          "retomarTarefa"
+        ]
+      },
+      {
+        "step": "retomarTarefa/reenviarRevisao",
+        "organisms": [
+          "pendenciasAgora"
+        ],
+        "endpoints": [
+          "enviarRevisao"
+        ]
+      },
+      {
+        "step": "revisarTarefa/abrirRevisao",
+        "organisms": [
+          "pendenciasAgora"
+        ],
+        "endpoints": [
+          "carregarInicio"
+        ]
+      },
+      {
+        "step": "revisarTarefa/conferirTarefa",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "minhas_tarefas"
+      },
+      {
+        "step": "revisarTarefa/aceitarTarefa",
+        "organisms": [
+          "pendenciasAgora"
+        ],
+        "endpoints": [
+          "aceitarTarefa"
+        ]
+      },
+      {
+        "step": "revisarTarefa/devolverTarefa",
+        "organisms": [
+          "pendenciasAgora"
+        ],
+        "endpoints": [
+          "devolverTarefa"
+        ]
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "iniciarTarefa",
+        "state": "carregarInicio.pendencias",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "iniciarTarefa",
+        "state": "carregarInicio.indicadores",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "enviarRevisao",
+        "state": "carregarInicio.pendencias",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "enviarRevisao",
+        "state": "carregarInicio.indicadores",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "aceitarTarefa",
+        "state": "carregarInicio.pendencias",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "aceitarTarefa",
+        "state": "carregarInicio.indicadores",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "devolverTarefa",
+        "state": "carregarInicio.pendencias",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "devolverTarefa",
+        "state": "carregarInicio.indicadores",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "retomarTarefa",
+        "state": "carregarInicio.pendencias",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "retomarTarefa",
+        "state": "carregarInicio.indicadores",
+        "mode": "replace"
+      }
+    ]
+  }
+}
