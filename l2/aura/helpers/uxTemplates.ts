@@ -7,6 +7,8 @@
  * of the chosen `.md` (`_102020_/l4/collabux/templates/<category>/<file>.md`). The key carries the module
  * because `layouts` belongs to the project and the same page id can exist in two modules. A page with no
  * entry uses the template of its page11 (`template.category` of `web/desktop/page11/<page>.defs.ts`).
+ * UX 1 (`layouts["1"]`) uses the same key: there the entry is a template to apply to page11 itself
+ * (`uxBaseTemplateChoice`, agentGenomeUx base mode).
  *
  * The options come from `l4/collabux/templates/experienceIndex.json` → `categories[<category>]`, in the
  * index's order. The category is the folder segment of the page11 template path.
@@ -157,6 +159,21 @@ export function resolveEffectiveTemplate(
     const chosen = getPageTemplate(layout, key);
     if (!chosen) return { template: page11Template || null, isDefault: true, missing: false };
     return { template: chosen, isDefault: chosen === page11Template, missing: !options.some(o => o.template === chosen) };
+}
+
+/**
+ * UX 1 (the base, TASK-102020-genome-ux-4): page11 itself. Its cards mark the template in effect the same way
+ * (the entry, else the page11 one), but an entry is a choice still to be APPLIED: agentGenomeUx in base mode
+ * rewrites page11 with it. Returns the entry when it differs from the page11 `template.category`, null when there is
+ * no entry or it is already the page11 template (nothing to apply).
+ */
+export function uxBaseTemplateChoice(
+    layout: IUxLayout | null | undefined,
+    key: string,
+    page11Template: string | null | undefined,
+): string | null {
+    const chosen = getPageTemplate(layout, key);
+    return chosen && chosen !== page11Template ? chosen : null;
 }
 
 function pick(text: UxText | undefined, lang: UxLang): string {

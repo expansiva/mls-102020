@@ -6,14 +6,15 @@
 //
 // Read per page: the agentGenomeUx receipt + stale verdict (readGenomeUxPageStatus, without the catalog hash: a
 // catalog change does not mark every variant stale), the defs and .ts of each device, and agentMaterializeL2's
-// input20 snapshot (l2/<module>/pipeline/agentMaterializeL2/input.json) for the refused verdict.
+// input20 snapshot (l2/<module>/pipeline/agentMaterializeL2/input.json) for the refused verdict. The base (page11)
+// reads the agentGenomeUx view only when it has a UX 1 template choice or a base receipt (TASK-102020-genome-ux-4).
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { readStorText, storTextExists } from '/_102020_/l2/agentMaterializeL2/helpers/storText.js';
 import { m4OwnedFile } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { getPageTemplate, uxPageKey, type IUxLayout } from '/_102020_/l2/aura/helpers/uxTemplates.js';
-import { listGenomeUxPages, readGenomeUxPageStatus } from '/_102020_/l2/aura/agentGenomeUx/genomeUxIo.js';
+import { genomeUxReceiptExists, listGenomeUxPages, readGenomeUxPageStatus } from '/_102020_/l2/aura/agentGenomeUx/genomeUxIo.js';
 import {
     VARIATION_DEVICES, aggregateVariationStatus, genomeUxFolder, genomeUxNumbers, orphanVariationFolders, pageVariationEntry, snapshotVerdictFor,
     type PageVariationEntry, type PageVariationStatus, type VariationDevice, type VariationInputSnapshot, type VariationKind, type VariationPageFacts,
@@ -103,6 +104,21 @@ async function pageEntry(
         }
     } else {
         facts.defsHashes = await defsHashes(project, module, folder, page);
+        // Base (TASK-102020-genome-ux-4): a UX 1 template choice, or a receipt of agentGenomeUx base mode, brings the
+        // agent's view; without either the base is agentDefsL2's page11 alone (no extra read).
+        const chosen = kind === 'base' ? getPageTemplate(layoutEntry, uxPageKey(module, page)) : null;
+        if (kind === 'base' && (chosen || genomeUxReceiptExists(project, module, folder, page))) {
+            const status = await readGenomeUxPageStatus(project, module, 1, page, { layoutEntry });
+            if (status.kind === 'ok') {
+                facts.templateChoice = status.context.template.isDefault ? null : status.context.template.path;
+                facts.hasReceipt = status.receipt !== null;
+                facts.staleReasons = status.verdict.reasons;
+            } else if (chosen) {
+                // The choice cannot be applied as things are (e.g. the template file is missing): show why.
+                facts.templateChoice = chosen;
+                facts.diagnostic = status.diagnostic;
+            }
+        }
     }
     return pageVariationEntry(facts, snapshotVerdictFor(snapshot, page, folder, facts.defsHashes));
 }
@@ -115,8 +131,10 @@ async function variation(
     for (const page of pages) entries.push(await pageEntry(project, module, kind, folder, layout, layoutEntry, page, snapshot));
     const { status, counts } = aggregateVariationStatus(entries);
     const name = typeof layoutEntry?.name === 'string' && layoutEntry.name ? layoutEntry.name : layout !== null ? `UX ${layout}` : folder;
-    // Own template = an entry in layouts[N].templates.pages for a page of this module (uxTemplates' key).
-    const ownTemplates = kind === 'ux' ? pages.filter(page => getPageTemplate(layoutEntry, uxPageKey(module, page))).length : 0;
+    // Own template = an entry in layouts[N].templates.pages for a page of this module (uxTemplates' key); for the
+    // base, a UX 1 choice still waiting to be applied to page11.
+    const ownTemplates = kind === 'ux' ? pages.filter(page => getPageTemplate(layoutEntry, uxPageKey(module, page))).length
+        : kind === 'base' ? entries.filter(entry => entry.templateChoice).length : 0;
     return { variation: folder, kind, layout, name, ownTemplates, orphan: kind === 'orphan', status, counts, pages: entries };
 }
 

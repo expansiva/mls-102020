@@ -114,7 +114,48 @@ void test('variationStatus aggregation, UX numbers, orphans and the action', () 
     assert.deepEqual(variationAction('ux', [fresh, stale, refused, mat]), { kind: 'generate', pages: ['b'] });
     assert.deepEqual(variationAction('ux', [fresh, refused, mat]), { kind: 'materialize' });
     assert.deepEqual(variationAction('ux', [fresh, refused]), { kind: 'regenerate', pages: ['c'] });
-    assert.deepEqual(variationAction('base', [stale, mat]), { kind: 'materialize' });
+    // base: a stale page (only possible with a base receipt) is generated with agentGenomeUx layout 1
+    assert.deepEqual(variationAction('base', [stale, mat]), { kind: 'generate', pages: ['b'] });
+    assert.deepEqual(variationAction('base', [fresh, mat]), { kind: 'materialize' });
     assert.equal(variationAction('base', [refused]), null);
     assert.equal(variationAction('orphan', [mat]), null);
+});
+
+const BASE_CHOICE = '_102020_/l4/collabux/templates/financialTransactions/dueAgenda.md';
+const baseFacts = (patch: Partial<VariationPageFacts> = {}) => facts({ page: 'inicio', kind: 'base', hasReceipt: false, staleReasons: [], ...patch });
+
+void test('variationStatus base generation: a UX 1 template choice that differs from page11 (TASK-102020-genome-ux-4)', () => {
+    const entry = pageVariationEntry(baseFacts({ templateChoice: BASE_CHOICE }), { kind: 'accepted' });
+    assert.equal(entry.status, 'generation');
+    assert.deepEqual(entry.devices, { desktop: 'generation', mobile: 'generation' });
+    assert.equal(entry.templateChoice, BASE_CHOICE);
+    // the choice wins over a refusal or a missing .ts: applying it rewrites page11 anyway
+    assert.equal(pageVariationEntry(baseFacts({ templateChoice: BASE_CHOICE, ts: { desktop: false, mobile: false } }), { kind: 'refused', reasons: ['r'] }).status, 'generation');
+    assert.deepEqual(variationAction('base', [entry]), { kind: 'generate', pages: ['inicio'] });
+    // a base page whose page11 is missing is agentDefsL2's: generation, but never part of the action
+    const missing = pageVariationEntry(baseFacts({ page: 'nova', defsHashes: { desktop: null, mobile: null } }), { kind: 'absent' });
+    assert.equal(missing.status, 'generation');
+    assert.equal(variationAction('base', [missing]), null);
+    assert.deepEqual(variationAction('base', [missing, entry]), { kind: 'generate', pages: ['inicio'] });
+    // the choice could not be read (missing template file): generation with the diagnostic
+    const broken = pageVariationEntry(baseFacts({ templateChoice: BASE_CHOICE, diagnostic: 'GENOME_UX_TEMPLATE_MISSING: x.md' }), { kind: 'accepted' });
+    assert.equal(broken.diagnostic, 'GENOME_UX_TEMPLATE_MISSING: x.md');
+});
+
+void test('variationStatus base stale: only with a base receipt; without one the page11 logic is unchanged', () => {
+    // receipt + genomeUxStale (page11 rewritten after base mode wrote it)
+    const stale = pageVariationEntry(baseFacts({ hasReceipt: true, staleReasons: ['variant'] }), { kind: 'accepted' });
+    assert.equal(stale.status, 'stale');
+    assert.deepEqual(stale.staleReasons, ['variant']);
+    assert.deepEqual(variationAction('base', [stale]), { kind: 'generate', pages: ['inicio'] });
+    // receipt fresh → the usual page11 statuses
+    assert.equal(pageVariationEntry(baseFacts({ hasReceipt: true }), { kind: 'accepted' }).status, 'fresh');
+    assert.equal(pageVariationEntry(baseFacts({ hasReceipt: true }), { kind: 'outdated' }).status, 'materialize');
+    // no receipt: stale reasons are ignored (the base never ran agentGenomeUx), no choice → page11 logic
+    const plain = pageVariationEntry(baseFacts({ staleReasons: ['receipt'] }), { kind: 'refused', reasons: ['Intent x is unknown.'] });
+    assert.equal(plain.status, 'refused');
+    assert.deepEqual(plain.staleReasons, []);
+    assert.equal(plain.templateChoice, null);
+    // a templateChoice on a UX N or orphan row is ignored
+    assert.equal(pageVariationEntry(facts({ templateChoice: BASE_CHOICE }), { kind: 'accepted' }).templateChoice, null);
 });

@@ -8,9 +8,12 @@
 //
 // Per-page status, per device, in pipeline order (the worst device wins the page, the worst page wins the variation):
 //   generation   → UX N: no agentGenomeUx receipt, or the variant defs of the device is missing (or the page cannot
-//                  be read: missing page11/template, see `diagnostic`); base/orphan: the defs is missing
-//   stale        → UX N only: the receipt does not match page11, the template, its rules, useMolecules or the
-//                  written defs (genomeUxStale reasons)
+//                  be read: missing page11/template, see `diagnostic`); base/orphan: the defs is missing;
+//                  base: also a UX 1 template choice (layouts["1"].templates.pages) that differs from the page11
+//                  template.category (TASK-102020-genome-ux-4: agentGenomeUx layout 1 applies it)
+//   stale        → UX N: the receipt does not match the inherited part of page11, the template, its rules,
+//                  useMolecules or the written defs (genomeUxStale reasons); base: only when a base receipt exists
+//                  (agentGenomeUx base mode ran) and genomeUxStale says so (e.g. page11 rewritten afterwards)
 //   refused      → the agentMaterializeL2 input20 snapshot (input.json) refused the page (page11) or the variant,
 //                  for the defs that are on disk now (same sha256); the reasons are the snapshot's problem messages
 //   materialize  → the rendered .ts of the device is missing, or the snapshot did not see the current defs yet
@@ -55,12 +58,14 @@ export interface VariationInputSnapshot {
 export interface VariationPageFacts {
     page: string;
     kind: VariationKind;
-    /** UX N: the agentGenomeUx receipt exists. Ignored for base/orphan. */
+    /** UX N / base: the agentGenomeUx receipt exists. Ignored for orphans. */
     hasReceipt: boolean;
-    /** UX N: genomeUxStale reasons ('receipt' when there is none). Ignored for base/orphan. */
+    /** UX N / base: genomeUxStale reasons ('receipt' when there is none). Base: counted only with a receipt. */
     staleReasons: string[];
-    /** UX N: readGenomeUxPageStatus could not read the page (missing page11 / template, unreadable rules). */
+    /** UX N / base: readGenomeUxPageStatus could not read the page (missing page11 / template, unreadable rules). */
     diagnostic: string | null;
+    /** Base only: the UX 1 template chosen for the page when it differs from the page11 template.category. */
+    templateChoice?: string | null;
     /** sha256 (sha256Text format) of the defs of each device in this folder; null = missing. */
     defsHashes: Record<VariationDevice, string | null>;
     /** The rendered .ts of each device exists in this folder. */
@@ -76,6 +81,8 @@ export interface PageVariationEntry {
     /** input20 messages when refused. */
     refusedReasons: string[];
     diagnostic: string | null;
+    /** Base only: the UX 1 template waiting to be applied to page11 (null = none). */
+    templateChoice: string | null;
 }
 
 export function worstVariationStatus(statuses: Iterable<PageVariationStatus>): PageVariationStatus {
@@ -123,10 +130,14 @@ export function snapshotVerdictFor(
 /** The status of one page of a variation from its facts and the input20 verdict. */
 export function pageVariationEntry(facts: VariationPageFacts, verdict: VariationSnapshotVerdict): PageVariationEntry {
     const ux = facts.kind === 'ux';
-    const staleReasons = ux ? facts.staleReasons.filter(reason => reason !== 'receipt' || facts.hasReceipt) : [];
+    const base = facts.kind === 'base';
+    const templateChoice = base ? facts.templateChoice ?? null : null;
+    // UX N always has a receipt to compare; the base only once agentGenomeUx base mode wrote one.
+    const tracked = ux || (base && facts.hasReceipt);
+    const staleReasons = tracked ? facts.staleReasons.filter(reason => reason !== 'receipt' || facts.hasReceipt) : [];
     const devices = {} as Record<VariationDevice, PageVariationStatus>;
     for (const device of VARIATION_DEVICES) {
-        if (facts.defsHashes[device] === null || (ux && (facts.diagnostic !== null || !facts.hasReceipt))) devices[device] = 'generation';
+        if (facts.defsHashes[device] === null || (ux && (facts.diagnostic !== null || !facts.hasReceipt)) || templateChoice !== null) devices[device] = 'generation';
         else if (staleReasons.length) devices[device] = 'stale';
         else if (verdict.kind === 'refused') devices[device] = 'refused';
         else if (verdict.kind === 'outdated' || !facts.ts[device]) devices[device] = 'materialize';
@@ -139,7 +150,8 @@ export function pageVariationEntry(facts: VariationPageFacts, verdict: Variation
         devices,
         staleReasons: status === 'stale' ? staleReasons : [],
         refusedReasons: status === 'refused' && verdict.kind === 'refused' ? verdict.reasons : [],
-        diagnostic: ux ? facts.diagnostic : null,
+        diagnostic: ux || base ? facts.diagnostic : null,
+        templateChoice,
     };
 }
 
@@ -173,9 +185,11 @@ export function orphanVariationFolders(segments: Iterable<string>, layouts: read
 }
 
 /**
- * The pages for the action of a variation: `generate` (UX N with generation/stale pages) → agentGenomeUx with those
- * pages; `regenerate` (UX N whose only problem is refused pages) → agentGenomeUx with them and force; `materialize`
- * (pending .ts) → agentMaterializeL2 with the genome scope; null = nothing to do (or an orphan).
+ * The pages for the action of a variation: `generate` (UX N with generation/stale pages; base: pages with a UX 1
+ * template choice or a stale base receipt) → agentGenomeUx with those pages (layout 1 for the base);
+ * `regenerate` (UX N whose only problem is refused pages) → agentGenomeUx with them and force; `materialize`
+ * (pending .ts) → agentMaterializeL2 with the genome scope; null = nothing to do (or an orphan). A base page whose
+ * page11 defs is missing is agentDefsL2's, never part of `generate`.
  */
 export function variationAction(kind: VariationKind, pages: PageVariationEntry[]):
     | { kind: 'generate' | 'regenerate'; pages: string[] }
@@ -184,6 +198,10 @@ export function variationAction(kind: VariationKind, pages: PageVariationEntry[]
     if (kind === 'orphan') return null;
     if (kind === 'ux') {
         const pending = pages.filter(p => p.status === 'generation' || p.status === 'stale').map(p => p.page);
+        if (pending.length) return { kind: 'generate', pages: pending };
+    }
+    if (kind === 'base') {
+        const pending = pages.filter(p => p.status === 'stale' || (p.status === 'generation' && !!p.templateChoice)).map(p => p.page);
         if (pending.length) return { kind: 'generate', pages: pending };
     }
     if (pages.some(p => p.status === 'materialize')) return { kind: 'materialize' };

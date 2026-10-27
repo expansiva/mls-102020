@@ -31,7 +31,8 @@ void test('a receipt that matches every current input is fresh', async () => {
   const { texts, receipt } = await fixture();
   assert.equal(receipt.schemaVersion, GENOME_UX_RECEIPT_VERSION);
   assert.deepEqual(receipt.template.rules, { axes: { recordsView: 'list' }, prefer: ['groupViewData'], forbid: ['groupViewTable'] });
-  assert.match(receipt.page11Hashes.desktop, /^sha256:[0-9a-f]{64}$/u);
+  assert.match(receipt.page11ContractHashes.desktop, /^sha256:[0-9a-f]{64}$/u);
+  assert.equal(Object.hasOwn(receipt, 'page11Hashes'), false);
   assert.deepEqual(genomeUxStale(receipt, await genomeUxCurrentFromTexts(texts)), { stale: false, reasons: [] });
 });
 
@@ -61,6 +62,8 @@ void test('stale detection: page11, page data, template, rules, catalog, useMole
   const current = await genomeUxCurrentFromTexts(texts);
   assert.deepEqual(genomeUxStale(null, current), { stale: true, reasons: ['receipt'] });
   assert.deepEqual(genomeUxStale({ ...receipt, schemaVersion: 'old' as typeof GENOME_UX_RECEIPT_VERSION }, current), { stale: true, reasons: ['receipt'] });
+  // a v2 receipt (whole-page11 hashes) is stale after the v3 bump
+  assert.deepEqual(genomeUxStale({ ...receipt, schemaVersion: '2026-10-22-genome-ux-v2' as typeof GENOME_UX_RECEIPT_VERSION }, current), { stale: true, reasons: ['receipt'] });
 });
 
 void test('without molecules the receipt keeps no catalog hash and a catalog change does not make the page stale', async () => {

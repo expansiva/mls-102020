@@ -43,6 +43,8 @@ const message_en = {
     statusRefused: 'refused by the materializer',
     regenerateVariation: 'Regenerate refused pages',
     ownTemplatesWord: 'with own template',
+    baseChoicesWord: 'with a new template to apply',
+    newTemplate: 'new template',
     baseLabel: 'base',
     staleBecause: 'changed',
     deviceDesktop: 'desktop',
@@ -82,6 +84,8 @@ const messages: Record<string, MessageType> = {
         statusRefused: 'recusada pelo materializador',
         regenerateVariation: 'Refazer páginas recusadas',
         ownTemplatesWord: 'com template próprio',
+        baseChoicesWord: 'com template novo a aplicar',
+        newTemplate: 'template novo',
         baseLabel: 'base',
         staleBecause: 'mudou',
         deviceDesktop: 'desktop',
@@ -118,6 +122,8 @@ const messages: Record<string, MessageType> = {
         statusRefused: 'rechazada por el materializador',
         regenerateVariation: 'Rehacer páginas rechazadas',
         ownTemplatesWord: 'con plantilla propia',
+        baseChoicesWord: 'con plantilla nueva por aplicar',
+        newTemplate: 'plantilla nueva',
         baseLabel: 'base',
         staleBecause: 'cambió',
         deviceDesktop: 'desktop',
@@ -379,6 +385,9 @@ export class PluginSelectModule extends StateLitElement {
                         ${v.kind === 'ux' && v.ownTemplates ? html`
                             <span class="text-[10px] text-gray-400 dark:text-gray-500">${v.ownTemplates}/${total} ${this.msg.ownTemplatesWord}</span>
                         ` : nothing}
+                        ${v.kind === 'base' && v.ownTemplates ? html`
+                            <span class="text-[10px] text-gray-400 dark:text-gray-500">${v.ownTemplates}/${total} ${this.msg.baseChoicesWord}</span>
+                        ` : nothing}
                     </div>
                 </div>
                 ${expanded ? html`
@@ -441,6 +450,9 @@ export class PluginSelectModule extends StateLitElement {
                                 </span>
                             </div>
                         `)}
+                        ${p.templateChoice ? html`
+                            <span class="text-[10px] text-amber-600 dark:text-amber-400 break-all">${this.msg.newTemplate}: <span class="font-mono">${p.templateChoice.split('/').slice(-2).join('/')}</span></span>
+                        ` : nothing}
                         ${p.staleReasons.length ? html`
                             <span class="text-[10px] text-rose-600 dark:text-rose-400">${this.msg.staleBecause}: ${p.staleReasons.join(', ')}</span>
                         ` : nothing}
@@ -457,8 +469,9 @@ export class PluginSelectModule extends StateLitElement {
     }
 
     // UX N: generate (agentGenomeUx, which chains agentMaterializeL2 --genome page{N}1 itself) or materialize only
-    // (agentMaterializeL2 scoped to the variation's folder). UX 1 (page11) is only materialized. Same shape as
-    // selectPage's _onRegenerate, but for every pending page of the UX.
+    // (agentMaterializeL2 scoped to the variation's folder). UX 1 (page11): generate = agentGenomeUx base mode
+    // (layout 1) for the pages with a UX 1 template choice or a stale base receipt (TASK-102020-genome-ux-4);
+    // otherwise only materialized. Same shape as selectPage's _onRegenerate, but for every pending page of the UX.
     private async _onVariationAction(module: IModule, v: ModuleVariationStatus): Promise<void> {
         const taskKey = `variation:${module.name}:${v.variation}`;
         if (getTask(taskKey)?.status === 'running') return;
@@ -474,7 +487,7 @@ export class PluginSelectModule extends StateLitElement {
             this.requestUpdate();
         };
         try {
-            if (action.kind === 'materialize' || v.layout === null || v.kind !== 'ux') {
+            if (action.kind === 'materialize' || v.layout === null || v.kind === 'orphan') {
                 // Defs already accepted — only the rendered .ts pages of this folder are missing.
                 // agentMaterializeL2 takes '<module> [--page …] [--device …] [--genome pageNN] [--force] [--review]'.
                 await this._executeAgent('agentMaterializeL2', `${module.name} --genome ${v.variation}`, trackTask);
