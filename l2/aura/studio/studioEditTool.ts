@@ -13,11 +13,17 @@
 
 import { registerStudioEditTool, currentEditHost, type IStudioEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { readDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
-import { afterDraftSave, saveToDraft } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
+import {
+  afterDraftSave,
+  dropCapturedDraftText,
+  holdCapturedDraftText,
+  saveToDraft,
+} from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { resetAuraSeed, seedActiveHeader, seedAuraStateFromHost } from '/_102020_/l2/aura/studio/studioAuraSeed.js';
 import {
   autosaveMessage,
+  captureModelText,
   createAutoSaver,
   pendingFiles,
   recordSentContent,
@@ -102,6 +108,47 @@ function pendingNow(project: number): mls.stor.IFileInfo[] {
   return pendingFiles(files, project);
 }
 
+/**
+ * Capture each file's text, write that batch, then record the captured CRC.
+ * A file whose model moved during the write stays pending and is handed back to schedule again.
+ */
+export async function sendAutoSaveBatch(
+  batch: readonly mls.stor.IFileInfo[],
+  project: number,
+  onStillPending: (file: mls.stor.IFileInfo) => void,
+): Promise<void> {
+  const captured = new Map<mls.stor.IFileInfo, string>();
+  for (const file of batch) {
+    const text = captureModelText(file);
+    if (text !== undefined) {
+      captured.set(file, text);
+      holdCapturedDraftText(file, text);
+    }
+  }
+  try {
+    // `saveToDraft` clears `inLocalStorage` before the write. A direct `setContents` would hit the local driver.
+    await saveToDraft(
+      batch,
+      autosaveMessage(batch),
+      (clean, msg) => mls.stor.setContents(clean, msg),
+      (file) => afterDraftSave(file),
+    );
+  } finally {
+    for (const file of batch) dropCapturedDraftText(file);
+  }
+  for (const file of batch) {
+    if (file.status === 'deleted' || file.hasError) continue;
+    const text = captured.get(file);
+    if (text === undefined) {
+      console.error('[studio] auto-save captured no text to record', file.shortName);
+      continue;
+    }
+    // Last-send CRC only. `originalCRC` stays the published baseline.
+    recordSentContent(file, text);
+    if (pendingFiles([file], project).length === 1) onStillPending(file);
+  }
+}
+
 function storFileFrom(ref: {
   project: number;
   level?: number;
@@ -148,18 +195,7 @@ class DraftAutoSave implements IDraftAutoSave {
       }
       const batch = pendingFiles(files, project);
       if (batch.length === 0) return;
-      // `saveToDraft` clears `inLocalStorage` before the write. A direct `setContents` would hit the local driver.
-      await saveToDraft(
-        batch,
-        autosaveMessage(batch),
-        (clean, msg) => mls.stor.setContents(clean, msg),
-        (file) => afterDraftSave(file),
-      );
-      for (const file of batch) {
-        if (file.status === 'deleted' || file.hasError) continue;
-        // Last-send CRC only. `originalCRC` stays the published baseline.
-        recordSentContent(file);
-      }
+      await sendAutoSaveBatch(batch, project, (file) => this.saver.notify(file));
       publishPanel({
         on: this.listening,
         lastSentAt: Date.now(),

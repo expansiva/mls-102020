@@ -92,6 +92,38 @@ test('a sent file stays out of pending until its content leaves the last send', 
   }
 });
 
+test('a sent file that returns to the published text is pending until that text is sent', () => {
+  const sent = file({ status: 'changed', inLocalStorage: false, shortName: 'rollback', folder: 'usecases' });
+  const host = globalThis as {
+    mls?: { editor?: unknown; common?: unknown };
+  };
+  const previousEditor = host.mls?.editor;
+  const previousCommon = host.mls?.common;
+  let text = 'edited';
+  const open = { originalCRC: 'published', model: { getValue: () => text } };
+  if (!host.mls) host.mls = {};
+  host.mls.editor = {
+    getKeyModel: () => '7/1/usecases/rollback',
+    models: { '7/1/usecases/rollback': { ts: open } },
+  };
+  host.mls.common = { crc: { crc32: (value: string) => value.length } };
+  try {
+    recordSentContent(sent);
+    assert.deepEqual(pendingFiles([sent], 7), []);
+    text = 'published';
+    sent.status = 'nochange';
+    assert.deepEqual(pendingFiles([sent], 7), [sent]);
+    recordSentContent(sent);
+    assert.deepEqual(pendingFiles([sent], 7), []);
+    assert.equal(sent.status, 'nochange');
+    assert.equal(open.originalCRC, 'published');
+  } finally {
+    if (!host.mls) return;
+    host.mls.editor = previousEditor;
+    host.mls.common = previousCommon;
+  }
+});
+
 test('the auto-save comment names every file', () => {
   const files = [
     file({ shortName: 'order' }),

@@ -41,15 +41,15 @@ const SOURCE_LEVELS: ReadonlySet<number> = new Set([1, 2, 3]);
 /**
  * Site-project files that should go to the draft: l1–l3, not yet sent, no compile error.
  * A deletion is always sent (nothing is sent but the delete).
- * Anything else is pending only when its content CRC differs from the last send,
- * or when that send was not recorded and the file is still local.
+ * Anything else is pending when its content CRC differs from the last send,
+ * including a `nochange` file whose text returned to the published copy.
+ * With no send recorded, `nochange` stays out; other statuses stay pending while still local.
  * `.defs.ts` and `.test.ts` stay (they are source). `.d.ts` does not.
  */
 export function pendingFiles<T extends IAutoSaveStorFile>(storFiles: readonly T[], projectId: number): T[] {
   const pending: T[] = [];
   for (const file of storFiles) {
     if (file.project !== projectId) continue;
-    if (file.status === 'nochange') continue;
     if (!stillUnsent(file)) continue;
     if (file.hasError !== false && file.status !== 'deleted') continue;
     if (!SOURCE_LEVELS.has(file.level)) continue;
@@ -79,11 +79,33 @@ function stillUnsent(file: IAutoSaveStorFile): boolean {
   const drift = crcDrift(file);
   if (drift === 'differs') return true;
   if (drift === 'same') return false;
+  // Nothing was sent this session, and the text already matches the published copy.
+  if (file.status === 'nochange') return false;
   return file.inLocalStorage !== false;
 }
 
+interface IOpenModelFile {
+  project: number;
+  level: number;
+  shortName: string;
+  folder: string;
+  extension: string;
+}
+
+/** Text of this file's open model, captured at this instant. Undefined when it cannot be read. */
+export function captureModelText(file: IOpenModelFile): string | undefined {
+  return openModelText(file);
+}
+
+/** True when the open model is readable and is no longer the text captured for this send. */
+export function modelTextDiffers(file: IOpenModelFile, capturedText: string): boolean {
+  const now = openModelText(file);
+  if (now === undefined) return false;
+  return now !== capturedText;
+}
+
 /** Text of this file's open model. Undefined when the model is not open or cannot be read. */
-function openModelText(file: IAutoSaveStorFile): string | undefined {
+function openModelText(file: IOpenModelFile): string | undefined {
   const slot = sourceModelSlot(file.extension);
   if (!slot) return undefined;
   const host = globalThis as {
@@ -114,9 +136,12 @@ function openModelText(file: IAutoSaveStorFile): string | undefined {
   }
 }
 
-/** Remember the content just written to the draft. Does not touch `originalCRC`. */
-export function recordSentContent(file: IAutoSaveStorFile): void {
-  const text = openModelText(file);
+/**
+ * Remember the content just written to the draft. Does not touch `originalCRC`.
+ * `capturedText` is what was read before the write; absent, the open model is read now.
+ */
+export function recordSentContent(file: IAutoSaveStorFile, capturedText?: string): void {
+  const text = capturedText ?? openModelText(file);
   if (text === undefined) return;
   try {
     rememberSentCrc(file, draftContentCrc(text, file.extension));

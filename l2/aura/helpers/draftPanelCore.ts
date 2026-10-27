@@ -10,6 +10,7 @@
 
 import { buildDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
 import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
+import { modelTextDiffers } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
 const SLUG_BODY = /^[a-z0-9_.-]{1,64}$/;
@@ -568,17 +569,37 @@ const defaultAfterSaveDeps: IAfterDraftSaveDeps = {
   },
 };
 
+const capturedDraftText = new WeakMap<IPanelStorFile, string>();
+
+/** Text captured before `setContents`. `afterDraftSave` compares the model with it. */
+export function holdCapturedDraftText(file: IPanelStorFile, text: string): void {
+  capturedDraftText.set(file, text);
+}
+
+/** Drop a capture when the send does not reach `afterDraftSave`. */
+export function dropCapturedDraftText(file: IPanelStorFile): void {
+  capturedDraftText.delete(file);
+}
+
+function takeCapturedDraftText(file: IPanelStorFile): string | undefined {
+  const text = capturedDraftText.get(file);
+  capturedDraftText.delete(file);
+  return text;
+}
+
 /**
  * Post-save for one draft file, same cleanup as `serviceSave.afterUpdate`.
  * `inLocalStorage` goes false. A deletion clears local, cache, models, and the index.
  * A renamed file resets the model origin, then clears local.
  * `changed`, `new`, and `renamed` stay as they are until publish.
+ * A capture that no longer matches the model keeps the local copy: the send wrote the old text.
  */
 export async function afterDraftSave(
   file: IPanelStorFile,
   deps: IAfterDraftSaveDeps = defaultAfterSaveDeps,
 ): Promise<void> {
   file.inLocalStorage = false;
+  const captured = takeCapturedDraftText(file);
   if (file.status === 'deleted') {
     await deps.setLocal(file, null);
     await deps.setCache(file, null);
@@ -587,5 +608,29 @@ export async function afterDraftSave(
     return;
   }
   if (file.status === 'renamed') await deps.resetRenameOrigin(file);
+  if (captured !== undefined && localTextMoved(file, captured)) {
+    file.inLocalStorage = true;
+    console.warn('afterDraftSave: text changed during the send; keeping the local copy', file.shortName);
+    return;
+  }
   await deps.setLocal(file, null);
+}
+
+function localTextMoved(file: IPanelStorFile, captured: string): boolean {
+  if (
+    file.level === undefined
+    || file.shortName === undefined
+    || file.folder === undefined
+    || file.extension === undefined
+  ) {
+    console.error('afterDraftSave: captured text but the file has no path', file.shortName);
+    return true;
+  }
+  return modelTextDiffers({
+    project: file.project,
+    level: file.level,
+    shortName: file.shortName,
+    folder: file.folder,
+    extension: file.extension,
+  }, captured);
 }
