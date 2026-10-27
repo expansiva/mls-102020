@@ -43,7 +43,11 @@ const message_en = {
     moleculesOff: 'Off',
     templatesHeader: 'Template of the page',
     templatesDesc: 'The experience this page follows in this UX. Without a choice, the page keeps the template of its first version (page11).',
+    templatesDescBase: 'The experience page11 follows. Picking another one is applied when UX 1 is generated (module panel): page11 gets the new template and molecules chosen again for it; its organisms stay.',
     defaultBadge: 'default',
+    currentBadge: 'current',
+    basePending: 'Not applied yet: generate UX 1 in the module panel to rewrite page11 with this template.',
+    keepCurrent: 'Keep the current template',
     bestFor: 'Best for',
     backToDefault: 'Back to default',
     loading: 'Loading…',
@@ -76,7 +80,11 @@ const messages: Record<string, MessageType> = {
         moleculesOff: 'Desligado',
         templatesHeader: 'Template da página',
         templatesDesc: 'A experiência que esta página segue nesta UX. Sem escolha, a página fica com o template da sua primeira versão (page11).',
+        templatesDescBase: 'A experiência que o page11 segue. Escolher outra só vale quando a UX 1 for gerada (painel do módulo): o page11 recebe o template novo e moléculas escolhidas de novo para ele; os organismos ficam.',
         defaultBadge: 'padrão',
+        currentBadge: 'atual',
+        basePending: 'Ainda não aplicado: gere a UX 1 no painel do módulo para reescrever o page11 com este template.',
+        keepCurrent: 'Manter o template atual',
         bestFor: 'Melhor para',
         backToDefault: 'Voltar ao padrão',
         loading: 'Carregando…',
@@ -106,7 +114,11 @@ const messages: Record<string, MessageType> = {
         moleculesOff: 'Desactivado',
         templatesHeader: 'Template de la página',
         templatesDesc: 'La experiencia que sigue esta página en esta UX. Sin elección, la página mantiene el template de su primera versión (page11).',
+        templatesDescBase: 'La experiencia que sigue el page11. Elegir otra se aplica cuando se genera la UX 1 (panel del módulo): el page11 recibe el template nuevo y moléculas elegidas de nuevo para él; sus organismos se mantienen.',
         defaultBadge: 'predeterminado',
+        currentBadge: 'actual',
+        basePending: 'Aún no aplicado: genere la UX 1 en el panel del módulo para reescribir el page11 con este template.',
+        keepCurrent: 'Mantener el template actual',
         bestFor: 'Ideal para',
         backToDefault: 'Volver al predeterminado',
         loading: 'Cargando…',
@@ -201,7 +213,8 @@ export class PluginSelectUx extends StateLitElement {
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('value')) this._nameDraft = null;
         const key = this.module && this.page ? uxPageKey(this.module, this.page) : '';
-        if (key !== this._templatesFor) void this._loadPageTemplates(key);
+        // Also on a UX change: UX 1 generation rewrites page11, so its template may have changed since the last read.
+        if (key !== this._templatesFor || (key && changed.has('value'))) void this._loadPageTemplates(key);
     }
 
     private async _loadProjectConfig(): Promise<void> {
@@ -223,12 +236,13 @@ export class PluginSelectUx extends StateLitElement {
      * desktop ones: one template per page serves every device.
      */
     private async _loadPageTemplates(key: string): Promise<void> {
+        const samePage = key === this._templatesFor;
         this._templatesFor = key;
-        this._page11Template = null;
+        if (!samePage) this._page11Template = null;
         if (!key || !this.module || !this.page) return;
         const project = this._projectId;
         if (!project) return;
-        this._templatesLoading = true;
+        if (!samePage) this._templatesLoading = true; // a re-read of the same page keeps the cards on screen
         const [index, page11] = await Promise.all([
             loadExperienceIndex(),
             this._readPage11Template(project, this.module, this.page),
@@ -282,7 +296,7 @@ export class PluginSelectUx extends StateLitElement {
                 ${this._renderHeader(v, max, selected.layout.name ?? String(v), this.msg.desc)}
                 ${this._renderNameSection(selected)}
                 ${this._renderMoleculesSection(selected)}
-                ${v >= 2 ? this._renderTemplatesSection(selected) : nothing}
+                ${this._renderTemplatesSection(selected)}
             </div>
         `;
     }
@@ -385,10 +399,13 @@ export class PluginSelectUx extends StateLitElement {
         `;
     }
 
-    // ─── Selected UX (≥ 2): template of the current page ─────────────
-    // UX 1 is page11 itself: its template is the one agentDefsL2 chose, so there is nothing to pick.
+    // ─── Selected UX: template of the current page ────────────────────
+    // UX 1 is page11 itself (TASK-102020-genome-ux-4): the marked card is page11's template ("current"), and picking
+    // another writes layouts["1"].templates.pages[key], a choice agentGenomeUx base mode applies to page11 when UX 1
+    // is generated in the module panel. Picking page11's own template (or "keep") deletes the entry.
 
     private _renderTemplatesSection(opt: IUxOption) {
+        const isBase = opt.value === 1;
         const header = html`
             <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-1.5">
                 ${this.msg.templatesHeader}${this.page ? html` <span class="font-mono text-xs text-gray-400 dark:text-gray-500">· ${this.page}</span>` : nothing}
@@ -407,7 +424,10 @@ export class PluginSelectUx extends StateLitElement {
         return html`
             <div class="flex flex-col gap-2">
                 ${header}
-                <span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${this.msg.templatesDesc}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${isBase ? this.msg.templatesDescBase : this.msg.templatesDesc}</span>
+                ${isBase && !effective.isDefault && !effective.missing ? html`
+                    <span class="text-xs text-amber-600 dark:text-amber-400 leading-snug">${this.msg.basePending}</span>
+                ` : nothing}
                 ${effective.missing ? html`
                     <div class="flex flex-col gap-1.5 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-2.5 py-1.5">
                         <span class="text-xs text-amber-600 dark:text-amber-400">${this.msg.templateMissing} <span class="font-mono">${effective.template}</span></span>
@@ -415,14 +435,14 @@ export class PluginSelectUx extends StateLitElement {
                     </div>
                 ` : nothing}
                 <div class="flex flex-col gap-2">
-                    ${options.map(o => this._renderTemplateCard(opt, key, o, o.template === effective.template))}
+                    ${options.map(o => this._renderTemplateCard(opt, key, o, o.template === effective.template, isBase))}
                 </div>
                 ${!effective.isDefault && !effective.missing ? this._renderBackToDefault(opt, key) : nothing}
             </div>
         `;
     }
 
-    private _renderTemplateCard(opt: IUxOption, key: string, option: IUxTemplateOption, isSelected: boolean) {
+    private _renderTemplateCard(opt: IUxOption, key: string, option: IUxTemplateOption, isSelected: boolean, isBase: boolean) {
         return html`
             <div
                 class="
@@ -437,9 +457,10 @@ export class PluginSelectUx extends StateLitElement {
                     ${isSelected ? html`<div class="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 shrink-0"></div>` : nothing}
                     <span class="text-xs font-semibold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-200'}">${option.label}</span>
                     ${option.isDefault ? html`
-                        <span class="text-[10px] px-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">${this.msg.defaultBadge}</span>
+                        <span class="text-[10px] px-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">${isBase ? this.msg.currentBadge : this.msg.defaultBadge}</span>
                     ` : nothing}
                 </div>
+                <span class="text-[10px] font-mono text-gray-400 dark:text-gray-500 break-all">${option.template.split('/').pop()} · ${option.experience}</span>
                 <span class="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">${option.description}</span>
                 ${option.bestFor ? html`
                     <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug"><span class="font-semibold">${this.msg.bestFor}:</span> ${option.bestFor}</span>
@@ -453,7 +474,7 @@ export class PluginSelectUx extends StateLitElement {
             <button
                 class="self-start text-xs px-2.5 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 cursor-pointer"
                 @click=${() => this._updateLayout(opt.value, layout => setPageTemplate(layout, key, null))}
-            >${this.msg.backToDefault}</button>
+            >${opt.value === 1 ? this.msg.keepCurrent : this.msg.backToDefault}</button>
         `;
     }
 

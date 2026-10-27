@@ -8,18 +8,26 @@
  * the UX and the molecules chosen again for it. Everything it owns besides those defs lives under
  * `l2/<module>/pipeline/agentGenomeUx/page{N}1/` (receipts and raw LLM answers), never inside `page{N}1`.
  *
+ * UX 1 is the **base mode** (TASK-102020-genome-ux-4): the output is page11 itself, rewritten in place with the
+ * template chosen in `layouts["1"].templates.pages` and the molecules chosen again (intent, sections and organisms
+ * unchanged). A page with no choice (or with the page11 template chosen) is a no-op.
+ *
  * PURE — no `mls.*`, no file system.
  */
 
-import { getPageTemplate, uxPageKey, uxTemplatePath, type IUxExperienceIndex, type IUxLayout } from '/_102020_/l2/aura/helpers/uxTemplates.js';
+import { getPageTemplate, uxBaseTemplateChoice, uxPageKey, uxTemplatePath, type IUxExperienceIndex, type IUxLayout } from '/_102020_/l2/aura/helpers/uxTemplates.js';
 import { extractTemplateRules, validateTemplateRules } from '/_102020_/l2/aura/helpers/templateRules.js';
 
 export const GENOME_UX_AGENT_NAME = 'agentGenomeUx' as const;
 export const GENOME_UX_DISPATCH_AGENT_NAME = 'agentGenomeUxDispatch' as const;
 export const GENOME_UX_PAGE_AGENT_NAME = 'agentGenomeUxPage' as const;
 export const GENOME_UX_FOLDER = 'aura/agentGenomeUx' as const;
-/** Bumped whenever the receipt shape or the way a variant is built changes: an older receipt is stale. */
-export const GENOME_UX_RECEIPT_VERSION = '2026-10-22-genome-ux-v2' as const;
+/**
+ * Bumped whenever the receipt shape or the way a variant is built changes: an older receipt is stale.
+ * v3 (2026-10-23): `page11Hashes` (the whole page11 text) → `page11ContractHashes` (only intent, sections and
+ * organisms: what a variant inherits), and UX 1 (base mode, page11 rewritten in place) has receipts too.
+ */
+export const GENOME_UX_RECEIPT_VERSION = '2026-10-23-genome-ux-v3' as const;
 /** The result step every run ends with when all its pages are fresh; the materialize step follows it. */
 export const GENOME_UX_DONE_PLAN_ID = 'genomeUx-done' as const;
 export const GENOME_UX_MATERIALIZE_PLAN_ID = 'genomeUx-materialize' as const;
@@ -34,7 +42,7 @@ export interface GenomeUxFileInfo { project: number; level: number; folder: stri
 
 /**
  * The agent entry, a JSON object (optionally after `@@agentGenomeUx`):
- * `{ module, layout: N, pages?: string[], materialize?: boolean, force?: boolean }`.
+ * `{ module, layout: N, pages?: string[], materialize?: boolean, force?: boolean }`, N from 1 to 9 (1 = base mode).
  * `pages` limits the run (empty = every page11 page of the module); `force` regenerates even fresh pages.
  */
 export interface GenomeUxEntry { module: string; layout: number; pages: string[]; materialize: boolean; force: boolean }
@@ -42,7 +50,7 @@ export type GenomeUxEntryResult = { kind: 'run'; entry: GenomeUxEntry } | { kind
 
 const MODULE = /^[a-z][A-Za-z0-9]{0,59}$/u;
 const PAGE_ID = /^[a-z][A-Za-z0-9_]{0,59}$/u;
-export const GENOME_UX_USAGE = '@@agentGenomeUx {"module":"<lowerCamel>","layout":N,"pages":["<pageId>"],"materialize":true} — N from 2 to 9 (UX 1 is page11).';
+export const GENOME_UX_USAGE = '@@agentGenomeUx {"module":"<lowerCamel>","layout":N,"pages":["<pageId>"],"materialize":true} — N from 1 to 9 (1 = base mode: page11 rewritten with the template chosen for UX 1).';
 
 /** `_102047_/l2/m/web/desktop/page11/foo.defs.ts`, `foo.ts` or `foo` → `foo`. */
 export function genomeUxPageShortName(value: string): string {
@@ -60,7 +68,7 @@ export function parseGenomeUxEntry(value: string): GenomeUxEntryResult {
   const module = typeof row.module === 'string' ? row.module.trim() : '';
   if (!MODULE.test(module)) return { kind: 'refusal', diagnostic: `GENOME_UX_ENTRY_MODULE: module must be lowerCamel, without a path. ${GENOME_UX_USAGE}` };
   const layout = typeof row.layout === 'string' && /^\d+$/u.test(row.layout) ? Number(row.layout) : row.layout;
-  if (typeof layout !== 'number' || !Number.isInteger(layout) || layout < 2 || layout > 9) return { kind: 'refusal', diagnostic: `GENOME_UX_ENTRY_LAYOUT: layout must be an integer from 2 to 9 (UX 1 is page11). ${GENOME_UX_USAGE}` };
+  if (!genomeUxLayoutValid(layout)) return { kind: 'refusal', diagnostic: `GENOME_UX_ENTRY_LAYOUT: layout must be an integer from 1 to 9. ${GENOME_UX_USAGE}` };
   if (row.pages !== undefined && !Array.isArray(row.pages)) return { kind: 'refusal', diagnostic: `GENOME_UX_ENTRY_PAGES: pages must be a list of page ids. ${GENOME_UX_USAGE}` };
   const pages = [...new Set(((row.pages as unknown[] | undefined) ?? []).filter((item): item is string => typeof item === 'string' && !!item).map(genomeUxPageShortName))];
   if (pages.some(page => !PAGE_ID.test(page))) return { kind: 'refusal', diagnostic: `GENOME_UX_ENTRY_PAGES: pages must be page ids. ${GENOME_UX_USAGE}` };
@@ -70,10 +78,28 @@ export function parseGenomeUxEntry(value: string): GenomeUxEntryResult {
   return { kind: 'run', entry: { module, layout, pages, materialize: row.materialize === true, force: row.force === true } };
 }
 
-/** UX N → `page{N}1`. */
+/** The UX numbers the agent accepts: 1 (base mode, page11) to 9. */
+export function genomeUxLayoutValid(layout: unknown): layout is number {
+  return typeof layout === 'number' && Number.isInteger(layout) && layout >= 1 && layout <= 9;
+}
+
+/** UX 1 is the base: its output is page11 itself, the folder agentDefsL2 writes. */
+export function genomeUxIsBase(layout: number): boolean {
+  return layout === 1;
+}
+
+/** UX N → `page{N}1`; UX 1 → `page11` (base mode: the agent rewrites page11 in place). */
 export function genomeUxGenome(layout: number): string {
-  if (!Number.isInteger(layout) || layout < 2 || layout > 9) throw new Error(`GENOME_UX_LAYOUT: ${layout}`);
+  if (!genomeUxLayoutValid(layout)) throw new Error(`GENOME_UX_LAYOUT: ${layout}`);
   return `page${layout}1`;
+}
+
+/**
+ * Base mode: whether a page has work to do without looking at a receipt — the UX 1 choice exists and differs
+ * from the page11 `template.category`. A page with no choice (or the page11 template chosen) is a no-op.
+ */
+export function genomeUxBaseChoice(layout: IUxLayout | null | undefined, module: string, pageId: string, page11Template: string): string | null {
+  return uxBaseTemplateChoice(layout, uxPageKey(module, pageId), page11Template);
 }
 
 // ─── paths ─────────────────────────────────────────────────────────────────────

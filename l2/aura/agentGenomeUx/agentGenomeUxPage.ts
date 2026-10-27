@@ -4,7 +4,8 @@
 //   groups   (LLM) relevant molecule groups per organism, forbidden groups not offered      → decision
 //   decision (LLM) molecules per organism for desktop and mobile in one answer, gated by the
 //                  chosen groups and the template's forbid; one repair, then the refused tags are dropped
-//   write          page{N}1 desktop + mobile defs (read back with parseL2Page11) and the receipt
+//   write          page{N}1 desktop + mobile defs (read back with parseL2Page11) and the receipt; base mode (UX 1):
+//                  page11 itself, same template swap and molecules, intent/sections/organisms unchanged
 // No LLM at all when the UX does not use molecules, or when no allowed group/tag is left: the variant is written
 // without molecules (or with none for the organisms that have no allowed molecule).
 

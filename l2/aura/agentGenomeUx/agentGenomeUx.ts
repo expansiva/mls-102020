@@ -4,8 +4,10 @@
 // for UX N of a module it writes web/<device>/page{N}1/<page>.defs.ts on both devices, in the page11 grammar, with
 // the UX template and the molecules chosen again for it (agentDefsL2's group → decision funnel, with the template
 // rules as constraints). Contract and receipt: README.md in this folder.
+// layout 1 is the base mode (TASK-102020-genome-ux-4): page11 itself is rewritten with the template chosen for UX 1
+// (layouts["1"].templates.pages) and molecules chosen again; pages without a choice are left alone.
 //
-// Entry (JSON, optionally after @@agentGenomeUx): { module, layout: N, pages?: string[], materialize?: boolean, force?: boolean }
+// Entry (JSON, optionally after @@agentGenomeUx): { module, layout: 1..9, pages?: string[], materialize?: boolean, force?: boolean }
 //
 // Tree (deterministic bootstrap, no root LLM — the same gesture agentDefsL2 and agentMaterializeL2 use):
 //   1 (root)                       completes at once
@@ -22,7 +24,7 @@ import '/_102020_/l2/aura/agentGenomeUx/agentGenomeUxPage.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: GENOME_UX_AGENT_NAME, agentProject: 102020, agentFolder: GENOME_UX_FOLDER,
-    agentDescription: 'Generate the UX N variant (page{N}1) of a module: page11 with the UX template and molecules chosen for it', visibility: 'public',
+    agentDescription: 'Generate the UX N variant (page{N}1) of a module: page11 with the UX template and molecules chosen for it; UX 1 rewrites page11 with its chosen template', visibility: 'public',
     beforePromptImplicit, beforePromptStep };
 }
 

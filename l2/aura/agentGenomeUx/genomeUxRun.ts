@@ -8,10 +8,10 @@
 import type { L2Page11Definition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { d2Result } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import type { IUxLayout } from '/_102020_/l2/aura/helpers/uxTemplates.js';
-import { GENOME_UX_DEVICES, GENOME_UX_DONE_PLAN_ID, GENOME_UX_MATERIALIZE_PLAN_ID, GENOME_UX_PAGE_AGENT_NAME, genomeUxGenome, type GenomeUxDevice } from '/_102020_/l2/aura/agentGenomeUx/genomeUxCore.js';
+import { GENOME_UX_DEVICES, GENOME_UX_DONE_PLAN_ID, GENOME_UX_MATERIALIZE_PLAN_ID, GENOME_UX_PAGE_AGENT_NAME, genomeUxGenome, genomeUxLayoutValid, type GenomeUxDevice } from '/_102020_/l2/aura/agentGenomeUx/genomeUxCore.js';
 import { buildGenomeUxVariant, renderGenomeUxDefs, type GenomeUxMolecules } from '/_102020_/l2/aura/agentGenomeUx/genomeUxVariant.js';
 import { buildGenomeUxReceipt, type GenomeUxReceipt } from '/_102020_/l2/aura/agentGenomeUx/genomeUxReceipt.js';
-import { readGenomeUxPageStatus, writeGenomeUxPage, type GenomeUxPageContext } from '/_102020_/l2/aura/agentGenomeUx/genomeUxIo.js';
+import { readGenomeUxPagePending, writeGenomeUxPage, type GenomeUxPageContext } from '/_102020_/l2/aura/agentGenomeUx/genomeUxIo.js';
 
 /** What every step of a run carries: the run identity and the pages it covers (for the done check). */
 export interface GenomeUxRunArgs {
@@ -42,7 +42,7 @@ export function parseGenomeUxPageArgs(raw: string): GenomeUxPageArgs {
   try { value = JSON.parse(raw); } catch { throw new Error('GENOME_UX_ARGS_INVALID'); }
   const args = value as GenomeUxPageArgs;
   if (!args || typeof args !== 'object' || !Number.isSafeInteger(args.project) || args.project <= 0 || !MODULE.test(String(args.module))
-    || !Number.isInteger(args.layout) || args.layout < 2 || args.layout > 9 || !PAGE_ID.test(String(args.pageId))
+    || !genomeUxLayoutValid(args.layout) || !PAGE_ID.test(String(args.pageId))
     || !Array.isArray(args.runPages) || !['groups', 'decision'].includes(args.stage) || ![1, 2].includes(args.attempt)) throw new Error('GENOME_UX_ARGS_INVALID');
   if (args.stage === 'decision' && !args.selectedGroups) throw new Error('GENOME_UX_GROUPS_MISSING');
   return args;
@@ -67,6 +67,7 @@ export interface GenomeUxFinalizeMeta {
 /**
  * Builds, validates and writes both variant defs and then the receipt. `molecules` null → no `molecules` key
  * (useMolecules false). Nothing is written unless both devices render and read back in the page11 grammar.
+ * Base mode: `context.genome` is page11, so page11 itself is rewritten (fileReference `web/<device>/page11/<page>`).
  */
 export async function finalizeGenomeUxPage(context: GenomeUxPageContext, molecules: Record<GenomeUxDevice, GenomeUxMolecules> | null, meta: GenomeUxFinalizeMeta): Promise<GenomeUxReceipt> {
   const template = { category: context.template.path, experience: context.template.experience };
@@ -88,16 +89,18 @@ export async function finalizeGenomeUxPage(context: GenomeUxPageContext, molecul
   return receipt;
 }
 
-/** Whether every page of the run has a fresh receipt (catalog not compared: the run itself just read it). */
+/**
+ * Whether no page of the run has work left (catalog not compared: the run itself just read it). Base mode: a page
+ * with no UX 1 choice counts as done (`readGenomeUxPagePending`).
+ */
 export async function genomeUxRunFresh(args: GenomeUxRunArgs, layoutEntry: IUxLayout | null): Promise<boolean> {
   for (const pageId of args.runPages) {
-    const status = await readGenomeUxPageStatus(args.project, args.module, args.layout, pageId, { layoutEntry });
-    if (status.kind !== 'ok' || status.verdict.stale) return false;
+    if ((await readGenomeUxPagePending(args.project, args.module, args.layout, pageId, { layoutEntry })).pending) return false;
   }
   return true;
 }
 
-/** The steps that close a run: the done anchor and, with materialize, agentMaterializeL2 for `page{N}1`. */
+/** The steps that close a run: the done anchor and, with materialize, agentMaterializeL2 for `page{N}1` (page11 for the base). */
 export function genomeUxCompletionSteps(args: GenomeUxRunArgs): mls.msg.AIPayload[] {
   const genome = genomeUxGenome(args.layout);
   const steps: mls.msg.AIPayload[] = [d2Result(`UX ${args.layout} ready`, JSON.stringify({ project: args.project, module: args.module, layout: args.layout, genome, pages: args.runPages }), GENOME_UX_DONE_PLAN_ID)];

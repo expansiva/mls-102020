@@ -1,23 +1,29 @@
 /// <mls fileReference="_102020_/l2/aura/agentGenomeUx/genomeUxReceipt.ts" enhancement="_blank"/>
 
 /**
- * The receipt of one variant page (`l2/<module>/pipeline/agentGenomeUx/page{N}1/<pageId>.json`) and the "stale"
+ * The receipt of one page of UX N (`l2/<module>/pipeline/agentGenomeUx/page{N}1/<pageId>.json`, page11 for the base) and the "stale"
  * verdict of a page from its current inputs. A fresh page is reused without an LLM call; the status panel of
  * select-module (part C) reads the same verdict. See README.md for the contract.
+ *
+ * page11 counts only through what a variant inherits from it — intent, sections and organisms
+ * (`page11ContractHashes`): a page11 whose template or molecules change (base mode, agentDefsL2) does not make a
+ * UX N variant stale. In base mode (UX 1) the written defs ARE page11, so `variantHashes` vs the current page11
+ * says whether someone rewrote it afterwards.
  *
  * PURE — no `mls.*`, no file system (hashing uses Web Crypto, as helpers/hash.ts does).
  */
 
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
+import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { GENOME_UX_RECEIPT_VERSION, type GenomeUxDevice, type GenomeUxRules, type GenomeUxRulesResult } from '/_102020_/l2/aura/agentGenomeUx/genomeUxCore.js';
 
 export interface GenomeUxReceipt {
   schemaVersion: typeof GENOME_UX_RECEIPT_VERSION;
   project: number;
   module: string;
-  /** The UX N of `layouts[N]`. */
+  /** The UX N of `layouts[N]` (1 = base mode). */
   layout: number;
-  /** `page{N}1`. */
+  /** `page{N}1` (`page11` for the base). */
   genome: string;
   pageId: string;
   template: {
@@ -32,8 +38,8 @@ export interface GenomeUxReceipt {
     rulesHash: string | null;
     rules: GenomeUxRules | null;
   };
-  /** sha256 of the page11 defs text, per device. */
-  page11Hashes: Record<GenomeUxDevice, string>;
+  /** sha256 of the part of the page11 defs a variant inherits (intent, sections, organisms), per device. */
+  page11ContractHashes: Record<GenomeUxDevice, string>;
   /** sha256 of the page data the prompts saw (contract + shared defs texts). */
   pageDataHash: string;
   useMolecules: boolean;
@@ -45,7 +51,7 @@ export interface GenomeUxReceipt {
   selectedGroups: Record<string, string[]>;
   /** Tags the last gate removed instead of writing them (`<organism>/<tag>`, prefixed by the device). */
   dropped: string[];
-  /** sha256 of the written variant defs text, per device. */
+  /** sha256 of the written variant defs text, per device (base mode: the written page11). */
   variantHashes: Record<GenomeUxDevice, string>;
   createdAt: string;
 }
@@ -55,8 +61,10 @@ export interface GenomeUxCurrent {
   templatePath: string;
   templateHash: string;
   rulesHash: string | null;
-  /** null when the page11 defs of that device is missing. */
-  page11Hashes: Record<GenomeUxDevice, string | null>;
+  /** sha256 of the inherited part of page11 (`genomeUxPage11ContractHash`); null when the page11 defs of that device is missing. */
+  page11ContractHashes: Record<GenomeUxDevice, string | null>;
+  /** The `template.category` page11 carries now, per device (null when missing or unreadable). */
+  page11Templates: Record<GenomeUxDevice, string | null>;
   pageDataHash: string;
   useMolecules: boolean;
   catalogHash?: string | null;
@@ -64,7 +72,11 @@ export interface GenomeUxCurrent {
   variantHashes: Record<GenomeUxDevice, string | null>;
 }
 
-/** Why a page is not fresh. `receipt`: none or an older version; `variant`: a written defs is missing or was edited. */
+/**
+ * Why a page is not fresh. `receipt`: none or an older version; `page11`: the inherited part of page11 (intent,
+ * sections, organisms) changed; `variant`: a written defs is missing or was edited (base mode: page11 was rewritten
+ * after the agent wrote it, e.g. by agentDefsL2).
+ */
 export type GenomeUxStaleReason = 'receipt' | 'page11' | 'pageData' | 'template' | 'rules' | 'catalog' | 'useMolecules' | 'variant';
 export interface GenomeUxStaleVerdict { stale: boolean; reasons: GenomeUxStaleReason[] }
 
@@ -73,14 +85,47 @@ export function genomeUxStale(receipt: GenomeUxReceipt | null | undefined, curre
   if (!receipt || receipt.schemaVersion !== GENOME_UX_RECEIPT_VERSION) return { stale: true, reasons: ['receipt'] };
   const reasons: GenomeUxStaleReason[] = [];
   const devices: GenomeUxDevice[] = ['desktop', 'mobile'];
-  if (devices.some(device => current.page11Hashes[device] !== receipt.page11Hashes[device])) reasons.push('page11');
+  if (devices.some(device => current.page11ContractHashes[device] !== receipt.page11ContractHashes?.[device])) reasons.push('page11');
   if (current.pageDataHash !== receipt.pageDataHash) reasons.push('pageData');
   if (current.templatePath !== receipt.template.path || current.templateHash !== receipt.template.hash) reasons.push('template');
   if (current.rulesHash !== receipt.template.rulesHash) reasons.push('rules');
   if (current.useMolecules !== receipt.useMolecules) reasons.push('useMolecules');
   else if (current.useMolecules && current.catalogHash !== undefined && current.catalogHash !== receipt.catalogHash) reasons.push('catalog');
   if (devices.some(device => current.variantHashes[device] !== receipt.variantHashes[device])) reasons.push('variant');
-  return { stale: reasons.length > 0, reasons };
+  // Base mode: page11 rewritten afterwards (`variant`/`page11`) while it still carries the applied template on both
+  // devices is agentDefsL2 regenerating the page and keeping the choice (TASK-102020-genome-ux-4, part B) —
+  // accepted, not stale; otherwise "Generate" would re-choose the molecules over agentDefsL2's answer. A page11
+  // back on another template stays stale.
+  const keptTemplate = devices.every(device => current.page11Templates[device] === receipt.template.path);
+  const accepted = receipt.layout === 1 && keptTemplate && !reasons.includes('template')
+    ? reasons.filter(reason => reason !== 'variant' && reason !== 'page11') : reasons;
+  return { stale: accepted.length > 0, reasons: accepted };
+}
+
+/** JSON with the object keys sorted (arrays keep their order): the same content always hashes the same. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const row = value as Record<string, unknown>;
+    return `{${Object.keys(row).sort().filter(key => row[key] !== undefined).map(key => `${JSON.stringify(key)}:${stableJson(row[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * sha256 of what a variant inherits from a page11 defs text: `intent`, `sections` and `organisms` (with their
+ * intents), key order ignored. `template` and `molecules` are left out, so a page11 that only gets another template
+ * or other molecules hashes the same. A text outside the page11 grammar hashes its raw text (always "changed").
+ */
+export async function genomeUxPage11ContractHash(page11Text: string): Promise<string> {
+  let definition: ReturnType<typeof parseL2Page11>['definition'];
+  try { definition = parseL2Page11(page11Text).definition; } catch { return sha256Text(`unparsed:${page11Text}`); }
+  return sha256Text(stableJson({ intent: definition.intent, sections: definition.sections, organisms: definition.organisms }));
+}
+
+/** The `template.category` of a page11 text, null when it does not parse. */
+export function genomeUxPage11Template(page11Text: string): string | null {
+  try { return parseL2Page11(page11Text).definition.template.category; } catch { return null; }
 }
 
 /** sha256 of the normalized rules (stable key order), null for none or an unreadable block. */
@@ -114,11 +159,16 @@ export interface GenomeUxCurrentTexts {
 
 export async function genomeUxCurrentFromTexts(texts: GenomeUxCurrentTexts): Promise<GenomeUxCurrent> {
   const hashOrNull = async (value: string | null) => value === null ? null : sha256Text(value);
+  const contractOrNull = async (value: string | null) => value === null ? null : genomeUxPage11ContractHash(value);
   return {
     templatePath: texts.templatePath,
     templateHash: await sha256Text(texts.templateText ?? ''),
     rulesHash: await genomeUxRulesHash(texts.rules),
-    page11Hashes: { desktop: await hashOrNull(texts.page11.desktop), mobile: await hashOrNull(texts.page11.mobile) },
+    page11ContractHashes: { desktop: await contractOrNull(texts.page11.desktop), mobile: await contractOrNull(texts.page11.mobile) },
+    page11Templates: {
+      desktop: texts.page11.desktop === null ? null : genomeUxPage11Template(texts.page11.desktop),
+      mobile: texts.page11.mobile === null ? null : genomeUxPage11Template(texts.page11.mobile),
+    },
     pageDataHash: await genomeUxPageDataHash(texts.pageData),
     useMolecules: texts.useMolecules,
     ...(texts.catalogHash === undefined ? {} : { catalogHash: texts.useMolecules ? texts.catalogHash : null }),
@@ -152,7 +202,7 @@ export async function buildGenomeUxReceipt(input: GenomeUxReceiptInput): Promise
       rulesHash: await genomeUxRulesHash(input.template.rules),
       rules: input.template.rules.kind === 'rules' ? input.template.rules.rules : null,
     },
-    page11Hashes: { desktop: await sha256Text(input.page11.desktop), mobile: await sha256Text(input.page11.mobile) },
+    page11ContractHashes: { desktop: await genomeUxPage11ContractHash(input.page11.desktop), mobile: await genomeUxPage11ContractHash(input.page11.mobile) },
     pageDataHash: await genomeUxPageDataHash(input.pageData),
     useMolecules: input.useMolecules,
     catalogHash: input.useMolecules ? input.catalogHash : null,

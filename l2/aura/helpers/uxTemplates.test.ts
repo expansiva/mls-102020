@@ -9,6 +9,7 @@ import {
     getPageTemplate,
     resolveEffectiveTemplate,
     setPageTemplate,
+    uxBaseTemplateChoice,
     uxPageKey,
     uxTemplateCategory,
     type IUxExperienceIndex,
@@ -90,4 +91,24 @@ test('the effective template is the entry, else the page11 one; a vanished entry
     assert.deepEqual(resolveEffectiveTemplate(layout, 'm/p', page11, options), { template: `${ROOT}financialTransactions/page31.md`, isDefault: false, missing: false });
     setPageTemplate(layout, 'm/p', `${ROOT}financialTransactions/renamed.md`);
     assert.equal(resolveEffectiveTemplate(layout, 'm/p', page11, options).missing, true);
+});
+
+test('UX 1 (base): the marked card is the page11 template; a different entry is a choice to apply, picking the page11 one removes it', () => {
+    const page11 = `${ROOT}financialTransactions/page21.md`;
+    const { options } = buildTemplateOptions(INDEX, page11, 'en');
+    const ux1: IUxLayout = { name: 'Default' };
+    // no entry: the page11 card is the marked one, nothing to apply
+    assert.deepEqual(resolveEffectiveTemplate(ux1, 'm/p', page11, options), { template: page11, isDefault: true, missing: false });
+    assert.equal(uxBaseTemplateChoice(ux1, 'm/p', page11), null);
+    // another card picked: written in layouts["1"].templates.pages, marked, and waiting to be applied to page11
+    setPageTemplate(ux1, 'm/p', options[1].template);
+    assert.deepEqual(ux1, { name: 'Default', templates: { pages: { 'm/p': `${ROOT}financialTransactions/page31.md` } } });
+    assert.equal(resolveEffectiveTemplate(ux1, 'm/p', page11, options).template, options[1].template);
+    assert.equal(uxBaseTemplateChoice(ux1, 'm/p', page11), options[1].template);
+    // once applied, page11 carries it: nothing left to apply, and the card of page11's template is the default one
+    assert.equal(uxBaseTemplateChoice(ux1, 'm/p', options[1].template), null);
+    assert.deepEqual(buildTemplateOptions(INDEX, options[1].template, 'en').options.map(o => o.isDefault), [false, true, false]);
+    // back to the page11 card: the entry goes away
+    setPageTemplate(ux1, 'm/p', null);
+    assert.deepEqual(ux1, { name: 'Default' });
 });

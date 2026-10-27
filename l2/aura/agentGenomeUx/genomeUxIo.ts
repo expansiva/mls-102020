@@ -14,9 +14,9 @@ import { readStorText, storTextExists, writeStorText } from '/_102020_/l2/agentM
 import { parseL2Page11, type L2Page11Definition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { buildD2MoleculeInventory, type D2MoleculeInventory } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
-import { UX_BESPOKE, type IUxExperienceIndex, type IUxLayout } from '/_102020_/l2/aura/helpers/uxTemplates.js';
+import { UX_BESPOKE, getPageTemplate, uxPageKey, type IUxExperienceIndex, type IUxLayout } from '/_102020_/l2/aura/helpers/uxTemplates.js';
 import {
-  GENOME_UX_DEVICES, genomeUxContractInfo, genomeUxEffectiveTemplate, genomeUxExperience, genomeUxGenome, genomeUxPage11Info, genomeUxReceiptInfo,
+  GENOME_UX_DEVICES, genomeUxBaseChoice, genomeUxContractInfo, genomeUxEffectiveTemplate, genomeUxExperience, genomeUxGenome, genomeUxIsBase, genomeUxPage11Info, genomeUxReceiptInfo,
   genomeUxRules, genomeUxSharedInfo, genomeUxTemplateInfo, genomeUxUseMolecules, genomeUxVariantInfo,
   type GenomeUxDevice, type GenomeUxFileInfo, type GenomeUxRulesResult,
 } from '/_102020_/l2/aura/agentGenomeUx/genomeUxCore.js';
@@ -88,7 +88,7 @@ export async function readGenomeUxTemplateText(path: string): Promise<string | n
 
 /**
  * Everything a page needs before any LLM call: both page11 defs, the UX entry, the effective template with its
- * text, experience and rules. Throws a `GENOME_UX_*` code the model cannot fix (missing defs, missing template,
+ * text, experience and rules. Base mode (layout 1): `genome` is page11, and the "variant" written is page11 itself. Throws a `GENOME_UX_*` code the model cannot fix (missing defs, missing template,
  * unreadable rules).
  */
 export async function loadGenomeUxPageContext(project: number, module: string, layout: number, pageId: string, layoutEntry?: IUxLayout | null): Promise<GenomeUxPageContext> {
@@ -165,4 +165,38 @@ export async function readGenomeUxPageStatus(project: number, module: string, la
   } catch (error) {
     return { kind: 'error', diagnostic: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/** Whether the receipt file of a page exists (no read). */
+export function genomeUxReceiptExists(project: number, module: string, genome: string, pageId: string): boolean {
+  return storTextExists(genomeUxReceiptInfo(project, module, genome, pageId));
+}
+
+/**
+ * Base mode: the template chosen for the page in `layouts["1"]` when it differs from the page11 `template.category`
+ * (desktop, the one every device follows), else null. null too when page11 cannot be read.
+ */
+export async function readGenomeUxBaseChoice(project: number, module: string, pageId: string, layoutEntry?: IUxLayout | null): Promise<string | null> {
+  const entry = layoutEntry === undefined ? await readGenomeUxLayout(project, 1) : layoutEntry;
+  if (!entry) return null;
+  const source = await readGenomeUxText(genomeUxPage11Info(project, module, pageId, 'desktop'));
+  if (source === null) return null;
+  try { return genomeUxBaseChoice(entry, module, pageId, parseL2Page11(source).definition.template.category); } catch { return null; }
+}
+
+/**
+ * Whether a page of the run still has work to do (the dispatch reuse check and the end-of-run check).
+ * UX N: an unreadable page or a stale receipt. Base mode (UX 1): a page with no UX 1 choice and no receipt is a
+ * no-op (never read further); otherwise a choice that differs from page11 with no receipt, or a stale receipt.
+ */
+export async function readGenomeUxPagePending(project: number, module: string, layout: number, pageId: string,
+  options: { layoutEntry: IUxLayout | null; catalogHash?: string }): Promise<{ pending: boolean; reason: string }> {
+  if (genomeUxIsBase(layout)) {
+    const chosen = getPageTemplate(options.layoutEntry, uxPageKey(module, pageId));
+    if (!chosen && !genomeUxReceiptExists(project, module, genomeUxGenome(layout), pageId)) return { pending: false, reason: 'no UX 1 template choice' };
+  }
+  const status = await readGenomeUxPageStatus(project, module, layout, pageId, options);
+  if (status.kind === 'error') return { pending: true, reason: status.diagnostic };
+  if (genomeUxIsBase(layout) && status.receipt === null && status.context.template.isDefault) return { pending: false, reason: 'the UX 1 choice is the page11 template' };
+  return { pending: status.verdict.stale, reason: status.verdict.reasons.join(', ') };
 }

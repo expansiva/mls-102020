@@ -13,6 +13,7 @@ import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
 import { getState, setState } from '/_102029_/l2/collabState.js';
+import { readGenomeUxBaseChoice } from '/_102020_/l2/aura/agentGenomeUx/genomeUxIo.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -623,7 +624,9 @@ export class PluginSelectPage extends StateLitElement {
 
     // Regenerate this single page (TASK-102020-genome-ux-3). UX N (2..9): agentGenomeUx writes page{N}1/<page>.defs.ts
     // on both devices and chains agentMaterializeL2 --genome page{N}1 itself (force: even when its receipt is fresh).
-    // UX 1 (page11) is agentDefsL2's: only its .ts is regenerated (agentMaterializeL2 --genome page11 --force).
+    // UX 1 (page11) is agentDefsL2's: only its .ts is regenerated (agentMaterializeL2 --genome page11 --force), unless
+    // the page has a UX 1 template choice that differs from page11 (TASK-102020-genome-ux-4): then agentGenomeUx base
+    // mode (layout 1) rewrites page11 with it and chains agentMaterializeL2 --genome page11.
     private async _onRegenerate(page: IPageEntry) {
         const module = this._moduleName ?? this._modulePath;
         const layout = Number(getAuraState().actualLayout ?? 1);
@@ -644,9 +647,16 @@ export class PluginSelectPage extends StateLitElement {
         };
         try {
             let result: { failure?: string };
+            const project = Number(page.file?.project ?? getAuraState().actualProject ?? 0);
+            const baseChoice = !genomeUx && project ? await readGenomeUxBaseChoice(project, module, pageShort) : null;
             if (genomeUx) {
                 setState('preview.pausePreview', true);
                 const entry = { module, layout, pages: [pageShort], force: true, materialize: true };
+                result = await this._executeAgent('agentGenomeUx', JSON.stringify(entry), trackTask);
+            } else if (baseChoice) {
+                // No force: the choice alone makes the page pending; without it the base mode is a no-op.
+                setState('preview.pausePreview', true);
+                const entry = { module, layout: 1, pages: [pageShort], materialize: true };
                 result = await this._executeAgent('agentGenomeUx', JSON.stringify(entry), trackTask);
             } else {
                 result = await this._executeAgent('agentMaterializeL2', `${module} --page ${pageShort} --genome page11 --force`, trackTask);
