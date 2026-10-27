@@ -1,4 +1,4 @@
-<!-- modelType: general -->
+<!-- modelType: agent -->
 
 Return JSON only. Do not call tools. Do not explain.
 

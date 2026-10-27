@@ -1,4 +1,4 @@
-<!-- modelType: code -->
+<!-- modelType: agent -->
 <!-- x-tool-strict: true -->
 
 You turn one sentence from a user of a business app into the app action(s) that may fulfill it.

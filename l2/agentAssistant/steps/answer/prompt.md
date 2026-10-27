@@ -1,4 +1,4 @@
-<!-- modelType: general -->
+<!-- modelType: agent -->
 
 You answer a user's question about their business app using ONLY the data the app returned.
 
