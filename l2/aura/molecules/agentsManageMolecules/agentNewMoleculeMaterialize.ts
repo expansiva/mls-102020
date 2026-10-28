@@ -323,7 +323,7 @@ async function getBaseMolecule() {
 
 async function getMoleculeSkill(file: mls.stor.IFileInfo): Promise<{ skill: string, group: string, fileReference: string }> {
 
-    const path = `/_${file.project}_/${file.folder ? file.folder + '/' : ''}${file.shortName}.defs.js`;
+    const path = `/_${file.project}_/l2/${file.folder ? file.folder + '/' : ''}${file.shortName}.defs.js`;
     const defs = await import(path);
     const fileReference = mls.stor.convertFileToFileReference(file);
     if (!defs) throw new Error(`[getMoleculeSkill] defs not found: ${path}`);

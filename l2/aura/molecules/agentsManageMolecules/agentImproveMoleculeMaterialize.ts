@@ -241,7 +241,7 @@ async function getGroup(context: mls.msg.ExecutionContext, fileReference: string
     const files = await mls.stor.getFiles({ ...path, loadContent: false });
     if (!files.defs) throw new Error(`[getGroup] defs not found for: ${fileReference}`);
 
-    const defsPath = `/_${files.defs.project}_/${files.defs.folder ? files.defs.folder + '/' : ''}${files.defs.shortName}.defs.js`;
+    const defsPath = `/_${files.defs.project}_/l2/${files.defs.folder ? files.defs.folder + '/' : ''}${files.defs.shortName}.defs.js`;
     const defs = await import(defsPath);
     if (!defs?.group) throw new Error(`[getGroup] group not found in defs: ${defsPath}`);
     return defs.group;
