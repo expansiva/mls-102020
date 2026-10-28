@@ -31,7 +31,7 @@ test('the watcher keeps the live-update result instead of discarding it', () => 
   assert.equal(calls.length, 1, 'exactly one call site');
   assert.match(
     calls[0],
-    /=\s*await applyLiveUpdate\(/u,
+    /=\s*await (?:liveUpdateWatcherDeps\.)?applyLiveUpdate\(/u,
     'the result must be bound to a name — `await applyLiveUpdate(...)` on its own throws the answer away',
   );
 });
@@ -62,6 +62,39 @@ test('a change dropped before the mode runs leaves a trace too', () => {
     true,
     'the drop path must say which file it saw and which page was mounted',
   );
+});
+
+test('a mounted screen file calls applyLiveUpdate; another screen is ignored', async () => {
+  (globalThis as { window?: unknown }).window = {
+    localStorage: { getItem: () => null, setItem: () => undefined },
+  };
+  (globalThis as { localStorage?: unknown }).localStorage = { getItem: () => null, setItem: () => undefined };
+  (globalThis as { mls?: unknown }).mls = {
+    events: { addListener: () => undefined, removeEventListener: () => undefined },
+  };
+  const mod = await import('/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js');
+  const calls: string[] = [];
+  const page = {
+    project: 102047,
+    shortName: 'page11',
+    folder: 'app/web/desktop/page11',
+    page: '_102047_app/web/desktop/page11/page11',
+    storFile: { hasError: false },
+    model: {},
+  };
+  mod.liveUpdateWatcherDeps.findPageElement = () => ({ tagName: 'APP-PAGE11-102047' }) as HTMLElement;
+  mod.liveUpdateWatcherDeps.resolveEditTarget = async () => ({ ok: true, target: page as never });
+  mod.liveUpdateWatcherDeps.resolveSharedTarget = async () => null;
+  mod.liveUpdateWatcherDeps.applyLiveUpdate = async () => {
+    calls.push('apply');
+    return { ok: true, message: 'applied' };
+  };
+  const watcher = new mod.StudioLiveUpdateWatcher();
+  watcher.start({} as HTMLElement);
+  await watcher.applyChanged({ project: 102047, shortName: 'page11', folder: 'app/web/desktop/page11' });
+  assert.deepEqual(calls, ['apply']);
+  await watcher.applyChanged({ project: 102047, shortName: 'other', folder: 'app/web/desktop/page99' });
+  assert.deepEqual(calls, ['apply']);
 });
 
 test('the editor still shows the message on its strip — the two triggers report, each its own way', () => {

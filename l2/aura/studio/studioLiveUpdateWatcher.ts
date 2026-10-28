@@ -39,6 +39,31 @@ function sameFile(a: IStudioEditTarget, b: IChangedFileRef): boolean {
   return a.project === b.project && a.shortName === b.shortName && a.folder === b.folder;
 }
 
+/** The one watcher `start` armed. Mode changes call it after `stop` has dropped the file listeners. */
+let mountedWatcher: StudioLiveUpdateWatcher | null = null;
+
+/**
+ * What `applyChanged` calls. A test replaces these; production keeps the real pipeline.
+ * Read at call time, not captured, so a replacement is visible.
+ */
+export const liveUpdateWatcherDeps = {
+  findPageElement,
+  resolveEditTarget,
+  resolveSharedTarget,
+  applyLiveUpdate,
+};
+
+/** Swaps the screen of the watcher that is (or just was) armed. Warns when none is. */
+export async function applyChangedOnMounted(ref: IChangedFileRef): Promise<void> {
+  if (!mountedWatcher) {
+    console.warn('[liveUpdate] no watcher; the visible screen was not swapped', {
+      changed: `${ref.project}/${ref.folder}/${ref.shortName}`,
+    });
+    return;
+  }
+  await mountedWatcher.applyChanged(ref);
+}
+
 export class StudioLiveUpdateWatcher {
   private host: HTMLElement | null = null;
   private listening = false;
@@ -47,6 +72,7 @@ export class StudioLiveUpdateWatcher {
   private applying = false;
 
   public start(host: HTMLElement): void {
+    mountedWatcher = this;
     if (this.listening) return;
     this.host = host;
     mls.events.addListener(2, 'FileAction', this.onFileAction);
@@ -60,7 +86,8 @@ export class StudioLiveUpdateWatcher {
     mls.events.removeEventListener([2], ['FileAction'], this.onFileAction);
     mls.events.removeEventListener([2], ['styleChanged' as mls.events.TypeEvent], this.onStyleChanged);
     this.listening = false;
-    this.host = null;
+    // `host` stays. Leaving studio calls `stop` (the file listeners must go) and then
+    // `applyChanged` for the production version, in a later turn of the same mode message.
   }
 
   private readonly onFileAction = (ev: mls.events.IEvent): void => {
@@ -71,7 +98,7 @@ export class StudioLiveUpdateWatcher {
     // free instead of silently doing nothing.
     if (fileAction.action !== 'editorChanged' && fileAction.action !== 'statusOrErrorChanged') return;
     if (fileAction.extension !== '.ts') return;
-    void this.handle(fileAction);
+    void this.applyChanged(fileAction);
   };
 
   private readonly onStyleChanged = (ev: mls.events.IEvent): void => {
@@ -129,16 +156,20 @@ export class StudioLiveUpdateWatcher {
     }
   }
 
-  private async handle(ref: IChangedFileRef): Promise<void> {
+  /**
+   * File changed → it is the mounted screen or that screen's shared base → `applyLiveUpdate`.
+   * Anything else is ignored. A refused swap is `console.warn` with the screen and the reason.
+   */
+  public async applyChanged(ref: IChangedFileRef): Promise<void> {
     if (this.applying) return;
     const host = this.host;
     if (!host) return;
 
-    const pageEl = findPageElement(host);
+    const pageEl = liveUpdateWatcherDeps.findPageElement(host);
     if (!pageEl) return;
     const pageTag = pageEl.tagName.toLowerCase();
 
-    const resolved = await resolveEditTarget(host);
+    const resolved = await liveUpdateWatcherDeps.resolveEditTarget(host);
     if (!resolved.ok) return;
     const page = resolved.target;
 
@@ -146,7 +177,7 @@ export class StudioLiveUpdateWatcher {
     if (sameFile(page, ref)) {
       edited = page;
     } else {
-      const shared = await resolveSharedTarget(page);
+      const shared = await liveUpdateWatcherDeps.resolveSharedTarget(page);
       if (shared && sameFile(shared, ref)) edited = shared;
     }
     // Not the mounted page nor its shared base — some other file being edited elsewhere in the
@@ -171,7 +202,7 @@ export class StudioLiveUpdateWatcher {
 
     this.applying = true;
     try {
-      const live = await applyLiveUpdate({ edited, page, pageTag });
+      const live = await liveUpdateWatcherDeps.applyLiveUpdate({ edited, page, pageTag });
       // THE RESULT USED TO BE THROWN AWAY, and that made every refusal invisible. The editor prints
       // it on its status strip (studioEditor.ts), but this trigger has no strip — so an honest
       // refusal ("the edited file registers no element", "reload once to arm") looked exactly like a
