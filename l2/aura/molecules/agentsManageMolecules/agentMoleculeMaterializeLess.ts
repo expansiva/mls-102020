@@ -261,7 +261,7 @@ async function resolveGroup(context: mls.msg.ExecutionContext, fileReference: st
     const path = mls.stor.getPathToFile(stripExtension(fileReference));
     const files = await mls.stor.getFiles({ ...path, loadContent: false });
     if (!files.defs) return '';
-    const defsPath = `/_${files.defs.project}_/${files.defs.folder ? files.defs.folder + '/' : ''}${files.defs.shortName}.defs.js`;
+    const defsPath = `/_${files.defs.project}_/l2/${files.defs.folder ? files.defs.folder + '/' : ''}${files.defs.shortName}.defs.js`;
     const defs = await import(defsPath);
     return defs?.group || '';
 }

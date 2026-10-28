@@ -344,7 +344,7 @@ customElements.define=function(n,c,o){if(!customElements.get(n))return window['o
             .map((el) => {
                 const info = resolveTagToFile(el.getAttribute('widget') || '');
                 if (!info) return '';
-                return '/' + `_${info.project}_${info.shortName}`;
+                return '/' + `_${info.project}_/l2/${info.folder ? info.folder + '/' : ''}${info.shortName}`;
             })
             .filter(Boolean);
         const ret = [...new Set(array)]
