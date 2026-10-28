@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/draftPanelCore.ts" enhancement="_blank" />
 // Pure decisions for the Studio draft panel. No Lit, and no read of window or document.
-// fetch, the release wait, reload, the cookie write, setContents, saveL5File, and the stor
+// fetch, the release wait, reload, setContents, saveL5File, and the stor
 // snapshot all come in as arguments. `listLocalFiles` is the caller's injection — its return
 // value is `storFiles` here. `afterDraftSave` is the one default that calls `mls`, the same
 // cleanup as serviceSave.afterUpdate; tests pass their own deps.
@@ -8,7 +8,6 @@
 // Branch slugs mirror the server (cbeDraft.parseDraftSlug). The first `_` of a user slug is `@`
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
 
-import { buildDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
 import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
 import { modelTextDiffers } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
@@ -115,11 +114,6 @@ export interface IPublishEffects {
 
 export interface IDiscardEffects {
   fetchImpl: FetchImpl;
-  reload: () => void;
-}
-
-export interface IExperimentEffects {
-  setCookie: (cookie: string) => void;
   reload: () => void;
 }
 
@@ -330,17 +324,6 @@ export async function viewDiff(
   if (result.status !== 'diff') return fail(result.status ?? 'draftDiff failed');
   if (typeof result.text !== 'string') return fail('draftDiff response has no text');
   return result.text;
-}
-
-/** Writes the `collab-draft` cookie for `slug`, then reloads. Invalid slug does neither. */
-export function experimentDraft(
-  effects: IExperimentEffects,
-  slug: string,
-  secure: boolean,
-): void {
-  if (!SLUG_RE.test(slug)) return fail(`cannot experiment an invalid draft slug: ${slug}`);
-  effects.setCookie(buildDraftCookie(slug, secure));
-  effects.reload();
 }
 
 /**

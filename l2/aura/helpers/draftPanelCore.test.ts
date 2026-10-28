@@ -7,7 +7,6 @@ import {
   callExec,
   collectEditedFiles,
   discard,
-  experimentDraft,
   loadPanel,
   localEdits,
   panelModel,
@@ -320,28 +319,6 @@ test('viewDiff requests draftDiff with the slug of the branch', async () => {
   };
   await assert.rejects(() => viewDiff(refused, 102047, 'user/a.b@c.com'), /no draft slug/);
   assert.equal(called, false);
-});
-
-test('experimentDraft writes the draft cookie and then reloads', () => {
-  const calls: string[] = [];
-  experimentDraft({
-    setCookie: (cookie) => { calls.push(cookie); },
-    reload: () => { calls.push('reload'); },
-  }, 'team-102047', true);
-  assert.deepEqual(calls, [
-    'collab-draft=team-102047; Path=/; SameSite=Lax; Secure',
-    'reload',
-  ]);
-
-  const skipped: string[] = [];
-  assert.throws(
-    () => experimentDraft({
-      setCookie: (cookie) => { skipped.push(cookie); },
-      reload: () => { skipped.push('reload'); },
-    }, 'not a slug', false),
-    /invalid draft slug/,
-  );
-  assert.deepEqual(skipped, []);
 });
 
 test('saveDefaultDraft writes studio.defaultDraft and leaves the rest of l5/config.json', async () => {
