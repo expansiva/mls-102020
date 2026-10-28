@@ -11,7 +11,12 @@
 // It is a MODULE, not a class: there is one app region per window, and a tool that could be
 // instantiated twice would arm two editors on the same DOM.
 
-import { registerStudioEditTool, currentEditHost, type IStudioEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
+import {
+  registerStudioEditTool,
+  registerVisibleScreenSwap,
+  currentEditHost,
+  type IStudioEditHost,
+} from '/_102033_/l2/cbe/studioEditSlot.js';
 import { activeDraft } from '/_102033_/l2/cbe/studioDraft.js';
 import {
   afterDraftSave,
@@ -408,4 +413,11 @@ async function apply(state: IStudioEditHost | null): Promise<void> {
 
 registerStudioEditTool((state) => {
   void apply(state);
+});
+
+// The Studio entry (102033) asks for the live swap of the screens the draft changed. The watcher
+// owns the "is it the mounted screen or its shared base" decision.
+registerVisibleScreenSwap(async (ref) => {
+  const { applyChangedOnMounted } = await import('/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js');
+  await applyChangedOnMounted(ref);
 });
