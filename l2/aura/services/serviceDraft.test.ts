@@ -63,6 +63,27 @@ test('bring stays disabled with a tooltip and does not call mergeDraft', () => {
     assert.doesNotMatch(DRAFT, /mergeDraft/);
 });
 
+test('a successful experiment calls loadProjectDefinitions once, after the draft is active', () => {
+    const handler = methodOf(DRAFT, 'private async _onExperiment');
+    const requestAt = handler.indexOf('await requestModeChange(');
+    const confirmAt = handler.indexOf("activeDraft() !== slug");
+    const confirmReturn = handler.indexOf('return;', confirmAt);
+    const callAt = handler.indexOf('await loadProjectDefinitions(project)');
+    const reloadAt = handler.indexOf('await this._load()', callAt);
+    assert.ok(requestAt !== -1 && confirmAt > requestAt, 'the mode change runs first');
+    assert.ok(confirmReturn !== -1 && confirmReturn < callAt, 'a failed activation returns before the entry');
+    assert.ok(reloadAt > callAt, 'the panel reloads after the entry');
+    assert.equal([...handler.matchAll(/loadProjectDefinitions\(project\)/g)].length, 1);
+    const enterAt = handler.indexOf('enterDraft:');
+    const enterLine = handler.slice(enterAt, handler.indexOf('\n', enterAt));
+    assert.doesNotMatch(enterLine, /loadProjectDefinitions/);
+    const entry = handler.slice(callAt, reloadAt);
+    assert.match(entry, /console\.error\(/);
+    assert.match(entry, /experimentFailed/);
+    assert.doesNotMatch(handler, /location\.reload/);
+    assert.match(DRAFT, /import \{ loadProjectDefinitions \} from '\/_102033_\/l2\/cbe\/initStudio\.js'/);
+});
+
 test('view, try and the project default go through the core', () => {
     assert.match(DRAFT, /viewDiff\(/);
     assert.match(DRAFT, /requestModeChange\(/);

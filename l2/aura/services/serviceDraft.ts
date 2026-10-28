@@ -5,6 +5,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
 import { activeDraft, enterDraft, isVmDriver, postDraftEnter, requestModeChange, sendServiceWorkerMode } from '/_102033_/l2/cbe/studioDraft.js';
+import { loadProjectDefinitions } from '/_102033_/l2/cbe/initStudio.js';
 import {
     afterDraftSave,
     branchForSlug,
@@ -806,6 +807,14 @@ export class ServiceDraft102020 extends ServiceBase {
             });
             if (outcome.mode !== 'studio' || activeDraft() !== slug) {
                 console.error('[serviceDraft] experiment did not activate', slug);
+                this._error = this.msg.experimentFailed;
+                this._phase = 'error';
+                return;
+            }
+            try {
+                await loadProjectDefinitions(project);
+            } catch (err) {
+                console.error('[serviceDraft] experiment failed:', err);
                 this._error = this.msg.experimentFailed;
                 this._phase = 'error';
                 return;
