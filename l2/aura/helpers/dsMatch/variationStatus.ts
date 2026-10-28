@@ -13,6 +13,7 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { readStorText, storTextExists } from '/_102020_/l2/agentMaterializeL2/helpers/storText.js';
 import { m4OwnedFile } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
+import { defsWithoutHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import { getPageTemplate, uxPageKey, type IUxLayout } from '/_102020_/l2/aura/helpers/uxTemplates.js';
 import { genomeUxReceiptExists, listGenomeUxPages, readGenomeUxPageStatus } from '/_102020_/l2/aura/agentGenomeUx/genomeUxIo.js';
 import {
@@ -41,9 +42,13 @@ function info(project: number, module: string, device: VariationDevice, folder: 
     return { project, level: 2, folder: `${module}/web/${device}/${folder}`, shortName: page, extension };
 }
 
+/**
+ * The defs hash compared with the materializer snapshot. The Studio edit history (helpers/defsHistory) is cut off:
+ * an edit made in the Studio does not make the page need a new materialization.
+ */
 async function textHash(file: StorInfo): Promise<string | null> {
     if (!storTextExists(file)) return null;
-    try { return await sha256Text(await readStorText(file)); } catch { return null; }
+    try { return await sha256Text(defsWithoutHistory(await readStorText(file))); } catch { return null; }
 }
 
 async function defsHashes(project: number, module: string, folder: string, page: string): Promise<Record<VariationDevice, string | null>> {

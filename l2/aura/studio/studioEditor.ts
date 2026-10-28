@@ -154,6 +154,14 @@ import {
   tagToFileInfo,
   type IStudioEditTarget,
 } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import {
+  organismOf,
+  pathWithinOrganism,
+  recordEditInDefs,
+  redoEditInDefs,
+  undoEditInDefs,
+  type IDefsHistoryMark,
+} from '/_102020_/l2/aura/studio/studioDefsHistory.js';
 
 export type StudioEditMode = 'off' | 'select' | 'text' | 'inspect';
 
@@ -280,6 +288,23 @@ function anchorPathOf(anchor: ClassAnchor | null): IDomPathStep[] | null {
   return [...anchor.path];
 }
 
+/** A property write as the defs history spells it: the value, `""` for a bare attribute, null when it is removed. */
+function propWriteValue(write: PropWrite): string | null {
+  if (write.kind === 'set') return write.text;
+  return write.kind === 'bare' ? '' : null;
+}
+
+/** What a text write reports: the status line's `what`, and on success what the defs history needs. */
+interface ITextWrite {
+  ok: boolean;
+  what?: string;
+  /** The catalog key written; null for literal text in the markup. */
+  key?: string | null;
+  lang?: string | null;
+  /** True when the text belongs to this page (its catalog or an organism file), not to the shared one. */
+  pageLocal?: boolean;
+}
+
 /**
  * One undoable edit.
  *
@@ -305,6 +330,8 @@ type EditStep =
     after: string;
     what: string;
     el: WeakRef<HTMLElement>;
+    /** What the edit wrote in the page defs history; null when it wrote nothing there (studioDefsHistory). */
+    defs: IDefsHistoryMark | null;
   }
   | {
     kind: 'text';
@@ -316,6 +343,7 @@ type EditStep =
     what: string;
     node: WeakRef<Text>;
     el: WeakRef<HTMLElement>;
+    defs: IDefsHistoryMark | null;
   }
   | {
     /**
@@ -331,6 +359,7 @@ type EditStep =
     after: string;
     what: string;
     el: WeakRef<HTMLElement>;
+    defs: IDefsHistoryMark | null;
   }
   | {
     /**
@@ -402,6 +431,7 @@ type EditStep =
     after: PropWrite;
     what: string;
     el: WeakRef<HTMLElement>;
+    defs: IDefsHistoryMark | null;
   }
   | {
     kind: 'move';
@@ -1552,10 +1582,11 @@ export class StudioEditor {
           el: editParent,
           revert: () => { restoredNode.textContent = oldText; },
         })
-          .then((result) => {
+          .then(async (result) => {
             // Only a write that landed goes on the stack: an edit refused as dynamic text changed
             // nothing, and offering to undo it would undo the previous one instead.
             if (!result.ok) return;
+            const defs = await this.recordTextInDefs(result, editParent, null, oldText, newText);
             this.history.push({
               kind: 'text',
               i18nKey,
@@ -1565,6 +1596,7 @@ export class StudioEditor {
               what: result.what ?? t('status.textLabel'),
               node: new WeakRef(restoredNode),
               el: new WeakRef(editParent),
+              defs,
             });
           });
       }
@@ -1640,7 +1672,7 @@ export class StudioEditor {
      * generated page (TASK-102020-attribute-text), and the write below is the same for all of them.
      */
     revert: (() => void) | null;
-  }): Promise<{ ok: boolean; what?: string }> {
+  }): Promise<ITextWrite> {
     const { oldText, newText, i18nKey } = edit;
     const occurrenceIndex = edit.occurrence;
     const rollback = (message: string): { ok: false } => {
@@ -1756,7 +1788,35 @@ export class StudioEditor {
     // `setContents` clears it after a successful write), so a change never showed up in IndexedDB.
     this.setStatus(`${what} ${where} — ${live.message}${scope} ${t('status.localOnly')}`);
     this.publishEdited(editTargetFile);
-    return { ok: true, what };
+    return {
+      ok: true,
+      what,
+      key: origin.type === 'i18n' ? origin.key : null,
+      lang: origin.type === 'i18n' && typeof lang === 'string' && lang ? lang : null,
+      // The page's own catalog or one of its organism files; never the shared catalog every page reads.
+      pageLocal: editTargetFile.project === this.target.project && editTargetFile.folder === this.target.folder && !scope,
+    };
+  }
+
+  /** Records a text edit that landed in the page defs history; null when it is not the page's (studioDefsHistory). */
+  private async recordTextInDefs(
+    written: ITextWrite,
+    el: HTMLElement | null,
+    attribute: string | null,
+    from: string,
+    to: string,
+  ): Promise<IDefsHistoryMark | null> {
+    if (!written.ok || !written.pageLocal || !el || !this.target) return null;
+    return recordEditInDefs(this.target, {
+      kind: 'text',
+      organism: organismOf(el),
+      target: written.key ?? pathWithinOrganism(el),
+      from,
+      to,
+      at: new Date().toISOString(),
+      attribute,
+      lang: written.lang ?? null,
+    });
   }
 
   /** The shared base class of the current page, resolved once per page. */
@@ -2832,6 +2892,19 @@ export class StudioEditor {
         file: props.file, path: props.path, tag: el.tagName.toLowerCase(), prop, el, to: plan.write, what,
       });
       if (result.ok) {
+        // The page's own markup (the page file or one of its organism files) is what the defs history speaks for.
+        const page = this.target;
+        const defs = page && props.file.project === page.project && props.file.folder === page.folder
+          ? await recordEditInDefs(page, {
+            kind: 'prop',
+            organism: organismOf(el),
+            target: pathWithinOrganism(el),
+            at: new Date().toISOString(),
+            from: propWriteValue(result.before),
+            to: propWriteValue(plan.write),
+            attribute,
+          })
+          : null;
         this.history.push({
           kind: 'prop',
           file: props.file,
@@ -2842,6 +2915,7 @@ export class StudioEditor {
           after: plan.write,
           what,
           el: new WeakRef(el),
+          defs,
         });
       }
     } finally {
@@ -2917,6 +2991,8 @@ export class StudioEditor {
       refusal: state?.refusal ? tr(state.refusal) : undefined,
       occurrence: this.countTagInDom(el),
       anchorPath: anchorPathOf(state?.anchor ?? null),
+      organism: organismOf(el),
+      organismPath: pathWithinOrganism(el),
     };
     setEditSelection(selection);
     this.publishHistory();
@@ -3077,6 +3153,7 @@ export class StudioEditor {
         revert: () => el.setAttribute(attribute, before),
       });
       if (result.ok) {
+        const defs = await this.recordTextInDefs(result, el, attribute, before, newValue);
         this.history.push({
           kind: 'attr',
           attribute,
@@ -3085,6 +3162,7 @@ export class StudioEditor {
           after: newValue,
           what: result.what ?? t('status.textLabel'),
           el: new WeakRef(el),
+          defs,
         });
       }
     } finally {
@@ -3149,6 +3227,20 @@ export class StudioEditor {
     });
     if (!result.ok) return;
 
+    // The page's own markup (the page file or one of its organism files) is what the defs history speaks for.
+    const page = this.target;
+    const defs = page && file.project === page.project && file.folder === page.folder
+      ? await recordEditInDefs(page, {
+        kind: 'class',
+        organism: organismOf(el),
+        target: pathWithinOrganism(el),
+        from: literal,
+        to: newLiteral,
+        at: new Date().toISOString(),
+        attribute,
+      })
+      : null;
+
     this.history.push({
       kind: 'class',
       file,
@@ -3159,6 +3251,7 @@ export class StudioEditor {
       after: newLiteral,
       what,
       el: new WeakRef(el),
+      defs,
     });
   }
 
@@ -4077,6 +4170,12 @@ export class StudioEditor {
     let ok = false;
     try {
       ok = await this.applyStep(step, direction);
+      // The defs history goes back with the source, as one step: an undo that left the entry would have the
+      // next regeneration redo an edit the page no longer has.
+      if (ok && 'defs' in step && step.defs) {
+        if (direction === 'undo') await undoEditInDefs(step.defs);
+        else await redoEditInDefs(step.defs);
+      }
     } finally {
       this.applying = false;
     }

@@ -46,6 +46,13 @@ export interface IAuraEditSelection {
      * an element) — and then a consumer that writes has to refuse rather than guess.
      */
     anchorPath: IDomPathStep[] | null;
+    /**
+     * The organism the element belongs to (`data-organism-id` above it) and where it sits inside it, as tags — what
+     * the page defs history records a molecule swap against (studioDefsHistory). `organism` is null outside every
+     * organism.
+     */
+    organism: string | null;
+    organismPath: string;
 }
 
 /**

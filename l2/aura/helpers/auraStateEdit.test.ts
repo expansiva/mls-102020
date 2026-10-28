@@ -35,6 +35,9 @@ const SELECTION = {
     { tag: 'main', index: 0, count: 1 },
     { tag: 'button', index: 1, count: 3, literal: 'rounded-md p-3 text-sm' },
   ],
+  // The organism it belongs to, and where it sits in it: what the defs history records a swap against.
+  organism: 'catalogue',
+  organismPath: 'div>button#1',
 };
 
 test('the state starts with an empty projection, not with undefined', () => {

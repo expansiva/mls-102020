@@ -15,6 +15,7 @@
 
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { defsWithoutHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import { GENOME_UX_RECEIPT_VERSION, type GenomeUxDevice, type GenomeUxRules, type GenomeUxRulesResult } from '/_102020_/l2/aura/agentGenomeUx/genomeUxCore.js';
 
 export interface GenomeUxReceipt {
@@ -119,13 +120,15 @@ function stableJson(value: unknown): string {
  */
 export async function genomeUxPage11ContractHash(page11Text: string): Promise<string> {
   let definition: ReturnType<typeof parseL2Page11>['definition'];
-  try { definition = parseL2Page11(page11Text).definition; } catch { return sha256Text(`unparsed:${page11Text}`); }
+  // The Studio edit history (helpers/defsHistory) is not part of the contract, parsed or not.
+  const text = defsWithoutHistory(page11Text);
+  try { definition = parseL2Page11(text).definition; } catch { return sha256Text(`unparsed:${text}`); }
   return sha256Text(stableJson({ intent: definition.intent, sections: definition.sections, organisms: definition.organisms }));
 }
 
 /** The `template.category` of a page11 text, null when it does not parse. */
 export function genomeUxPage11Template(page11Text: string): string | null {
-  try { return parseL2Page11(page11Text).definition.template.category; } catch { return null; }
+  try { return parseL2Page11(defsWithoutHistory(page11Text)).definition.template.category; } catch { return null; }
 }
 
 /** sha256 of the normalized rules (stable key order), null for none or an unreadable block. */
@@ -158,7 +161,8 @@ export interface GenomeUxCurrentTexts {
 }
 
 export async function genomeUxCurrentFromTexts(texts: GenomeUxCurrentTexts): Promise<GenomeUxCurrent> {
-  const hashOrNull = async (value: string | null) => value === null ? null : sha256Text(value);
+  // In base mode the variant IS page11: its Studio edit history is not a change of the variant.
+  const hashOrNull = async (value: string | null) => value === null ? null : sha256Text(defsWithoutHistory(value));
   const contractOrNull = async (value: string | null) => value === null ? null : genomeUxPage11ContractHash(value);
   return {
     templatePath: texts.templatePath,

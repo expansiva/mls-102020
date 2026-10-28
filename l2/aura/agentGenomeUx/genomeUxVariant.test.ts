@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import { parseL2Page11, type L2Page11Definition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
+import { defsWithoutHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import { genomeUxBaseChoice, genomeUxEffectiveTemplate, genomeUxExperience, genomeUxGenome, genomeUxRules, type GenomeUxDevice } from '/_102020_/l2/aura/agentGenomeUx/genomeUxCore.js';
 import type { IUxExperienceIndex, IUxLayout } from '/_102020_/l2/aura/helpers/uxTemplates.js';
 import { buildGenomeUxReceipt, genomeUxCurrentFromTexts, genomeUxPage11ContractHash, genomeUxStale } from '/_102020_/l2/aura/agentGenomeUx/genomeUxReceipt.js';
@@ -15,7 +16,8 @@ import { buildGenomeUxVariant, gateGenomeUxMolecules, renderGenomeUxDefs, saniti
 const ROOT = new URL('../../../../', import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, ROOT), 'utf8');
 const PAGE = 'despesas_aprovadas';
-const page11Source = (device: GenomeUxDevice) => read(`mls-102047/l2/reembolsoDespesas/web/${device}/page11/${PAGE}.defs.ts`);
+// A real page of 102047, which is also the Studio's defs-history smoke project: a saved edit adds a history block.
+const page11Source = (device: GenomeUxDevice) => defsWithoutHistory(read(`mls-102047/l2/reembolsoDespesas/web/${device}/page11/${PAGE}.defs.ts`));
 const page11 = (device: GenomeUxDevice) => parseL2Page11(page11Source(device)).definition;
 const DUE_AGENDA = '_102020_/l4/collabux/templates/financialTransactions/dueAgenda.md';
 

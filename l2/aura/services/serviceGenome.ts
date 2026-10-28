@@ -14,6 +14,7 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { routeForSource, sourceOfPageFile } from '/_102020_/l2/aura/helpers/pageRoutes.js';
 import { compileAndApplyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
 import { compileAfterEdit, findPageElement, persistLocalEdit, resolveEditTarget, targetForFile, type IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import { recordEditInDefs } from '/_102020_/l2/aura/studio/studioDefsHistory.js';
 import { t as tStudio, tr } from '/_102020_/l2/aura/studio/studioMessages.js';
 import { resolveStructuralAnchor, scanTemplateTree } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { currentEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
@@ -458,6 +459,19 @@ export class ServiceGenome102020 extends ServiceBase {
             [{ range: tsModel.model.getFullModelRange(), text: newSource }],
             () => null,
         );
+
+        // The page defs history, so a regeneration redoes the swap (studioDefsHistory). "All" rewrites the tag
+        // everywhere in the file, so it belongs to no organism and is addressed by the tag itself.
+        const all = this._moleculeReplaceMode === 'all';
+        await recordEditInDefs(file, {
+            kind: 'molecule',
+            organism: all ? null : studio?.organism ?? null,
+            target: all || !studio?.organismPath ? this._oldSelectedTag : studio.organismPath,
+            from: this._oldSelectedTag,
+            to: newTag,
+            at: new Date().toISOString(),
+            scope: all ? 'all' : 'one',
+        });
 
         this._oldSelectedTag = newTag;
         // ONLY THE L3 PREVIEW READS THIS: it reselects by tag after re-rendering. The in-place

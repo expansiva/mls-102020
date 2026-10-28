@@ -11,7 +11,8 @@
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { readStorText, storTextExists, writeStorText } from '/_102020_/l2/agentMaterializeL2/helpers/storText.js';
-import { parseL2Page11, type L2Page11Definition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { L2_PRIMARY_GENOME, parseL2Page11, type L2Page11Definition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { defsWithoutHistory, splitDefsHistory, withDefsHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import { buildD2MoleculeInventory, type D2MoleculeInventory } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
 import { UX_BESPOKE, getPageTemplate, uxPageKey, type IUxExperienceIndex, type IUxLayout } from '/_102020_/l2/aura/helpers/uxTemplates.js';
@@ -95,7 +96,9 @@ export async function loadGenomeUxPageContext(project: number, module: string, l
   const genome = genomeUxGenome(layout);
   const page11 = {} as GenomeUxPageContext['page11'];
   for (const device of GENOME_UX_DEVICES) {
-    const source = await readGenomeUxText(genomeUxPage11Info(project, module, pageId, device));
+    // The Studio edit history (helpers/defsHistory) is not part of what a variant is designed from.
+    const raw = await readGenomeUxText(genomeUxPage11Info(project, module, pageId, device));
+    const source = raw === null ? null : defsWithoutHistory(raw);
     if (source === null) throw new Error(`GENOME_UX_PAGE11_MISSING: ${module}/web/${device}/page11/${pageId}.defs.ts`);
     try { page11[device] = { source, definition: parseL2Page11(source).definition }; }
     catch (error) { throw new Error(`GENOME_UX_PAGE11_INVALID: ${device}/${pageId}: ${error instanceof Error ? error.message : String(error)}`); }
@@ -135,7 +138,14 @@ export async function readGenomeUxVariants(project: number, module: string, geno
 
 /** Both variant defs, then the receipt (last: a receipt exists only for a pair that was fully written). */
 export async function writeGenomeUxPage(context: Pick<GenomeUxPageContext, 'project' | 'module' | 'genome' | 'pageId'>, variants: Record<GenomeUxDevice, string>, receipt: GenomeUxReceipt): Promise<void> {
-  for (const device of GENOME_UX_DEVICES) await writeGenomeUxText(genomeUxVariantInfo(context.project, context.module, context.pageId, device, context.genome), variants[device]);
+  for (const device of GENOME_UX_DEVICES) {
+    const info = genomeUxVariantInfo(context.project, context.module, context.pageId, device, context.genome);
+    // Base mode rewrites page11 itself: the Studio edit history it carries is kept (helpers/defsHistory).
+    const current = context.genome === L2_PRIMARY_GENOME ? await readGenomeUxText(info) : null;
+    let history: DefsHistoryEntry[] = [];
+    try { history = current === null ? [] : splitDefsHistory(current).history; } catch { history = []; }
+    await writeGenomeUxText(info, withDefsHistory(variants[device], history));
+  }
   await writeGenomeUxText(genomeUxReceiptInfo(context.project, context.module, context.genome, context.pageId), `${JSON.stringify(receipt, null, 2)}\n`);
 }
 
@@ -181,7 +191,7 @@ export async function readGenomeUxBaseChoice(project: number, module: string, pa
   if (!entry) return null;
   const source = await readGenomeUxText(genomeUxPage11Info(project, module, pageId, 'desktop'));
   if (source === null) return null;
-  try { return genomeUxBaseChoice(entry, module, pageId, parseL2Page11(source).definition.template.category); } catch { return null; }
+  try { return genomeUxBaseChoice(entry, module, pageId, parseL2Page11(defsWithoutHistory(source)).definition.template.category); } catch { return null; }
 }
 
 /**

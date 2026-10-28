@@ -8,6 +8,7 @@ import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectCo
 import { readSourceText } from '/_102035_/l2/solution/fs.js';
 import { readStorText } from '/_102020_/l2/agentMaterializeL2/helpers/storText.js';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { defsWithoutHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import {
     buildTemplateOptions,
     countPageTemplates,
@@ -256,7 +257,7 @@ export class PluginSelectUx extends StateLitElement {
     private async _readPage11Template(project: number, module: string, page: string): Promise<string | null> {
         try {
             const source = await readStorText({ project, level: 2, folder: `${module}/web/desktop/page11`, shortName: page, extension: '.defs.ts' });
-            return parseL2Page11(source).definition.template.category || null;
+            return parseL2Page11(defsWithoutHistory(source)).definition.template.category || null;
         } catch {
             return null; // no page11 defs (or not in the grammar): the section says so
         }

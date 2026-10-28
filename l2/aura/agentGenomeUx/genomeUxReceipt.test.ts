@@ -84,3 +84,15 @@ void test('a legacy pageNN template has no rules: rulesHash null on both sides',
   assert.equal(current.rulesHash, null);
   assert.equal(Object.hasOwn(current, 'catalogHash'), false);
 });
+
+void test('a Studio edit history on page11 or on a base-mode variant does not make the receipt stale', async () => {
+  // TASK-102020-defs-edit-history: the history is cut off before every hash and parse here.
+  const { texts, receipt } = await fixture();
+  const history = '\nexport const history = [\n  { "kind": "class", "organism": null, "target": "div", "from": "a", "to": "b", "at": "2026-10-27T00:00:00Z", "attribute": "class" }\n] as const;\n';
+  const edited: GenomeUxCurrentTexts = {
+    ...texts,
+    page11: { desktop: `${texts.page11.desktop}${history}`, mobile: texts.page11.mobile },
+    variants: { desktop: `${texts.variants.desktop}${history}`, mobile: texts.variants.mobile },
+  };
+  assert.deepEqual(genomeUxStale(receipt, await genomeUxCurrentFromTexts(edited)), genomeUxStale(receipt, await genomeUxCurrentFromTexts(texts)));
+});
