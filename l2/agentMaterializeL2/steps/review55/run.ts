@@ -14,7 +14,8 @@ import type { M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core
 import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { m4DefsInfo, templateInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
 import { M4_REUSE_FINGERPRINT, deleteGeneratedFile, readM4Snapshot, sharedDeclarationInfo, storedHash } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
-import { pageReceiptInfo, pageSourceInfo, studioPagePort, type M4PagePort, type M4PageReceipt } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { m4PageHistorySection, pageReceiptInfo, pageSourceInfo, studioPagePort, type M4PagePort, type M4PageReceipt } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { defsWithoutHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
 export const M4_REVIEW_VERSION = '2026-10-05-materialize-l2-v4-review-v1' as const;
 export const M4_REVIEW_TOOL = 'submitPageReview' as const;
@@ -74,8 +75,10 @@ export async function buildM4ReviewContext(identity: M4RunIdentity, pageId: stri
   if (!port.exists(sourceInfo)) throw new Error(`M4_REVIEW_PAGE_MISSING: ${displayPath(sourceInfo)}; pages50 must generate it first.`);
   const receipt = await port.readJson<M4PageReceipt>(pageReceiptInfo(identity, pageId, device));
   const source = await port.read(sourceInfo);
-  const page11Source = await port.read(m4DefsInfo(identity, device, pageId));
-  const page11 = parseL2Page11(page11Source).definition;
+  const fileSource = await port.read(m4DefsInfo(identity, device, pageId));
+  // The Studio edit history goes in its own section: the definition alone is what the page was designed from.
+  const page11Source = defsWithoutHistory(fileSource);
+  const { definition: page11, history } = parseL2Page11(fileSource);
   const template = templateInfo(page11.template.category);
   const templateText = template && port.exists(template) ? await port.read(template) : '';
   const declarationInfo = sharedDeclarationInfo(identity, pageId);
@@ -97,6 +100,7 @@ export async function buildM4ReviewContext(identity: M4RunIdentity, pageId: stri
     `# Page definition — web/${device}/page11/${pageId}.defs.ts (intent, sections, organisms)`,
     '```ts', page11Source.trim(), '```',
     '',
+    ...m4PageHistorySection(history),
     `# Template — ${page11.template.category}`,
     templateText.trim() || '(template not found)',
     '',

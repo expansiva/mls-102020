@@ -21,8 +21,9 @@ import { loadMoleculeCatalog, m4DefsInfo, moleculeIndexInfo, templateInfo, type 
 import { M4_REUSE_FINGERPRINT, deleteGeneratedFile, m4SharedReuseBlocker, readM4Snapshot, sharedDeclarationInfo, sharedSourceInfo, storedHash, studioSharedPort, undoGeneratedWrite, type M4SharedPort } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { m4SharedClassName } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
 import {
-  M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
+  M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4MoleculeSurfaceLine, m4PageHistory, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { defsWithoutHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
 export const M4_PAGE_VERSION = '2026-10-05-materialize-l2-v4-page-v1' as const;
 export const M4_PAGE_TOOL = 'submitPageTs' as const;
@@ -58,7 +59,10 @@ export interface M4PageContext {
   rowTypes: string;
   /** The platform types (MDM ontology of 102034) the contract uses, with the meaning of each field; '' when none. */
   platformTypes: string;
+  /** The Studio edit history of the page11: how many entries the generation was given, and which were dropped. Absent = none. */
+  history?: M4PageHistoryReport;
 }
+export interface M4PageHistoryReport { given: number; dropped: Array<{ entry: string; reason: string }> }
 export interface M4PageReceipt {
   schemaVersion: typeof M4_PAGE_VERSION;
   project: number;
@@ -79,6 +83,8 @@ export interface M4PageReceipt {
   design: M4PageDesign | null;
   /** Design observations of the gate: recorded, never a refusal. */
   advisories: Array<{ code: string; message: string }>;
+  /** The Studio edit history the page was generated with (28/10/2026); absent when the page11 has none. */
+  history?: M4PageHistoryReport;
 }
 
 export interface M4PageDesign { concept: string; views: Array<{ id: string; purpose: string }>; decisions: string }
@@ -136,9 +142,13 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
   const variant = genome === L2_PRIMARY_GENOME ? null : page.variants?.find(item => item.genome === genome);
   if (genome !== L2_PRIMARY_GENOME && variant?.status !== 'accepted') throw new Error(`M4_PAGE_NOT_ACCEPTED: ${pageId} ${genome}`);
   const expected = variant ? variant.inputs[device]?.sha256 : page.inputs[device]?.sha256;
-  const page11Source = await port.read(m4DefsInfo(identity, device, pageId, genome));
+  const fileSource = await port.read(m4DefsInfo(identity, device, pageId, genome));
+  // input20 records the page11 without its Studio edit history (helpers/defsHistory); the history is read here, fresh.
+  const page11Source = defsWithoutHistory(fileSource);
   if (await sha256Text(page11Source) !== expected) throw new Error(`M4_PAGE_INPUT_STALE: ${pageId} ${device}${variant ? ` ${genome}` : ''} changed after input20; run the agent again.`);
-  const page11 = parseL2Page11(page11Source).definition;
+  const { definition: page11, history: fileHistory } = parseL2Page11(fileSource);
+  const moleculeSource = (tag: string): Ns5FileInfo => ({ ...moleculeIndexInfo(tag), shortName: tag.slice(tag.indexOf('--') + 2), extension: '.ts' });
+  const history = m4PageHistory(page11, fileHistory, tag => port.exists(moleculeSource(tag)));
   const shared = parseL2Shared(await port.read(m4DefsInfo(identity, 'shared', pageId))).definition;
   const declaration = await port.read(sharedDeclarationInfo(identity, pageId));
   // What the shared starts by itself is read from its code; the other requests are the page's to start.
@@ -154,7 +164,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
   const moduleInfo: Ns5FileInfo = { project: identity.project, level: 4, folder: identity.module, shortName: 'module', extension: '.defs.ts' };
   const locales = port.exists(moduleInfo) ? productLocales(await port.read(moduleInfo)) : ['en'];
 
-  const tags = m4PageMoleculeTags(page11);
+  const tags = m4PageMoleculeTags(page11, history.kept);
   const groups = new Map<string, { index: string; usage: string }>();
   for (const tag of tags) {
     const folder = moleculeGroupFolder(tag);
@@ -190,6 +200,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     methods: page.methods ?? {},
     moleculeEvents: await m4PageMoleculeEvents(tags, port),
     pageOnlyRequests,
+    ...(history.kept.length ? { history: history.kept } : {}),
   };
   const prompt = await port.read(pagePromptInfo);
   const parts = [
@@ -214,6 +225,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     `# Page definition — web/${device}/${genome}/${pageId}.defs.ts`,
     '```ts', page11Source.trim(), '```',
     '',
+    ...m4PageHistorySection(history.kept),
     '# Journeys',
     '```json', JSON.stringify(shared.journeys, null, 2), '```',
     '',
@@ -242,7 +254,23 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
   const humanPrompt = parts.join('\n');
   const unitHash = (variant ? variant.units : page.units).find(item => item.kind === device)?.inputHash ?? '';
   const dataHash = await sha256Text([unitHash, await storedHash(declaration)].join('\n'));
-  return { identity, pageId, device, genome, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), dataHash, declaration, rowTypes, platformTypes };
+  return {
+    identity, pageId, device, genome, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), dataHash, declaration, rowTypes, platformTypes,
+    ...(fileHistory.length ? { history: { given: history.kept.length, dropped: history.dropped } } : {}),
+  };
+}
+
+/**
+ * The Studio edits the user made on the previous version of this page, as one prompt section ('' lines when none).
+ * The rule of how to honour them is in prompt.md; this section is the data, in the order they were last changed.
+ */
+export function m4PageHistorySection(history: readonly DefsHistoryEntry[]): string[] {
+  if (!history.length) return [];
+  return [
+    '# User edits to keep — Studio history of this page (oldest change first)',
+    '```json', JSON.stringify(history, null, 2), '```',
+    '',
+  ];
 }
 
 /**
@@ -391,6 +419,7 @@ export async function approveM4Page(context: M4PageContext, source: unknown, att
       ...normalized.lines.map(message => ({ code: 'M4_PAGE_MOLECULE_SUFFIX', message })),
       ...issues.filter(item => !M4_PAGE_GATE_ENFORCED || item.severity === 'advisory').map(item => ({ code: item.code, message: `${item.severity === 'error' ? '[contract] ' : ''}${item.message}` })),
     ],
+    ...(context.history ? { history: context.history } : {}),
   };
   await port.writeJson(pageReceiptInfo(context.identity, context.pageId, context.device, context.genome), receipt);
   // The review receipt is the review's own artifact. Dropping it is what sends this page back to review.

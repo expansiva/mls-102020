@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { formatM4InputReport, runM4Input, type M4InputRunPort, type M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
+import { withDefsHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
 interface Fixture {
   project: number;
@@ -155,4 +156,25 @@ test('a change of the template rules re-evaluates the variant: forbidding a grou
   assert.equal(variant(again.snapshot).status, 'accepted');
   // 22/10/2026: a template is agent material; its text (rules aside, which decide acceptance) is not in the data hash.
   assert.deepEqual(variant(again.snapshot).units.map(unit => unit.inputHash), variant(allowed.snapshot).units.map(unit => unit.inputHash), 'the template text is not in the unit hash');
+});
+
+test('a Studio edit history on a page11 keeps the page accepted, its recorded sha256 and every unit but its own device', async () => {
+  // TASK-102020-defs-edit-history (28/10/2026): the history is page generation input only.
+  const port = memoryPort();
+  const before = await runM4Input(identity, port);
+  const desktopPath = `${identity.project}/l2/${identity.module}/web/desktop/page11/minhas_despesas.defs.ts`;
+  port.files.set(desktopPath, withDefsHistory(port.files.get(desktopPath)!, [
+    { kind: 'class', organism: null, target: 'h1', at: '2026-10-28T00:00:00Z', from: 'text-xl', to: 'text-2xl', attribute: 'class' },
+  ]));
+  const after = await runM4Input(identity, port);
+  const page = (snapshot: M4InputSnapshot) => snapshot.pages.find(item => item.pageId === 'minhas_despesas')!;
+  assert.equal(page(after.snapshot).status, 'accepted');
+  assert.deepEqual(page(after.snapshot).inputs, page(before.snapshot).inputs, 'the recorded sha256 is the definition alone');
+  const [b, a] = [unitHashes(before.snapshot, 'minhas_despesas'), unitHashes(after.snapshot, 'minhas_despesas')];
+  assert.equal(a.shared, b.shared);
+  assert.equal(a.mobile, b.mobile);
+  assert.equal(a.tests, b.tests);
+  assert.notEqual(a.desktop, b.desktop);
+  port.files.set(desktopPath, withDefsHistory(port.files.get(desktopPath)!, []));
+  assert.deepEqual(unitHashes((await runM4Input(identity, port)).snapshot, 'minhas_despesas'), b, 'no history, the hashes of before');
 });

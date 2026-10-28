@@ -13,6 +13,11 @@ The page extends the page's **shared class**. The shared owns the state, the bac
 - **Row types**: the interfaces of the rows (`ProdutoLoad`, `MovimentacaoEstoqueLoad`…) that the declaration only imports. **They are the only fields a row has.** Never name a field after the organism text: when it says "date and time", use the date field the row type declares (for example `movimentadoEm`). Do not invent one like `dataHora`. When the text asks for something no row field holds, leave it out.
 - **Business context (L4)**: what each entity and field **means**, with its business title (use it for labels and headers, in the product language), the business rules by text (for hints and plain-words errors), the journeys (the order in which the person works: it shapes the flow between views and where the focus goes) and the actors (who uses the page). Never a field, a value or a rule to add.
 - **Design tokens**, **molecule usage contracts** (and the scene host `molecules--ml-scenary-102020`), **locales**.
+- **User edits to keep** (only when the page has them): changes the person made by hand in the Studio on the previous version of this page, oldest first. Each names its `organism` (null = outside every organism) and a `target`, written for the old markup: match the element by organism and role, not by that path. Redo each one on the element your design has for it; skip one whose element your design no longer has. They win over your own choices and over `preferred`/`alternative`, never over the contract below.
+  - `molecule`: render `<to>` where you would render `<from>` (in that organism; in every organism when `scope` is `all`).
+  - `class`: that element gets the classes in `to` (`attribute: data-class` = the molecule's inner `data-class`).
+  - `text`: the text that read `from` reads `to` (`target` is its old catalogue key; `lang` its locale, null = the same in every locale; `attribute` = the attribute that shows it).
+  - `prop`: that molecule gets the attribute `attribute` = `to` (`""` = present with no value, null = absent).
 
 ## Design: your decisions
 

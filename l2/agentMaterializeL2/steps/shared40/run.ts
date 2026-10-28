@@ -13,6 +13,7 @@ import { compileWithDeclaration, declarationsOf, mlsImportsOf, type StudioDeclar
 import { parseL2Contract } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
 import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { defsWithoutHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import { m4OwnedFile, type M4RunIdentity } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
@@ -145,7 +146,8 @@ export async function buildM4SharedContext(identity: M4RunIdentity, pageId: stri
     port.read(m4DefsInfo(identity, 'desktop', pageId)),
     port.read(promptInfo),
   ]);
-  for (const [kind, text] of [['contract', contract], ['shared', shared], ['desktop', desktop]] as const) {
+  for (const [kind, text] of [['contract', contract], ['shared', shared], ['desktop', defsWithoutHistory(desktop)]] as const) {
+    // input20 records the page11 without its Studio edit history: an edit in the Studio is no change for the shared.
     if (await sha256Text(text) !== page.inputs[kind]?.sha256) throw new Error(`M4_SHARED_INPUT_STALE: ${pageId} ${kind} changed after input20; run the agent again.`);
   }
   const target: M4SharedTarget = {

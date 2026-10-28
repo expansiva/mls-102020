@@ -13,6 +13,22 @@ import {
 } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
 import { m4LocaleKey } from '/_102020_/l2/agentMaterializeL2/helpers/locale.js';
 import { l4RefsOf, readL4Module, sliceL4ForPage, type L4ModuleContext, type L4PageRefs } from '/_102020_/l2/agentMaterializeL2/helpers/l4/context.js';
+import { splitDefsHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
+
+/**
+ * A page11 text as two hashes (28/10/2026). `definition` is the file without the Studio edit history: what `inputs`
+ * records and the Studio's variation status compares, so an edit in the Studio does not read as a new defs. `history`
+ * is the hash of that history ('' when there is none): it enters only the page's own unit, because only the page
+ * generation reads it. A file whose history does not parse hashes whole; the gate has already refused it.
+ */
+async function page11Hashes(source: string): Promise<{ definition: string; history: string }> {
+  try {
+    const { base, history } = splitDefsHistory(source);
+    return { definition: await sha256Text(base), history: history.length ? await sha256Text(stableJson(history)) : '' };
+  } catch {
+    return { definition: await sha256Text(source), history: '' };
+  }
+}
 
 // v3 (13/10/2026): the frozen shared (no forms, no functions); pages carry their navigations.
 // v4 (14/10/2026): pages carry their UX variants (page21…).
@@ -109,9 +125,12 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
     for (const variant of variants) {
       const inputs = {} as M4InputVariant['inputs'];
       const hashes = {} as Record<'desktop' | 'mobile', string>;
+      const histories = {} as Record<'desktop' | 'mobile', string>;
       for (const device of ['desktop', 'mobile'] as const) {
         const source = variant.sources[device];
-        hashes[device] = source === null ? '' : await sha256Text(source);
+        const split = source === null ? { definition: '', history: '' } : await page11Hashes(source);
+        hashes[device] = split.definition;
+        histories[device] = split.history;
         inputs[device] = source === null ? null : { path: displayPath(m4DefsInfo(identity, device, pageId, variant.genome)), sha256: hashes[device] };
       }
       const parsed = accepted.find(item => item.genome === variant.genome);
@@ -119,7 +138,9 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
       if (parsed) {
         for (const device of ['desktop', 'mobile'] as const) {
           const base = pageDataHashes.get(pageId) ?? '';
-          units.push({ unitId: `${pageId}__${device}__${variant.genome}`, kind: device, inputHash: await sha256Text([hashes[device], base].join('\n')) });
+          // The history joins only when there is one, so a page never edited in the Studio keeps its hash.
+          const parts = [hashes[device], base, ...(histories[device] ? [histories[device]] : [])];
+          units.push({ unitId: `${pageId}__${device}__${variant.genome}`, kind: device, inputHash: await sha256Text(parts.join('\n')) });
         }
       }
       out.push({ genome: variant.genome, status: parsed ? 'accepted' : 'refused', inputs, units });
@@ -129,10 +150,15 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
   const snapshotPages: M4InputPage[] = [];
   for (const page of pages) {
     const hashes = {} as Record<M4InputKind, string>;
+    const histories = { desktop: '', mobile: '' };
     const inputs = {} as M4InputPage['inputs'];
     for (const kind of M4_INPUT_KINDS) {
       const source = page.sources[kind];
-      hashes[kind] = source === null ? '' : await sha256Text(source);
+      if (source !== null && (kind === 'desktop' || kind === 'mobile')) {
+        const split = await page11Hashes(source);
+        hashes[kind] = split.definition;
+        histories[kind] = split.history;
+      } else hashes[kind] = source === null ? '' : await sha256Text(source);
       inputs[kind] = source === null ? null : { path: displayPath(m4DefsInfo(identity, kind, page.pageId)), sha256: hashes[kind] };
     }
     const accepted = gate.accepted.includes(page.pageId);
@@ -150,8 +176,9 @@ export async function runM4Input(identity: M4RunIdentity, port: M4InputRunPort =
       pageDataHashes.set(page.pageId, await sha256Text([hashes.contract, hashes.shared, l4Hash].join('\n')));
       // D1 (30/09/2026): the contract .defs.ts is used as is (types for execBff); it is an input, not a unit.
       units.push(await unit('shared', [hashes.contract, hashes.shared, sharedL4Hash]));
-      units.push(await unit('desktop', [hashes.contract, hashes.shared, hashes.desktop, l4Hash]));
-      units.push(await unit('mobile', [hashes.contract, hashes.shared, hashes.mobile, l4Hash]));
+      // The Studio edit history is page generation input only, and joins only when there is one (page11Hashes).
+      units.push(await unit('desktop', [hashes.contract, hashes.shared, hashes.desktop, l4Hash, ...(histories.desktop ? [histories.desktop] : [])]));
+      units.push(await unit('mobile', [hashes.contract, hashes.shared, hashes.mobile, l4Hash, ...(histories.mobile ? [histories.mobile] : [])]));
       units.push(await unit('tests', [hashes.shared, hashes.desktop, hashes.mobile, l4Hash]));
     }
     snapshotPages.push({

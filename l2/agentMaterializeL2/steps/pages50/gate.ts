@@ -9,6 +9,10 @@ import type { L2Page11Definition, L2Page11Device } from '/_102020_/l2/agentMater
 import { L2_PRIMARY_GENOME, moleculeGroupFolder } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import type { L2SharedDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import { m4LocaleConst } from '/_102020_/l2/agentMaterializeL2/helpers/locale.js';
+import type { DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
+
+/** A molecule tag as page11 writes one (`groupentertext--ml-enter-text`); a history swap must name one too. */
+const TAG = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*--[a-z][a-z0-9-]*$/u;
 
 export interface M4PageTarget {
   project: number;
@@ -32,6 +36,8 @@ export interface M4PageTarget {
   moleculeEvents?: Record<string, string[]>;
   /** The requests only the page can start (m4PageOnlyRequests); each must be called by the page. */
   pageOnlyRequests?: M4PageOnlyRequest[];
+  /** The Studio edits to redo (m4PageHistory `kept`); absent = none. Its molecule swaps widen the allowed tags. */
+  history?: DefsHistoryEntry[];
 }
 
 export interface M4PageOnlyRequest { fn: string; steps: string[] }
@@ -384,8 +390,32 @@ export function m4SharedImport(target: Pick<M4PageTarget, 'project' | 'module' |
 export function m4MoleculeImport(tag: string): string {
   return `/_102040_/l2/molecules/${moleculeGroupFolder(tag)}/${tag.slice(tag.indexOf('--') + 2)}.js`;
 }
-export function m4PageMoleculeTags(page11: L2Page11Definition): string[] {
-  return [...new Set(Object.values(page11.molecules).flatMap(list => list.flatMap(item => [item.preferred, item.alternative].filter((tag): tag is string => Boolean(tag)))))].sort();
+/** The page's molecules: the defs recommendations plus the molecules the user swapped to in the Studio. */
+export function m4PageMoleculeTags(page11: L2Page11Definition, history: readonly DefsHistoryEntry[] = []): string[] {
+  const recommended = Object.values(page11.molecules).flatMap(list => list.flatMap(item => [item.preferred, item.alternative].filter((tag): tag is string => Boolean(tag))));
+  return [...new Set([...recommended, ...m4HistorySwaps(history).map(swap => swap.to)])].sort();
+}
+
+/** The molecule swaps of a Studio history: in `organism` (null = every organism), `<from>` is rendered as `<to>`. */
+export function m4HistorySwaps(history: readonly DefsHistoryEntry[]): Array<{ organism: string | null; from: string; to: string }> {
+  return history.flatMap(entry => entry.kind === 'molecule' ? [{ organism: entry.organism, from: entry.from, to: entry.to }] : []);
+}
+
+/**
+ * Which Studio edits (the defs `history`, helpers/defsHistory) the page generation is given. An entry is dropped, with
+ * its reason, when its organism is not in the page11 any more, or when it swaps to a molecule the catalog no longer
+ * has. Entries outside every organism (null) are kept: they are hints about page-level markup.
+ */
+export function m4PageHistory(page11: L2Page11Definition, history: readonly DefsHistoryEntry[], moleculeExists: (tag: string) => boolean): { kept: DefsHistoryEntry[]; dropped: Array<{ entry: string; reason: string }> } {
+  const kept: DefsHistoryEntry[] = [];
+  const dropped: Array<{ entry: string; reason: string }> = [];
+  for (const entry of history) {
+    const name = `${entry.kind} ${entry.organism ?? '(page)'}/${entry.target}`;
+    if (entry.organism !== null && !page11.organisms[entry.organism]) dropped.push({ entry: name, reason: `organism ${entry.organism} is not in the page11` });
+    else if (entry.kind === 'molecule' && (!TAG.test(entry.to) || !moleculeExists(entry.to))) dropped.push({ entry: name, reason: `molecule ${entry.to} is not in the catalog` });
+    else kept.push(entry);
+  }
+  return { kept, dropped };
 }
 
 export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIssue[] {
@@ -401,7 +431,7 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   if (text.split('\n')[0] !== header) push('M4_PAGE_HEADER', `The first line must be exactly: ${header}`);
 
   // Imports: lit, the given molecules and the shared module only.
-  const moleculeTags = m4PageMoleculeTags(target.page11);
+  const moleculeTags = m4PageMoleculeTags(target.page11, target.history);
   const allowed = new Set(['lit', 'lit/decorators.js', m4SharedImport(target), M4_SCENARY_IMPORT, ...moleculeTags.map(m4MoleculeImport)]);
   const imported = new Set<string>();
   for (const match of code.matchAll(/\bimport\s+(?:[^'";]*?\bfrom\s+)?['"]([^'"]+)['"]/gu)) {
@@ -440,10 +470,14 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
     if (!new RegExp(`data-organism-id=["']${organism}["']`, 'u').test(code)) push('M4_PAGE_ORGANISM', `Organism ${organism} needs a wrapper with data-organism-id="${organism}".`);
   }
 
-  // Molecules: every entry rendered with one of its two tags; no tag outside the list; every tag imported.
+  // Molecules: every entry rendered with one of its two tags (or the one the user swapped it to in the Studio); no tag
+  // outside the list; every tag imported.
+  const swaps = m4HistorySwaps(target.history ?? []);
   for (const [organism, list] of Object.entries(target.page11.molecules)) {
     for (const entry of list) {
-      const options = [entry.preferred, entry.alternative].filter((item): item is string => Boolean(item));
+      const recommended = [entry.preferred, entry.alternative].filter((item): item is string => Boolean(item));
+      const swapped = swaps.filter(swap => (swap.organism === null || swap.organism === organism) && recommended.includes(swap.from)).map(swap => swap.to);
+      const options = [...recommended, ...swapped];
       if (!options.some(option => code.includes(`<${option}`))) advise('M4_PAGE_MOLECULE_UNUSED', `Organism ${organism} (${entry.role}) renders neither <${options.join('> nor <')}>.`);
     }
   }

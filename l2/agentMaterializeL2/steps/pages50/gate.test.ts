@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
-import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4MoleculeEvents, m4MoleculeImport, m4MoleculeDetailEvents, m4MoleculeProperties, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PagePath, m4PageTag, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4MoleculeEvents, m4MoleculeImport, m4MoleculeDetailEvents, m4MoleculeProperties, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PageHistory, m4PageMoleculeTags, m4PagePath, m4PageTag, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 import { M4_DOM_PROPERTIES } from '/_102020_/l2/agentMaterializeL2/steps/pages50/domProperties.js';
+import type { DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
 const input = JSON.parse(readFileSync(new URL('../input20/fixtures/controleEstoque.json', import.meta.url), 'utf8')) as { pages: Record<string, { desktop: string; mobile: string }> };
 // Hand-written reference desktop page of controleEstoque/produtos, typechecked with tsc against the reference shared.
@@ -387,4 +388,29 @@ test('d2_125: shorthand or spread `detail` is keys not read; no detail is an emp
   assert.match(m4MoleculeSurfaceLine('molecules--ml-scenary-102020', scenary), /\bchange \{keys not read\}/u);
   assert.deepEqual(m4MoleculeDetailEvents("new CustomEvent('x', { bubbles: true })"), [{ name: 'x', keys: [] }]);
   assert.deepEqual(m4MoleculeDetailEvents("new CustomEvent('x', { detail: { field, value } })"), [{ name: 'x', keys: ['field', 'value'] }]);
+});
+
+test('a molecule the user swapped to in the Studio (defs history) is allowed and serves the entry', () => {
+  // TASK-102020-defs-edit-history: groupviewdata--ml-card-grid → ml-calendar-view on the whole page.
+  const swap: DefsHistoryEntry = { kind: 'molecule', organism: null, target: 'groupviewdata--ml-card-grid', at: '2026-10-28T00:00:00Z', from: 'groupviewdata--ml-card-grid', to: 'groupviewdata--ml-calendar-view', scope: 'all' };
+  const swapped = reference
+    .replaceAll('groupviewdata--ml-card-grid', 'groupviewdata--ml-calendar-view')
+    .replace("'/_102040_/l2/molecules/groupviewdata/ml-card-grid.js'", "'/_102040_/l2/molecules/groupviewdata/ml-calendar-view.js'");
+  const withHistory = { ...target(), history: [swap] };
+  assert.deepEqual(gateM4PageSource(swapped, withHistory).map(item => item.code), []);
+  assert.deepEqual(codes(swapped).sort(), ['M4_PAGE_IMPORT', 'M4_PAGE_MOLECULE'], 'without the history the same page is outside its list');
+  assert.ok(m4PageMoleculeTags(target().page11, [swap]).includes('groupviewdata--ml-calendar-view'));
+});
+
+test('history entries of an organism that left the page11, or of a molecule out of the catalog, are dropped with the reason', () => {
+  const page11 = target().page11;
+  const organism = Object.keys(page11.organisms)[0];
+  const at = '2026-10-28T00:00:00Z';
+  const keep: DefsHistoryEntry = { kind: 'class', organism, target: 'div', at, from: 'p-2', to: 'p-4', attribute: 'class' };
+  const page: DefsHistoryEntry = { kind: 'text', organism: null, target: 'title', at, from: 'A', to: 'B', attribute: null, lang: 'pt-br' };
+  const gone: DefsHistoryEntry = { kind: 'class', organism: 'naoExisteMais', target: 'div', at, from: 'a', to: 'b', attribute: 'class' };
+  const unknown: DefsHistoryEntry = { kind: 'molecule', organism, target: 'x', at, from: 'groupviewdata--ml-card-grid', to: 'groupviewdata--ml-nao-existe', scope: 'one' };
+  const result = m4PageHistory(page11, [keep, gone, page, unknown], tag => tag !== 'groupviewdata--ml-nao-existe');
+  assert.deepEqual(result.kept, [keep, page]);
+  assert.deepEqual(result.dropped.map(item => item.reason), ['organism naoExisteMais is not in the page11', 'molecule groupviewdata--ml-nao-existe is not in the catalog']);
 });

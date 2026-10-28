@@ -12,6 +12,8 @@ import {
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { createAgent as createPageAgent } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4PagesPage.js';
 import { m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { withDefsHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
 interface Fixture { project: number; module: string; knownMolecules: string[]; pages: Record<string, { contract: string; shared: string; desktop: string; mobile: string }> }
 const fixture = JSON.parse(readFileSync(new URL('../input20/fixtures/controleEstoque.json', import.meta.url), 'utf8')) as Fixture;
@@ -306,4 +308,26 @@ test('a repair with the page file present calls the model', async () => {
   } finally {
     Object.assign(studioPagePort, saved);
   }
+});
+
+test('a Studio edit history reaches the prompt in its own section, is left out of the page definition, and the receipt reports it', async () => {
+  // TASK-102020-defs-edit-history (28/10/2026).
+  const port = await studio();
+  const defs = '102047/l2/controleEstoque/web/desktop/page11/produtos.defs.ts';
+  const page11 = parseL2Page11(port.files.get(defs)!).definition;
+  const organism = Object.keys(page11.organisms)[0];
+  const at = '2026-10-28T00:00:00Z';
+  const kept: DefsHistoryEntry = { kind: 'class', organism, target: 'div>button#1', at, from: 'px-3', to: 'px-4 rounded-full', attribute: 'class' };
+  const unknown: DefsHistoryEntry = { kind: 'molecule', organism, target: 'groupviewtable--ml-data-table', at, from: 'groupviewtable--ml-data-table', to: 'groupviewtable--ml-nao-existe', scope: 'one' };
+  port.files.set(defs, withDefsHistory(port.files.get(defs)!, [kept, unknown]));
+  const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
+  const { humanPrompt } = buildM4PagePrompt(context);
+  assert.ok(humanPrompt.includes('# User edits to keep — Studio history of this page (oldest change first)'));
+  assert.ok(humanPrompt.includes('"to": "px-4 rounded-full"'));
+  assert.ok(!humanPrompt.includes('export const history'), 'the page definition is shown without the history export');
+  assert.ok(!humanPrompt.includes('ml-nao-existe'), 'an entry dropped by the catalog is not sent');
+  assert.deepEqual(context.target.history, [kept]);
+  assert.deepEqual(context.history, { given: 1, dropped: [{ entry: `molecule ${organism}/groupviewtable--ml-data-table`, reason: 'molecule groupviewtable--ml-nao-existe is not in the catalog' }] });
+  const receipt = await approveM4Page(context, pageRef.source, 1, port);
+  assert.deepEqual(receipt.history, context.history);
 });
