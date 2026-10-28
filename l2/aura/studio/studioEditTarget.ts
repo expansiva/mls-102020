@@ -241,8 +241,14 @@ export async function resolveSharedTarget(target: IStudioEditTarget): Promise<IS
   const candidates: string[] = [];
   const derived = deriveSharedFolder(folder);
   if (derived) candidates.push(derived);
-  const fromModule = await sharedFolderFromModule(project, folder);
-  if (fromModule && !candidates.includes(fromModule)) candidates.push(fromModule);
+  const derivedFile = derived
+    ? mls.stor.files[mls.stor.getKeyToFiles(project, 2, shortName, derived, '.ts')]
+    : undefined;
+  // No module.ts still 404s in the browser. The structural file in the store is enough.
+  if (!derivedFile) {
+    const fromModule = await sharedFolderFromModule(project, folder);
+    if (fromModule && !candidates.includes(fromModule)) candidates.push(fromModule);
+  }
 
   for (const sharedFolder of candidates) {
     const key = mls.stor.getKeyToFiles(project, 2, shortName, sharedFolder, '.ts');
