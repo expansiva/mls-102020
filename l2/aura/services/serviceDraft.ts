@@ -4,13 +4,12 @@ import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
-import { isVmDriver, readDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
+import { activeDraft, enterDraft, isVmDriver, postDraftEnter, requestModeChange, sendServiceWorkerMode } from '/_102033_/l2/cbe/studioDraft.js';
 import {
     afterDraftSave,
     branchForSlug,
     collectEditedFiles,
     discard,
-    experimentDraft,
     loadPanel,
     localEdits,
     panelModel,
@@ -60,6 +59,7 @@ const message_en = {
     view: 'View',
     experiment: 'Try',
     experimentDisabled: 'This draft cannot be tried: its address does not round-trip.',
+    experimentFailed: 'Could not try this draft.',
     bring: 'Bring',
     bringDisabled: 'Bringing another draft is not available yet.',
     makeDefault: 'Project default',
@@ -116,6 +116,7 @@ const messages: Record<string, MessageType> = {
         view: 'Ver',
         experiment: 'Experimentar',
         experimentDisabled: 'Este rascunho não pode ser experimentado: o endereço não faz ida e volta.',
+        experimentFailed: 'Não foi possível experimentar este rascunho.',
         bring: 'Trazer',
         bringDisabled: 'Trazer outro rascunho ainda não está disponível.',
         makeDefault: 'Padrão do projeto',
@@ -169,6 +170,7 @@ const messages: Record<string, MessageType> = {
         view: 'Ver',
         experiment: 'Probar',
         experimentDisabled: 'Este borrador no se puede probar: la dirección no hace ida y vuelta.',
+        experimentFailed: 'No se pudo probar este borrador.',
         bring: 'Traer',
         bringDisabled: 'Traer otro borrador todavía no está disponible.',
         makeDefault: 'Predeterminado del proyecto',
@@ -213,6 +215,26 @@ const actionClass = 'text-[9px] font-semibold uppercase tracking-wider px-2 py-3
 
 function publishedStorageKey(project: number): string {
     return `collab-draft-published-${project}`;
+}
+
+type SiteMode = 'studio' | 'production';
+
+function sitesModeApi(): { getMode?: () => SiteMode | undefined; setMode?: (mode: SiteMode) => Promise<void> } {
+    return (mls.sites as { getMode?: () => SiteMode | undefined; setMode?: (mode: SiteMode) => Promise<void> } | undefined) ?? {};
+}
+
+let reportedMissingMode = false;
+
+function siteMode(): SiteMode | undefined {
+    const getMode = sitesModeApi().getMode;
+    if (typeof getMode !== 'function') {
+        if (!reportedMissingMode) {
+            reportedMissingMode = true;
+            console.error('[serviceDraft] mls.sites.getMode is missing');
+        }
+        return undefined;
+    }
+    return getMode();
 }
 
 function readStoredPublished(project: number): IPublishedRecord | null {
@@ -510,7 +532,7 @@ export class ServiceDraft102020 extends ServiceBase {
                         class=${actionClass}
                         ?disabled=${busy || slug === null}
                         title=${slug === null ? this.msg.experimentDisabled : nothing}
-                        @click=${() => { if (slug) this._onExperiment(slug); }}
+                        @click=${() => { if (slug) void this._onExperiment(slug); }}
                     >${this.msg.experiment}</button>
                     <button disabled title=${this.msg.bringDisabled}>${this.msg.bring}</button>
                 </div>
@@ -567,7 +589,10 @@ export class ServiceDraft102020 extends ServiceBase {
             return;
         }
 
-        const slug = readDraftCookie(document.cookie ?? '') ?? `team-${project}`;
+        const mode = siteMode();
+        const active = mode === 'studio' ? activeDraft() : undefined;
+        if (mode === 'studio' && !active) console.error('[serviceDraft] studio mode has no active draft');
+        const slug = active ?? `team-${project}`;
         this._slug = slug;
         const branch = branchForSlug(slug);
         this._branch = branch;
@@ -742,13 +767,50 @@ export class ServiceDraft102020 extends ServiceBase {
         }
     }
 
-    private _onExperiment(slug: string): void {
+    private async _onExperiment(slug: string): Promise<void> {
         if (!isVmDriver(this._driver)) return;
+        const project = this._projectId;
+        if (!project) {
+            console.error('[serviceDraft] experiment has no project');
+            return;
+        }
+        const mode = siteMode();
+        if (mode !== 'studio' && mode !== 'production') {
+            this._error = this.msg.experimentFailed;
+            this._phase = 'error';
+            return;
+        }
+        const setMode = sitesModeApi().setMode;
         try {
-            experimentDraft({
-                setCookie: (cookie) => { document.cookie = cookie; },
-                reload: () => location.reload(),
-            }, slug, location.protocol === 'https:');
+            if (mode !== 'studio') {
+                if (typeof setMode !== 'function') {
+                    console.error('[serviceDraft] mls.sites.setMode is missing');
+                    this._error = this.msg.experimentFailed;
+                    this._phase = 'error';
+                    return;
+                }
+                await setMode('studio');
+                if (siteMode() !== 'studio') {
+                    console.error('[serviceDraft] experiment did not enter studio');
+                    this._error = this.msg.experimentFailed;
+                    this._phase = 'error';
+                    return;
+                }
+            }
+            const outcome = await requestModeChange('studio', 'studio', {
+                project,
+                resolveDraft: async () => slug,
+                enterDraft: (id, draft) => enterDraft(id, draft, { postExec: postDraftEnter }),
+                sendToServiceWorker: (message) => sendServiceWorkerMode(message),
+                reportError: (message) => console.error('[serviceDraft]', message),
+            });
+            if (outcome.mode !== 'studio' || activeDraft() !== slug) {
+                console.error('[serviceDraft] experiment did not activate', slug);
+                this._error = this.msg.experimentFailed;
+                this._phase = 'error';
+                return;
+            }
+            await this._load();
         } catch (err) {
             console.error('[serviceDraft] experiment failed:', err);
             this._error = err instanceof Error ? err.message : String(err);

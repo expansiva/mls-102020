@@ -65,7 +65,11 @@ test('bring stays disabled with a tooltip and does not call mergeDraft', () => {
 
 test('view, try and the project default go through the core', () => {
     assert.match(DRAFT, /viewDiff\(/);
-    assert.match(DRAFT, /experimentDraft\(/);
+    assert.match(DRAFT, /requestModeChange\(/);
+    assert.match(DRAFT, /activeDraft\(/);
+    assert.match(DRAFT, /mls\.sites/);
+    assert.doesNotMatch(DRAFT, /experimentDraft\(/);
+    assert.doesNotMatch(DRAFT, /document\.cookie/);
     assert.match(DRAFT, /saveDefaultDraft\(/);
     assert.match(DRAFT, /<pre class="diff">/);
     assert.doesNotMatch(DRAFT, /['"]\/exec['"]/);
@@ -167,10 +171,14 @@ test('auto-save listens to FileAction on levels 1, 2 and 3', () => {
 
 test('the watcher gate is the same start and stop', () => {
     const body = TOOL.slice(TOOL.indexOf('async function syncWatcher'), TOOL.indexOf('async function syncEditor'));
-    const offBranch = body.slice(0, body.indexOf('syncDraftAutoSave(true, draftCookieOn())'));
+    const offBranch = body.slice(0, body.indexOf('syncDraftAutoSave(true, studioDraftOn())'));
     assert.match(offBranch, /if \(!state\.studioMode\)/);
     assert.match(offBranch, /watcher\?\.stop\(\)/);
     assert.match(offBranch, /syncDraftAutoSave\(false, false\)/);
+    assert.match(TOOL, /siteMode\(\) !== 'studio'/);
+    assert.match(TOOL, /activeDraft\(\)/);
+    assert.doesNotMatch(TOOL, /document\.cookie/);
+    assert.doesNotMatch(TOOL, /readDraftCookie/);
     const teardown = TOOL.slice(TOOL.indexOf('function teardown'), TOOL.indexOf('async function apply'));
     assert.match(teardown, /syncDraftAutoSave\(false, false\)/);
 });

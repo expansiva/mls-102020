@@ -12,7 +12,7 @@
 // instantiated twice would arm two editors on the same DOM.
 
 import { registerStudioEditTool, currentEditHost, type IStudioEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
-import { readDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
+import { activeDraft } from '/_102033_/l2/cbe/studioDraft.js';
 import {
   afterDraftSave,
   dropCapturedDraftText,
@@ -77,11 +77,11 @@ export function bindAutoSaveFactory(factory: (() => IDraftAutoSave) | null): voi
 }
 
 /**
- * Studio mode and the `collab-draft` cookie both have to be on.
+ * Studio mode and an active draft both have to be on.
  * Either one missing stops the saver. The instance stays so the next start keeps its pending batch.
  */
-export function syncDraftAutoSave(studioMode: boolean, hasCookie: boolean): void {
-  if (!studioMode || !hasCookie) {
+export function syncDraftAutoSave(studioMode: boolean, draftOn: boolean): void {
+  if (!studioMode || !draftOn) {
     autoSave?.stop();
     return;
   }
@@ -89,9 +89,27 @@ export function syncDraftAutoSave(studioMode: boolean, hasCookie: boolean): void
   autoSave.start();
 }
 
-function draftCookieOn(): boolean {
-  const raw = typeof document === 'undefined' ? '' : (document.cookie ?? '');
-  return readDraftCookie(raw) !== undefined;
+type SiteMode = 'studio' | 'production';
+
+let reportedMissingMode = false;
+
+function siteMode(): SiteMode | undefined {
+  const getMode = (mls.sites as { getMode?: () => SiteMode | undefined } | undefined)?.getMode;
+  if (typeof getMode !== 'function') {
+    if (!reportedMissingMode) {
+      reportedMissingMode = true;
+      console.error('[studio] mls.sites.getMode is missing');
+    }
+    return undefined;
+  }
+  return getMode();
+}
+
+/** Auto-save runs only while the site is in studio and this tab has an active draft. */
+function studioDraftOn(): boolean {
+  if (siteMode() !== 'studio') return false;
+  const draft = activeDraft();
+  return typeof draft === 'string' && draft.length > 0;
 }
 
 function siteProject(): number | null {
@@ -177,7 +195,7 @@ class DraftAutoSave implements IDraftAutoSave {
   private readonly saver = createAutoSaver<mls.stor.IFileInfo>({
     debounceMs: AUTO_SAVE_MS,
     now: () => Date.now(),
-    hasDraft: () => this.listening && draftCookieOn(),
+    hasDraft: () => this.listening && studioDraftOn(),
     onError: (reason) => {
       const project = siteProject();
       publishPanel({
@@ -220,7 +238,7 @@ class DraftAutoSave implements IDraftAutoSave {
       pending: pending.length,
       error: panelState.error,
     });
-    // Files already dirty when Studio (or the cookie) comes on never fire a new event.
+    // Files already dirty when Studio (or the active draft) comes on never fire a new event.
     for (const file of pending) this.saver.notify(file);
   }
 
@@ -315,8 +333,8 @@ async function syncWatcher(state: IStudioEditHost): Promise<void> {
     syncDraftAutoSave(false, false);
     return;
   }
-  // The cookie is required for the save and irrelevant for the live update, so the two gates stay apart.
-  syncDraftAutoSave(true, draftCookieOn());
+  // The active draft is required for the save and irrelevant for the live update, so the two gates stay apart.
+  syncDraftAutoSave(true, studioDraftOn());
   if (!watcher) {
     const { StudioLiveUpdateWatcher } = await import('/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js');
     watcher = new StudioLiveUpdateWatcher();
