@@ -23,6 +23,7 @@ import {
   dropCapturedDraftText,
   holdCapturedDraftText,
   saveToDraft,
+  storeCapturedDraftText,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { resetAuraSeed, seedActiveHeader, seedAuraStateFromHost } from '/_102020_/l2/aura/studio/studioAuraSeed.js';
@@ -132,8 +133,9 @@ function pendingNow(project: number): mls.stor.IFileInfo[] {
 }
 
 /**
- * Capture each file's text, write that batch, then record the captured CRC.
+ * Capture each file's text, put that text in the local record, write the batch, then record the captured CRC.
  * A file whose model moved during the write stays pending and is handed back to schedule again.
+ * A file whose local record cannot be written is not sent and stays pending.
  */
 export async function sendAutoSaveBatch(
   batch: readonly mls.stor.IFileInfo[],
@@ -148,18 +150,39 @@ export async function sendAutoSaveBatch(
       holdCapturedDraftText(file, text);
     }
   }
+  const toSend: mls.stor.IFileInfo[] = [];
+  const heldBack: mls.stor.IFileInfo[] = [];
+  for (const file of batch) {
+    if (file.status === 'deleted') {
+      toSend.push(file);
+      continue;
+    }
+    const text = captured.get(file);
+    if (text === undefined) {
+      toSend.push(file);
+      continue;
+    }
+    if (await storeCapturedDraftText(file, text)) {
+      toSend.push(file);
+      continue;
+    }
+    dropCapturedDraftText(file);
+    heldBack.push(file);
+  }
   try {
-    // `saveToDraft` clears `inLocalStorage` before the write. A direct `setContents` would hit the local driver.
-    await saveToDraft(
-      batch,
-      autosaveMessage(batch),
-      (clean, msg) => mls.stor.setContents(clean, msg),
-      (file) => afterDraftSave(file),
-    );
+    if (toSend.length > 0) {
+      // `saveToDraft` clears `inLocalStorage` before the write. A direct `setContents` would hit the local driver.
+      await saveToDraft(
+        toSend,
+        autosaveMessage(batch),
+        (clean, msg) => mls.stor.setContents(clean, msg),
+        (file) => afterDraftSave(file),
+      );
+    }
   } finally {
     for (const file of batch) dropCapturedDraftText(file);
   }
-  for (const file of batch) {
+  for (const file of toSend) {
     if (file.status === 'deleted' || file.hasError) continue;
     const text = captured.get(file);
     if (text === undefined) {
@@ -170,6 +193,7 @@ export async function sendAutoSaveBatch(
     recordSentContent(file, text);
     if (pendingFiles([file], project).length === 1) onStillPending(file);
   }
+  for (const file of heldBack) onStillPending(file);
 }
 
 function storFileFrom(ref: {

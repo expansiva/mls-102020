@@ -559,6 +559,34 @@ export function holdCapturedDraftText(file: IPanelStorFile, text: string): void 
   capturedDraftText.set(file, text);
 }
 
+/**
+ * Write the text captured for this send into the local record.
+ * The draft driver reads that record during `setContents`. False when the write does not land.
+ */
+export async function storeCapturedDraftText(file: IPanelStorFile, text: string): Promise<boolean> {
+  if (
+    file.level === undefined
+    || file.shortName === undefined
+    || file.folder === undefined
+    || file.extension === undefined
+  ) {
+    console.error('[draftPanel] captured text but the file has no path', file.shortName);
+    return false;
+  }
+  try {
+    const stored = await mls.stor.localStor.setContent(file as mls.stor.IFileInfo, {
+      contentType: 'string',
+      content: text,
+    });
+    if (stored) return true;
+    console.error('[draftPanel] could not store the captured text', file.shortName);
+    return false;
+  } catch (err) {
+    console.error('[draftPanel] could not store the captured text', file.shortName, err);
+    return false;
+  }
+}
+
 /** Drop a capture when the send does not reach `afterDraftSave`. */
 export function dropCapturedDraftText(file: IPanelStorFile): void {
   capturedDraftText.delete(file);

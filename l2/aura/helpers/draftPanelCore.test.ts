@@ -15,6 +15,7 @@ import {
   saveDefaultDraft,
   saveToDraft,
   slugForBranch,
+  storeCapturedDraftText,
   syncWithPublished,
   viewDiff,
   type FetchImpl,
@@ -648,4 +649,46 @@ test('afterDraftSave resets the origin of a renamed file and keeps it renamed', 
   assert.deepEqual(calls, ['resetRenameOrigin:card', 'setLocal:card:null']);
   assert.equal(renamed.status, 'renamed');
   assert.equal(renamed.inLocalStorage, false);
+});
+
+test('storeCapturedDraftText writes the captured string and reports a failed write', async () => {
+  const host = globalThis as unknown as {
+    mls: { stor: { localStor?: { setContent: (file: IPanelStorFile, value: { contentType?: string; content: string | null }) => Promise<boolean> } } };
+  };
+  const previous = host.mls.stor.localStor;
+  const file: IPanelStorFile = {
+    project: 102047,
+    level: 2,
+    shortName: 'page',
+    folder: 'web',
+    extension: '.ts',
+    status: 'nochange',
+  };
+  const written: string[] = [];
+  const logged: unknown[][] = [];
+  const previousError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  host.mls.stor.localStor = {
+    setContent: async (_file, value) => {
+      assert.equal(value.contentType, 'string');
+      if (value.content !== null) written.push(value.content);
+      return true;
+    },
+  };
+  try {
+    assert.equal(await storeCapturedDraftText(file, 'published'), true);
+    assert.deepEqual(written, ['published']);
+    assert.equal(file.status, 'nochange');
+    host.mls.stor.localStor = { setContent: async () => false };
+    assert.equal(await storeCapturedDraftText(file, 'published'), false);
+    host.mls.stor.localStor = {
+      setContent: async () => { throw new Error('Object not found in IndexedDB'); },
+    };
+    assert.equal(await storeCapturedDraftText(file, 'published'), false);
+    assert.equal(logged.length, 2);
+    assert.ok(logged.every((args) => args[1] === 'page'));
+  } finally {
+    console.error = previousError;
+    host.mls.stor.localStor = previous;
+  }
 });
