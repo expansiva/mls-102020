@@ -376,10 +376,8 @@ function collectScreensFromL4Diff(
   const currentIds = new Set(current.map(item => item.id));
   const actorsOfPage = pageActors(menu, pages);
   const routesByPage = routesByPageId(endpoints);
-  const seen = new Set<string>();
   const screens: PoolEffortScreen[] = [];
   for (const page of pages) {
-    seen.add(page.id);
     const status: P2EffortStatus = !currentIds.has(page.id) || marks.toCreate.has(page.id)
       ? 'toCreate'
       : marks.toRemove.has(page.id)
@@ -393,17 +391,7 @@ function collectScreensFromL4Diff(
       endpoints: routesByPage.get(page.id) || [],
     });
   }
-  for (const item of current) {
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
-    screens.push({
-      pageId: item.id,
-      label: item.label,
-      actors: [...item.actors],
-      status: 'toRemove',
-      endpoints: routesByPage.get(item.id) || [],
-    });
-  }
+  // page removal is not implemented in maintenance; restore with it
   return screens;
 }
 

@@ -439,7 +439,7 @@ void test('candidate: screen marks follow master 102020 when mls.actualProject i
   }
 });
 
-void test('candidate: abend reason is unattributed and a removed page is toRemove', () => {
+void test('candidate: abend reason is unattributed and a page only in navigation is absent', () => {
   const canonical = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as PoolMenuFile;
   const page = (id: string) => ({ id, kind: 'page' as const, label: id, organisms: [{ kind: 'list', text: id }], action: 'keep' as const });
   canonical.tree = [page('fica'), page('sai')];
@@ -461,12 +461,12 @@ void test('candidate: abend reason is unattributed and a removed page is toRemov
       changeEffort: effort,
     }),
   });
-  assert.equal(file.screens.find(screen => screen.pageId === 'sai')?.status, 'toRemove');
+  assert.equal(file.screens.find(screen => screen.pageId === 'sai'), undefined);
   assert.equal(file.screens.find(screen => screen.pageId === 'fica')?.status, 'done');
   assert.deepEqual(file.unattributed, [{ changeId: item.changeId, kind: 'rule', op: 'changed', reason: 'master stopped' }]);
 });
 
-void test('candidate: new page is toCreate, canonical page missing from candidate is toRemove', () => {
+void test('candidate: new page is toCreate and a page only in navigation is absent', () => {
   const canonical = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as PoolMenuFile;
   const candidateMenu: PoolMenuFile = {
     ...canonical,
@@ -507,7 +507,7 @@ void test('candidate: new page is toCreate, canonical page missing from candidat
   assert.equal(byId.created_page, 'done');
   assert.equal(byId.changed_page, 'toRemove');
   assert.equal(byId.brand_new, 'toCreate');
-  assert.equal(byId.kept_page, 'toRemove');
+  assert.equal(byId.kept_page, undefined);
   assert.equal(byId.removed_page, undefined);
 });
 

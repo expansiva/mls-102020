@@ -403,8 +403,7 @@ void test('candidate effort attributes declared rules and warns on orphans', asy
     const plans = written.screens.find(screen => screen.pageId === 'planos');
     assert.equal(payments?.status, 'toUpdate');
     assert.equal(plans?.status, 'done');
-    assert.equal(written.screens.find(screen => screen.pageId === 'l3_only')?.status, 'toRemove');
-    assert.equal(written.screens.find(screen => screen.pageId === 'l3_only')?.label, 'Edited by l3');
+    assert.equal(written.screens.find(screen => screen.pageId === 'l3_only'), undefined);
     assert.equal(written.screens.some(screen => screen.pageId === 'only_in_menu_json'), false);
     assert.equal(host.files[keyOf({
       project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
