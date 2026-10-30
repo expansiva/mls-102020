@@ -3,7 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { getAuraEdit, getAuraState, type IAuraEditSelection } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 import { pageDsCheckByDefs, restampPage, layoutHasRules, type PageDsCheck } from '/_102020_/l2/aura/helpers/dsMatch/dsVersion.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
@@ -12,7 +12,7 @@ import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
-import { getState, setState } from '/_102029_/l2/collabState.js';
+import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { readGenomeUxBaseChoice } from '/_102020_/l2/aura/agentGenomeUx/genomeUxIo.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
@@ -51,6 +51,25 @@ const message_en = {
     missingVariation: 'This page has not been generated for the current layout / design system yet.',
     generatePage: 'Generate page',
     notGenerated: 'Not generated',
+    editPage: 'Change this page',
+    editPlaceholder: 'Describe the change (e.g. center the buttons of the list)…',
+    editReview: 'Review',
+    editPlanning: 'Analyzing…',
+    editPlanTitle: 'Confirm the change',
+    editPlanApply: 'Apply',
+    editPlanCancel: 'Cancel',
+    editApplying: 'Applying…',
+    editWhatChanged: 'What changed',
+    editPageShell: 'page',
+    editRevert: 'undo',
+    editRecorded: 'Recorded: "Regenerate page" redoes this change. Save to keep it in the project.',
+    editNotRecorded: 'Not recorded in this project: "Regenerate page" undoes this change. Save to keep it in the project.',
+    editLiveNotApplied: 'The screen was not refreshed ({reason}): reload to see the change.',
+    editNoAnswer: 'The agent ended without an answer (the task failed). Open the task to see why.',
+    editElement: 'Element',
+    editElementIn: 'in',
+    editElementRemove: 'Do not send this element',
+    editElementElsewhere: 'The selected element is not on this page and device: it will not be sent.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -88,6 +107,25 @@ const messages: Record<string, MessageType> = {
         missingVariation: 'Esta página ainda não foi gerada para o layout / design system atual.',
         generatePage: 'Gerar página',
         notGenerated: 'Não gerada',
+        editPage: 'Alterar esta página',
+        editPlaceholder: 'Descreva a mudança (ex.: centralize os botões da lista)…',
+        editReview: 'Revisar',
+        editPlanning: 'Analisando…',
+        editPlanTitle: 'Confirme a mudança',
+        editPlanApply: 'Aplicar',
+        editPlanCancel: 'Cancelar',
+        editApplying: 'Aplicando…',
+        editWhatChanged: 'O que mudou',
+        editPageShell: 'página',
+        editRevert: 'desfazer',
+        editRecorded: 'Registrado: o "Refazer página" refaz esta mudança. Salve para gravar no projeto.',
+        editNotRecorded: 'Não registrado neste projeto: o "Refazer página" desfaz esta mudança. Salve para gravar no projeto.',
+        editLiveNotApplied: 'A tela não foi atualizada ({reason}): recarregue para ver a mudança.',
+        editNoAnswer: 'O agente terminou sem resposta (a task falhou). Abra a task para ver o motivo.',
+        editElement: 'Elemento',
+        editElementIn: 'em',
+        editElementRemove: 'Não enviar este elemento',
+        editElementElsewhere: 'O elemento selecionado não é desta página e device: não será enviado.',
     },
     es: {
         title: 'Páginas',
@@ -122,6 +160,25 @@ const messages: Record<string, MessageType> = {
         missingVariation: 'Esta página aún no fue generada para el layout / design system actual.',
         generatePage: 'Generar página',
         notGenerated: 'No generada',
+        editPage: 'Cambiar esta página',
+        editPlaceholder: 'Describa el cambio (p. ej. centre los botones de la lista)…',
+        editReview: 'Revisar',
+        editPlanning: 'Analizando…',
+        editPlanTitle: 'Confirme el cambio',
+        editPlanApply: 'Aplicar',
+        editPlanCancel: 'Cancelar',
+        editApplying: 'Aplicando…',
+        editWhatChanged: 'Qué cambió',
+        editPageShell: 'página',
+        editRevert: 'deshacer',
+        editRecorded: 'Registrado: "Regenerar página" rehace este cambio. Guarde para conservarlo en el proyecto.',
+        editNotRecorded: 'No registrado en este proyecto: "Regenerar página" deshace este cambio. Guarde para conservarlo en el proyecto.',
+        editLiveNotApplied: 'La pantalla no se actualizó ({reason}): recargue para ver el cambio.',
+        editNoAnswer: 'El agente terminó sin respuesta (la tarea falló). Abra la tarea para ver el motivo.',
+        editElement: 'Elemento',
+        editElementIn: 'en',
+        editElementRemove: 'No enviar este elemento',
+        editElementElsewhere: 'El elemento seleccionado no es de esta página y dispositivo: no se enviará.',
     },
 };
 /// **collab_i18n_end**
@@ -139,6 +196,35 @@ interface IPageEntry {
     file: mls.stor.IFileInfo;
     // false = listed from the source (page11) but not generated for the current layout/DS variation.
     exists: boolean;
+}
+
+// One operation of an agentEditPage plan, as its gate returns it in `PLAN:<json>` (the agent's own type is private to
+// its folder; this panel only shows the operations and sends them back verbatim to apply).
+interface IEditOperation {
+    id: string;
+    organism: string | null;
+    aspect: string;
+    change: string;
+    summary: string;
+    revert: boolean;
+}
+
+// The selected element sent with the request (agentEditPage `element`): what locates it, from `aura.edit.selection`.
+interface IEditElement {
+    tag: string;
+    organism: string | null;
+    organismPath: string;
+    anchorPath: unknown[] | null;
+    literal: string;
+}
+
+// What an agentEditPage apply reports in `NOTES:<json>`.
+interface IEditNotes {
+    notes: string;
+    history: 'written' | 'unchanged' | 'disabled' | 'unavailable';
+    /** null = the running app shows the change; else why it does not (reload to see it). */
+    live?: string | null;
+    warnings: string[];
 }
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -174,6 +260,20 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _checkByName: Record<string, PageDsCheck> = {};
     // page currently being re-stamped (disables its button).
     @state() private _busyPage: string | null = null;
+    // agentEditPage, per page name: the request being written, the plan awaiting confirmation, the phase in flight,
+    // the last error and the last result.
+    @state() private _editDraft: Record<string, string> = {};
+    @state() private _editDevice: Record<string, string> = {};
+    @state() private _editPlan: Record<string, { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null }> = {};
+    @state() private _editBusy: Record<string, 'plan' | 'apply'> = {};
+    @state() private _editError: Record<string, string> = {};
+    @state() private _editNotes: Record<string, IEditNotes> = {};
+    // The element selected in the Studio (TASK-102020-agent-edit-page-selection). `_selectionOff` = the person removed
+    // the chip; `_selectionUsed` = the selection an applied change consumed (the remount made it stale). A NEW
+    // selection clears both.
+    @state() private _selection: IAuraEditSelection | null = null;
+    @state() private _selectionOff: Record<string, boolean> = {};
+    private _selectionUsed: IAuraEditSelection | null = null;
 
     private _threadCache = new Map<string, Promise<any>>();
     private _taskInfoByName = new Map<string, { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }>();
@@ -182,12 +282,21 @@ export class PluginSelectPage extends StateLitElement {
     connectedCallback() {
         super.connectedCallback();
         this._unsubTasks = subscribeTaskManager(() => this.requestUpdate());
+        this._selection = getAuraEdit()?.selection ?? null;
+        subscribe('aura.edit.selection', this);
         this._loadPages();
     }
 
     disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubTasks?.();
+        unsubscribe('aura.edit.selection', this);
+    }
+
+    handleIcaStateChange(key: string, value: unknown) {
+        if (key !== 'aura.edit.selection') return;
+        this._selection = (value ?? getAuraEdit()?.selection ?? null) as IAuraEditSelection | null;
+        this._selectionOff = {};
     }
 
     willUpdate(changed: Map<string, unknown>) {
@@ -497,8 +606,237 @@ export class PluginSelectPage extends StateLitElement {
                 </div>
             </div>
             ${page.exists ? this._renderDsVersionPanel(page) : this._renderMissingPanel(page)}
+            ${page.exists ? this._renderEditPanel(page) : nothing}
             ${page.exists ? this._renderClassPicker() : nothing}
         `;
+    }
+
+    // ─── Change this page (agentEditPage, TASK-102020-agent-edit-page) ──
+
+    // `<module>/web/<device>/<genome>` of the page on screen; null when the folder is not a generated page folder.
+    private _editTarget(page: IPageEntry): { device: string; genome: string } | null {
+        const match = /\/web\/(desktop|mobile)\/(page\d\d)$/.exec(page.file?.folder ?? '');
+        if (!match) return null;
+        return { device: this._editDevice[page.name] ?? match[1], genome: match[2] };
+    }
+
+    /**
+     * The Studio selection as an agentEditPage `element`, valid only on THIS page and THIS device: its file must be
+     * exactly the page `.ts` of `<module>/web/<device>/<genome>`. `element` null with a `reason` = there is a
+     * selection but it does not count here; both null = nothing selected (or removed by the person, or consumed).
+     */
+    private _selectedElement(page: IPageEntry): { element: IEditElement | null; reason: string | null } {
+        const selection = this._selection;
+        if (!selection || selection === this._selectionUsed || this._selectionOff[page.name]) return { element: null, reason: null };
+        const target = this._editTarget(page);
+        const folder = page.file?.folder ?? '';
+        const base = folder.slice(0, folder.lastIndexOf('/web/'));
+        if (!target || !base) return { element: null, reason: null };
+        const file = selection.file;
+        const samePage = file && file.project === page.file.project && file.shortName === page.file.shortName
+            && file.folder === `${base}/web/${target.device}/${target.genome}`;
+        if (!samePage) return { element: null, reason: this.msg.editElementElsewhere };
+        return {
+            element: {
+                tag: selection.tag,
+                organism: selection.organism ?? null,
+                organismPath: selection.organismPath ?? '',
+                anchorPath: Array.isArray(selection.anchorPath) ? selection.anchorPath as unknown[] : null,
+                literal: selection.literal ?? '',
+            },
+            reason: null,
+        };
+    }
+
+    private _renderElementChip(page: IPageEntry, busy: boolean) {
+        const { element, reason } = this._selectedElement(page);
+        if (reason) return html`<span class="text-[10px] text-gray-400 dark:text-gray-500">${reason}</span>`;
+        if (!element) return nothing;
+        return html`
+            <div class="flex items-center gap-1.5 self-start max-w-full rounded-full border border-indigo-200 dark:border-indigo-800/50 bg-indigo-50 dark:bg-indigo-900/20 pl-2 pr-1 py-0.5 text-[11px] text-indigo-700 dark:text-indigo-300">
+                <span class="shrink-0">${this.msg.editElement}:</span>
+                <span class="font-mono truncate">${element.tag}</span>
+                ${element.organism ? html`<span class="shrink-0 text-indigo-400 dark:text-indigo-500">${this.msg.editElementIn} ${element.organism}</span>` : nothing}
+                <button class="shrink-0 px-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-800/40 cursor-pointer disabled:cursor-not-allowed"
+                    title=${this.msg.editElementRemove}
+                    aria-label=${this.msg.editElementRemove}
+                    ?disabled=${busy}
+                    @click=${() => { this._selectionOff = { ...this._selectionOff, [page.name]: true }; }}>✕</button>
+            </div>
+        `;
+    }
+
+    private _renderEditPanel(page: IPageEntry) {
+        const target = this._editTarget(page);
+        if (!target) return nothing;
+        const plan = this._editPlan[page.name];
+        if (plan) return this._renderEditConfirm(page, plan);
+        const busy = this._editBusy[page.name];
+        const error = this._editError[page.name];
+        const done = this._editNotes[page.name];
+        const devices = page.devices.map(d => d.replace(/^web\//, '')).filter(d => d === 'desktop' || d === 'mobile');
+        const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
+                    ${devices.length > 1 ? html`
+                        <select class="ml-auto text-[10px] px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300"
+                            .value=${target.device}
+                            ?disabled=${!!busy}
+                            @change=${(e: Event) => { this._editDevice = { ...this._editDevice, [page.name]: (e.target as HTMLSelectElement).value }; }}>
+                            ${devices.map(d => html`<option value=${d} ?selected=${d === target.device}>${DEVICE_LABELS[`web/${d}`] ?? d}</option>`)}
+                        </select>
+                    ` : nothing}
+                </div>
+                ${this._renderElementChip(page, !!busy)}
+                <textarea
+                    rows="2"
+                    class="${inputCls} resize-y"
+                    placeholder=${this.msg.editPlaceholder}
+                    ?disabled=${!!busy}
+                    .value=${this._editDraft[page.name] ?? ''}
+                    @input=${(e: Event) => { this._editDraft = { ...this._editDraft, [page.name]: (e.target as HTMLTextAreaElement).value }; }}
+                ></textarea>
+                <button
+                    class="self-start text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${!!busy || !(this._editDraft[page.name] ?? '').trim()}
+                    @click=${() => this._onPlanEdit(page)}
+                >${busy === 'plan' ? this.msg.editPlanning : busy === 'apply' ? this.msg.editApplying : this.msg.editReview}</button>
+                ${done ? html`
+                    <div class="text-xs text-emerald-700 dark:text-emerald-300 rounded bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1.5 flex flex-col gap-1">
+                        <span><span class="font-semibold">${this.msg.editWhatChanged}:</span> ${done.notes}</span>
+                        <span class="text-[10px] text-gray-500 dark:text-gray-400">${done.history === 'written' || done.history === 'unchanged' ? this.msg.editRecorded : this.msg.editNotRecorded}</span>
+                        ${done.live ? html`<span class="text-[10px] text-amber-600 dark:text-amber-400">${this.msg.editLiveNotApplied.replace('{reason}', done.live)}</span>` : nothing}
+                    </div>
+                ` : nothing}
+                ${error ? html`
+                    <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${error}</div>
+                ` : nothing}
+                ${this._taskInfoByName.get(`edit:${page.name}`)?.task ? html`
+                    <button class="self-end text-xs text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                        @click=${() => this._openTask(`edit:${page.name}`)}>${this.msg.followTask}</button>
+                ` : nothing}
+            </div>
+        `;
+    }
+
+    // The gate's plan, shown for confirmation before anything is written.
+    private _renderEditConfirm(page: IPageEntry, plan: { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null }) {
+        const busy = this._editBusy[page.name];
+        return html`
+            <div class="rounded-lg border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">${this.msg.editPlanTitle}</span>
+                <span class="text-[11px] italic text-gray-500 dark:text-gray-400">“${plan.request}”</span>
+                ${plan.element ? html`
+                    <span class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.editElement}: <span class="font-mono">${plan.element.tag}</span>${plan.element.organism ? ` ${this.msg.editElementIn} ${plan.element.organism}` : ''}</span>
+                ` : nothing}
+                <div class="flex flex-col gap-1">
+                    ${plan.operations.map(op => html`
+                        <div class="flex items-baseline gap-1.5 text-xs text-gray-700 dark:text-gray-200">
+                            <span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 shrink-0">${op.organism ?? this.msg.editPageShell}</span>
+                            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">${op.aspect}</span>
+                            ${op.revert ? html`<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">${this.msg.editRevert}</span>` : nothing}
+                            <span class="leading-snug">${op.summary}</span>
+                        </div>
+                    `)}
+                </div>
+                <div class="flex items-center gap-2">
+                    <button
+                        class="text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        ?disabled=${!!busy}
+                        @click=${() => this._onApplyPlan(page)}
+                    >${busy === 'apply' ? this.msg.editApplying : this.msg.editPlanApply}</button>
+                    <button
+                        class="text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        ?disabled=${!!busy}
+                        @click=${() => this._onCancelPlan(page)}
+                    >${this.msg.editPlanCancel}</button>
+                    ${this._taskInfoByName.get(`edit:${page.name}`)?.task ? html`
+                        <button class="ml-auto text-xs text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                            @click=${() => this._openTask(`edit:${page.name}`)}>${this.msg.followTask}</button>
+                    ` : nothing}
+                </div>
+                ${this._editError[page.name] ? html`
+                    <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${this._editError[page.name]}</div>
+                ` : nothing}
+            </div>
+        `;
+    }
+
+    private _editEntry(page: IPageEntry, request: string, device: string, element: IEditElement | null, operations?: IEditOperation[]): string | null {
+        const target = this._editTarget(page);
+        const module = this._moduleName ?? this._modulePath;
+        if (!target || !module) return null;
+        return JSON.stringify({
+            module, page: page.file?.shortName ?? page.name, device, genome: target.genome, request,
+            ...(element ? { element } : {}), ...(operations ? { operations } : {}),
+        });
+    }
+
+    // Per-page edit state is replaced, never mutated, so @state sees the change.
+    private _setEdit(field: '_editBusy' | '_editError' | '_editNotes' | '_editPlan', name: string, value: unknown) {
+        const next: Record<string, unknown> = { ...this[field] };
+        if (value === undefined) delete next[name];
+        else next[name] = value;
+        (this as unknown as Record<string, unknown>)[field] = next;
+    }
+
+    // Phase PLAN: only the gate runs; the operations come back for confirmation and nothing is written.
+    private async _onPlanEdit(page: IPageEntry) {
+        const request = (this._editDraft[page.name] ?? '').trim();
+        const device = this._editTarget(page)?.device;
+        if (!request || !device || this._editBusy[page.name]) return;
+        const { element } = this._selectedElement(page);
+        const entry = this._editEntry(page, request, device, element);
+        if (!entry) return;
+        this._setEdit('_editError', page.name, undefined);
+        this._setEdit('_editNotes', page.name, undefined);
+        this._setEdit('_editBusy', page.name, 'plan');
+        try {
+            const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set(`edit:${page.name}`, data); this.requestUpdate(); });
+            if (result.failure) this._setEdit('_editError', page.name, result.failure);
+            else if (result.plan?.length) this._setEdit('_editPlan', page.name, { request, device, operations: result.plan, element });
+            // A task the system failed (an LLM call that never came back right) emits nothing of ours: say so.
+            else this._setEdit('_editError', page.name, this.msg.editNoAnswer);
+        } catch (e: any) {
+            this._setEdit('_editError', page.name, e?.message ?? String(e));
+        } finally {
+            this._setEdit('_editBusy', page.name, undefined);
+        }
+    }
+
+    // Phase APPLY: the approved operations go back verbatim; the agent patches the .ts and records the history.
+    private async _onApplyPlan(page: IPageEntry) {
+        const plan = this._editPlan[page.name];
+        if (!plan || this._editBusy[page.name]) return;
+        // The element the plan was made with goes back with it, even if the selection moved since.
+        const entry = this._editEntry(page, plan.request, plan.device, plan.element, plan.operations);
+        if (!entry) return;
+        this._setEdit('_editError', page.name, undefined);
+        this._setEdit('_editBusy', page.name, 'apply');
+        try {
+            const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set(`edit:${page.name}`, data); this.requestUpdate(); });
+            if (result.failure) this._setEdit('_editError', page.name, result.failure);
+            // No notes = the apply never finished (the plan stays, to try again).
+            else if (!result.notes) this._setEdit('_editError', page.name, this.msg.editNoAnswer);
+            else {
+                this._setEdit('_editPlan', page.name, undefined);
+                this._editDraft = { ...this._editDraft, [page.name]: '' };
+                if (result.notes) this._setEdit('_editNotes', page.name, result.notes);
+                // The remount rebuilt the page: the selection that was sent points at nodes that are gone.
+                if (plan.element) this._selectionUsed = this._selection;
+            }
+        } catch (e: any) {
+            this._setEdit('_editError', page.name, e?.message ?? String(e));
+        } finally {
+            this._setEdit('_editBusy', page.name, undefined);
+        }
+    }
+
+    // Cancel: back to the request, kept so it can be refined.
+    private _onCancelPlan(page: IPageEntry) {
+        this._setEdit('_editPlan', page.name, undefined);
     }
 
     // The class picker DOCKED here (pageClassPickerPanel) — a second take on the floating one, kept
@@ -675,7 +1013,7 @@ export class PluginSelectPage extends StateLitElement {
         agentName: string,
         prompt: string,
         onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
-    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string }> {
+    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string; plan?: IEditOperation[]; notes?: IEditNotes }> {
         // Thread host: selectPage lives in serviceGenome since the knob move (D4).
         const fullName = '_102020_/l2/serviceGenome';
         let threadPromise = this._threadCache.get(fullName);
@@ -703,6 +1041,10 @@ export class PluginSelectPage extends StateLitElement {
         // last step failure (mkFail → update-status 'failed' + traceMsg) or a stream error, so callers
         // can surface it instead of silently swallowing it.
         let failure: string | undefined;
+        // agentEditPage answers through completed steps: `PLAN:<operations json>` (plan phase) and
+        // `NOTES:<json>` (apply phase).
+        let plan: IEditOperation[] | undefined;
+        let notes: IEditNotes | undefined;
         for await (const event of executeBeforePromptStream(moduleAgent, context)) {
             if (event.type === 'task-created') {
                 taskId = event.taskId; task = event.task; message = event.message;
@@ -712,12 +1054,18 @@ export class PluginSelectPage extends StateLitElement {
                     const i = intent as any;
                     if (i?.type !== 'update-status') continue;
                     if (i.status === 'failed' && i.traceMsg) failure = String(i.traceMsg);
+                    else if (i.status === 'completed' && typeof i.traceMsg === 'string') {
+                        try {
+                            if (i.traceMsg.startsWith('PLAN:')) plan = JSON.parse(i.traceMsg.slice(5));
+                            else if (i.traceMsg.startsWith('NOTES:')) notes = JSON.parse(i.traceMsg.slice(6));
+                        } catch { /* not ours */ }
+                    }
                 }
             } else if (event.type === 'error') {
                 failure = String(event.error);
             }
         }
-        return { taskId, task, message, failure };
+        return { taskId, task, message, failure, plan, notes };
     }
 
     private async _openTask(pageName: string) {

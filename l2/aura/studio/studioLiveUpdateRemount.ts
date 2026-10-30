@@ -82,8 +82,16 @@ async function freshModuleUrl(target: IStudioEditTarget): Promise<IFreshModuleUr
 
   const { project, folder, shortName } = target.storFile;
   const url = await mls.stor.cache.getURL(project, folder, shortName, '.js', results.cacheVersion);
-  if (!url) return { url: null, reason: t('live.notInCache') };
-  return { url, reason: '' };
+  if (url) return { url, reason: '' };
+  // In studio mode with a draft the service worker stores the JS under the draft (`inicio.js~team-102047?v=…`, seen
+  // 29/10/2026 in the compile trace), and the plain `getURL` above does not find it: every remount answered "not in
+  // the local cache" (the class picker hid it, its edit is already in the DOM). `addIfNeed` returns the URL the worker
+  // actually serves for this version, draft included; for a version already stored it only answers where it is.
+  if (results.prodJS && typeof mls.stor.cache.addIfNeed === 'function') {
+    const served = await mls.stor.cache.addIfNeed({ project, folder, shortName, version: results.cacheVersion, content: results.prodJS, extension: '.js' });
+    if (served) return { url: served, reason: '' };
+  }
+  return { url: null, reason: t('live.notInCache') };
 }
 
 /**

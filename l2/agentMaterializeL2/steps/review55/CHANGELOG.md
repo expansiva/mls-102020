@@ -5,3 +5,4 @@
   - Severities are blocker, major and minor.
   - A failed answer settles the unit without being reused.
 - 2026-10-22: **reuse compares DATA only; agent changes regenerate nothing until `--force`.** The receipt gets `dataHash` (the reviewed page, its page11 unit, the shared declaration); `contextHash` is recorded, never compared. An older receipt is adopted.
+- 2026-10-29: **user edits are on purpose.** The prompt names the "User edits to keep" section, including the `request` entries of agentEditPage, and says never to report one as a deviation.

@@ -1,0 +1,21 @@
+{
+  "flowId": "agentEditPage",
+  "schemaVersion": "2026-10-29",
+  "description": "A change asked in words on ONE generated page (agentMaterializeL2 pages50), applied as a patch of its .ts and recorded in the history of its .defs.ts so a regeneration redoes it. Presentation only: anything the shared does not already offer is refused. Documentation only: agents are found by convention (agent*.ts with createAgent).",
+  "entry": "{ module, page, device?: 'desktop'|'mobile', genome?: 'page11', request, operations? } (JSON, from aura/plugins/selectPage)",
+  "phases": {
+    "plan": "no operations: the gate step runs; refused = failed step with the reason; approved = completed step with traceMsg PLAN:<operations json>. Nothing is written.",
+    "apply": "operations approved by the person: the patch step runs directly (the gate does not run twice)."
+  },
+  "steps": [
+    { "planId": "(root, stepId 1)", "agentName": "agentEditPage", "goal": "deterministic bootstrap (skipRootLLM); adds the gate or the patch step" },
+    { "planId": "editPage-gate-<page>", "agentName": "agentEditPageGate", "modelType": "reasoning", "tool": "submitEditPlan", "goal": "verdict apply|refuse + operations { organism|null, aspect, change (English), summary (person's language), revert }" },
+    { "planId": "editPage-patch-<page>-<attempt>", "agentName": "agentEditPagePatch", "modelType": "code", "tool": "submitPagePatch", "goal": "complete methods + new catalogue keys; guards and splice (editPageCore); write model + local copy; compile; attempt 2 = one repair; failure puts the .ts back. Success: history + trace, traceMsg NOTES:{notes, history, warnings}" }
+  ],
+  "writes": {
+    "page": "_<project>_/l2/<module>/web/<device>/<genome>/<page>.ts — model + local copy, like a Studio edit (saved by the person)",
+    "history": "the same folder's <page>.defs.ts, export history: one kind 'request' entry per operation, key organism + aspect (target), last one wins; a revert removes it. Only in the projects of DEFS_HISTORY_PROJECTS (aura/studio/studioDefsHistory.ts)",
+    "trace": "_<project>_/l2/<module>/pipeline/agentEditPage/<page><Device>[<Genome>]<stamp>.json — request, operations, touched methods, new keys, notes, history result, the file before and after"
+  },
+  "reads": ["the page .ts (model)", "the page .defs.ts (definition + history)", "web/shared/<page>Dts.txt", "l2/designSystem.ts (color token names)"]
+}

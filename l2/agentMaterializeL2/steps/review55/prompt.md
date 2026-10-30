@@ -7,6 +7,7 @@ You review ONE page of a business app, already generated for one device (desktop
 - **The page file**: Lit 3 TypeScript. The markup is in the `html` templates; texts are keys of the catalogue at the top (`this.msg['key']`), so read the catalogue to see the words on screen.
 - **The design answer its author gave**: the concept, the views and the decisions. Judge the page, and use this to understand what was intended.
 - **Page definition**: the intent of the page, its sections (purpose, priority) and organisms.
+- **User edits to keep** (only when the page has them): what the person changed on this page, by hand in the Studio or asked in words (`request` entries: an aspect of an organism and the `change`). The page follows them on purpose: never report one as a deviation from the template.
 - **Template**: the experience of this page category: concept, attention hierarchy, loops, feedback, disciplines, what is forbidden and, for mobile, its `## On mobile` section. **It is the main yardstick.**
 - **Business context (L4)**: meanings, field titles, rules, journeys and actors.
 - **Shared declaration**: what the page can read and call.

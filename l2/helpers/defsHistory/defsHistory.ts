@@ -15,8 +15,20 @@
 //
 // One entry per target, last one wins: `from` keeps the ORIGINAL value, so A→B then B→C is one entry A→C, and an
 // edit back to the original removes the entry. An append-only log is what sank `pageAdjustments` (23/07/2026).
+//
+// `request` (TASK-102020-agent-edit-page, 29/10/2026) is a change asked in natural language and applied by
+// agentEditPage: it has no element value, so it is keyed by organism + aspect (`target`) and removed explicitly
+// (`removeDefsHistory`), never by landing back on a `from`.
 
-export type DefsHistoryEntry = DefsHistoryMolecule | DefsHistoryClass | DefsHistoryText | DefsHistoryProp;
+export type DefsHistoryEntry = DefsHistoryMolecule | DefsHistoryClass | DefsHistoryText | DefsHistoryProp | DefsHistoryRequest;
+
+/** The closed vocabulary of a `request` target: the aspect of the organism the change is about. */
+export const DEFS_HISTORY_ASPECTS = [
+  'layout.align', 'layout.order', 'layout.density', 'layout.grouping', 'layout.size',
+  'style.emphasis', 'style.color', 'style.border', 'style.shadow',
+  'text', 'visibility', 'presentation',
+] as const;
+export type DefsHistoryAspect = typeof DEFS_HISTORY_ASPECTS[number];
 
 interface DefsHistoryPlace {
   /** `data-organism-id` of the closest organism above the element; null outside every organism. */
@@ -56,6 +68,15 @@ export interface DefsHistoryProp extends DefsHistoryPlace {
   /** The attribute value; `""` = a bare boolean attribute; null = absent, the molecule's default. */
   from: string | null;
   to: string | null;
+}
+/** A change asked in natural language and applied by agentEditPage to the page `.ts` (no element value). */
+export interface DefsHistoryRequest extends DefsHistoryPlace {
+  kind: 'request';
+  target: DefsHistoryAspect;
+  /** The instruction for the generator, in English, self-contained (it does not depend on the old markup). */
+  change: string;
+  /** The person's own words, kept for display and audit. */
+  request: string;
 }
 
 const HISTORY_BLOCK = /\r?\nexport const history = ([\s\S]*) as const;\r?\n?$/u;
@@ -108,11 +129,22 @@ export function defsHistoryKey(entry: DefsHistoryEntry): string {
 export function recordDefsHistory(entries: readonly DefsHistoryEntry[], edit: DefsHistoryEntry): DefsHistoryEntry[] {
   const key = defsHistoryKey(edit);
   const index = entries.findIndex(entry => defsHistoryKey(entry) === key);
-  const merged = index < 0 ? edit : { ...edit, from: entries[index].from } as DefsHistoryEntry;
   const out = [...entries];
   if (index >= 0) out.splice(index, 1);
-  if (merged.to !== merged.from) out.push(merged);
+  // A request has no value to land back on: it always replaces, and only removeDefsHistory takes it out.
+  if (edit.kind === 'request') {
+    out.push(edit);
+    return out;
+  }
+  const previous = index < 0 ? null : entries[index];
+  const merged = previous && previous.kind !== 'request' ? { ...edit, from: previous.from } as DefsHistoryEntry : edit;
+  if (merged.kind !== 'request' && merged.to !== merged.from) out.push(merged);
   return out;
+}
+
+/** Takes the entry of `key` out (a request asked to be undone: "back to how it was"). Returns a new list. */
+export function removeDefsHistory(entries: readonly DefsHistoryEntry[], key: string): DefsHistoryEntry[] {
+  return entries.filter(entry => defsHistoryKey(entry) !== key);
 }
 
 /** Where the entry of `key` sits in the list, -1 when there is none — what an undo puts it back at. */
@@ -145,6 +177,7 @@ export function buildDefsHistory(value: unknown): DefsHistoryEntry[] {
     const code = `DEFS_HISTORY_ENTRY: ${index}`;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(code);
     const row = raw as Record<string, unknown>;
+    if (row.kind === 'request') return buildRequestEntry(row, code);
     const common = ['kind', 'organism', 'target', 'from', 'to', 'at'];
     const extra = row.kind === 'molecule' ? ['scope'] : row.kind === 'class' || row.kind === 'prop' ? ['attribute'] : row.kind === 'text' ? ['attribute', 'lang'] : null;
     if (!extra) throw new Error(`${code}: kind`);
@@ -174,6 +207,19 @@ export function buildDefsHistory(value: unknown): DefsHistoryEntry[] {
     if (row.lang !== null && !nonEmpty(row.lang)) throw new Error(`${code}: lang`);
     return { kind: 'text', ...base, attribute: row.attribute as string | null, lang: row.lang as string | null };
   });
+}
+
+function buildRequestEntry(row: Record<string, unknown>, code: string): DefsHistoryRequest {
+  const allowed = ['kind', 'organism', 'target', 'change', 'request', 'at'];
+  for (const key of Object.keys(row)) if (!allowed.includes(key)) throw new Error(`${code}: forbidden field ${key}`);
+  for (const key of allowed) if (!(key in row)) throw new Error(`${code}: missing field ${key}`);
+  if (row.organism !== null && !nonEmpty(row.organism)) throw new Error(`${code}: organism`);
+  if (!(DEFS_HISTORY_ASPECTS as readonly unknown[]).includes(row.target)) throw new Error(`${code}: target`);
+  if (!nonEmpty(row.change) || !nonEmpty(row.request) || !nonEmpty(row.at)) throw new Error(`${code}: value`);
+  return {
+    kind: 'request', organism: row.organism as string | null, target: row.target as DefsHistoryAspect,
+    at: row.at as string, change: row.change as string, request: row.request as string,
+  };
 }
 
 function nonEmpty(value: unknown): value is string {

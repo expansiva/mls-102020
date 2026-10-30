@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  defsHistoryKey, findDefsHistory, indexOfDefsHistory, recordDefsHistory, restoreDefsHistory, splitDefsHistory, withDefsHistory,
+  defsHistoryKey, findDefsHistory, indexOfDefsHistory, recordDefsHistory, removeDefsHistory, restoreDefsHistory, splitDefsHistory, withDefsHistory,
   type DefsHistoryEntry,
 } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
@@ -116,4 +116,36 @@ test('restore puts a target back to exactly what it was', () => {
   assert.deepEqual(restoreDefsHistory(second, key, before), first);
   assert.deepEqual(restoreDefsHistory(first, key, null), []);
   assert.deepEqual(restoreDefsHistory([], key, second[0]), second);
+});
+
+const ask = (target: string, change: string, organism: string | null = 'listaTarefas'): DefsHistoryEntry => ({
+  kind: 'request', organism, target, at: '2026-10-29T10:00:00Z', change, request: 'pedido do usuário',
+} as DefsHistoryEntry);
+
+test('a request entry round-trips and its grammar is exact', () => {
+  const entries = [cls('px-3', 'px-4'), ask('layout.align', 'Center the buttons.')];
+  const written = withDefsHistory(DEFS, entries);
+  assert.deepEqual(splitDefsHistory(written), { base: DEFS, history: entries });
+  const read = (row: Record<string, unknown>) => () => splitDefsHistory(`${DEFS}\nexport const history = ${JSON.stringify([row])} as const;\n`);
+  const good = { kind: 'request', organism: 'x', target: 'text', at: 'a', change: 'c', request: 'r' };
+  assert.doesNotThrow(read(good));
+  assert.throws(read({ ...good, target: 'layout.magic' }), /target/u);
+  assert.throws(read({ ...good, from: 'a' }), /forbidden field from/u);
+  assert.throws(read({ ...good, change: ' ' }), /value/u);
+  assert.throws(read({ kind: 'request', organism: 'x', target: 'text', at: 'a', change: 'c' }), /missing field request/u);
+});
+
+test('a request on the same organism and aspect replaces the earlier one and moves to the end', () => {
+  let entries = recordDefsHistory([], ask('layout.align', 'Center the buttons.'));
+  entries = recordDefsHistory(entries, cls('px-3', 'px-4'));
+  entries = recordDefsHistory(entries, ask('layout.align', 'Align the buttons to the left.'));
+  assert.deepEqual(entries, [cls('px-3', 'px-4'), ask('layout.align', 'Align the buttons to the left.')]);
+  entries = recordDefsHistory(entries, ask('style.color', 'Make the title use the accent color.'));
+  entries = recordDefsHistory(entries, ask('layout.align', 'Center the buttons.', null));
+  assert.equal(entries.length, 4, 'another aspect, and the page level, are other targets');
+});
+
+test('removing a request takes only its target out', () => {
+  const entries = [ask('layout.align', 'Center.'), ask('style.color', 'Accent.')];
+  assert.deepEqual(removeDefsHistory(entries, defsHistoryKey(ask('layout.align', 'whatever'))), [ask('style.color', 'Accent.')]);
 });

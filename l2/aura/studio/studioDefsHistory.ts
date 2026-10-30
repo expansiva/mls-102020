@@ -1,7 +1,8 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioDefsHistory.ts" enhancement="_blank" />
 // The ONE door through which a Studio edit reaches the `history` export of the page defs
 // (TASK-102020-defs-edit-history). Molecule swaps (serviceGenome), class, text and molecule property edits
-// (studioEditor) all come through here, so the defs file is located, read and written in one place.
+// (studioEditor) and the requests applied by agentEditPage all come through here, so the defs file is located,
+// read and written in one place.
 //
 // The defs is written like the page `.ts`: Monaco model + local copy, never the disk (studio-edit-stops-at-local).
 //
@@ -106,6 +107,24 @@ export async function recordEditInDefs(page: IDefsHistoryPage | null | undefined
   if (JSON.stringify(before) === JSON.stringify(after)) return null;
   await writeDefs(opened, next);
   return { page, key, before, beforeIndex, after };
+}
+
+/**
+ * Rewrites the history of the page defs through `update` (agentEditPage records its `request` entries here,
+ * TASK-102020-agent-edit-page). Same door, same rules as a Studio edit: only enabled projects, local copy only, a
+ * history that does not parse is left alone. Says what happened, for the agent's notes.
+ */
+export async function updateDefsHistory(
+  page: IDefsHistoryPage,
+  update: (history: DefsHistoryEntry[]) => DefsHistoryEntry[],
+): Promise<'written' | 'unchanged' | 'disabled' | 'unavailable'> {
+  if (!defsHistoryEnabled(page)) return 'disabled';
+  const opened = await openDefs(page);
+  if (!opened) return 'unavailable';
+  const next = update(opened.split.history);
+  if (JSON.stringify(next) === JSON.stringify(opened.split.history)) return 'unchanged';
+  await writeDefs(opened, next);
+  return 'written';
 }
 
 /** The undo of an edit: its target goes back to `mark.before`, at the place it had in the list. */
