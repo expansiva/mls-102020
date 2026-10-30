@@ -238,6 +238,138 @@ export function applyBrandTexts(
   return { config: next, profileName };
 }
 
+// ─── selection edits without regenerating ────────────────────────────────────
+
+/**
+ * What the APPLIED band can follow from the config alone, read from its source.
+ *
+ * The selection (actions, links, locales) is data on the profile, but the band only reflects a field
+ * it reads: links show only if it calls renderNavLinks(), the base actions only through
+ * renderActions(), `search` only behind hasAction('search'). Anything else needs a new band.
+ */
+export interface HeaderBandCapabilities {
+  navLinks: boolean;
+  actions: boolean;
+  /** Calls renderUserAvatar() itself — the avatar then ignores the `user` action. */
+  ownAvatar: boolean;
+  search: boolean;
+}
+
+export function readHeaderBandCapabilities(source: string): HeaderBandCapabilities {
+  return {
+    navLinks: /this\.renderNavLinks\s*\(/u.test(source),
+    actions: /this\.renderActions\s*\(/u.test(source),
+    ownAvatar: /this\.renderUserAvatar\s*\(/u.test(source),
+    search: /this\.hasAction\(\s*['"]search['"]\s*\)/u.test(source),
+  };
+}
+
+/** Why a selection edit needs a new band; empty = the config alone carries it. */
+export type SelectionRegenReason = 'links' | 'actions' | 'locales';
+
+export interface SelectionEditPlan {
+  /** The form differs from the profile in actions, links or locales. */
+  dirty: boolean;
+  regenerate: SelectionRegenReason[];
+}
+
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  const left = new Set(a);
+  return left.size === new Set(b).size && b.every((item) => left.has(item));
+}
+
+/** The locales a profile really offers: an absent list means every language of the project. */
+function effectiveLocales(view: HeaderProfileView, languages: readonly string[]): string[] {
+  return view.locales.length ? view.locales : [...languages];
+}
+
+/**
+ * Decides whether a change to the selection can be SAVED (a config edit) or needs GENERATE.
+ *
+ * - links: fine while the band calls renderNavLinks() — including clearing them, which writes an
+ *   explicit empty list. Adding links to a band without the call needs a new band.
+ * - actions: language / designSystem / modules ride on renderActions(); `user` too, unless the band
+ *   draws the avatar by itself; `search` only when the band checks hasAction('search').
+ * - locales: dropping one is fine; adding one the band has no copy for is not (its messages block
+ *   was generated for the old list).
+ */
+export function planSelectionEdit(
+  view: HeaderProfileView | undefined,
+  form: HeaderFormState,
+  capabilities: HeaderBandCapabilities | undefined,
+  languages: readonly string[] = [],
+): SelectionEditPlan {
+  if (!view?.isProjectHeader || !capabilities) {
+    return { dirty: false, regenerate: [] };
+  }
+  const regenerate: SelectionRegenReason[] = [];
+
+  const linksChanged = !sameSet(view.navLinks, form.navLinks);
+  if (linksChanged && form.navLinks.length > 0 && !capabilities.navLinks) regenerate.push('links');
+
+  const actionsChanged = !sameSet(view.actions, form.actions);
+  if (actionsChanged) {
+    const touched = [
+      ...form.actions.filter((action) => !view.actions.includes(action)),
+      ...view.actions.filter((action) => !form.actions.includes(action)),
+    ];
+    const followsConfig = (action: AppHeaderAction) => {
+      if (action === 'search') return capabilities.search;
+      if (action === 'user') return capabilities.actions && !capabilities.ownAvatar;
+      return capabilities.actions;
+    };
+    if (!touched.every(followsConfig)) regenerate.push('actions');
+  }
+
+  const before = effectiveLocales(view, languages);
+  const localesChanged = !sameSet(before, form.locales);
+  if (localesChanged && form.locales.some((locale) => !before.includes(locale))) regenerate.push('locales');
+
+  return { dirty: linksChanged || actionsChanged || localesChanged, regenerate };
+}
+
+/**
+ * Writes the selection of one profile — actions, links, locales — and nothing else (no renderer, no
+ * brand): the band stays the same file, it just reads different data.
+ *
+ * @param keepEmptyNavLinks - Write `navLinks: []` instead of removing the key. Needed when the band
+ * calls renderNavLinks(): an ABSENT list means "every route" to the runtime, an empty one means none.
+ * @param languages - Every language of the project: a selection with all of them removes the key,
+ * which keeps "the header speaks whatever the project speaks" as the project grows.
+ */
+export function applyHeaderSelection(
+  config: unknown,
+  options: {
+    profileName: string;
+    actions: AppHeaderAction[];
+    navLinks: string[];
+    locales: string[];
+    keepEmptyNavLinks: boolean;
+    languages?: readonly string[];
+  },
+): Record<string, unknown> {
+  if (!isRecord(config)) throw new Error('l5/config.json not found or not an object');
+  const next = clone(config) as Record<string, unknown>;
+  const header = (next.clientShell as ProjectClientShellConfig | undefined)?.regions?.header;
+  const profile = header?.profiles?.[options.profileName] as ProjectDynamicRegionConfig | undefined;
+  if (!profile) throw new Error(`header profile "${options.profileName}" does not exist`);
+
+  const props = { ...(isRecord(profile.props) ? profile.props : {}) } as Record<string, unknown>;
+  if (options.actions.length) props.actions = [...options.actions];
+  else delete props.actions;
+
+  if (options.navLinks.length || options.keepEmptyNavLinks) props.navLinks = [...options.navLinks];
+  else delete props.navLinks;
+
+  const allLanguages = options.languages?.length && sameSet(options.locales, options.languages);
+  if (options.locales.length && !allLanguages) props.locales = [...options.locales];
+  else delete props.locales;
+
+  if (Object.keys(props).length) profile.props = props;
+  else delete profile.props;
+  return next;
+}
+
 // ─── the form → the agent request ───────────────────────────────────────────
 
 export interface HeaderFormState {
@@ -321,30 +453,103 @@ export function countProjectDesignSystems(projectConfig: unknown): number {
  * Routes of the app, from `l5/config.json > projects[].modules[].navigation` — the same list the
  * shell hands the aside, and the only hrefs a header is allowed to link.
  */
-export function readProjectRoutes(
-  config: unknown,
-  projectId: number,
-): Array<{ label: string; href: string; description?: string }> {
+/** A route the header may link, with the module that declares it. */
+export interface ProjectRoute {
+  label: string;
+  href: string;
+  description?: string;
+  /**
+   * Module that declares the route. The screen groups by it: several modules have an "Início", and a
+   * flat list gave no way to tell them apart. It also matters at runtime — a module's header only
+   * shows the selected links of THAT module (`bootConfig.navigation` is the current module's).
+   */
+  moduleId: string;
+  /** That module's base path — the href of its cross-module link (`moduleLinks`) at runtime. */
+  moduleBasePath: string;
+  /**
+   * Roles that see the page (`navigation[].actors`) — the MENU's rule, which the header follows too.
+   * Empty = everybody. Edited in the menu editor, not here.
+   */
+  actors: string[];
+}
+
+export function readProjectRoutes(config: unknown, projectId: number): ProjectRoute[] {
   if (!isRecord(config) || !isRecord(config.projects)) return [];
   const projects = config.projects as Record<string, unknown>;
   const owners = isRecord(projects[String(projectId)]) ? [projects[String(projectId)]] : Object.values(projects);
-  const routes: Array<{ label: string; href: string; description?: string }> = [];
+  const routes: ProjectRoute[] = [];
   const seen = new Set<string>();
   for (const owner of owners) {
     const modules = isRecord(owner) && Array.isArray(owner.modules) ? owner.modules : [];
     for (const module of modules) {
-      const navigation = isRecord(module) && Array.isArray(module.navigation) ? module.navigation : [];
+      if (!isRecord(module)) continue;
+      const moduleId = readString(module.moduleId) || readString(module.basePath).replace(/^\//u, '');
+      const moduleBasePath = readString(module.basePath) || `/${moduleId}`;
+      const navigation = Array.isArray(module.navigation) ? module.navigation : [];
       for (const entry of navigation) {
         if (!isRecord(entry)) continue;
         const href = readString(entry.href);
         const label = readString(entry.label) || href;
         if (!href || seen.has(href)) continue;
         seen.add(href);
-        routes.push({ href, label, description: readString(entry.description) || undefined });
+        const actors = Array.isArray(entry.actors) ? entry.actors.map(readString).filter(Boolean) : [];
+        routes.push({ href, label, description: readString(entry.description) || undefined, moduleId, moduleBasePath, actors });
       }
     }
   }
   return routes;
+}
+
+/** Routes grouped by module, in declaration order (modules and routes alike). */
+export function groupRoutesByModule(routes: readonly ProjectRoute[]): Array<{ moduleId: string; routes: ProjectRoute[] }> {
+  const groups = new Map<string, ProjectRoute[]>();
+  for (const route of routes) {
+    const group = groups.get(route.moduleId);
+    if (group) group.push(route);
+    else groups.set(route.moduleId, [route]);
+  }
+  return [...groups].map(([moduleId, grouped]) => ({ moduleId, routes: grouped }));
+}
+
+/** Every role that appears on a module's routes, in first-seen order — the "view as" choices. */
+export function moduleRoles(routes: readonly ProjectRoute[], moduleId: string): string[] {
+  const roles = new Set<string>();
+  for (const route of routes) {
+    if (route.moduleId === moduleId) route.actors.forEach((actor) => roles.add(actor));
+  }
+  return [...roles];
+}
+
+/**
+ * The authorities a preview band filters its links by, in the runtime's `<module>:<actor>` shape.
+ * No role = an empty list, which the runtime reads as "filter nothing" (every role's view at once).
+ */
+export function previewAuthoritiesFor(moduleId: string, role: string): string[] {
+  return role ? [`${moduleId}:${role}`] : [];
+}
+
+/**
+ * What the app hands a header while ONE module is open, so the preview shows what that module shows.
+ *
+ * At runtime `navigation` is the current module's and `moduleLinks` points at the other modules'
+ * base paths (102034 appRegistry). Handing the preview every route at once showed links side by side
+ * that never appear together in the app.
+ */
+export function moduleNavigationForPreview(
+  routes: readonly ProjectRoute[],
+  moduleId: string,
+): { moduleId: string; basePath: string; navigation: ProjectRoute[]; moduleLinks: Array<{ label: string; href: string }> } {
+  const groups = groupRoutesByModule(routes);
+  const current = groups.find((group) => group.moduleId === moduleId) ?? groups[0];
+  if (!current) return { moduleId: 'preview', basePath: '/preview', navigation: [], moduleLinks: [] };
+  return {
+    moduleId: current.moduleId,
+    basePath: current.routes[0].moduleBasePath,
+    navigation: current.routes.map((route) => ({ ...route })),
+    moduleLinks: groups
+      .filter((group) => group !== current)
+      .map((group) => ({ label: group.moduleId, href: group.routes[0].moduleBasePath })),
+  };
 }
 
 /**

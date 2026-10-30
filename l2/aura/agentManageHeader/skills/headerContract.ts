@@ -22,8 +22,14 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
   silently falls back to another language at runtime.
 
 ## The base already does this — call it, never reimplement it
-- \`this.renderAsideToggle()\` — the mobile hamburger that opens the aside. **Mandatory**: it is the
-  only way to reach the menu on mobile. Put it first in the left group.
+- \`this.renderAsideToggle()\` — the ☰ of a narrow screen. **Mandatory**: on a narrow screen the band
+  keeps only it, the brand title and the user avatar, and the ☰ opens the header's own menu with the
+  modules and links the band hides there. It shows itself only when there is something to open. Put
+  it first in the left group.
+- Narrow screens: the base already hides the links, the selects (language / theme / module) and the
+  subtitle. Any OTHER part you add that is not essential (a greeting, a hint, a search field, a
+  decoration) must carry the class \`aura-header-wide\`, which hides it there — otherwise it squeezes
+  the title on a phone.
 - \`this.renderLogo()\` — the mark ALONE, from the config profile: it inlines \`brand.logoSvg\` (already
   sanitized) or renders the \`<img>\` of \`brand.logoUrl\`, and nothing when there is neither. Use this
   whenever you want the mark and the text arranged your own way. You CANNOT inline the markup
@@ -38,7 +44,7 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
   none: the aside owns the menu, and a header repeating it shows the same list twice. If the request
   offers no route, do not call this and do not write a path anywhere.
 - \`this.renderActions()\` — the optional actions the profile enabled (language / design system /
-  module links). Render it once, on the right.
+  module switcher — a dropdown, not a row of links). Render it once, on the right.
 - \`this.renderUserAvatar()\` — the logged user as a round avatar: the IdP photo when there is one,
   else the initials on a brand-colored circle, else a neutral silhouette (a photo that fails to load
   falls back too). Clicking opens the identity panel the base owns — name, email and sign out — and
@@ -62,10 +68,12 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
 
 ## MUST
 1. Call \`this.renderAsideToggle()\` exactly once.
-2. For the user, call \`this.renderUserAvatar()\` — NEVER build your own user button. The base's avatar
+2. The user gets ONE avatar, and it is the base's — NEVER build your own user button. When the
+   profile asks for \`user\`, \`this.renderActions()\` already draws it: do NOT also call
+   \`this.renderUserAvatar()\` (that renders it twice). Call \`this.renderUserAvatar()\` only when the
+   band does not render \`this.renderActions()\`, or to place the avatar on its own. The base's avatar
    has the photo -> initials -> silhouette fallback (yours would render an empty box while the session
-   is still loading) and opens the identity panel with email and sign out. \`this.renderActions()\`
-   already includes it when the profile asked for \`user\`, so calling both renders it twice.
+   is still loading) and opens the identity panel with email and sign out.
 3. Take the brand from the config (\`this.renderBrand()\` or \`this.brand.*\`) — never a literal name.
 4. Scope EVERY \`bandCss\` selector with \`\\\${tag}\` (e.g. \`\\\${tag} .my-part { … }\`). Rules inside
    \`@media\` blocks too.

@@ -58,10 +58,10 @@ import type { AppHeaderAction } from '/_102029_/l2/runtimeConfigTypes.js';
 import { flagChip, localeFlagMarkup } from '/_102020_/l2/aura/plugins/helpers/localeFlag.js';
 import {
   ensureProjectLoaded,
-  headerConfigRef,
-  readHeaderConfig,
-  writeHeaderConfig,
-} from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
+  configRef,
+  readConfig,
+  writeConfig,
+} from '/_102020_/l2/aura/plugins/helpers/configIo.js';
 import {
   applyBrandTexts,
   applyHeaderDraft,
@@ -71,14 +71,24 @@ import {
   formFromProfile,
   readProjectLanguages,
   readProjectRoutes,
+  groupRoutesByModule,
+  moduleNavigationForPreview,
+  moduleRoles,
+  previewAuthoritiesFor,
+  readHeaderBandCapabilities,
+  planSelectionEdit,
+  applyHeaderSelection,
   readHeaderBackup,
   readHeaderDraft,
   readHeaderProfileView,
   readLogoDraft,
   restoreHeaderBackup,
   scopeTokensCss,
+  type HeaderBandCapabilities,
   type HeaderFormState,
   type HeaderProfileView,
+  type ProjectRoute,
+  type SelectionRegenReason,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
 
 /// **collab_i18n_start**
@@ -114,7 +124,7 @@ const message_en = {
   actionHint: {
     language: 'Language picker in the band.',
     designSystem: 'Theme picker for the project design system.',
-    modules: "Links between the app's modules (not the pages of the current one).",
+    modules: "Dropdown to switch to another module of the app (not the pages of the current one).",
     search: 'Reserves the search affordance — the generated header draws the field; the shell provides nothing.',
     user: 'Avatar of the logged user (photo, initials or icon) with an email and sign-out menu.',
   } as Record<string, string>,
@@ -122,6 +132,9 @@ const message_en = {
   oneDesignSystem: 'This project has one theme: the picker will not appear.',
   navLinks: 'Links',
   navLinksHint: 'Pick only what belongs in the band — the aside already lists everything.',
+  navLinksPerModule: 'Each module shows only its own links in the header.',
+  selectAll: 'all',
+  selectNone: 'none',
   noRoutes: 'This project declares no routes yet.',
   generate: 'Generate',
   generating: 'Generating…',
@@ -141,6 +154,18 @@ const message_en = {
   noDraft: 'The run produced nothing — open the task in the thread to see why it failed.',
   staleDraft: 'What is parked belongs to an earlier run; this one produced nothing. Open the task to see why.',
   noTokens: 'The design system of the project could not be read; the preview has no real tokens',
+  saveSelection: 'Save selection',
+  needsRegen: 'These changes need a new header (Generate):',
+  regenReason: {
+    links: 'links — the current header does not show links',
+    actions: 'actions the current header does not read from the config',
+    locales: 'new languages — the current header has no copy for them',
+  } as Record<SelectionRegenReason, string>,
+  previewModule: 'Preview in module',
+  previewRole: 'as',
+  allRoles: 'every role',
+  everybody: 'everybody',
+  rolesHint: "Who sees each link comes from the module's menu (the roles of each page) — edit it there.",
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -175,7 +200,7 @@ const messages: Record<string, MessageType> = {
     actionHint: {
       language: 'Seletor de idioma na banda.',
       designSystem: 'Seletor de tema do design system do projeto.',
-      modules: 'Links entre os módulos do app (não as páginas do módulo atual).',
+      modules: 'Lista suspensa para trocar de módulo do app (não as páginas do módulo atual).',
       search: 'Reserva o espaço da busca — quem desenha o campo é o header gerado; o shell não fornece nada.',
       user: 'Avatar do usuário logado (foto, iniciais ou ícone) com menu de e-mail e sair.',
     } as Record<string, string>,
@@ -183,6 +208,9 @@ const messages: Record<string, MessageType> = {
     oneDesignSystem: 'Este projeto tem um tema só: o seletor não vai aparecer.',
     navLinks: 'Links',
     navLinksHint: 'Escolha só o que faz sentido na banda — o aside já lista tudo.',
+    navLinksPerModule: 'Cada módulo mostra no header só os links dele.',
+    selectAll: 'todos',
+    selectNone: 'nenhum',
     noRoutes: 'Este projeto ainda não declara rotas.',
     generate: 'Gerar',
     generating: 'Gerando…',
@@ -202,6 +230,18 @@ const messages: Record<string, MessageType> = {
     noDraft: 'A execução não produziu nada — abra a task na thread para ver o motivo.',
     staleDraft: 'O que está guardado é de uma execução anterior; esta não produziu nada. Abra a task para ver o motivo.',
     noTokens: 'Não foi possível ler o design system do projeto; o preview está sem os tokens reais',
+    saveSelection: 'Salvar seleção',
+    needsRegen: 'Essas mudanças precisam de um header novo (Gerar):',
+    regenReason: {
+      links: 'links — o header atual não mostra links',
+      actions: 'ações que o header atual não lê do config',
+      locales: 'idiomas novos — o header atual não tem os textos deles',
+    } as Record<SelectionRegenReason, string>,
+    previewModule: 'Prévia no módulo',
+    previewRole: 'como',
+    allRoles: 'todos os papéis',
+    everybody: 'todos',
+    rolesHint: 'Quem vê cada link vem do menu do módulo (os papéis de cada página) — edite lá.',
   },
 };
 /// **collab_i18n_end**
@@ -232,6 +272,9 @@ const BUTTON = 'rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1
   + ' hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50';
 const BUTTON_PRIMARY = 'rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white'
   + ' disabled:opacity-50';
+/** The small selects of the title row (preview module / role). */
+const PICKER = 'rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900'
+  + ' text-gray-800 dark:text-gray-100 px-1.5 py-0.5 text-xs';
 /** Square icon button: the label lives in the tooltip, so it must never lose the title/aria-label. */
 const ICON_BUTTON = 'inline-flex items-center justify-center w-8 h-8 rounded-md border cursor-pointer'
   + ' border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'
@@ -310,9 +353,18 @@ export class PluginHeaderEditor extends PluginBaseModule {
   /** Languages the project declares — the locale picker, and the "1 language" badge. */
   @state() private _languages: Array<{ code: string; name: string }> = [];
   /** Routes the project declares — what the header may link. */
-  @state() private _routes: Array<{ label: string; href: string; description?: string }> = [];
+  @state() private _routes: ProjectRoute[] = [];
   /** How many DS themes exist: below two, the base hides the switcher. */
   @state() private _dsCount = 0;
+  /**
+   * What the APPLIED band follows from the config (read from its source) — decides whether a change
+   * to actions/links/locales is a Save or needs Generate. Undefined = no project header applied.
+   */
+  @state() private _capabilities?: HeaderBandCapabilities;
+  /** Module the bands are previewed in: at runtime a header only sees the current module's routes. */
+  @state() private _previewModule = '';
+  /** Role the bands are previewed as ('' = every role): links follow each page's `actors`, like the menu. */
+  @state() private _previewRole = '';
 
   private msg: MessageType = message_en;
   /** Signature of what is mounted in the applied band, so `updated()` does not remount it. */
@@ -371,7 +423,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
 
   private async _readClientConfig(): Promise<unknown> {
     try {
-      return await readHeaderConfig(this._projectId);
+      return await readConfig(this._projectId);
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
       return undefined;
@@ -379,7 +431,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
   }
 
   private async _writeClientConfig(config: unknown): Promise<void> {
-    await writeHeaderConfig(this._projectId, config);
+    await writeConfig(this._projectId, config);
   }
 
   private async _reload(): Promise<void> {
@@ -400,6 +452,16 @@ export class PluginHeaderEditor extends PluginBaseModule {
     if (this.profileName) this._form = { ...this._form, profileName: this.profileName };
     if (this.variant) this._form = { ...this._form, variant: this.variant };
     this._hasBackup = Boolean(readHeaderBackup(projectConfig));
+    this._capabilities = this._view?.isProjectHeader
+      ? readHeaderBandCapabilities(await readRawSource(headerPaths(this._projectId, { variant: this._view.variant }).fileReference))
+      : undefined;
+    // Keep the module being looked at; otherwise the first one the header links, else the first one.
+    const modules = groupRoutesByModule(this._routes);
+    if (!modules.some((group) => group.moduleId === this._previewModule)) {
+      const linked = modules.find((group) => group.routes.some((route) => this._form.navLinks.includes(route.href)));
+      this._previewModule = (linked ?? modules[0])?.moduleId ?? '';
+    }
+    if (!moduleRoles(this._routes, this._previewModule).includes(this._previewRole)) this._previewRole = '';
     this.requestUpdate();
     await this._mountAppliedPreview();
   }
@@ -421,10 +483,16 @@ export class PluginHeaderEditor extends PluginBaseModule {
   }
 
   private _bootConfig() {
+    // One module at a time, like the app: handing every route over showed links side by side that
+    // never appear together at runtime.
+    const scope = moduleNavigationForPreview(this._routes, this._previewModule);
     return bandBootConfig({
       projectId: this._projectId,
       shellMode: this._view?.shellMode,
-      navigation: this._routes,
+      moduleId: scope.moduleId,
+      basePath: scope.basePath,
+      navigation: scope.navigation,
+      moduleLinks: scope.moduleLinks,
       languages: this._languages.map((language) => language.code),
     });
   }
@@ -444,6 +512,11 @@ export class PluginHeaderEditor extends PluginBaseModule {
       tag,
       bootConfig: this._bootConfig(),
       regionProps: props,
+      // The links follow the menu's roles; "all roles" is an empty list, never the studio user's own.
+      previewAuthorities: previewAuthoritiesFor(
+        moduleNavigationForPreview(this._routes, this._previewModule).moduleId,
+        this._previewRole,
+      ),
     });
     if (error) this._error = `preview: ${error}`;
   }
@@ -457,7 +530,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
     // Keyed on what the band actually shows: saving a new mark must rebuild it, a re-render must not.
     const signature = JSON.stringify([
       tag, this._view.brand ?? null, this._view.actions,
-      this._view.navLinks, this._view.locales, this._view.heightPx,
+      this._view.navLinks, this._view.locales, this._view.heightPx, this._previewModule, this._previewRole,
     ]);
     // Same rule as the list: a signature match only counts while the band is actually IN the host.
     if (this._mountedPreview === signature && host.firstElementChild) return;
@@ -483,7 +556,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
     if (!host || !this._previewTag) return;
     // Guarded like the applied band: updated() runs on every keystroke in the form, and rebuilding
     // the element each time made the draft band flicker while typing.
-    const signature = JSON.stringify([this._previewTag, this._form.actions, this._form.navLinks, this._form.locales]);
+    const signature = JSON.stringify([this._previewTag, this._form.actions, this._form.navLinks, this._form.locales, this._previewModule, this._previewRole]);
     if (this._mountedDraft === signature && host.firstElementChild) return;
     this._mountedDraft = signature;
     // The DRAFT band shows what the form asks for, which is what "Apply" would write.
@@ -681,6 +754,48 @@ export class PluginHeaderEditor extends PluginBaseModule {
     this._mountedDraft = '';
     const host = this.querySelector('[data-band="draft"]') as HTMLElement | null;
     host?.replaceChildren();
+  }
+
+  /** What Save would do with the current form — and what would need Generate instead. */
+  private get _selectionPlan() {
+    return planSelectionEdit(this._view, this._form, this._capabilities, this._languages.map((language) => language.code));
+  }
+
+  /**
+   * Saves actions / links / locales straight into the profile — no model, no new band.
+   *
+   * The band already reads them from the config at runtime; regenerating to change a link list cost a
+   * full generation and could redesign a header nobody asked to redesign. Only offered when
+   * `_selectionPlan` says the applied band follows every field that changed.
+   */
+  private async _saveSelection(): Promise<void> {
+    const view = this._view;
+    if (!view || !this._capabilities) return;
+    this._error = '';
+    this._busy = this.msg.save;
+    try {
+      const config = await this._readClientConfig();
+      const written = applyHeaderSelection(config, {
+        profileName: view.profileName,
+        actions: this._form.actions,
+        navLinks: this._form.navLinks,
+        locales: this._form.locales,
+        // The band calls renderNavLinks(): an absent list would make it link EVERY route.
+        keepEmptyNavLinks: this._capabilities.navLinks,
+        languages: this._languages.map((language) => language.code),
+      });
+      await this._writeClientConfig(written);
+      await this._reload();
+      this.dispatchEvent(new CustomEvent('header-applied', {
+        detail: { profileName: view.profileName, variant: this._form.variant },
+        bubbles: true,
+        composed: true,
+      }));
+    } catch (error) {
+      this._error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._busy = '';
+    }
   }
 
   private async _revert(): Promise<void> {
@@ -1096,40 +1211,81 @@ export class PluginHeaderEditor extends PluginBaseModule {
     `;
   }
 
-  /** The project's routes, so the header links the two or three that matter — not all of them. */
+  /** Selects or clears every route of one module, keeping the order of the rest of the selection. */
+  private _setModuleRoutes(routes: readonly ProjectRoute[], on: boolean): void {
+    const hrefs = new Set(routes.map((route) => route.href));
+    const others = this._form.navLinks.filter((href) => !hrefs.has(href));
+    this._form = { ...this._form, navLinks: on ? [...others, ...routes.map((route) => route.href)] : others };
+  }
+
+  /**
+   * The project's routes grouped by module, so the header links the two or three that matter.
+   *
+   * Grouped because the app is: at runtime a module's header only shows the selected links of that
+   * module, and a flat list (three "Início" in a row) hid which module each one belonged to.
+   */
   private _renderRoutes() {
     if (this._routes.length === 0) {
       return html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noRoutes}</p>`;
     }
     const selected = this._form.navLinks;
     return html`
-      <p class="text-xs text-gray-500 dark:text-gray-400">${this.msg.navLinksHint}</p>
-      <ul class="flex flex-col gap-1">
-        ${this._routes.map((route) => {
-          const on = selected.includes(route.href);
+      <p class="text-xs text-gray-500 dark:text-gray-400">${this.msg.navLinksHint} ${this.msg.navLinksPerModule} ${this.msg.rolesHint}</p>
+      <div class="flex flex-col gap-3">
+        ${groupRoutesByModule(this._routes).map((group) => {
+          const count = group.routes.filter((route) => selected.includes(route.href)).length;
+          const all = count === group.routes.length;
           return html`
-            <li>
-              <label class="flex items-center gap-2 rounded-md px-2 py-1 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                <input
-                  type="checkbox"
-                  class="accent-indigo-600"
-                  .checked=${on}
-                  @change=${() => {
-                    this._form = {
-                      ...this._form,
-                      navLinks: on
-                        ? selected.filter((href) => href !== route.href)
-                        : [...selected, route.href],
-                    };
-                  }}
-                />
-                <span class="text-sm text-gray-800 dark:text-gray-100 truncate">${route.label}</span>
-                <span class="ml-auto text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate">${route.href}</span>
-              </label>
-            </li>
+            <section class="rounded-md border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <header class="flex items-center gap-2 px-2 py-1.5 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+                <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">${group.moduleId}</span>
+                <span class="text-[10px] font-mono rounded px-1
+                  ${count ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}"
+                >${count}/${group.routes.length}</span>
+                <button
+                  type="button"
+                  class="ml-auto text-[11px] underline text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                  @click=${() => this._setModuleRoutes(group.routes, !all)}
+                >${all ? this.msg.selectNone : this.msg.selectAll}</button>
+              </header>
+              <ul class="flex flex-col gap-0.5 p-1">
+                ${group.routes.map((route) => {
+                  const on = selected.includes(route.href);
+                  // Previewing as a role that does not see this page: the band will not show it.
+                  const hidden = Boolean(this._previewRole) && group.moduleId === this._previewModule
+                    && route.actors.length > 0 && !route.actors.includes(this._previewRole);
+                  return html`
+                    <li class=${hidden ? 'opacity-50' : ''}>
+                      <label class="flex items-center gap-2 rounded-md px-2 py-1 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <input
+                          type="checkbox"
+                          class="accent-indigo-600"
+                          .checked=${on}
+                          @change=${() => {
+                            this._form = {
+                              ...this._form,
+                              navLinks: on
+                                ? selected.filter((href) => href !== route.href)
+                                : [...selected, route.href],
+                            };
+                          }}
+                        />
+                        <span class="text-sm text-gray-800 dark:text-gray-100 truncate">${route.label}</span>
+                        <span class="flex flex-wrap gap-1">
+                          ${(route.actors.length ? route.actors : [this.msg.everybody]).map((actor) => html`
+                            <span class="text-[10px] rounded px-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400
+                              ${actor === this._previewRole ? 'ring-1 ring-indigo-400' : ''}">${actor}</span>`)}
+                        </span>
+                        <span class="ml-auto text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate">${route.href}</span>
+                      </label>
+                    </li>
+                  `;
+                })}
+              </ul>
+            </section>
           `;
         })}
-      </ul>
+      </div>
     `;
   }
 
@@ -1221,6 +1377,17 @@ export class PluginHeaderEditor extends PluginBaseModule {
    * nobody saw until they scrolled back up. The answer to a button belongs next to the button.
    */
   private _renderActionBar() {
+    const plan = this._selectionPlan;
+    const canSave = plan.dirty && plan.regenerate.length === 0;
+    // Generate only when there is something the model must do: no header applied yet (creating one),
+    // a description asking for a new look, or a selection change the applied band cannot follow.
+    // Opening the screen offered it unconditionally, as if every visit were a regeneration.
+    const canGenerate = !this._view?.isProjectHeader
+      || this._form.brief.trim().length > 0
+      || plan.regenerate.length > 0;
+    if (!this._previewTag && !canSave && !canGenerate && !this._hasBackup && !this._error && !this._warn) {
+      return nothing;
+    }
     return html`
       <div class="sticky bottom-0 -mx-3 px-3 py-2 flex flex-col gap-2 bg-white/95 dark:bg-gray-900/95 border-t border-gray-200 dark:border-gray-800 backdrop-blur">
       ${this._error ? html`
@@ -1231,7 +1398,16 @@ export class PluginHeaderEditor extends PluginBaseModule {
         <p class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
           ${this._warn}
         </p>` : nothing}
+      ${!this._previewTag && plan.dirty && plan.regenerate.length ? html`
+        <p class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+          ${this.msg.needsRegen} ${plan.regenerate.map((reason) => this.msg.regenReason[reason]).join('; ')}
+        </p>` : nothing}
       <div class="flex items-center gap-3 flex-wrap">
+        ${!this._previewTag && canSave ? html`
+          <button type="button" class=${BUTTON_PRIMARY} ?disabled=${!!this._busy} @click=${() => void this._saveSelection()}>
+            ${this._busy || this.msg.saveSelection}
+          </button>
+        ` : nothing}
         ${this._previewTag ? html`
           <button type="button" class=${BUTTON_PRIMARY} ?disabled=${!!this._busy} @click=${() => void this._applyDraft()}>
             ${this.msg.apply}
@@ -1239,11 +1415,12 @@ export class PluginHeaderEditor extends PluginBaseModule {
           <button type="button" class=${BUTTON} ?disabled=${!!this._busy} @click=${() => void this._discardDraft()}>
             ${this.msg.discard}
           </button>
-        ` : html`
-          <button type="button" class=${BUTTON_PRIMARY} ?disabled=${!!this._busy} @click=${() => void this._generateHeader()}>
-            ${this._busy || this.msg.generate}
+        ` : canGenerate ? html`
+          <!-- Secondary while Save is on offer: the change at hand does not need the model. -->
+          <button type="button" class=${canSave ? BUTTON : BUTTON_PRIMARY} ?disabled=${!!this._busy} @click=${() => void this._generateHeader()}>
+            ${canSave ? this.msg.generate : (this._busy || this.msg.generate)}
           </button>
-        `}
+        ` : nothing}
         ${this._hasBackup ? html`
           <button type="button" class="ml-auto text-sm underline text-gray-600 dark:text-gray-300" ?disabled=${!!this._busy}
             @click=${() => void this._revert()}>${this.msg.revert}</button>
@@ -1253,15 +1430,64 @@ export class PluginHeaderEditor extends PluginBaseModule {
     `;
   }
 
+  /**
+   * Which module both bands pretend to be in, and as which role. The module picker hides with one
+   * module; the role picker with no roles on that module's pages (nothing would change).
+   */
+  private _renderPreviewModulePicker() {
+    const modules = groupRoutesByModule(this._routes);
+    const roles = moduleRoles(this._routes, this._previewModule);
+    return html`
+      ${modules.length >= 2 ? this._renderModuleSelect(modules) : nothing}
+      ${roles.length ? html`
+        <label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+          ${this.msg.previewRole}
+          <select
+            class=${PICKER}
+            .value=${this._previewRole}
+            @change=${(e: Event) => { this._previewRole = (e.target as HTMLSelectElement).value; }}
+          >
+            <option value="" ?selected=${!this._previewRole}>${this.msg.allRoles}</option>
+            ${roles.map((role) => html`<option value=${role} ?selected=${role === this._previewRole}>${role}</option>`)}
+          </select>
+        </label>
+      ` : nothing}
+    `;
+  }
+
+  private _renderModuleSelect(modules: Array<{ moduleId: string; routes: ProjectRoute[] }>) {
+    return html`
+      <label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+        ${this.msg.previewModule}
+        <select
+          class=${PICKER}
+          .value=${this._previewModule}
+          @change=${(e: Event) => {
+            this._previewModule = (e.target as HTMLSelectElement).value;
+            // A role of another module does not exist here.
+            if (!moduleRoles(this._routes, this._previewModule).includes(this._previewRole)) this._previewRole = '';
+          }}
+        >
+          ${modules.map((group) => {
+            const count = group.routes.filter((route) => this._form.navLinks.includes(route.href)).length;
+            return html`<option value=${group.moduleId} ?selected=${group.moduleId === this._previewModule}>${group.moduleId}${count ? ` (${count})` : ''}</option>`;
+          })}
+        </select>
+      </label>
+    `;
+  }
+
   render(): TemplateResult {
     this.msg = messages[this.getMessageKey(messages)] ?? message_en;
     if (!this._projectId) {
-      return html`<p class="text-sm italic p-3 text-gray-500 dark:text-gray-400">${this.msg.noProject}</p>`;
+      return html`<p class="text-sm italic p-3 bg-white dark:bg-gray-950 text-gray-500 dark:text-gray-400">${this.msg.noProject}</p>`;
     }
     // Sections stacked at FULL width, in the order the work happens: what is applied, the brand, then
     // the generation. Side by side, a short Brand card next to a tall request left the panel lopsided.
+    // The root paints its OWN opaque background: the details panel stays light while `.dark` is on,
+    // and the translucent dark cards blended over it into an unreadable mid-grey.
     return html`
-      <div class="flex flex-col gap-3 p-3 text-gray-800 dark:text-gray-100">
+      <div class="flex flex-col gap-3 p-3 min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-100">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="w-5 h-5 text-gray-500 dark:text-gray-400">${pluginData.getSvg()}</span>
           <h2 class="text-sm font-semibold">${this.msg.title}</h2>
@@ -1270,7 +1496,9 @@ export class PluginHeaderEditor extends PluginBaseModule {
             <span class="text-[10px] font-semibold tracking-wider px-1.5 py-0.5 rounded
               bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">${this.msg.isDefault}</span>
           ` : nothing}
-          <span class="ml-auto text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
+          <span class="ml-auto"></span>
+          ${this._renderPreviewModulePicker()}
+          <span class="text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
         </div>
         ${this._renderApplied()}
         ${this._renderMark()}

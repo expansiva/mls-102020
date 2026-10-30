@@ -29,13 +29,15 @@ import {
   activateHeaderProfile,
   listProjectHeaders,
   readProjectRoutes,
+  moduleNavigationForPreview,
   type ProjectHeaderEntry,
+  type ProjectRoute,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
 import {
   ensureProjectLoaded,
-  readHeaderConfig,
-  writeHeaderConfig,
-} from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
+  readConfig,
+  writeConfig,
+} from '/_102020_/l2/aura/plugins/helpers/configIo.js';
 import { openElementInServiceDetails, clearServiceDetails } from '/_102027_/l2/libCommom.js';
 import { bandBootConfig, mountHeaderBand, projectTokensCss } from '/_102020_/l2/aura/plugins/helpers/headerBandPreview.js';
 import { readRawSource } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
@@ -44,6 +46,8 @@ import '/_102020_/l2/aura/plugins/pluginHeaderEditor.js';
 
 /** Tag of the editor this panel opens in the details area (it defines itself on import). */
 const HEADER_EDITOR_TAG = 'aura--plugins--plugin-header-editor-102020';
+/** Width a band is laid out at before being scaled into the knob column — a narrow desktop window. */
+const BAND_LAYOUT_WIDTH_PX = 800;
 
 /// **collab_i18n_start**
 const message_en = {
@@ -105,7 +109,7 @@ export class PluginSelectHeader extends StateLitElement {
   @property({ attribute: false }) value: number | null = 0;
 
   @state() private _entries: ProjectHeaderEntry[] = [];
-  @state() private _routes: Array<{ label: string; href: string }> = [];
+  @state() private _routes: ProjectRoute[] = [];
   @state() private _loading = false;
   @state() private _error = '';
   @state() private _busy = '';
@@ -118,7 +122,6 @@ export class PluginSelectHeader extends StateLitElement {
   @state() private _creating = '';
 
   private msg: MessageType = message_en;
-  private _mounted = new Map<string, string>();
   /** True while THIS panel has the editor open on the right — what to refresh, and what to close. */
   private _editorOpen = false;
 
@@ -163,7 +166,7 @@ export class PluginSelectHeader extends StateLitElement {
     this._error = '';
     try {
       await ensureProjectLoaded(projectId);
-      const config = await readHeaderConfig(projectId);
+      const config = await readConfig(projectId);
       // Only the project's own headers are editable here; a master's band (studio) is not ours.
       this._entries = listProjectHeaders(config, projectId).filter((entry) => entry.isProjectHeader);
       this._routes = readProjectRoutes(config, projectId);
@@ -325,13 +328,7 @@ export class PluginSelectHeader extends StateLitElement {
         </header>
 
         <div class="p-3 flex flex-col gap-2">
-          <!-- pointer-events:none — this is a PICTURE of the header. Live, its links would navigate
-               the studio and its user menu would open, from a card whose job is to be clicked. -->
-          <div
-            data-band=${entry.profileName}
-            class="rounded-md border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-950"
-            style="height:${AURA_HEADER_HEIGHT_PX}px;pointer-events:none"
-          ></div>
+          ${this._renderBandHost(entry.profileName)}
 
           ${reasons.length ? html`
             <ul class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300 flex flex-col gap-0.5">
@@ -340,6 +337,40 @@ export class PluginSelectHeader extends StateLitElement {
         </div>
       </section>
     `;
+  }
+
+  /**
+   * Where a band is mounted: a frame the width of this column, holding the band laid out at a
+   * desktop width and scaled down to fit (`_fitBand`).
+   *
+   * At the column's real ~340px the band kept its desktop layout (its media queries read the
+   * VIEWPORT, which is wide) and the brand ran into the links. Scaled, it is the picture of what the
+   * app shows.
+   *
+   * pointer-events:none — this is a PICTURE of the header. Live, its links would navigate the studio
+   * and its user menu would open, from a card whose job is to be clicked.
+   */
+  private _renderBandHost(profileName: string) {
+    return html`
+      <div
+        data-band-frame
+        class="rounded-md border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-950"
+        style="height:${AURA_HEADER_HEIGHT_PX}px;pointer-events:none"
+      >
+        <div data-band=${profileName} style="width:${BAND_LAYOUT_WIDTH_PX}px;height:${AURA_HEADER_HEIGHT_PX}px;transform-origin:0 0"></div>
+      </div>
+    `;
+  }
+
+  /** Scales a band host to its frame (see `_renderBandHost`). Never enlarges: a wide frame lays out wide. */
+  private _fitBand(host: HTMLElement): void {
+    const frame = host.parentElement;
+    if (!frame?.clientWidth) return;
+    const layoutWidth = Math.max(BAND_LAYOUT_WIDTH_PX, frame.clientWidth);
+    const scale = frame.clientWidth / layoutWidth;
+    host.style.width = `${layoutWidth}px`;
+    host.style.transform = scale < 1 ? `scale(${scale})` : '';
+    frame.style.height = `${Math.round(AURA_HEADER_HEIGHT_PX * scale)}px`;
   }
 
   private _renderAddCard() {
@@ -393,11 +424,7 @@ export class PluginSelectHeader extends StateLitElement {
           <span class="text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate">${entry.tag}</span>
         </div>
 
-        <div
-          data-band=${entry.profileName}
-          class="rounded-md border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-950"
-          style="height:${AURA_HEADER_HEIGHT_PX}px;pointer-events:none"
-        ></div>
+        ${this._renderBandHost(entry.profileName)}
 
         ${reasons.length ? html`
           <ul class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300 flex flex-col gap-0.5">
@@ -475,8 +502,8 @@ export class PluginSelectHeader extends StateLitElement {
     this._error = '';
     this._notice = '';
     try {
-      const config = await readHeaderConfig(this.projectId);
-      await writeHeaderConfig(this.projectId, activateHeaderProfile(config, entry.profileName));
+      const config = await readConfig(this.projectId);
+      await writeConfig(this.projectId, activateHeaderProfile(config, entry.profileName));
       // 1-based over ALL profiles of the region, not over the filtered list: a `studio` profile in
       // between would make the filtered index point at the wrong header.
       const index = listProjectHeaders(config, this.projectId)
@@ -548,17 +575,26 @@ export class PluginSelectHeader extends StateLitElement {
 
   // ── bands ─────────────────────────────────────────────────────────────────
 
+  private _previewScope(entry: ProjectHeaderEntry) {
+    const linked = this._routes.find((route) => entry.navLinks.includes(route.href));
+    return moduleNavigationForPreview(this._routes, linked?.moduleId ?? '');
+  }
+
   /** One real band per card. Each header has its own file and tag, so they coexist in the registry. */
   private async _mountBands(): Promise<void> {
     if (!this.projectId) return;
     for (const entry of this._entries) {
       const host = this.querySelector(`[data-band="${entry.profileName}"]`) as HTMLElement | null;
       if (!host) continue;
+      this._fitBand(host);
       const signature = JSON.stringify([entry.tag, entry.brand ?? null, entry.actions, entry.navLinks, entry.locales]);
-      // The guard asks the DOM, not only the bookkeeping: navigating to a header and back destroys
-      // this list and builds a NEW host, so "already mounted" would skip an EMPTY band forever.
-      if (this._mounted.get(entry.profileName) === signature && host.firstElementChild) continue;
-      this._mounted.set(entry.profileName, signature);
+      // The signature lives ON THE HOST, not in a map by profile: turning the knob from one header to
+      // the next, lit keeps the same node and only rewrites `data-band`, so a map entry for the new
+      // profile plus "the host has a child" took the PREVIOUS header's band as this one's.
+      if (host.dataset.mounted === signature && host.firstElementChild) continue;
+      host.dataset.mounted = signature;
+      // Empty it now: the import is async, and until it lands the old band would pass for this one.
+      host.replaceChildren();
 
       const error = await mountHeaderBand(host, {
         projectId: this.projectId,
@@ -567,9 +603,12 @@ export class PluginSelectHeader extends StateLitElement {
         tag: entry.tag,
         bootConfig: bandBootConfig({
           projectId: this.projectId,
-          navigation: this._routes,
+          // One module, like the app: the first one this header links, else the first one.
+          ...this._previewScope(entry),
           languages: entry.locales,
         }),
+        // Every role at once — and never the studio user's own session filtering the picture.
+        previewAuthorities: [],
         regionProps: {
           ...(entry.brand ? { brand: entry.brand } : {}),
           actions: entry.actions,
@@ -578,7 +617,8 @@ export class PluginSelectHeader extends StateLitElement {
           heightPx: entry.heightPx ?? AURA_HEADER_HEIGHT_PX,
         },
       });
-      if (error) host.textContent = error;
+      // Only when the host still shows THIS header — it may have moved on while the import retried.
+      if (error && host.dataset.mounted === signature) host.textContent = error;
     }
   }
 }

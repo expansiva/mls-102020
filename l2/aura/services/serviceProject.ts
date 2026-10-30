@@ -15,7 +15,7 @@ import '/_102020_/l2/aura/plugins/selectModule.js';
 import '/_102020_/l2/aura/plugins/selectDevice.js';
 import '/_102020_/l2/aura/plugins/selectHeader.js';
 import { listProjectHeaders } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
-import { ensureProjectLoaded, tryReadHeaderConfig } from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
+import { ensureProjectLoaded, tryReadConfig } from '/_102020_/l2/aura/plugins/helpers/configIo.js';
 import '/_102020_/l2/aura/plugins/selectAssetsComponents.js';
 import '/_102020_/l2/aura/plugins/selectAssetsPlugins.js';
 import '/_102020_/l2/aura/plugins/selectAssetsMedia.js';
@@ -270,7 +270,7 @@ export class ServiceProject102020 extends ServiceBase {
             return;
         }
         await ensureProjectLoaded(project);
-        const config = await tryReadHeaderConfig(project);
+        const config = await tryReadConfig(project);
         const entries = listProjectHeaders(config, project).filter(e => e.isProjectHeader);
         const labels: Record<number, string> = { 0: 'All' };
         entries.forEach((entry, i) => { labels[i + 1] = entry.variant || 'default'; });

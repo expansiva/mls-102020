@@ -143,11 +143,11 @@ export async function seedActiveHeader(project: number): Promise<string | null> 
   if (!project || project === headerSeeded) return null;
   try {
     const [io, core] = await Promise.all([
-      import('/_102020_/l2/aura/plugins/helpers/headerConfigIo.js'),
+      import('/_102020_/l2/aura/plugins/helpers/configIo.js'),
       import('/_102020_/l2/aura/plugins/helpers/headerPluginCore.js'),
     ]);
     await io.ensureProjectLoaded(project);
-    const config = await io.tryReadHeaderConfig(project);
+    const config = await io.tryReadConfig(project);
     if (config === undefined) return null;
     const active = core.listProjectHeaders(config, project).find((entry) => entry.isActive);
     const profile = active?.profileName ?? null;
