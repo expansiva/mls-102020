@@ -114,11 +114,15 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the label, \`LabelStart\`/\`LabelEnd\` on the
+start and end labels, \`Helper\` on the help text, and, in a molecule with quick options, each \`Preset\` on its own
+button:
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
+  <Label data-class="uppercase tracking-wide">Booking window</Label>
+  <LabelStart data-class="font-semibold">Check-in</LabelStart>
+  <LabelEnd data-class="font-semibold">Check-out</LabelEnd>
   <Helper data-class="italic">Help text</Helper>
 </component>
 \`\`\`

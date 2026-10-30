@@ -273,12 +273,22 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Rows\` on the list or grid, each \`Row\` on its
+own record (card, list item, timeline event, calendar chip; in \`ml-kanban-board\`, the column's card list), each
+\`Cell\` on its own cell (in the kanban, the card), \`CardTop\` on the card's top band, \`Empty\`/\`Loading\` on the
+message. In \`ml-kanban-board\`, \`Columns\` lands on the board and each \`Column\` on its column; in the other
+molecules \`Columns\`/\`Column\` only define fields and take no class. \`ml-calendar-view\` ignores it on \`Rows\`
+and \`Cell\`:
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Columns>
+    <Column field="name" header="Name"></Column>
+  </Columns>
+  <Rows>
+    <Row data-class="shadow-sm"><Cell data-class="font-bold">Ana</Cell></Row>
+  </Rows>
+  <Empty data-class="italic">No records</Empty>
 </component>
 \`\`\`
 

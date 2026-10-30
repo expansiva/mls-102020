@@ -50,7 +50,7 @@ only one where a component placed in the slot does not really work, and nobody n
 
 | slot | path | how to render |
 |---|---|---|
-| \`Trigger\` | **LIVE** | \`\\\${this.renderLiveSlot('Trigger')}\` |
+| \`Trigger\` | **LIVE** | \`\\\${this.renderLiveSlot('Trigger', this.getSlotClass('Trigger'))}\` |
 | \`Label\` | snapshot | \`\\\${unsafeHTML(this.getSlotContent('Label'))}\` |
 | \`Helper\` | snapshot | \`\\\${unsafeHTML(this.getSlotContent('Helper'))}\` |
 
@@ -238,6 +238,24 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the label element | \`this.getSlotClass('Label')\` |
+| \`Helper\` | the help text element | \`this.getSlotClass('Helper')\` |
+| \`Trigger\` | the element that holds the trigger content inside the drop zone: the anchor of the live slot, or the element the molecule renders around it when there is one | \`this.getSlotClass('Trigger')\` |
+
+\`Trigger\` is a live slot (§2.9). When the molecule renders it with no element of its own around it, pass the class as the second argument of \`renderLiveSlot\`: it goes on the live-slot anchor (a \`span\`), and no element is added. With nothing around it, \`this.renderLiveSlot('Trigger')\` alone loses the consumer's classes.
+
+\`\`\`typescript
+// Trigger rendered loose, inside the drop zone:
+\${hasTrigger ? this.renderLiveSlot('Trigger', this.getSlotClass('Trigger')) : this.renderDefaultTrigger()}
+
+// or, when the molecule wraps it in an element of its own:
+html\`<div class="\${cn('text-sm ml-text-muted', this.getSlotClass('Trigger'))}">\${this.renderLiveSlot('Trigger')}</div>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -261,4 +279,5 @@ Group-specific semantic classes will be defined during component migration.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-20 | Initial creation reference |
+| 1.1.0 | 2026-10-29 | §2.9: \`Trigger\` renders with its class (\`renderLiveSlot('Trigger', this.getSlotClass('Trigger'))\`); §11 data-class: where each slot's classes go (\`Trigger\` → the live-slot anchor, or the element the molecule renders around it) |
 `;

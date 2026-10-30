@@ -101,6 +101,17 @@ Pass CSS classes on slot tags via \`data-class\`:
 </component>
 \`\`\`
 
+Each \`Suggestion\`'s classes land on its own option in the suggestions panel, and \`Empty\`'s on the "no results"
+message. A chip or input that shows the chosen label does not take the \`Suggestion\`'s classes:
+
+\`\`\`html
+<component>
+  <Suggestion value="p1" data-class="font-semibold">Laptop</Suggestion>
+  <Suggestion value="p2">Monitor</Suggestion>
+  <Empty data-class="italic">No products found</Empty>
+</component>
+\`\`\`
+
 ---
 
 ## Design Tokens

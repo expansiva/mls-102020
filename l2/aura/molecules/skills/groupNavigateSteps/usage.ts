@@ -79,12 +79,14 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the title above the steps, and each
+\`Step\` on that step's own element (the clickable step, with its indicator, title and description):
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Label data-class="uppercase tracking-wide">Checkout</Label>
+  <Step title="Cart" completed></Step>
+  <Step title="Payment" data-class="font-bold"></Step>
 </component>
 \`\`\`
 

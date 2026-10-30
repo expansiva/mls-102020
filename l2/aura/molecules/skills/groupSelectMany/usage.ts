@@ -15,10 +15,10 @@ export const skill = `
 | \`Label\` | all | Label displayed above or beside the field |
 | \`Helper\` | all | Descriptive text shown below the field when there is no error |
 | \`Trigger\` | \`dropdown\` only | Custom content for the trigger button |
-| \`Item\` | all | One selectable option (one **row** in \`table\`). Attributes: \`value\` (required), \`disabled\` |
+| \`Item\` | all | One selectable option (one **row** in \`table\`). Attributes: \`value\` (required), \`disabled\`, \`data-class\` (optional, classes for that option; for its row in \`table\`) |
 | \`Cell\` | \`table\` only | A data cell inside an \`Item\`, one per column, in column order |
 | \`Column\` | \`table\` only | A single column header, direct child of the component, in column order |
-| \`Group\` | \`dropdown\`, \`checkbox\` | Groups items under a named heading. Attribute: \`label\` |
+| \`Group\` | \`dropdown\`, \`checkbox\` | Groups items under a named heading. Attributes: \`label\`, \`data-class\` (optional, classes for the group heading) |
 | \`Empty\` | all | Content shown when no items are available |
 
 ---
@@ -139,12 +139,16 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Pass CSS classes on slot tags via \`data-class\`. Each \`Item\`, \`Group\`, \`Column\` and \`Cell\` takes its own classes: an \`Item\`'s go on that option (on its row in \`table\`), a \`Group\`'s on its heading, a \`Column\`'s on its header cell and a \`Cell\`'s on its table cell:
 
 \`\`\`html
 <component>
   <Label data-class="uppercase tracking-wide">Text</Label>
   <Helper data-class="italic">Help text</Helper>
+  <Group label="Fruits" data-class="text-green-700">
+    <Item value="apple" data-class="font-bold">Apple</Item>
+    <Item value="pear">Pear</Item>
+  </Group>
 </component>
 \`\`\`
 

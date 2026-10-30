@@ -427,6 +427,23 @@ CSS custom properties via \`var(--ml-token, fallback)\` in \`.less\`.
 \`ml-helper\` \`ml-error-text\` \`ml-text\` \`ml-text-muted\` \`ml-text-faint\` \`ml-disabled\`
 \`ml-skeleton\` \`ml-spinner\`.
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`TableCaption\`, \`TableHeader\`, \`TableBody\`, \`TableFooter\`, \`Empty\`, \`Loading\` | the element that renders it: \`<caption>\` (or the caption \`div\`), \`<thead>\`, \`<tbody>\` (each one when the body is split), \`<tfoot>\` (or the footer bar when there is none), the message wrapper (or the live-slot anchor, \`renderLiveSlot(tag, cls)\`, when nothing wraps it) | \`this.getSlotClass('<Tag>')\` |
+| \`TableRow\` | that row's \`<tr>\`, in header, body and footer; it travels with the row through sort, pagination and grouping. Rows the molecule creates (group title, detail, empty, skeleton) take none | the row's own \`data-class\` |
+| \`TableHead\`, \`TableCell\` | that slot's \`<th>\` / \`<td>\`, body and footer. Cells the molecule creates (select, expand, actions) take none | its own \`data-class\` |
+| \`NewRecordRow\`, \`Detail\`, \`RowAction\` | the draft row's \`<tr>\`; the element wrapping the detail; the action's wrapper | its own \`data-class\` |
+| \`RowActions\` | — (grouping only, ignored) | — |
+
+**Never use \`getSlotClass\` for a repeated slot.** It reads only the **first** element with that tag: the first row's classes would land on every row. Read each element's own attribute, from the element the parse already holds:
+
+\`\`\`typescript
+html\`<tr class=\${cn(this.getRowClasses(row), row.element.getAttribute('data-class') || '')}>...</tr>\`
+html\`<td class=\${cn(this.getCellClasses(), cell?.getAttribute('data-class') || '')}>\${this.renderLiveSlotFrom(cell)}</td>\`
+\`\`\`
+
 ---
 
 ## 13. Changelog
@@ -436,4 +453,5 @@ CSS custom properties via \`var(--ml-token, fallback)\` in \`.less\`.
 | 1.0.0 | 2026-04-21 | Initial creation reference |
 | 1.1.0 | 2026-04-21 | Removed implementation code; skill defines contract only |
 | draft | 2026-08-21 | **Not adopted.** Optional row-lifecycle surface added, measured off \`ml-inline-edit-table\` |
+| 1.2.0 | 2026-10-28 | §12 data-class: where each slot's classes go (containers → \`<thead>\`/\`<tbody>\`/\`<tfoot>\`; \`TableRow\` → its \`<tr>\` in header, body and footer; \`TableHead\`/\`TableCell\` → \`<th>\`/\`<td>\`; \`NewRecordRow\`, \`Detail\`, \`RowAction\` → their own element; \`RowActions\` ignored); repeated slots read their own \`data-class\`, never \`getSlotClass\` |
 `;

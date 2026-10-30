@@ -107,6 +107,16 @@ Pass CSS classes on slot tags via \`data-class\`:
 </component>
 \`\`\`
 
+Each \`Item\`'s classes land on its own option (the star, emoji, number or chip the user clicks). In view mode, the
+box that shows the selected label does not take the \`Item\`'s classes:
+
+\`\`\`html
+<component>
+  <Item value="1" data-class="text-red-600">😞</Item>
+  <Item value="5" data-class="text-green-600">😄</Item>
+</component>
+\`\`\`
+
 ---
 
 ## Design Tokens

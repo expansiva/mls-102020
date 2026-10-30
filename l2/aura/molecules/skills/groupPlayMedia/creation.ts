@@ -134,6 +134,8 @@ const tracks = this.getSlots('Track').map(el => ({
 }));
 \`\`\`
 
+When the molecule draws its own element for each source or track (a gallery: one thumbnail per \`Source\`, the visible caption of each \`Track\`), also keep each one's \`data-class\` as \`cls\` and use it on that element: see §10, \`data-class\`.
+
 ---
 
 ## 7. Playback Controls
@@ -217,6 +219,28 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the visible label element | \`this.getSlotClass('Label')\` |
+| \`Source\` | the element the molecule draws for that source, when it draws one (a gallery: that image's thumbnail button) | its own \`data-class\`, kept by the parse (\`cls\`) |
+| \`Track\` | the visible caption of that track, when the molecule draws one (a gallery: the caption under the image it belongs to, while that image is the active one) | its own \`data-class\`, kept by the parse (\`cls\`) |
+
+\`<source>\` and \`<track>\` are not rendered by the browser, so a class on them has no effect. In an audio or video player, and in a document viewer that only takes the URL, \`Source\` and \`Track\` carry data only: their \`data-class\` is not applied.
+
+**Never use \`getSlotClass\` for \`Source\` or \`Track\`.** It reads only the **first** element with that tag: the first source's classes would land on every thumbnail. Keep each one's own attribute in the parse and use it on its element:
+
+\`\`\`typescript
+const sources = this.getSlots('Source').map(el => ({
+  src: el.getAttribute('src') || '',
+  cls: el.getAttribute('data-class') || '',
+}));
+// in the gallery render (the track matches its image by position):
+html\`<button class=\${cn(this.getThumbnailClasses(index === this.activeIndex), source.cls)}>…</button>\`
+html\`<div class=\${cn('mt-2 text-sm ml-text-muted', tracks[this.activeIndex]?.cls)}>\${caption}</div>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -240,4 +264,5 @@ Group-specific semantic classes will be defined during component migration.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-10-29 | §6 and §10 data-class: where each slot's classes go (\`Label\` → the label; \`Source\` → the element drawn for that source, e.g. a gallery thumbnail; \`Track\` → its visible caption); the parse keeps each \`Source\`'s and \`Track\`'s \`data-class\` (\`cls\`), never \`getSlotClass\`; native \`<source>\`/\`<track>\` take no class |
 `;

@@ -56,6 +56,7 @@ component (root)
 | \`value\` | \`string\` (optional) | Identifier for the node, emitted on \`nodeClick\` |
 | \`expanded\` | \`boolean\` (presence) | Node starts expanded |
 | \`disabled\` | \`boolean\` (presence) | Node cannot be toggled or clicked |
+| \`data-class\` | \`string\` (optional) | Classes for this node's own element, never for its children (§9 data-class) |
 
 ### Node Content
 
@@ -67,6 +68,20 @@ The direct content of a \`<Node>\` (excluding nested \`<Node>\` children) is the
   <Node>Frontend</Node>
   <Node>Backend</Node>
 </Node>
+\`\`\`
+
+### Reading the nodes
+
+\`getSlots('Node')\` returns **every** \`<Node>\`, nested ones included. Take as roots only the nodes whose parent is not a \`<Node>\`; each root reads its own children from \`el.children\`. Mapping all of them as roots draws every nested node twice: once under its parent and again at the root.
+
+\`\`\`typescript
+const roots = this.getSlots('Node').filter(el => el.parentElement?.tagName.toUpperCase() !== 'NODE');
+const parse = (el: Element): ParsedNode => ({
+  value: el.getAttribute('value'),
+  cls: el.getAttribute('data-class') || '',
+  children: Array.from(el.children).filter(c => c.tagName.toUpperCase() === 'NODE').map(parse),
+  // label, expanded, disabled…
+});
 \`\`\`
 
 ---
@@ -205,6 +220,24 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the title above the hierarchy | \`this.getSlotClass('Label')\` |
+| \`Node\` | that node's own element, the \`[role=treeitem]\` that shows its label (a button, a box or a row), one per node; never the group of its children | its own \`data-class\`, kept by the parse (\`cls\`, §2 "Reading the nodes") |
+| \`Empty\` | the element that wraps the empty message | \`this.getSlotClass('Empty')\` |
+
+**Never use \`getSlotClass\` for \`Node\`.** It reads only the **first** \`<Node>\`: the first node's classes would land on every node. Use each node's own \`cls\` on its own element, and keep the group of its children outside that element, so a border or a background does not take the whole subtree:
+
+\`\`\`typescript
+// in the node render:
+html\`<div role="treeitem" class="\${cn('flex items-center gap-2', node.cls)}">…label…</div>
+\${expanded ? html\`<div role="group">…children…</div>\` : nothing}\`
+\`\`\`
+
+In an SVG layout (e.g. a mind map), put \`node.cls\` on the HTML element inside the \`foreignObject\` that holds the label, not on the \`<g>\`: most utility classes (background, padding, text) do nothing on SVG elements.
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -229,4 +262,5 @@ Group-specific semantic classes will be defined during component migration.
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
 | 1.1.0 | 2026-04-21 | Added value attribute on Node and nodeClick event |
+| 1.2.0 | 2026-10-29 | §2: \`data-class\` on \`Node\`, and "Reading the nodes" (roots only: \`getSlots('Node')\` also returns nested nodes; the parse keeps each node's \`cls\`); §9 data-class: where each slot's classes go (\`Node\` → that node's own element, never its children; in SVG, the HTML element of the label); \`Node\` reads its own \`data-class\`, never \`getSlotClass\` |
 `;

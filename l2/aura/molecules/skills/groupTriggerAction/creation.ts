@@ -134,6 +134,32 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the element that wraps the button text (a \`span\`) | \`this.getSlotClass('Label')\` in a single button |
+| \`Icon\` | the element that wraps the icon (a \`span\`) | \`this.getSlotClass('Icon')\` in a single button |
+
+A text that exists only for screen readers (\`sr-only\`, \`aria-label\` of an icon-only button) takes no class.
+
+**Several buttons in one molecule (a button group).** Each \`<Label>\` defines one button, and the \`<Icon>\` with the same index is its icon. Keep each one's own \`data-class\` in the parse and use it on that button's text and icon. **Never use \`getSlotClass('Label')\` or \`getSlotClass('Icon')\` there**: they read only the **first** element, so the first button's classes would land on every button. Wrap the text and the icon in their own \`span\` always, also when the button has only one of them:
+
+\`\`\`typescript
+const items = this.getSlots('Label').map((labelEl, index) => {
+  const iconEl = this.getSlots('Icon')[index];
+  return {
+    labelHtml: labelEl.innerHTML.trim(),
+    iconHtml: (iconEl?.innerHTML || '').trim(),
+    labelCls: labelEl.getAttribute('data-class') || '',
+    iconCls: iconEl?.getAttribute('data-class') || '',
+  };
+});
+// in each button:
+const labelPart = html\`<span class="\${item.labelCls}">\${unsafeHTML(item.labelHtml)}</span>\`;
+const iconPart = html\`<span class="\${item.iconCls}">\${unsafeHTML(item.iconHtml)}</span>\`;
+\`\`\`
+
 ### Semantic classes
 
 | Class | Purpose |
@@ -167,4 +193,5 @@ All implementations share the same slot tag contract.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-10-29 | §9 data-class: where \`Label\` and \`Icon\` classes go (a \`span\` around the text and around the icon; none on screen-reader-only text); in a button group, each \`Label\`/\`Icon\` keeps its own \`data-class\` in the parse, never \`getSlotClass\` |
 `;

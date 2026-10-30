@@ -67,12 +67,15 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the label, \`Value\` on the value, \`Icon\` on
+the icon box, \`Trend\` on the trend (together with its direction colors) and \`Helper\` on the help text:
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Label data-class="uppercase tracking-wide">Sessions</Label>
+  <Value data-class="text-3xl">1.24M</Value>
+  <Trend direction="up" data-class="font-bold">↑ 8.2%</Trend>
+  <Helper data-class="italic">Last 30 days</Helper>
 </component>
 \`\`\`
 

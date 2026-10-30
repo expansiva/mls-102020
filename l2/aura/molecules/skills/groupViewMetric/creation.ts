@@ -149,6 +149,23 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go — every slot of this group is single, so each one reads its classes with \`getSlotClass\` on the element that renders it:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the label element | \`this.getSlotClass('Label')\` |
+| \`Value\` | the value element (the one with \`aria-live\`) | \`this.getSlotClass('Value')\` |
+| \`Icon\` | the element that wraps the icon | \`this.getSlotClass('Icon')\` |
+| \`Trend\` | the trend element, together with the direction classes | \`this.getSlotClass('Trend')\` |
+| \`Helper\` | the help text element | \`this.getSlotClass('Helper')\` |
+
+No slot of this group renders without its classes: a \`div\` written with only its base classes (\`class="text-xl font-semibold ml-text"\`) drops the consumer's \`data-class\`.
+
+\`\`\`typescript
+// the trend keeps the direction classes and adds the slot's own:
+html\`<div class="\${cn(this.getTrendClasses(direction), this.getSlotClass('Trend'))}">\${unsafeHTML(this.getSlotContent('Trend'))}</div>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -172,5 +189,6 @@ Group-specific semantic classes will be defined during component migration.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-10-29 | §9 data-class: where each slot's classes go (all five are single: \`getSlotClass\` on the element that renders each one; \`Trend\` together with the direction classes) |
 
 `;

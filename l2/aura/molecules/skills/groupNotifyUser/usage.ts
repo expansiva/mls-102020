@@ -85,7 +85,7 @@ Pass extra CSS classes via \`data-class\`:
 
 \`\`\`html
 <component data-class="w-full mt-4">
-  <Label>Text</Label>
+  <Message>Text</Message>
 </component>
 \`\`\`
 
@@ -95,8 +95,8 @@ Pass CSS classes on slot tags via \`data-class\`:
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Title data-class="uppercase tracking-wide">Title</Title>
+  <Message data-class="italic">Message text</Message>
 </component>
 \`\`\`
 

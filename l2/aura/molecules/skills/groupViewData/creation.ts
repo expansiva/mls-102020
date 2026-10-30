@@ -195,6 +195,25 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go. The same slot becomes a different element in each molecule:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Empty\`, \`Loading\` | the element directly wrapping the message (or the live-slot anchor, \`renderLiveSlot(tag, cls)\`, when nothing wraps it) | \`this.getSlotClass('<Tag>')\` |
+| \`Rows\` | the list or grid container. Ignored where rows have no container of their own (kanban, calendar) | \`this.getSlotClass('Rows')\` |
+| \`Columns\` | kanban only: the board. Elsewhere ignored: columns only define fields | \`this.getSlotClass('Columns')\` |
+| \`Column\` | kanban only: its own column. Elsewhere ignored: a field definition renders no element | its own \`data-class\` |
+| \`Row\` | the element the record becomes: the card, the list item, the timeline event or group title, the kanban column's card list, each calendar event chip | its own \`data-class\` |
+| \`Cell\` | the element wrapping that cell (in the kanban, the card and the add-card); the live-slot anchor, \`renderLiveSlotFrom(cell, cls)\`, when nothing wraps it. Ignored where cells are data only (calendar) | its own \`data-class\` |
+| \`CardTop\` | \`div.ml-card-top\` | its own \`data-class\` |
+
+**Never use \`getSlotClass\` for a repeated slot.** It reads only the **first** element with that tag: the first row's classes would land on every row. Read each element's own attribute, from the element the parse already holds:
+
+\`\`\`typescript
+html\`<div role="listitem" class=\${cn(this.getRowClasses(row), row.getAttribute('data-class') || '')}>...</div>\`
+html\`<div class=\${cn(this.getCellClasses(col), cell.getAttribute('data-class') || '')}>\${this.renderLiveSlotFrom(cell)}</div>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -234,5 +253,6 @@ All implementations share the same slot tag contract and events — they are ful
 |---------|------|-------------|
 | 1.0.0 | 2026-04-13 | Initial contract definition |
 | 1.1.0 | 2026-04-13 | Removed view-specific properties; focus on data structure only |
+| 1.2.0 | 2026-10-28 | §8 data-class: where each slot's classes go (\`Rows\` → the list/grid; \`Row\` → the record's element; \`Cell\` → its cell; \`CardTop\` → \`div.ml-card-top\`; \`Columns\`/\`Column\` → board/column in the kanban only; \`Empty\`/\`Loading\` → the message wrapper); repeated slots read their own \`data-class\`, never \`getSlotClass\` |
 
 `

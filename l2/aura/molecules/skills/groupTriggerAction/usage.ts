@@ -80,12 +80,13 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the button text and \`Icon\` on the icon. In
+a button group, each \`<Label>\` (and the \`<Icon>\` with the same index) styles only its own button:
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Icon data-class="text-red-600">🗑</Icon>
+  <Label data-class="font-semibold">Delete</Label>
 </component>
 \`\`\`
 

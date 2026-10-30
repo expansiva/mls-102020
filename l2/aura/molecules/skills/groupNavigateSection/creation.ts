@@ -23,7 +23,7 @@ export const skill = `
 | Tag | Required | Description |
 |-----|:--------:|-------------|
 | \`Label\` | No | Title displayed above the navigation |
-| \`Tab\` | Yes | Defines one section. Attributes: \`value\` (required), \`title\` (required), \`disabled\`, \`icon\`. Content = the section body |
+| \`Tab\` | Yes | Defines one section. Attributes: \`value\` (required), \`title\` (required), \`disabled\`, \`icon\`, \`data-class\`. Content = the section body |
 
 \`\`\`typescript
 slotTags = ['Label', 'Tab'];
@@ -47,6 +47,7 @@ component (root)
 | \`title\` | \`string\` | Display text for the tab |
 | \`icon\` | \`string\` (optional) | Icon content (emoji, text) displayed alongside the title |
 | \`disabled\` | \`boolean\` (presence) | Tab cannot be selected |
+| \`data-class\` | \`string\` (optional) | Consumer CSS classes applied to that tab's **button** (not to the content panel) |
 
 ---
 
@@ -105,7 +106,21 @@ const tabs = this.getSlots('Tab').map(el => ({
   title: el.getAttribute('title') || '',
   icon: el.getAttribute('icon') || '',
   disabled: el.hasAttribute('disabled'),
+  cls: el.getAttribute('data-class') || '',
 }));
+\`\`\`
+
+Each tab's \`cls\` goes on its own button: \`class="\${cn(this.getTabClasses(...), tab.cls)}"\`.
+
+**In a trail (breadcrumb).** Each \`Tab\` is one item of the trail, and two things differ from a tab bar:
+- the current item (usually the last) is not clickable, so it is a \`span\`, not a button: \`tab.cls\` goes on that \`span\` too;
+- the trail is often rendered more than once (a narrow and a wide version, and the hidden items again inside an overflow menu): \`tab.cls\` goes on the item's element in **every** copy, so the class shows whichever version is visible.
+
+\`\`\`typescript
+// current item:
+html\`<span class="\${cn(this.getTabClasses(isActive, tab.disabled, false), tab.cls)}" role="tab">…</span>\`
+// other items, in each version of the trail and in the overflow menu:
+html\`<button class="\${cn(this.getTabClasses(isActive, disabled, interactive), tab.cls)}" role="tab" @click=\${() => this.handleTabClick(tab)}>…</button>\`
 \`\`\`
 
 ---
@@ -179,7 +194,8 @@ The fallback ensures the component renders without external configuration.
 
 The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
-- On slots: \`<Label data-class="uppercase tracking-wide">\`
+- On slots: \`<Label data-class="uppercase tracking-wide">\` — applied to the label wrapper via \`getSlotClass('Label')\`
+- On each Tab: \`<Tab value="a" title="A" data-class="font-bold">\` — applied to that tab's button (see §6)
 
 ### Shared semantic classes
 
@@ -219,4 +235,5 @@ All implementations share the same slot tag contract.
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
 | 1.1.0 | 2026-04-21 | Tab content rendered by component; section body inside Tab slot |
+| 1.2.0 | 2026-10-29 | §6: in a trail (breadcrumb), \`tab.cls\` also goes on the \`span\` of the current item and on the item's element in every copy of the trail (narrow, wide, overflow menu) |
 `

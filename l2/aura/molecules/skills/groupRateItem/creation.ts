@@ -148,6 +148,7 @@ When \`<Item>\` slots are present, read them inline using \`getSlots\`:
 const items = this.getSlots('Item').map(el => ({
   value: Number(el.getAttribute('value')),
   label: el.innerHTML,
+  cls: el.getAttribute('data-class') || '',
 }));
 \`\`\`
 
@@ -258,6 +259,21 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\`, \`Helper\` | the label element / the helper element | \`this.getSlotClass('<Tag>')\` |
+| \`Item\` | that item's option \`[role="radio"]\` (button, star, emoji, chip), in every mode the option is drawn — also in view mode when view mode draws the options | its own \`data-class\`, kept by the parse (\`cls\`, see §8) |
+
+In view mode, a box or text that shows the selected \`<Item>\`'s label is the molecule's own element: it does **not** take that \`Item\`'s classes.
+
+**Never use \`getSlotClass\` for \`Item\`.** It reads only the **first** element with that tag: the first item's classes would land on every option. Keep each item's own attribute in the parse and use it on its option:
+
+\`\`\`typescript
+html\`<button role="radio" class=\${cn(this.getOptionClasses(isActive), item.cls)}>\${unsafeHTML(item.label)}</button>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -281,4 +297,5 @@ Group-specific semantic classes will be defined during component migration.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-10-28 | §8 parse keeps each \`Item\`'s \`data-class\` (\`cls\`); §13 data-class: where each slot's classes go (\`Item\` → its option \`[role="radio"]\`); the view-mode box with the selected label never takes the \`Item\`'s classes; \`Item\` reads its own \`data-class\`, never \`getSlotClass\` |
 `;

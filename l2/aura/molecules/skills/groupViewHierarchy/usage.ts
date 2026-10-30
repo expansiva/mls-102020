@@ -84,12 +84,16 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the title, \`Empty\` on the empty message,
+and each \`Node\` on that node's own element (the row with its label), never on its children:
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Label data-class="uppercase tracking-wide">Project Files</Label>
+  <Node data-class="font-semibold">
+    📁 src
+    <Node data-class="italic">📄 index.ts</Node>
+  </Node>
 </component>
 \`\`\`
 

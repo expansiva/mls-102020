@@ -133,6 +133,7 @@ Read suggestions inline using \`getSlots\`:
 const suggestions = this.getSlots('Suggestion').map(el => ({
   value: el.getAttribute('value') || '',
   label: el.innerHTML,
+  cls: el.getAttribute('data-class') || '',
 }));
 \`\`\`
 
@@ -316,6 +317,22 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\`, \`Helper\` | the label element / the helper element | \`this.getSlotClass('<Tag>')\` |
+| \`Suggestion\` | that suggestion's option \`[role="option"]\`, wherever the panel is rendered (portal included) | its own \`data-class\`, kept by the parse (\`cls\`, see §6) |
+| \`Empty\` | the element wrapping the "no results" message in the panel — not the loading message | \`this.getSlotClass('Empty')\` |
+
+A chip, tag or input that shows the chosen suggestion's label is the molecule's own element: it does **not** take that \`Suggestion\`'s classes.
+
+**Never use \`getSlotClass\` for \`Suggestion\`.** It reads only the **first** element with that tag: the first suggestion's classes would land on every option. Keep each suggestion's own attribute in the parse and use it on its option:
+
+\`\`\`typescript
+html\`<button role="option" class=\${cn(this.getSuggestionClasses(isActive), item.cls)}>\${unsafeHTML(item.label)}</button>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -341,4 +358,5 @@ Group-specific semantic classes will be defined during component migration.
 | 1.0.0 | 2026-04-21 | Initial creation reference |
 | 1.1.0 | 2026-06-22 | Added §7.1 Portal — suggestions panel must render in \`<body>\` via \`litRender\`; input stays in component, only suggestions go to portal |
 | 1.2.0 | 2026-07-17 | Portal CSS hardening — shared selector documented as top-level, never nested inside the tag scope; own tag only |
+| 1.3.0 | 2026-10-28 | §6 parse keeps each \`Suggestion\`'s \`data-class\` (\`cls\`); §9 data-class: where each slot's classes go (\`Suggestion\` → its option \`[role="option"]\`; \`Empty\` → the "no results" message); a chip or input showing the chosen label never takes the \`Suggestion\`'s classes; \`Suggestion\` reads its own \`data-class\`, never \`getSlotClass\` |
 `;

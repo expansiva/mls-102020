@@ -223,7 +223,7 @@ The type drives the visual styling (colors, default icon). The component does no
 
 The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
-- On slots: \`<Label data-class="uppercase tracking-wide">\`
+- On slots: \`<Title data-class="uppercase tracking-wide">\`
 
 ### Shared semantic classes
 
@@ -249,5 +249,6 @@ Group-specific semantic classes will be defined during component migration.
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
 | 1.1.0 | 2026-06-22 | Added §6.1 Portal — positioned notifications must render in \`<body>\` via \`litRender\`; fixed screen coordinates instead of trigger-relative; no scroll/resize listeners needed |
+| 1.2.0 | 2026-10-30 | §10 data-class: the slot example uses \`Title\`, a slot this group has (was \`Label\`) |
 
 `;

@@ -107,6 +107,7 @@ const sections = this.getSlots('Section').map((el, index) => ({
   title: el.getAttribute('title') || '',
   disabled: el.hasAttribute('disabled'),
   expanded: this.openSections.has(index),
+  cls: el.getAttribute('data-class') || '',
 }));
 \`\`\`
 
@@ -196,6 +197,25 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the label element above the sections; if the molecule repeats the label text elsewhere (e.g. a notice inside each section), every copy of it | \`this.getSlotClass('Label')\` |
+| \`Section\` | the element that wraps that whole section (header + content region), one per section | its own \`data-class\`, kept by the parse (\`cls\`) |
+
+The wrapper holds both parts of a \`<Section>\` (its \`title\` becomes the header, its content becomes the region), so its \`data-class\` goes there, never on the header alone or on the region alone.
+
+**Never use \`getSlotClass\` for \`Section\`.** It reads only the **first** element with that tag: the first section's classes would land on every section. Keep each section's own attribute in the parse (§6) and use it on its wrapper:
+
+\`\`\`typescript
+// in the section render:
+html\`<div class=\${section.cls}>
+  <div role="button" …>…</div>
+  <div role="region" …>…</div>
+</div>\`
+\`\`\`
+
 ### Semantic classes
 
 | Class | Purpose |
@@ -217,4 +237,5 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-10-29 | §6: the parse keeps each \`Section\`'s \`data-class\` (\`cls\`); §9 data-class: where each slot's classes go (\`Label\` → the label, and every copy of its text; \`Section\` → the element that wraps the whole section); \`Section\` reads its own \`data-class\`, never \`getSlotClass\` |
 `;

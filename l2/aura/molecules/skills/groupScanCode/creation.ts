@@ -230,6 +230,16 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\`, \`Helper\` | the label element / the helper element | \`this.getSlotClass('<Tag>')\` |
+| \`Trigger\` | the element that opens the camera (\`<button>\` or \`[role="button"]\`; its content is the slot) — only that one, not the capture, close or "scan again" buttons | \`this.getSlotClass('Trigger')\` |
+| \`Result\` | the element directly wrapping the result content; if the molecule has no such wrapper, the result card | \`this.getSlotClass('Result')\` |
+
+\`Trigger\` is a live slot (§2.9): put its classes on the button, not in \`renderLiveSlot('Trigger', cls)\` — that would land them on the inner anchor \`<span>\`.
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -253,4 +263,5 @@ Group-specific semantic classes will be defined during component migration.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-10-28 | §9 data-class: where each slot's classes go (\`Trigger\` → the button that opens the camera; \`Result\` → the element wrapping the result, or the result card); \`Trigger\`'s classes go on the button, never on the live-slot anchor |
 `;

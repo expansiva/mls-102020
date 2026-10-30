@@ -89,12 +89,15 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the label, \`Helper\` on the help text, and
+\`Trigger\` on the element that holds your trigger content inside the drop zone. That element is inline (a \`span\`)
+in most molecules of this group, so add \`block\` or \`flex\` when the classes need a block:
 
 \`\`\`html
 <component>
   <Label data-class="uppercase tracking-wide">Text</Label>
   <Helper data-class="italic">Help text</Helper>
+  <Trigger data-class="flex flex-col items-center gap-1">Drop files here or click to browse</Trigger>
 </component>
 \`\`\`
 

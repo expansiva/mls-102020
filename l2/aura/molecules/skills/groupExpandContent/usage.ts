@@ -73,12 +73,14 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the label above the sections, and each
+\`Section\` on the element that wraps that whole section (header and content):
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Label data-class="uppercase tracking-wide">FAQ</Label>
+  <Section title="How do I reset my password?" data-class="border-b">Use the "Forgot password" link.</Section>
+  <Section title="Can I change my plan?" data-class="font-medium">Yes, from the billing page.</Section>
 </component>
 \`\`\`
 

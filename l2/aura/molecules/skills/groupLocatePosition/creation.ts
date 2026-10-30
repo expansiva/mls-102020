@@ -121,6 +121,7 @@ const items = suggestionsContainer
   ? Array.from(suggestionsContainer.querySelectorAll('Item')).map(el => ({
       value: el.getAttribute('value') || '',
       label: el.innerHTML,
+      cls: el.getAttribute('data-class') || '',
     }))
   : [];
 \`\`\`
@@ -368,6 +369,24 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\`, \`Helper\` | the \`<label>\` / the helper \`<p>\` | \`this.getSlotClass('<Tag>')\` |
+| \`Trigger\` | the geolocation \`<button>\` (its content is the slot) | \`this.getSlotClass('Trigger')\` |
+| \`Suggestions\` | the panel \`[role="listbox"]\`, in every state it renders (loading, empty, with items) | \`this.getSlotClass('Suggestions')\` |
+| \`Item\` | that item's option \`[role="option"]\` | its own \`data-class\`, kept by the parse (\`cls\`, see §4) |
+| \`Empty\` | the element wrapping the empty message in the panel; in view mode, the value box **only while** it shows the Empty content (no value) | \`this.getSlotClass('Empty')\` |
+
+In view mode the value box shows the selected \`<Item>\`'s label, but **not** its classes: an \`Item\`'s classes belong to its option, which only exists while editing.
+
+**Never use \`getSlotClass\` for \`Item\`.** It reads only the **first** element with that tag: the first item's classes would land on every option. Keep each item's own attribute in the parse and use it on its option:
+
+\`\`\`typescript
+html\`<button role="option" class=\${cn(this.getItemClasses(selected), item.cls)}>\${unsafeHTML(item.label)}</button>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -394,4 +413,5 @@ Group-specific semantic classes will be defined during component migration.
 | 1.1.0 | 2026-04-21 | Suggestions via Slot Tags; value simplified to "lat,lng" string |
 | 1.2.0 | 2026-06-22 | Added §6.1 Portal — suggestions panel must render in \`<body>\` via \`litRender\`; map preview stays inline |
 | 1.3.0 | 2026-07-17 | Added CSS — shared selector for portal (top-level, never nested; own tag only) |
+| 1.4.0 | 2026-10-28 | §4 parse keeps each \`Item\`'s \`data-class\` (\`cls\`); §11 data-class: where each slot's classes go (\`Trigger\` → the geolocation button; \`Suggestions\` → the listbox panel; \`Item\` → its option; \`Empty\` → the panel message and, in view mode, the value box only while it shows Empty); the value box never takes the \`Item\`'s classes; \`Item\` reads its own \`data-class\`, never \`getSlotClass\` |
 `;

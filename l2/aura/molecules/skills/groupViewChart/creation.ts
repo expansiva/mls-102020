@@ -166,6 +166,16 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the chart title element | \`this.getSlotClass('Label')\` |
+| \`Empty\` | the element directly wrapping the empty message | \`this.getSlotClass('Empty')\` |
+| \`Series\`, \`Point\` | — **ignored**: they are chart data (\`name\`, \`label\`, \`value\`, \`color\`), not content | — |
+
+Never put a \`Series\` or \`Point\` class on the drawn shapes (path, polygon, bar, slice, marker) or on the legend: their look comes from \`color\` and the design tokens.
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -190,4 +200,5 @@ Group-specific semantic classes will be defined during component migration.
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
 | 1.1.0 | 2026-04-21 | Removed animate, width, height props; added Empty slot; removed implementation code |
+| 1.2.0 | 2026-10-28 | §9 data-class: where each slot's classes go (\`Label\` → the title; \`Empty\` → the message wrapper); \`Series\` and \`Point\` are data and take no class |
 `;

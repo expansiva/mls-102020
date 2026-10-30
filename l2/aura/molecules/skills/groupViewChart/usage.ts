@@ -82,12 +82,14 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the chart title, \`Empty\` on the
+"no data" message. \`Series\` and \`Point\` are data: their \`data-class\` is ignored, and their look comes from
+\`color\`:
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Label data-class="uppercase tracking-wide">Monthly revenue</Label>
+  <Empty data-class="italic">No data for this period</Empty>
 </component>
 \`\`\`
 

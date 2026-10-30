@@ -118,6 +118,21 @@ Pass CSS classes on slot tags via \`data-class\`:
 </component>
 \`\`\`
 
+Each slot tag's classes land on the element it becomes: \`Trigger\` on the geolocation button, \`Suggestions\` on
+the suggestions panel, each \`Item\` on its own option, \`Empty\` on the "no results" message (and on the value box
+in view mode, while it shows the Empty content). In view mode the selected \`Item\`'s label is shown without its
+classes:
+
+\`\`\`html
+<component allow-geolocation>
+  <Trigger data-class="font-semibold">📍 Use my location</Trigger>
+  <Suggestions data-class="max-h-72">
+    <Item value="-23.55,-46.63" data-class="font-bold">São Paulo, SP</Item>
+  </Suggestions>
+  <Empty data-class="italic">No addresses found</Empty>
+</component>
+\`\`\`
+
 ---
 
 ## Design Tokens

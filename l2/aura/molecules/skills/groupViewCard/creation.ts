@@ -187,6 +187,32 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`CardHeader\` | the element that wraps the header, **always**, also when it holds \`CardTitle\` and \`CardDescription\`; when the molecule uses the header as the card's image (e.g. a media card with \`ratio\`), the image box, which exists with or without the image | \`this.getSlotClass('CardHeader')\` |
+| \`CardTitle\` | the title element | \`this.getSlotClass('CardTitle')\` |
+| \`CardDescription\` | the description element | \`this.getSlotClass('CardDescription')\` |
+| \`CardContent\` | the body element | \`this.getSlotClass('CardContent')\` |
+| \`CardFooter\` | the element the molecule renders around \`renderLiveSlot('CardFooter')\` (§2.9) | \`this.getSlotClass('CardFooter')\` |
+| \`CardAction\` | the element the molecule renders around \`renderLiveSlot('CardAction')\` (§2.9) | \`this.getSlotClass('CardAction')\` |
+
+**\`CardTitle\` and \`CardDescription\` inside \`CardHeader\`.** \`hasSlot\` and \`getSlotClass\` find them nested too. In a molecule whose header holds the title and the description (not the image of a media card), when the card has a \`CardTitle\` or a \`CardDescription\`, render each one through its own element (with its class) inside the header wrapper; render the header's raw content only when the card has neither (free HTML in the header). Never dump the raw header when it holds them: they would come out as unknown tags, with no class and no base style. In such a molecule, free HTML in the header is not combined with a title: when there is a title, the header's free HTML is not rendered.
+
+\`\`\`typescript
+// in the header render:
+if (hasHeader && !hasTitle && !hasDescription) {
+  return html\`<div class="\${cn('flex flex-col gap-1', this.getSlotClass('CardHeader'))}">
+    \${unsafeHTML(this.getSlotContent('CardHeader'))}
+  </div>\`;
+}
+return html\`<div class="\${cn('flex flex-col gap-1', this.getSlotClass('CardHeader'))}">
+  \${hasTitle ? html\`<div class="\${cn('text-base font-semibold', this.getSlotClass('CardTitle'))}">…</div>\` : html\`\`}
+  \${hasDescription ? html\`<div class="\${cn('text-sm', this.getSlotClass('CardDescription'))}">…</div>\` : html\`\`}
+</div>\`;
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -210,5 +236,6 @@ Group-specific semantic classes will be defined during component migration.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-10-29 | §9 data-class: where each slot's classes go (\`CardHeader\` → the header wrapper, always, or the image box of a media card; \`CardFooter\`/\`CardAction\` → the element around the live slot); \`CardTitle\`/\`CardDescription\` inside \`CardHeader\` are rendered through their own elements, never as the header's raw HTML |
 
 `;

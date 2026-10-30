@@ -79,12 +79,18 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`CardHeader\` on the header (also when it holds the
+title and the description), \`CardTitle\` and \`CardDescription\` on their own elements, and \`CardContent\`,
+\`CardFooter\` and \`CardAction\` on their sections:
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <CardHeader data-class="pb-2 border-b">
+    <CardTitle data-class="text-lg">Wireless Headphones</CardTitle>
+    <CardDescription data-class="italic">Noise cancelling, 30h battery</CardDescription>
+  </CardHeader>
+  <CardContent data-class="py-2">Free shipping this week.</CardContent>
+  <CardAction data-class="flex justify-end"><button>Buy</button></CardAction>
 </component>
 \`\`\`
 

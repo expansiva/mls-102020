@@ -339,6 +339,33 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the label element of the field | \`this.getSlotClass('Label')\` |
+| \`LabelStart\` | the element that shows the start label, wherever the molecule shows it (above the start input, above the start calendar, or in the calendar header); when the slot is absent the same element shows the default text, and \`getSlotClass\` returns \`''\` | \`this.getSlotClass('LabelStart')\` |
+| \`LabelEnd\` | the element that shows the end label, the same way | \`this.getSlotClass('LabelEnd')\` |
+| \`Helper\` | the help text element | \`this.getSlotClass('Helper')\` |
+
+\`\`\`typescript
+// a label shown in the calendar header, with a default text when the slot is absent:
+html\`<span class="\${cn('ml-text font-medium', this.getSlotClass('LabelStart'))}">\${labelStart}</span>\`
+\`\`\`
+
+**Quick options (\`Preset\`).** A molecule of this group that offers quick ranges ("Last 7 days", "This month", see §13) adds a repeated \`Preset\` slot: each \`<Preset start-date="…" end-date="…">\` becomes one button, and its content is the button text. Each preset's own \`data-class\` goes on **its** button. Keep it in the parse (\`cls\`) and use it on that button. **Never use \`getSlotClass('Preset')\`**: it reads only the first \`<Preset>\`, and the first preset's classes would land on every button.
+
+\`\`\`typescript
+this.parsedPresets = this.getSlots('Preset').map(el => ({
+  label: el.innerHTML.trim(),
+  startDate: el.getAttribute('start-date') || '',
+  endDate: el.getAttribute('end-date') || '',
+  cls: el.getAttribute('data-class') || '',
+}));
+// in the render:
+html\`<button type="button" class=\${cn(this.getPresetClasses(active), preset.cls)}>\${unsafeHTML(preset.label)}</button>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -374,6 +401,7 @@ Group-specific semantic classes will be defined during component migration.
 | 1.0.0 | 2026-04-17 | Initial creation reference |
 | 1.1.0 | 2026-06-22 | Added §7.1 Portal — range calendar must render in \`<body>\` via \`litRender\`; width independent of trigger; frequent re-renders for hover preview |
 | 1.2.0 | 2026-07-17 | Added CSS — shared selector for portal (top-level, never nested; own tag only) |
+| 1.3.0 | 2026-10-29 | §12 data-class: where each slot's classes go (\`LabelStart\`/\`LabelEnd\` → the element that shows each label, also in the calendar header); the repeated \`Preset\` slot of the quick options keeps each preset's \`data-class\` in the parse (\`cls\`) for its own button, never \`getSlotClass\` |
 
 
 `

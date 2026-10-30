@@ -14,7 +14,7 @@ export const skill = `
 | Tag | Description |
 |-----|-------------|
 | \`Label\` | Title displayed above the navigation |
-| \`Tab\` | One section. Attributes: \`value\` (required, unique identifier), \`title\` (required), \`icon\` (optional), \`disabled\` (presence). Content = the section body (text, HTML, web components) |
+| \`Tab\` | One section. Attributes: \`value\` (required, unique identifier), \`title\` (required), \`icon\` (optional), \`disabled\` (presence), \`data-class\` (optional, classes for that tab's button). Content = the section body (text, HTML, web components) |
 
 ---
 
@@ -85,12 +85,12 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Pass CSS classes on slot tags via \`data-class\`. On a \`Tab\`, the classes go on that tab's button, not on its content:
 
 \`\`\`html
 <component>
   <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Tab value="overview" title="Overview" data-class="font-bold">...</Tab>
 </component>
 \`\`\`
 

@@ -186,7 +186,20 @@ markup. \`label\` is the scene's heading, ignored by a detail-row presentation.
 ## Customization
 
 \`data-class\` passes extra CSS classes, on the host (\`<component data-class="w-full mt-4">\`) or on
-a slot tag.
+a slot tag. Each slot tag's classes land on the element it becomes: \`TableHeader\`/\`TableBody\`/\`TableFooter\`
+on \`<thead>\`/\`<tbody>\`/\`<tfoot>\`, each \`TableRow\` on its own \`<tr>\`, each \`TableHead\`/\`TableCell\` on its
+own \`<th>\`/\`<td>\`, \`Detail\` on the detail wrapper, each \`RowAction\` on its action:
+
+\`\`\`html
+<component>
+  <TableHeader>
+    <TableRow><TableHead key="total" data-class="text-right">Total</TableHead></TableRow>
+  </TableHeader>
+  <TableBody>
+    <TableRow key="1" data-class="font-bold"><TableCell data-class="text-right">10</TableCell></TableRow>
+  </TableBody>
+</component>
+\`\`\`
 
 ---
 

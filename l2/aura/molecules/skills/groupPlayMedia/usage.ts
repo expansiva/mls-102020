@@ -78,12 +78,15 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the label above the player. \`Source\` and
+\`Track\` take a class only where the molecule draws an element for them, as in a gallery (each \`Source\` is a
+thumbnail, each \`Track\` the caption of its image); in audio, video and document players they carry data only:
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
-  <Helper data-class="italic">Help text</Helper>
+  <Label data-class="uppercase tracking-wide">Summer trip</Label>
+  <Source src="beach.jpg" type="image/jpeg" data-class="ring-2" />
+  <Track kind="captions" lang="en" label="Beach sunrise" data-class="italic" />
 </component>
 \`\`\`
 

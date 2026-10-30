@@ -102,6 +102,16 @@ Pass CSS classes on slot tags via \`data-class\`:
 </component>
 \`\`\`
 
+\`Trigger\`'s classes land on the button that opens the camera (not on the capture, close or "scan again"
+buttons), and \`Result\`'s on the box that shows the decoded result:
+
+\`\`\`html
+<component>
+  <Trigger data-class="font-semibold">📷 Open Camera</Trigger>
+  <Result data-class="font-mono">Payment code read</Result>
+</component>
+\`\`\`
+
 ---
 
 ## Design Tokens

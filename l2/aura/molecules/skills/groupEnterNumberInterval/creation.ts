@@ -266,6 +266,31 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the label element of the field | \`this.getSlotClass('Label')\` |
+| \`LabelStart\` | the label of the start value | \`this.getSlotClass('LabelStart')\` |
+| \`LabelEnd\` | the label of the end value | \`this.getSlotClass('LabelEnd')\` |
+| \`Helper\` | the help text element | \`this.getSlotClass('Helper')\` |
+| \`Prefix\` | the element that holds the prefix, in **every** place the molecule shows it (once per value: start and end, the summary, the read mode) | \`this.getSlotClass('Prefix')\` |
+| \`Suffix\` | the element that holds the suffix, the same way | \`this.getSlotClass('Suffix')\` |
+
+\`Prefix\` and \`Suffix\` are shown next to each value, so they are rendered more than once. When the molecule builds the value as a string (rendered with \`unsafeHTML\`), never glue the affix as plain text: wrap it in a \`span\` with its class, and only when the slot exists:
+
+\`\`\`typescript
+private wrapWithAffixes(formatted: string): string {
+  const prefix = this.getSlotContent('Prefix') || '';
+  const suffix = this.getSlotContent('Suffix') || '';
+  const prefixHtml = prefix ? \`<span class="\${this.getSlotClass('Prefix')}">\${prefix}</span>\` : '';
+  const suffixHtml = suffix ? \`<span class="\${this.getSlotClass('Suffix')}">\${suffix}</span>\` : '';
+  return \`\${prefixHtml}\${formatted}\${suffixHtml}\`;
+}
+\`\`\`
+
+Keep text-only attributes (\`aria-valuetext\`) on the number without the affix markup.
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -299,5 +324,6 @@ Group-specific semantic classes will be defined during component migration.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-06-30 | Initial creation reference |
+| 1.1.0 | 2026-10-29 | §12 data-class: where each slot's classes go; \`Prefix\`/\`Suffix\` go on the element that holds them in every place they are shown, and an affix glued into a value string is wrapped in a \`span\` with its class |
 
 `

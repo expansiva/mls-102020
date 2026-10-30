@@ -188,6 +188,27 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the title element above the steps, when the molecule renders one (if the text only feeds an \`aria-label\`, there is no element to style) | \`this.getSlotClass('Label')\` |
+| \`Step\` | that step's own element: the clickable \`[role="tab"]\` when it holds the whole step (indicator, title, description), otherwise the wrapper that holds them | its own \`data-class\`, kept by the parse (\`cls\`) |
+
+A \`<Step>\` has no content of its own (its data is in attributes), but it still becomes one element per step: its \`data-class\` goes there, never on the indicator alone or on the connector.
+
+**Never use \`getSlotClass\` for \`Step\`.** It reads only the **first** element with that tag: the first step's classes would land on every step. Keep each step's own attribute in the parse and use it on its element:
+
+\`\`\`typescript
+const steps = this.getSlots('Step').map((el, index) => ({
+  index,
+  title: el.getAttribute('title') || '',
+  cls: el.getAttribute('data-class') || '',
+}));
+// in the step render:
+html\`<button role="tab" class=\${cn(this.getStepClasses(step, isActive), step.cls)}>…</button>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -211,4 +232,5 @@ Group-specific semantic classes will be defined during component migration.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-10-29 | §9 data-class: where each slot's classes go (\`Label\` → the title above the steps; \`Step\` → that step's own element); the parse keeps each \`Step\`'s \`data-class\` (\`cls\`); \`Step\` reads its own \`data-class\`, never \`getSlotClass\` |
 `;

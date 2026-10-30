@@ -260,6 +260,23 @@ The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
 - On slots: \`<Label data-class="uppercase tracking-wide">\`
 
+Where each slot's classes go:
+
+| Slot | Applied to | Read with |
+|------|------------|-----------|
+| \`Label\` | the label element of the field | \`this.getSlotClass('Label')\` |
+| \`LabelStart\` | the label of the start field; when the slot is absent the same element shows the default text, and \`getSlotClass\` returns \`''\` | \`this.getSlotClass('LabelStart')\` |
+| \`LabelEnd\` | the label of the end field, the same way | \`this.getSlotClass('LabelEnd')\` |
+| \`Helper\` | the help text element | \`this.getSlotClass('Helper')\` |
+
+When one function renders both fields (start and end), pick the slot by the field, so each label gets its own classes:
+
+\`\`\`typescript
+// in renderInputBlock(field: 'start' | 'end'):
+const isStart = field === 'start';
+html\`<label id=\${labelId} for=\${inputId} class="\${cn('text-xs font-medium ml-text-muted', this.getSlotClass(isStart ? 'LabelStart' : 'LabelEnd'))}">\${labelContent}</label>\`
+\`\`\`
+
 ### Shared semantic classes
 
 | Class | Purpose |
@@ -293,5 +310,6 @@ Group-specific semantic classes will be defined during component migration.
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-17 | Initial creation reference |
+| 1.1.0 | 2026-10-29 | §12 data-class: where each slot's classes go (\`LabelStart\`/\`LabelEnd\` → the label of each field; when one function renders both fields, the slot is picked by the field) |
 
 `

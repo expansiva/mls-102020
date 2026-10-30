@@ -25,10 +25,10 @@ export const skill = `
 | \`Label\` | No | Label displayed above or beside the field |
 | \`Helper\` | No | Help text displayed below the field |
 | \`Trigger\` | No | Custom content for the trigger button (for dropdown implementations) |
-| \`Item\` | Yes | Defines one selectable option (one **row** in \`table\`). Attributes: \`value\` (required), \`disabled\` |
+| \`Item\` | Yes | Defines one selectable option (one **row** in \`table\`). Attributes: \`value\` (required), \`disabled\`, \`data-class\` (see §14 data-class) |
 | \`Cell\` | No | \`table\` only — A data cell inside an \`Item\`, one per column, in column order |
 | \`Column\` | No | \`table\` only — A single column header, direct child of the component, in column order |
-| \`Group\` | No | Groups items under a named heading. Attribute: \`label\` |
+| \`Group\` | No | Groups items under a named heading. Attributes: \`label\`, \`data-class\` (see §14 data-class) |
 | \`Empty\` | No | Content shown when no items are available |
 
 \`\`\`typescript
@@ -472,7 +472,31 @@ The fallback ensures the component renders without external configuration.
 
 The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
-- On slots: \`<Label data-class="uppercase tracking-wide">\`
+- On slots: \`<Label data-class="uppercase tracking-wide">\`, \`<Item value="a" data-class="font-bold">\`
+
+Where each slot's classes go:
+
+| Slot | Kind | Applied to | Read with |
+|------|------|------------|-----------|
+| \`Label\`, \`Helper\`, \`Trigger\`, \`Empty\` | single | the element that renders that slot (\`Trigger\`: the trigger button; \`Helper\` and \`Empty\`: the message wrapper) | \`this.getSlotClass('<Tag>')\` |
+| \`Item\` | repeated | that item's own option element (\`[role=option]\`, in lists, dropdowns, dual lists and trees); in \`table\`, that item's \`<tr>\` | the item's own \`data-class\`, read when parsing |
+| \`Group\` | repeated | that group's heading element (in a dual list, the heading in each list where the group appears) | the group's own \`data-class\`, read when parsing |
+| \`Column\` | repeated | that column's \`<th>\` (\`table\`) | the column's own \`data-class\`, read when parsing |
+| \`Cell\` | repeated | that cell's \`<td>\` (\`table\`) | the cell's own \`data-class\`, read when parsing |
+
+**Never use \`getSlotClass\` for a repeated slot.** \`getSlotClass(tag)\` reads only the **first** element with that tag: the first item's classes would land on every item, and the others' would be lost. Read each element's own attribute when parsing, and apply it when rendering:
+
+\`\`\`typescript
+// parse: one entry per <Item> (the same for Group, Column and Cell)
+const items = itemEls.map(el => ({
+  value: el.getAttribute('value') || '',
+  disabled: el.hasAttribute('disabled'),
+  cls: el.getAttribute('data-class') || '',
+}));
+
+// render: the item's classes go on its own option element
+html\`<button role="option" class=\${cn(this.getItemClasses(item, isSelected), item.cls)}>...</button>\`
+\`\`\`
 
 ### Shared semantic classes
 
@@ -500,5 +524,6 @@ Group-specific semantic classes will be defined during component migration.
 | 1.1.0 | 2026-06-22 | Added §7.1 Portal — floating panel must render in \`<body>\` via \`litRender\` to escape CSS stacking contexts; documented focus management and DOM query patterns for portal |
 | 1.2.0 | 2026-06-22 | Added \`Cell\`/\`Column\` slot tags; added §13 Variants with \`table\` variant (checkbox table with Select All, keyed by Item value) |
 | 1.3.0 | 2026-07-17 | Portal hardening — \`portalWidgetName\` must be the molecule's OWN tag (removed real-tag example); portal CSS block documented as top-level, never nested |
+| 1.4.0 | 2026-10-27 | §14 data-class: where each slot's classes go (\`Item\` → its option, or its \`<tr>\` in \`table\`; \`Group\` → its heading; \`Column\` → \`<th>\`; \`Cell\` → \`<td>\`; \`Trigger\` → the trigger button; \`Helper\`/\`Empty\` → the message wrapper); repeated slots read their own \`data-class\` when parsing, never \`getSlotClass\` |
 
 `;

@@ -24,10 +24,10 @@ export const skill = `# groupSelectOne — Creation
 | \`Label\` | No | all | Label displayed above or beside the field |
 | \`Helper\` | No | all | Help text displayed below the field |
 | \`Trigger\` | No | \`dropdown\` only | Custom content for the trigger button. When no item is selected, this content acts as the placeholder |
-| \`Item\` | Yes | all | Defines one selectable option (one **row** in \`table\`). Attributes: \`value\` (required), \`disabled\` |
+| \`Item\` | Yes | all | Defines one selectable option (one **row** in \`table\`). Attributes: \`value\` (required), \`disabled\`, \`data-class\` (see §14 data-class) |
 | \`Cell\` | No | \`table\` only | A data cell inside an \`Item\`. One \`Cell\` per column, in column order. May contain text or web components |
 | \`Column\` | No | \`table\` only | A single column header, as a direct child of the component (no wrapper). Declare them in column order |
-| \`Group\` | No | \`dropdown\`, \`radio\`, \`list\` | Groups items under a named heading. Attribute: \`label\` |
+| \`Group\` | No | \`dropdown\`, \`radio\`, \`list\` | Groups items under a named heading. Attributes: \`label\`, \`data-class\` (see §14 data-class) |
 | \`Empty\` | No | all | Content shown when no items are available |
 
 \`\`\`typescript
@@ -472,7 +472,31 @@ The fallback ensures the component renders without external configuration.
 
 The component accepts \`data-class\` for consumer-provided CSS classes:
 - On host: \`<component data-class="w-full mt-4">\`
-- On slots: \`<Label data-class="uppercase tracking-wide">\`
+- On slots: \`<Label data-class="uppercase tracking-wide">\`, \`<Item value="a" data-class="font-bold">\`
+
+Where each slot's classes go:
+
+| Slot | Kind | Applied to | Read with |
+|------|------|------------|-----------|
+| \`Label\`, \`Helper\`, \`Trigger\`, \`Empty\` | single | the element that renders that slot (\`Helper\` and \`Empty\`: the message wrapper) | \`this.getSlotClass('<Tag>')\` |
+| \`Item\` | repeated | that item's own option element (\`[role=option]\`, \`[role=radio]\`, the segment button); in \`table\`, that item's \`<tr>\` | the item's own \`data-class\`, read when parsing |
+| \`Group\` | repeated | that group's heading element | the group's own \`data-class\`, read when parsing |
+| \`Column\` | repeated | that column's \`<th>\` (\`table\`) | the column's own \`data-class\`, read when parsing |
+| \`Cell\` | repeated | that cell's \`<td>\` (\`table\`) | the cell's own \`data-class\`, read when parsing |
+
+**Never use \`getSlotClass\` for a repeated slot.** \`getSlotClass(tag)\` reads only the **first** element with that tag: the first item's classes would land on every item, and the others' would be lost. Read each element's own attribute when parsing, and apply it when rendering:
+
+\`\`\`typescript
+// parse: one entry per <Item> (the same for Group, Column and Cell)
+const items = itemEls.map(el => ({
+  value: el.getAttribute('value') || '',
+  disabled: el.hasAttribute('disabled'),
+  cls: el.getAttribute('data-class') || '',
+}));
+
+// render: the item's classes go on its own option element
+html\`<div role="option" class=\${cn(this.getItemClasses(item, isSelected), item.cls)}>...</div>\`
+\`\`\`
 
 ### Shared semantic classes
 
@@ -501,5 +525,6 @@ Group-specific semantic classes will be defined during component migration.
 | 1.2.0 | 2026-06-15 | Added \`variant\` property (dropdown/radio/segmented/list/table); documented inline layouts and the \`table\` variant (flat \`Column\` headers + \`Cell\` rows, radio selection) based on \`ml-data-table-select\`; made Trigger/placeholder/isOpen/open-close and combobox a11y dropdown-scoped |
 | 1.3.0 | 2026-06-22 | Added §7.1 Portal — floating panel must render in \`<body>\` via \`litRender\` to escape CSS stacking contexts |
 | 1.4.0 | 2026-07-17 | Portal hardening — \`portalWidgetName\` must be the molecule's OWN tag (removed real-tag example); portal CSS block documented as top-level, never nested |
+| 1.5.0 | 2026-10-27 | §14 data-class: where each slot's classes go (\`Item\` → its option, or its \`<tr>\` in \`table\`; \`Group\` → its heading; \`Column\` → \`<th>\`; \`Cell\` → \`<td>\`; \`Helper\`/\`Empty\` → the message wrapper); repeated slots read their own \`data-class\` when parsing, never \`getSlotClass\` |
 
 `

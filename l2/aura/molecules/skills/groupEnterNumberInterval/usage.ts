@@ -124,11 +124,15 @@ Pass extra CSS classes via \`data-class\`:
 
 ### On slot tags
 
-Pass CSS classes on slot tags via \`data-class\`:
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the label, \`LabelStart\`/\`LabelEnd\` on the
+labels of the start and end values, \`Helper\` on the help text, and \`Prefix\`/\`Suffix\` on the affix in every place
+it is shown (next to the start value, next to the end value, in the summary):
 
 \`\`\`html
 <component>
-  <Label data-class="uppercase tracking-wide">Text</Label>
+  <Label data-class="uppercase tracking-wide">Price range</Label>
+  <Prefix data-class="font-semibold">R$</Prefix>
+  <Suffix data-class="text-xs">/month</Suffix>
   <Helper data-class="italic">Help text</Helper>
 </component>
 \`\`\`
