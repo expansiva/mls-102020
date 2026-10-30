@@ -22,6 +22,7 @@ import {
   type P2BuildEffortCandidate,
   type P2EffortL4DiffFile,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
+import type { P2ConfigNavigationItem } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import { planNewReleaseL2 } from '/_102020_/l2/agentNewReleaseL2/helpers/plan.js';
 import { validateP2Effort } from '/_102020_/l2/agentPlannerL2/steps/effort40/gate.js';
 import { changeEffortFileStatus, mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
@@ -31,6 +32,7 @@ import {
   type EffortAnswer,
   type EffortUnitRef,
   type L4DiffItem,
+  type MenuStampedNode,
   type PoolMenuFile,
   type PoolNeedsFile,
   type PoolNeedsRead,
@@ -252,16 +254,36 @@ function diffItem(changeId: string): L4DiffItem {
   return { changeId, kind: 'rule', op: 'changed', entity: '', source: 'rules.defs.ts' };
 }
 
+function navigationFromMenu(menu: PoolMenuFile | null): P2ConfigNavigationItem[] | null {
+  if (!menu) return null;
+  const pages: P2ConfigNavigationItem[] = [];
+  const walk = (nodes: readonly MenuStampedNode[]) => {
+    for (const node of nodes) {
+      if (node.kind === 'page') {
+        pages.push({
+          id: node.id,
+          label: node.label,
+          href: `/${menu.moduleName}/${node.id}`,
+          description: '',
+          actors: [],
+        });
+      } else walk(node.children);
+    }
+  };
+  walk(menu.tree);
+  return pages;
+}
+
 function candidateOf(opts: {
   menu: PoolMenuFile;
   needs: PoolNeedsFile;
   items: P2EffortL4DiffFile['items'];
   rules: readonly { entityId: string; rules?: readonly string[] }[];
-  canonicalMenu?: PoolMenuFile | null;
+  navigation?: readonly P2ConfigNavigationItem[] | null;
   changeEffort: ChangeEffortFile;
 }): P2BuildEffortCandidate {
   return {
-    canonicalMenu: opts.canonicalMenu === undefined ? opts.menu : opts.canonicalMenu,
+    navigation: opts.navigation === undefined ? navigationFromMenu(opts.menu) : opts.navigation,
     l4diff: {
       schemaVersion: '2026-09-21-p4-l4diff-v1',
       moduleName: 'mensalidadesAcademia',
@@ -369,7 +391,7 @@ void test('candidate: toUpdate and toCreate match planNewReleaseL2 regenerate pa
     menu,
     backend: emptyBackend(),
     now: AT,
-    candidate: candidateOf({ menu, canonicalMenu: canonical, needs, rules: [], items, changeEffort: effort }),
+    candidate: candidateOf({ menu, navigation: navigationFromMenu(canonical), needs, rules: [], items, changeEffort: effort }),
   });
   const marked = file.screens
     .filter(screen => screen.status === 'toUpdate' || screen.status === 'toCreate')
@@ -432,7 +454,7 @@ void test('candidate: abend reason is unattributed and a removed page is toRemov
     now: AT,
     candidate: candidateOf({
       menu,
-      canonicalMenu: canonical,
+      navigation: navigationFromMenu(canonical),
       needs: needsFile([]),
       rules: [],
       items: [item],
@@ -472,7 +494,7 @@ void test('candidate: new page is toCreate, canonical page missing from candidat
     now: AT,
     candidate: candidateOf({
       menu: candidateMenu,
-      canonicalMenu: canonical,
+      navigation: navigationFromMenu(canonical),
       needs,
       rules: [],
       items: [diffItem('rule:tira')],

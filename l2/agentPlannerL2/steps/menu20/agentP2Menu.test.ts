@@ -42,6 +42,7 @@ import {
   parseP2L4Sources,
   type P2L4Sources,
 } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
+import type { P2ConfigNavigationItem } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import type { MenuPageNode, MenuStampedNode, PoolMenuFile } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -801,17 +802,29 @@ void test('planner source does not mention previousMenu or diffMenuTrees', () =>
   }
 });
 
-void test('candidate prompt includes the canonical menu as current screens, not previousMenu', () => {
+void test('candidate prompt includes the config navigation as current screens, not menu.json', () => {
   const loaded = loadSources();
-  const canonical = JSON.parse(readFileSync(path.join(HERE, '../needs30/fixtures/menu.json'), 'utf8')) as PoolMenuFile;
+  const currentNavigation: P2ConfigNavigationItem[] = [{
+    id: 'mensalidades_pagamentos',
+    label: 'Edited by l3',
+    href: '/mensalidadesAcademia/mensalidades_pagamentos',
+    description: 'Kept sentence.',
+    actors: ['recepcao'],
+  }];
   const human = buildP2MenuHumanPrompt({
     menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes },
-    canonicalMenu: canonical,
+    currentNavigation,
   });
   assert.match(human, /the module's current screens — keep their ids, labels and wording; change only what the l4 diff changes/);
-  assert.match(human, /mensalidades_pagamentos/);
+  assert.match(human, /Edited by l3/);
+  assert.equal(human.includes('only_in_menu_json'), false);
+  assert.equal(human.includes('authorities'), false);
   assert.equal(human.includes('previousMenu'), false);
   assert.equal(human.includes('diffMenuTrees'), false);
+  const menuSource = readFileSync(path.join(HERE, 'agentP2Menu.ts'), 'utf8');
+  const effortSource = readFileSync(path.join(HERE, '../effort40/agentP2Effort.ts'), 'utf8');
+  assert.equal(menuSource.includes('p2CanonicalMenuFile'), false);
+  assert.equal(effortSource.includes('p2CanonicalMenuFile'), false);
 });
 
 void test('buildP2MenuFile fills the envelope from code, not the model', () => {

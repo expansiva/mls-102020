@@ -22,7 +22,7 @@ import {
   markP2Complete,
   markP2Step,
   p2BackendFile,
-  p2CanonicalMenuFile,
+  readP2ModuleNavigation,
   p2DraftFile,
   p2EffortFile,
   p2L4DiffFile,
@@ -205,7 +205,7 @@ async function loadCandidateEffort(moduleName: string, device: typeof P2_MENU_DE
   if (rawDiff === null) throw new Error(`pool/l2/${device}/l4diff.json is missing; the l4 candidate diff must run first.`);
   const needs = await readJson<PoolNeedsFile>(p2NeedsFile(moduleName, device));
   if (!needs) throw new Error(`pool/l1/${device}/needs.json is missing; the menu flow must run first.`);
-  const canonicalMenu = await readJson<PoolMenuFile>(p2CanonicalMenuFile(moduleName, device));
+  const navigation = await readP2ModuleNavigation(moduleName);
   const entityRules = await loadEntityRules(moduleName);
   const effortInfo = p2ChangeEffortFile(moduleName);
   const rawEffort = await readJson<unknown>(effortInfo);
@@ -217,7 +217,7 @@ async function loadCandidateEffort(moduleName: string, device: typeof P2_MENU_DE
     throw new Error(`pool/l4/changeEffort.json rejected by gate: ${detail}`);
   }
   return {
-    canonicalMenu,
+    navigation,
     l4diff: parseP2L4DiffFile(rawDiff),
     needs,
     entityRules,

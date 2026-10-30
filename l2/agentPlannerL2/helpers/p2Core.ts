@@ -553,6 +553,76 @@ export function p2CanonicalMenuFile(moduleName: string, device: P2MenuDevice = P
   };
 }
 
+/** One row of `l5/config.json` `navigation`. The current menu of a generated module. */
+export interface P2ConfigNavigationItem {
+  id: string;
+  label: string;
+  href: string;
+  description: string;
+  actors: string[];
+  landing?: true;
+}
+
+/** `l5/config.json` of the project in force. The current menu lives here, not in `menu.json`. */
+export function p2ClientConfigFile(moduleName: string): Ns5FileInfo {
+  return {
+    project: moduleFile(moduleName).project,
+    level: 5,
+    folder: '',
+    shortName: 'config',
+    extension: '.json',
+  };
+}
+
+function navigationItem(value: unknown): P2ConfigNavigationItem | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const id = typeof row.id === 'string' ? row.id.trim() : '';
+  if (!id) return null;
+  const actors = Array.isArray(row.actors)
+    ? row.actors.filter((actor): actor is string => typeof actor === 'string' && actor.trim() !== '').map(actor => actor.trim())
+    : [];
+  const item: P2ConfigNavigationItem = {
+    id,
+    label: typeof row.label === 'string' ? row.label : '',
+    href: typeof row.href === 'string' ? row.href : '',
+    description: typeof row.description === 'string' ? row.description : '',
+    actors,
+  };
+  if (row.landing === true) item.landing = true;
+  return item;
+}
+
+/** Pages of this module in `l5/config.json`, in the order stored there. Missing module → empty. */
+export function p2NavigationOfModule(config: unknown, moduleName: string): P2ConfigNavigationItem[] {
+  const name = normalizeModuleName(moduleName);
+  if (!config || typeof config !== 'object') return [];
+  const projects = (config as { projects?: unknown }).projects;
+  if (!projects || typeof projects !== 'object') return [];
+  const project = (projects as Record<string, unknown>)[String(moduleFile(moduleName).project)];
+  if (!project || typeof project !== 'object') return [];
+  const modules = (project as { modules?: unknown }).modules;
+  if (!Array.isArray(modules)) return [];
+  const entry = modules.find(item => !!item && typeof item === 'object' && (item as { moduleId?: unknown }).moduleId === name);
+  if (!entry || typeof entry !== 'object') return [];
+  const navigation = (entry as { navigation?: unknown }).navigation;
+  if (!Array.isArray(navigation)) return [];
+  return navigation.flatMap(item => {
+    const parsed = navigationItem(item);
+    return parsed ? [parsed] : [];
+  });
+}
+
+/** Current menu for `/candidate`. Does not read `menu.json`. */
+export async function readP2ModuleNavigation(moduleName: string): Promise<P2ConfigNavigationItem[]> {
+  const file = p2ClientConfigFile(moduleName);
+  const config = await readJson<unknown>(file);
+  if (config === null) {
+    throw new Error(`l5/config.json is missing for ${normalizeModuleName(moduleName)}; the current menu is the module navigation.`);
+  }
+  return p2NavigationOfModule(config, moduleName);
+}
+
 /** `l4/<module>/pool/l1/<device>/needs.json` — overwritten each run. Not a pool message. */
 export function p2NeedsFile(moduleName: string, device: P2MenuDevice = P2_MENU_DEVICE): Ns5FileInfo {
   const base = moduleFile(moduleName);

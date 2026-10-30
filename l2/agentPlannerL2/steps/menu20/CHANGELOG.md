@@ -6,10 +6,10 @@
 
 ## 2026-09-21 (p2_24)
 
-- In `/candidate` the human prompt includes the canonical menu under
+- In `/candidate` the human prompt includes the module's current screens under
   "the module's current screens — keep their ids, labels and wording;
-  change only what the l4 diff changes". Read via `p2CanonicalMenuFile`
-  (literal module name). Not `previousMenu`, not a tree diff.
+  change only what the l4 diff changes". Read from `l5/config.json` navigation.
+  Not `previousMenu`, not a tree diff.
 
 ## 2026-09-21 (p2_21)
 

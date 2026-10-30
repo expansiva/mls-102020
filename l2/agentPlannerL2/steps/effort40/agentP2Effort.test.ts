@@ -52,6 +52,29 @@ function keyOf(info: { project: number | string; level: number | string; folder:
   return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`;
 }
 
+function navigationItems(raw: string): { id: string; label: string; href: string; description: string; actors: string[] }[] {
+  const menu = JSON.parse(raw) as { tree?: { id?: string; kind?: string; label?: string; children?: unknown[] }[] };
+  const pages: { id: string; label: string; href: string; description: string; actors: string[] }[] = [];
+  const walk = (nodes: { id?: string; kind?: string; label?: string; children?: unknown[] }[] | undefined) => {
+    for (const node of nodes || []) {
+      if (node.kind === 'page' && node.id) {
+        pages.push({ id: node.id, label: node.label || node.id, href: `/${MODULE}/${node.id}`, description: '', actors: [] });
+      } else if (Array.isArray(node.children)) walk(node.children as { id?: string; kind?: string; label?: string; children?: unknown[] }[]);
+    }
+  };
+  walk(menu.tree);
+  return pages;
+}
+
+function seedConfig(host: Host, navigation: unknown[]): void {
+  seed(host, {
+    level: 5,
+    folder: '',
+    shortName: 'config',
+    content: `${JSON.stringify({ projects: { [String(PROJECT)]: { modules: [{ moduleId: MODULE, navigation }] } } }, null, 2)}\n`,
+  });
+}
+
 function seed(host: Host, opts: { project?: number; level?: number; folder: string; shortName: string; extension?: string; content?: string }): Stored {
   const file: Stored = {
     project: opts.project ?? PROJECT,
@@ -294,6 +317,17 @@ void test('beforePromptStep approves effort40 and closes the pipeline', async ()
 void test('candidate effort attributes declared rules and warns on orphans', async () => {
   const host = installHost();
   seedReady(host);
+  const pages = navigationItems(readFileSync(MENU_PATH, 'utf8'));
+  const paymentsNav = pages.find(item => item.id === 'mensalidades_pagamentos');
+  if (paymentsNav) paymentsNav.label = 'Edited by l3';
+  pages.push({ id: 'l3_only', label: 'Edited by l3', href: `/${MODULE}/l3_only`, description: '', actors: ['recepcao'] });
+  seedConfig(host, pages);
+  const menuFile = host.files[keyOf({
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
+  })];
+  const draftMenu = JSON.parse(menuFile.content) as { tree: unknown[] };
+  draftMenu.tree.push({ id: 'only_in_menu_json', kind: 'page', label: 'Draft only', organisms: [], action: 'keep' });
+  menuFile.content = `${JSON.stringify(draftMenu, null, 2)}\n`;
   const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8'));
   const pipeline = JSON.parse(host.files[keyOf({
     project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'pipeline', extension: '.json',
@@ -369,6 +403,9 @@ void test('candidate effort attributes declared rules and warns on orphans', asy
     const plans = written.screens.find(screen => screen.pageId === 'planos');
     assert.equal(payments?.status, 'toUpdate');
     assert.equal(plans?.status, 'done');
+    assert.equal(written.screens.find(screen => screen.pageId === 'l3_only')?.status, 'toRemove');
+    assert.equal(written.screens.find(screen => screen.pageId === 'l3_only')?.label, 'Edited by l3');
+    assert.equal(written.screens.some(screen => screen.pageId === 'only_in_menu_json'), false);
     assert.equal(host.files[keyOf({
       project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
     })].content, canonicalContent);
@@ -381,6 +418,7 @@ void test('candidate effort attributes declared rules and warns on orphans', asy
 void test('beforePromptStep in candidate appends unattributed warnings and does not write the canonical menu', async () => {
   const host = installHost();
   seedReady(host);
+  seedConfig(host, navigationItems(readFileSync(MENU_PATH, 'utf8')));
   const pipelineSeed = JSON.parse(host.files[keyOf({
     project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'pipeline', extension: '.json',
   })].content) as { messageFile: string };
@@ -463,6 +501,7 @@ void test('beforePromptStep in candidate appends unattributed warnings and does 
 void test('candidate effort fails when changeEffort.json is missing or rejected', async () => {
   const host = installHost();
   seedReady(host);
+  seedConfig(host, navigationItems(readFileSync(MENU_PATH, 'utf8')));
   const pipelineSeed = JSON.parse(host.files[keyOf({
     project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'pipeline', extension: '.json',
   })].content) as { messageFile: string };

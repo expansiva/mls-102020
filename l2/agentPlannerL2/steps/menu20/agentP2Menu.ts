@@ -16,12 +16,13 @@ import {
   isP2CandidateRoot,
   markP2Step,
   p2AgentFile,
-  p2CanonicalMenuFile,
+  readP2ModuleNavigation,
   p2DraftFile,
   p2MenuFile,
   p2PipelineFile,
   readP2AgentText,
   readP2Pipeline,
+  type P2ConfigNavigationItem,
   type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
@@ -80,7 +81,7 @@ export function buildP2MenuHumanPrompt(input: {
   menuSources: P2MenuSources;
   gateFeedback?: string;
   previousDraft?: unknown;
-  canonicalMenu?: PoolMenuFile | null;
+  currentNavigation?: readonly P2ConfigNavigationItem[] | null;
 }): string {
   const { sources, grants, processes } = input.menuSources;
   const candidates = menuCandidates(sources, grants, processes);
@@ -116,10 +117,10 @@ export function buildP2MenuHumanPrompt(input: {
   return [
     `## userLanguage`,
     sources.userLanguage,
-    input.canonicalMenu ? [
+    input.currentNavigation != null ? [
       '',
       '## the module\'s current screens — keep their ids, labels and wording; change only what the l4 diff changes',
-      JSON.stringify(input.canonicalMenu, null, 2),
+      JSON.stringify(input.currentNavigation, null, 2),
     ].join('\n') : '',
     '',
     '## Candidates (deterministic; candidates, not the answer)',
@@ -178,13 +179,13 @@ export async function beforeP2MenuPromptStep(
     const parsed = resolveArgs(context, args || step.prompt);
     moduleName = parsed.moduleName;
     const menuSources = await loadP2MenuSources(moduleName);
-    const [skill, prompt, schema, previous, canonicalMenu] = await Promise.all([
+    const [skill, prompt, schema, previous, currentNavigation] = await Promise.all([
       readP2AgentText('skills', 'menu', '.md'),
       readP2AgentText('steps/menu20', 'prompt', '.md'),
       readJson<Record<string, unknown>>(p2AgentFile('schemas', 'menu.schema', '.json')),
       moduleName ? readJson(p2DraftFile(moduleName, 'menu20')) : Promise.resolve(null),
       moduleName && isP2CandidateRoot(moduleName)
-        ? readJson<PoolMenuFile>(p2CanonicalMenuFile(moduleName, P2_MENU_DEVICE))
+        ? readP2ModuleNavigation(moduleName)
         : Promise.resolve(null),
     ]);
     if (!schema) throw new Error('menu.schema.json is missing.');
@@ -193,7 +194,7 @@ export async function beforeP2MenuPromptStep(
       menuSources,
       gateFeedback: parsed.gateFeedback,
       previousDraft: previous,
-      canonicalMenu,
+      currentNavigation,
     });
     return [promptReady(
       context,

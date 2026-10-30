@@ -3,6 +3,7 @@
 import type { PoolMessage } from '/_102035_/l2/solution/pool.js';
 import {
   P2_MENU_DEVICE,
+  type P2ConfigNavigationItem,
   type P2MenuDevice,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
@@ -98,7 +99,8 @@ const PAGE_KIND = new Set<EffortUnitRef['kind']>(['page']);
 const NO_PAGE_REASON = 'front-end effort names no page';
 
 export interface P2BuildEffortCandidate {
-  canonicalMenu: PoolMenuFile | null;
+  /** Current pages from `l5/config.json` navigation. Null when this run is not `/candidate`. */
+  navigation: readonly P2ConfigNavigationItem[] | null;
   l4diff: P2EffortL4DiffFile;
   needs: PoolNeedsFile;
   entityRules: ReadonlyMap<string, readonly string[]>;
@@ -370,18 +372,15 @@ function collectScreensFromL4Diff(
 ): PoolEffortScreen[] {
   const marks = screenMarksFromChangeEffort(candidate.changeEffort);
   const pages = stampedPages(menu.tree);
-  const canonicalPages = candidate.canonicalMenu ? stampedPages(candidate.canonicalMenu.tree) : [];
-  const canonicalIds = new Set(canonicalPages.map(page => page.id));
+  const current = candidate.navigation ?? [];
+  const currentIds = new Set(current.map(item => item.id));
   const actorsOfPage = pageActors(menu, pages);
-  const canonicalActors = candidate.canonicalMenu
-    ? pageActors(candidate.canonicalMenu, canonicalPages)
-    : new Map<string, string[]>();
   const routesByPage = routesByPageId(endpoints);
   const seen = new Set<string>();
   const screens: PoolEffortScreen[] = [];
   for (const page of pages) {
     seen.add(page.id);
-    const status: P2EffortStatus = !canonicalIds.has(page.id) || marks.toCreate.has(page.id)
+    const status: P2EffortStatus = !currentIds.has(page.id) || marks.toCreate.has(page.id)
       ? 'toCreate'
       : marks.toRemove.has(page.id)
         ? 'toRemove'
@@ -394,15 +393,15 @@ function collectScreensFromL4Diff(
       endpoints: routesByPage.get(page.id) || [],
     });
   }
-  for (const page of canonicalPages) {
-    if (seen.has(page.id)) continue;
-    seen.add(page.id);
+  for (const item of current) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
     screens.push({
-      pageId: page.id,
-      label: page.label,
-      actors: canonicalActors.get(page.id) || [],
+      pageId: item.id,
+      label: item.label,
+      actors: [...item.actors],
       status: 'toRemove',
-      endpoints: routesByPage.get(page.id) || [],
+      endpoints: routesByPage.get(item.id) || [],
     });
   }
   return screens;
