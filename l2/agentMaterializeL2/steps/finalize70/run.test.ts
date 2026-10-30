@@ -7,7 +7,7 @@ import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { m4OwnedFile } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
 import { pageSourceInfo } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
-import { configInfo, menuInfo, moduleDefsInfo, runM4Finalize, type M4FinalizePort } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
+import { configInfo, formatM4FinalizeReport, menuInfo, moduleDefsInfo, runM4Finalize, type M4FinalizePort, type M4FinalizeReceipt } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
 
 const root = new URL('../../../../../mls-102047/', import.meta.url);
 const disk = (path: string) => readFileSync(new URL(path, root), 'utf8');
@@ -95,7 +95,7 @@ test('five stale registered pages and one approved stay in menu order', async ()
   assert.deepEqual(entry.navigation.map((item: { id: string }) => item.id), registered);
 });
 
-test('a registered page that left accepted is dropped', async () => {
+test('a registered page that left accepted stays in the config', async () => {
   const registered = ['minhas_despesas', 'inicio', 'despesas_da_equipe'];
   const port = await memory(['minhas_despesas'], {
     accepted: ['minhas_despesas', 'inicio'],
@@ -104,8 +104,19 @@ test('a registered page that left accepted is dropped', async () => {
   const { receipt } = await runM4Finalize(identity, port);
   assert.deepEqual(receipt.notApproved, ['inicio']);
   assert.deepEqual(receipt.kept, ['inicio']);
+  assert.deepEqual(receipt.navigationAdded, []);
+  assert.equal(receipt.navigationKept, 3);
   const entry = JSON.parse(port.files.get('102047/l5//config.json')!).projects['102047'].modules[1];
-  assert.deepEqual(entry.navigation.map((item: { id: string }) => item.id), ['minhas_despesas', 'inicio']);
+  assert.deepEqual(entry.navigation.map((item: { id: string }) => item.id), registered);
+  assert.match(formatM4FinalizeReport(receipt), /navigation: added none; kept 3\./u);
+});
+
+test('the report names the navigation ids appended and how many stayed', () => {
+  const receipt = {
+    schemaVersion: '2026-10-16-materialize-l2-finalize-v1', project: 102047, module: 'tarefas', configPath: 'l5/config.json',
+    pages: ['nova'], notApproved: [], kept: [], navigationAdded: ['nova'], navigationKept: 2, changes: ['navigation'], written: true,
+  } as M4FinalizeReceipt;
+  assert.equal(formatM4FinalizeReport(receipt).split('\n')[1], 'navigation: added nova; kept 2.');
 });
 
 test('no approved page at all writes nothing', async () => {

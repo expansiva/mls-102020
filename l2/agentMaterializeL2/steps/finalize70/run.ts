@@ -29,6 +29,10 @@ export interface M4FinalizeReceipt {
   notApproved: string[];
   /** notApproved pages kept because they are already in the current module entry. */
   kept: string[];
+  /** Navigation ids appended after the items that were already in the config. */
+  navigationAdded: string[];
+  /** Navigation items left as they were. */
+  navigationKept: number;
   changes: string[];
   written: boolean;
 }
@@ -89,7 +93,7 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
     for (const item of currentFrontend.pages as Array<{ pageId?: unknown }>) if (typeof item?.pageId === 'string') registered.add(item.pageId);
   }
   const kept = notApproved.filter(pageId => registered.has(pageId));
-  const { entry, changes } = composeM4ModuleEntry({ ...identity, pages, keepPageIds: kept, menu, ...languages }, current);
+  const { entry, changes, navigationAdded, navigationKept } = composeM4ModuleEntry({ ...identity, pages, keepPageIds: kept, menu, ...languages }, current);
   if (index >= 0) client.modules[index] = entry;
   else client.modules.push(entry);
 
@@ -97,7 +101,7 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
   if (written) await port.writeText(info, `${JSON.stringify(config, null, 2)}\n`.replace(/\n/gu, eol));
   const receipt: M4FinalizeReceipt = {
     schemaVersion: M4_FINALIZE_VERSION, ...identity, configPath: displayPath(info),
-    pages: pages.map(page => page.pageId), notApproved, kept, changes: written ? changes : [], written,
+    pages: pages.map(page => page.pageId), notApproved, kept, navigationAdded, navigationKept, changes: written ? changes : [], written,
   };
   const path = m4OwnedFile(identity, 'finalize70');
   await port.writeJson(path, { ...receipt, sourcesHash: await sha256Text(JSON.stringify({ pages, menu, languages })) });
@@ -108,6 +112,7 @@ export function formatM4FinalizeReport(receipt: M4FinalizeReceipt): string {
   const lines = [
     `${receipt.module}: ${receipt.pages.length} page(s) registered in ${receipt.configPath}${receipt.written ? ` (changed: ${receipt.changes.join(', ')})` : ' (already up to date, nothing written)'}.`,
   ];
+  lines.push(`navigation: added ${receipt.navigationAdded.join(', ') || 'none'}; kept ${receipt.navigationKept}.`);
   if (receipt.notApproved.length) lines.push(`Left out (no approved desktop page): ${receipt.notApproved.join(', ')}.`);
   return lines.join('\n');
 }

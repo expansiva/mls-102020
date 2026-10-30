@@ -24,8 +24,8 @@ const configEntry = (module: string) => (JSON.parse(read('l5/config.json')) as {
 test('reembolsoDespesas: the composed entry is the hand-written one, except the descriptions (first sentence of the intent)', () => {
   const current = configEntry('reembolsoDespesas')!;
   const { entry, navigation } = composeM4ModuleEntry(sources('reembolsoDespesas', ['despesas_aprovadas', 'despesas_da_equipe', 'inicio', 'minhas_despesas']), current);
-  // The hand-written entry put inicio first; finalize70 follows the menu, where the colaborador hub (minhas_despesas) comes first.
-  assert.deepEqual(navigation.map(item => item.id), ['minhas_despesas', 'inicio', 'despesas_da_equipe', 'despesas_aprovadas']);
+  // The module already exists: the hand-written order stays, including inicio first.
+  assert.deepEqual(navigation.map(item => item.id), (current.navigation as Array<{ id: string }>).map(item => item.id));
   const byId = (items: unknown) => [...(items as Array<Record<string, unknown>>)].sort((a, b) => String(a.id ?? a.pageId ?? a.actorId).localeCompare(String(b.id ?? b.pageId ?? b.actorId)));
   const strip = (items: unknown) => byId(items).map(({ description: _d, ...rest }) => rest);
   assert.deepEqual(strip(entry.navigation), strip(current.navigation), 'labels, hrefs, actors and landing flags');
@@ -42,8 +42,8 @@ test('reembolsoDespesas: the composed entry is the hand-written one, except the 
 
 test('tarefas: the minha_area hub is flattened, meus_avisos gets both actors, each actor lands on the first page of its own list', () => {
   const pageIds = ['inicio_gestor', 'inicio_membro', 'listas', 'membros_equipe', 'meus_avisos', 'minhas_tarefas', 'tarefas_equipe'];
-  const current = configEntry('tarefas');
-  const { entry, changes } = composeM4ModuleEntry(sources('tarefas', pageIds), current);
+  const { entry, changes, navigationKept } = composeM4ModuleEntry(sources('tarefas', pageIds));
+  assert.equal(navigationKept, 0);
   const navigation = entry.navigation as Array<{ id: string; actors: string[]; landing?: true }>;
   assert.deepEqual(navigation.map(item => item.id), ['inicio_membro', 'minhas_tarefas', 'meus_avisos', 'inicio_gestor', 'tarefas_equipe', 'listas', 'membros_equipe']);
   assert.deepEqual(navigation.find(item => item.id === 'meus_avisos')!.actors, ['membroEquipe', 'gestor']);
@@ -57,25 +57,71 @@ test('tarefas: the minha_area hub is flattened, meus_avisos gets both actors, ea
   assert.ok(changes.includes('navigation') && changes.includes('frontend'));
 });
 
-test('a stale page already in the current entry stays in menu order; approved pages are composed as usual', () => {
-  const all = sources('reembolsoDespesas', ['minhas_despesas']);
+test('a hand-edited label and order stay, a new approved page goes last, and a config-only page stays', () => {
+  const all = sources('reembolsoDespesas', ['minhas_despesas', 'despesas_aprovadas']);
   const current = {
     navigation: [
+      { id: 'inicio', label: 'Começo', href: '/reembolsoDespesas/inicio', description: 'editada à mão', actors: ['colaborador'], landing: true as const },
       { id: 'minhas_despesas', label: 'Minhas', href: '/reembolsoDespesas/minhas_despesas', description: 'old', actors: ['colaborador'] },
-      { id: 'inicio', label: 'Inicio', href: '/reembolsoDespesas/inicio', description: 'kept', actors: ['colaborador'], landing: true as const },
-      { id: 'despesas_da_equipe', label: 'Equipe', href: '/reembolsoDespesas/despesas_da_equipe', description: 'kept', actors: ['gestor'] },
+      { id: 'so_no_config', label: 'Do l3', href: '/reembolsoDespesas/so_no_config', description: 'posta à mão', actors: ['gestor'] },
     ],
     landings: [{ actorId: 'colaborador', pageId: 'inicio', route: '/reembolsoDespesas/inicio' }],
-    frontend: { pages: [
-      { pageId: 'inicio', route: '/reembolsoDespesas/inicio', title: 'Inicio' },
-      { pageId: 'despesas_da_equipe', route: '/reembolsoDespesas/despesas_da_equipe', title: 'Equipe' },
+    frontend: { layer: 'l2', pages: [
+      { pageId: 'inicio', route: '/reembolsoDespesas/inicio', title: 'Começo' },
+      { pageId: 'so_no_config', route: '/reembolsoDespesas/so_no_config', title: 'Do l3' },
+      { pageId: 'minhas_despesas', route: '/reembolsoDespesas/minhas_despesas', title: 'Minhas' },
     ] },
   };
-  const { entry } = composeM4ModuleEntry({ ...all, keepPageIds: ['inicio', 'despesas_da_equipe'] }, current);
-  const navigation = entry.navigation as Array<{ id: string; description: string }>;
-  assert.deepEqual(navigation.map(item => item.id), ['minhas_despesas', 'inicio', 'despesas_da_equipe']);
-  assert.equal(navigation[1].description, 'kept');
-  assert.deepEqual(entry.landings, [{ actorId: 'colaborador', pageId: 'inicio', route: '/reembolsoDespesas/inicio' }]);
+  const { entry, navigationAdded, navigationKept } = composeM4ModuleEntry(all, current);
+  const navigation = entry.navigation as Array<{ id: string; label: string; description: string }>;
+  assert.deepEqual(navigation.map(item => item.id), ['inicio', 'minhas_despesas', 'so_no_config', 'despesas_aprovadas']);
+  assert.equal(navigation[0].label, 'Começo');
+  assert.equal(navigation[0].description, 'editada à mão');
+  assert.equal(navigation[2].label, 'Do l3');
+  assert.deepEqual(navigationAdded, ['despesas_aprovadas']);
+  assert.equal(navigationKept, 3);
+  assert.deepEqual(entry.landings, [
+    { actorId: 'colaborador', pageId: 'inicio', route: '/reembolsoDespesas/inicio' },
+    { actorId: 'financeiro', pageId: 'despesas_aprovadas', route: '/reembolsoDespesas/despesas_aprovadas' },
+  ]);
+  const pages = (entry.frontend as { pages: Array<{ pageId: string; title?: string }> }).pages;
+  assert.deepEqual(pages.map(item => item.pageId), ['inicio', 'so_no_config', 'minhas_despesas', 'despesas_aprovadas']);
+  assert.equal(pages[0].title, 'Começo');
+  assert.equal(pages.at(-1)!.title, 'Despesas aprovadas');
+});
+
+test('an existing module keeps a hand-edited page and a page that exists only in the config, and appends a new page', () => {
+  const src = sources('reembolsoDespesas', ['inicio', 'minhas_despesas', 'despesas_da_equipe']);
+  const current = {
+    navigation: [
+      { id: 'minhas_despesas', label: 'Editada', href: '/reembolsoDespesas/minhas_despesas', description: 'texto da mão', actors: ['colaborador'], landing: true as const },
+      { id: 'so_no_config', label: 'Do l3', href: '/reembolsoDespesas/so_no_config', description: 'posta à mão', actors: ['gestor'] },
+    ],
+    landings: [{ actorId: 'colaborador', pageId: 'minhas_despesas', route: '/reembolsoDespesas/minhas_despesas' }],
+    frontend: { pages: [
+      { pageId: 'minhas_despesas', title: 'Editada', route: '/reembolsoDespesas/minhas_despesas' },
+      { pageId: 'so_no_config', title: 'Do l3', route: '/reembolsoDespesas/so_no_config' },
+    ] },
+  };
+  const { entry, navigationAdded, navigationKept } = composeM4ModuleEntry(src, current);
+  const navigation = entry.navigation as Array<{ id: string; label: string; description: string; actors: string[] }>;
+  assert.deepEqual(navigation.map(item => item.id), ['minhas_despesas', 'so_no_config', 'inicio', 'despesas_da_equipe']);
+  assert.equal(navigation[0].label, 'Editada');
+  assert.equal(navigation[0].description, 'texto da mão');
+  assert.deepEqual(navigation[0].actors, ['colaborador']);
+  assert.equal(navigation[1].label, 'Do l3');
+  assert.deepEqual(navigationAdded, ['inicio', 'despesas_da_equipe']);
+  assert.equal(navigationKept, 2);
+  const pages = (entry.frontend as { pages: Array<{ pageId: string; title: string }> }).pages;
+  assert.deepEqual(pages.map(item => item.pageId), ['minhas_despesas', 'so_no_config', 'inicio', 'despesas_da_equipe']);
+  assert.equal(pages[0].title, 'Editada');
+  assert.equal(pages[1].title, 'Do l3');
+  const landings = entry.landings as Array<{ actorId: string; pageId: string }>;
+  assert.equal(landings[0].pageId, 'minhas_despesas');
+  assert.ok(landings.some(item => item.pageId !== 'minhas_despesas'), 'a new actor gets a landing');
+  const fresh = composeM4ModuleEntry(src);
+  assert.deepEqual((fresh.entry.navigation as Array<{ id: string }>).map(item => item.id), ['minhas_despesas', 'inicio', 'despesas_da_equipe']);
+  assert.equal(fresh.navigationKept, 0);
 });
 
 test('a page that pages50 did not approve is left out; a page the menu does not list goes last, labelled from its id', () => {
