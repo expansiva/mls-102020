@@ -1161,7 +1161,7 @@ export class ServiceGenome102020 extends ServiceBase {
         const title = off ? `${fullLabel} — ${off}` : fullLabel;
 
         return html`
-            <div title=${title} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''} ${noContext ? 'opacity-30 pointer-events-none' : ''}">
+            <div title=${title} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'cursor-not-allowed' : ''} ${noContext ? 'opacity-30 pointer-events-none' : ''}">
                 <aura--widgets--aura-select-knob-102020
                     .min=${config.min}
                     .max=${config.max}
