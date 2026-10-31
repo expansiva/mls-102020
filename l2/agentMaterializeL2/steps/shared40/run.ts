@@ -19,6 +19,7 @@ import type { M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/inpu
 import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
 import { readL4Module, renderL4Slice, resolveL4Refs } from '/_102020_/l2/agentMaterializeL2/helpers/l4/context.js';
 import { gateM4SharedSource, m4ContractImport, m4FillStateJsdoc, m4SharedClassName, m4SharedPath, type M4SharedTarget } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
+import { m4GuardRebuiltConnected } from '/_102020_/l2/agentMaterializeL2/steps/shared40/rebuildGuard.js';
 
 export const M4_SHARED_VERSION = '2026-10-05-materialize-l2-v4-shared-v1' as const;
 /** The reuse fingerprints compare DATA only (22/10/2026); shared by the shared40, pages50 and review55 receipts. */
@@ -272,7 +273,9 @@ function declarationSections(title: string, declarations: Array<{ ref: string; d
 export async function approveM4Shared(context: M4SharedContext, source: unknown, attempt: number, port: M4SharedPort = studioSharedPort, findings: M4Finding[] = []): Promise<M4SharedReceipt> {
   if (typeof source !== 'string' || !source.trim()) throw new Error('M4_SHARED_EMPTY: submitSharedTs.source must be the whole file.');
   // A missing state JSDoc is formatting the defs can write: it never costs a repair (agendaClinica/consultas, 07/10).
-  const text = m4FillStateJsdoc(source.replace(/\r\n/gu, '\n').replace(/\n*$/u, '\n'), context.target);
+  const filled = m4FillStateJsdoc(source.replace(/\r\n/gu, '\n').replace(/\n*$/u, '\n'), context.target);
+  const guarded = m4GuardRebuiltConnected(filled, context.target);
+  const text = guarded.text;
   const issues = gateM4SharedSource(text, context.target);
   if (issues.length) throw new Error(`M4_SHARED_GATE:\n${issues.map(item => `${item.code}: ${item.message}`).join('\n')}`);
   const sourceInfo = sharedSourceInfo(context.identity, context.pageId);
@@ -295,7 +298,7 @@ export async function approveM4Shared(context: M4SharedContext, source: unknown,
     return undoGeneratedWrite(port, declarationInfo, previousDeclaration, error);
   }
   // V5: the LLM's own report, plus what the declaration proves it added (it may forget, 05/10: fechamento).
-  const allFindings = mergeM4Findings(findings, m4AddedMemberFindings(compiled.declaration, context.target));
+  const allFindings = mergeM4Findings(findings, guarded.findings, m4AddedMemberFindings(compiled.declaration, context.target));
   // Hash what the Studio actually stored, read back after the compile: it is what the reuse check reads.
   const receipt: M4SharedReceipt = {
     schemaVersion: M4_SHARED_VERSION, ...context.identity, pageId: context.pageId,

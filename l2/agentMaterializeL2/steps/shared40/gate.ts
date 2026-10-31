@@ -37,6 +37,7 @@ const RUNTIME_IMPORTS = [
   '/_102029_/l2/collabState.js',
   '/_102029_/l2/interactionRuntime.js',
   '/_102033_/l2/shared/layout/auraNavigate.js',
+  '/_102033_/l2/shared/elementSwapRegistry.js',
 ];
 
 export function m4SharedClassName(module: string, pageId: string): string {
