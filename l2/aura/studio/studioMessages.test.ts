@@ -203,6 +203,24 @@ test('the catalog answers in both languages, and the params land', () => {
   document.documentElement.lang = 'en';
 });
 
+test('live.notArmed says the draft kept the change and does not ask to reload', () => {
+  // es has no catalog of its own: the runtime falls back to the first declared language (pt).
+  for (const lang of ['pt-br', 'es'] as const) {
+    document.documentElement.lang = lang;
+    const text = t('live.notArmed', { tag: 'x-page' });
+    assert.match(text, /x-page/u, lang);
+    assert.match(text, /salva no rascunho/u, lang);
+    assert.match(text, /próxima vez que a tela abrir/u, lang);
+    assert.doesNotMatch(text, /recarreg|reload|\bF5\b/iu, lang);
+  }
+  document.documentElement.lang = 'en';
+  const en = t('live.notArmed', { tag: 'x-page' });
+  assert.match(en, /x-page/u);
+  assert.match(en, /saved in the draft/u);
+  assert.match(en, /next time this screen opens/u);
+  assert.doesNotMatch(en, /recarreg|reload|\bF5\b/iu);
+});
+
 test('the entrance note still says what the feature does NOT do', () => {
   // It was the note's whole job before the ids: the scroll trigger is a later phase, and a class edit
   // only shows for real after a reload.

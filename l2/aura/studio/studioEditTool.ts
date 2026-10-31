@@ -39,25 +39,6 @@ import {
 import type { StudioEditor } from '/_102020_/l2/aura/studio/studioEditor.js';
 import type { StudioLiveUpdateWatcher } from '/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js';
 import { t } from '/_102020_/l2/aura/studio/studioMessages.js';
-import { getRuntimeLanguage } from '/_102033_/l2/shared/languageRuntime.js';
-
-/// **collab_i18n_start**
-const shared_en = {
-  alsoChanging: '{person} is also changing this file',
-  alsoChangingUnknown: 'Someone else is also changing this file',
-};
-const sharedMessages: Record<string, typeof shared_en> = {
-  en: shared_en,
-  pt: {
-    alsoChanging: '{person} também está alterando este arquivo',
-    alsoChangingUnknown: 'Outra pessoa também está alterando este arquivo',
-  },
-  es: {
-    alsoChanging: '{person} también está modificando este archivo',
-    alsoChangingUnknown: 'Otra persona también está modificando este archivo',
-  },
-};
-/// **collab_i18n_end**
 
 const fetchImpl: FetchImpl = (input, init) => fetch(input, init);
 
@@ -104,11 +85,7 @@ function draftFilePath(file: {
 }
 
 function alsoChangingText(person: string | null): string {
-  const lang = typeof document === 'undefined' ? 'en' : (document.documentElement?.lang || 'en');
-  const key = getRuntimeLanguage(Object.keys(sharedMessages), lang) ?? 'en';
-  const catalog = sharedMessages[key] ?? shared_en;
-  if (!person) return catalog.alsoChangingUnknown;
-  return catalog.alsoChanging.replace('{person}', person);
+  return person ? t('edit.alsoChanging', { person }) : t('edit.alsoChangingUnknown');
 }
 
 /**
