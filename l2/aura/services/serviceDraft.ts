@@ -46,7 +46,8 @@ const message_en = {
     publish: 'Publish',
     discard: 'Discard',
     askComment: 'Message',
-    confirmDiscard: 'Discard this draft and return to main?',
+    confirmPublish: 'Publish your {count} changes?',
+    confirmDiscard: 'Discard your {count} changes from your draft?',
     promoting: 'Publishing the draft…',
     rebuilding: 'Rebuilding the release…',
     blocked: 'Not saved because of errors:',
@@ -103,7 +104,8 @@ const messages: Record<string, MessageType> = {
         publish: 'Publicar',
         discard: 'Descartar',
         askComment: 'Mensagem',
-        confirmDiscard: 'Descartar este rascunho e voltar à main?',
+        confirmPublish: 'Publicar as suas {count} alterações?',
+        confirmDiscard: 'Descartar as suas {count} alterações do seu rascunho?',
         promoting: 'Publicando o rascunho…',
         rebuilding: 'Reconstruindo a release…',
         blocked: 'Não salvos por causa de erro:',
@@ -157,7 +159,8 @@ const messages: Record<string, MessageType> = {
         publish: 'Publicar',
         discard: 'Descartar',
         askComment: 'Mensaje',
-        confirmDiscard: '¿Descartar este borrador y volver a main?',
+        confirmPublish: '¿Publicar sus {count} cambios?',
+        confirmDiscard: '¿Descartar sus {count} cambios de su borrador?',
         promoting: 'Publicando el borrador…',
         rebuilding: 'Reconstruyendo la release…',
         blocked: 'No se guardaron por errores:',
@@ -702,6 +705,8 @@ export class ServiceDraft102020 extends ServiceBase {
             this._phase = 'error';
             return;
         }
+        const n = this._current ? this._current.files.length : 0;
+        if (!confirm(this.msg.confirmPublish.replace('{count}', String(n)))) return;
         const comment = this._askComment();
         if (!comment) return;
         this._error = '';
@@ -868,11 +873,17 @@ export class ServiceDraft102020 extends ServiceBase {
     private async _onDiscard(): Promise<void> {
         const project = this._projectId;
         if (!project || !this._slug || !isVmDriver(this._driver)) return;
-        if (!confirm(this.msg.confirmDiscard)) return;
+        const n = this._current ? this._current.files.length : 0;
+        if (!confirm(this.msg.confirmDiscard.replace('{count}', String(n)))) return;
         try {
             await discard({
                 fetchImpl,
                 reload: () => location.reload(),
+                storFiles: mls.stor.files,
+                clearLocal: async (file) => {
+                    await mls.stor.localStor.setContent(file as mls.stor.IFileInfo, { content: null });
+                    file.status = 'nochange';
+                },
             }, project, this._slug);
         } catch (err) {
             console.error('[serviceDraft] discard failed:', err);

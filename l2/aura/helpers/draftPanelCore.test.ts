@@ -171,6 +171,10 @@ test('callExec turns a network failure and a non-JSON body into an error', async
   await assert.rejects(() => callExec(notJson, 'ping', {}), /Unexpected token/);
 });
 
+function fileKey(file: IPanelStorFile): string {
+  return `File_${file.project}_${file.level ?? 0}_${file.shortName ?? ''}_${file.extension ?? ''}`;
+}
+
 test('discard reloads only after discardDraft succeeds', async () => {
   const calls: string[] = [];
   await discard({
@@ -182,6 +186,8 @@ test('discard reloads only after discardDraft succeeds', async () => {
       return jsonResponse({ statusCode: 200, status: 'discarded' });
     },
     reload: () => { calls.push('reload'); },
+    storFiles: {},
+    clearLocal: async () => { calls.push('clear'); },
   }, 102047, 'team-102047');
   assert.deepEqual(calls, ['discardDraft', 'reload']);
 
@@ -190,10 +196,73 @@ test('discard reloads only after discardDraft succeeds', async () => {
     () => discard({
       fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'BAD_DRAFT' }, 400),
       reload: () => { refused.push('reload'); },
+      storFiles: {},
+      clearLocal: async () => { refused.push('clear'); },
     }, 102047, 'nope'),
     /BAD_DRAFT/,
   );
   assert.deepEqual(refused, []);
+});
+
+test('discard clears the project local copies and tempObjects before reload', async () => {
+  const projectFile: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'a', level: 2, folder: '', extension: '.ts',
+  };
+  const deleted: IPanelStorFile = {
+    project: 102047, status: 'deleted', shortName: 'b', level: 2, folder: '', extension: '.ts',
+  };
+  const other: IPanelStorFile = {
+    project: 102099, inLocalStorage: true, shortName: 'd', level: 2, folder: '', extension: '.ts',
+  };
+  const storFiles = { a: projectFile, b: deleted, d: other };
+  const tempObjects: Record<string, string> = {
+    [fileKey(projectFile)]: 'local-a',
+    [fileKey(deleted)]: 'local-b',
+    [fileKey(other)]: 'local-d',
+  };
+  const calls: string[] = [];
+  await discard({
+    fetchImpl: async () => {
+      calls.push('discardDraft');
+      return jsonResponse({ statusCode: 200, status: 'discarded' });
+    },
+    reload: () => { calls.push('reload'); },
+    storFiles,
+    clearLocal: async (file) => {
+      calls.push(`clear:${file.shortName}`);
+      file.inLocalStorage = false;
+      file.status = 'nochange';
+      delete tempObjects[fileKey(file)];
+    },
+  }, 102047, 'team-102047');
+  assert.deepEqual(calls, ['discardDraft', 'clear:a', 'clear:b', 'reload']);
+  assert.equal(projectFile.inLocalStorage, false);
+  assert.equal(deleted.inLocalStorage, false);
+  assert.equal(other.inLocalStorage, true);
+  assert.deepEqual(Object.keys(tempObjects), [fileKey(other)]);
+});
+
+test('discard logs a failed local clear with the file and still reloads', async () => {
+  const dirty: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'a', level: 2, folder: 'aura', extension: '.ts',
+  };
+  const calls: string[] = [];
+  const logs: string[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => { logs.push(args.map(String).join(' ')); };
+  try {
+    await discard({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'discarded' }),
+      reload: () => { calls.push('reload'); },
+      storFiles: { a: dirty },
+      clearLocal: async () => { throw new Error('idb down'); },
+    }, 102047, 'team-102047');
+  } finally {
+    console.error = orig;
+  }
+  assert.deepEqual(calls, ['reload']);
+  assert.ok(logs.some((line) => line.includes('l2/aura/a.ts') && line.includes('idb down')));
+  assert.equal(dirty.inLocalStorage, true);
 });
 
 test('syncWithPublished reloads on merged and rejects DRAFT_CONFLICT with the files', async () => {

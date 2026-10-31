@@ -112,9 +112,14 @@ export interface IPublishEffects {
   rememberPublished?: (record: IPublishedRecord) => void;
 }
 
-export interface IDiscardEffects {
+export interface IReloadEffects {
   fetchImpl: FetchImpl;
   reload: () => void;
+}
+
+export interface IDiscardEffects extends IReloadEffects {
+  storFiles: Readonly<Record<string, IPanelStorFile | null | undefined>>;
+  clearLocal: (file: IPanelStorFile) => Promise<void>;
 }
 
 /** Same signature as `saveL5File` in mls-102033. Injected so this file does not import mls. */
@@ -370,12 +375,20 @@ export async function discard(
     const message = err instanceof Error ? err.message : String(err);
     console.error('[draftPanel]', `forgetStaleDraftL2: ${message}`);
   }
+  for (const file of collectEditedFiles(effects.storFiles, project)) {
+    try {
+      await effects.clearLocal(file);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[draftPanel]', `clearLocal ${shortPathOf(file)}: ${message}`);
+    }
+  }
   effects.reload();
 }
 
 /** `DRAFT_CONFLICT: <files>` — the panel turns this into `syncConflict`. */
 export async function syncWithPublished(
-  effects: IDiscardEffects,
+  effects: IReloadEffects,
   project: number,
   slug: string,
 ): Promise<void> {

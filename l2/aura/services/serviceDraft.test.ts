@@ -38,6 +38,30 @@ test('Publish goes through the core publish and does not call /exec', () => {
     assert.doesNotMatch(DRAFT, /callExec\(/);
 });
 
+test('publish confirms the draft file count before the comment and shows the error', () => {
+    const handler = methodOf(DRAFT, 'private async _onPublish');
+    const confirmAt = handler.indexOf('confirm(');
+    const commentAt = handler.indexOf('_askComment(');
+    assert.ok(confirmAt !== -1 && commentAt > confirmAt, 'confirm sits before the comment');
+    assert.match(handler, /confirmPublish/);
+    assert.match(handler, /\{count\}/);
+    assert.match(handler, /this\._error = this\.msg\.conflict/);
+    assert.match(handler, /this\._error = this\.msg\.nothingToPromote/);
+    assert.match(handler, /this\._error = err instanceof Error \? err\.message : String\(err\)/);
+});
+
+test('discard confirms the draft file count and clears local copies the same way as undo', () => {
+    const handler = methodOf(DRAFT, 'private async _onDiscard');
+    const confirmAt = handler.indexOf('confirm(');
+    const discardAt = handler.indexOf('await discard(');
+    assert.ok(confirmAt !== -1 && discardAt > confirmAt, 'discard sits behind confirm');
+    assert.match(handler, /confirmDiscard/);
+    assert.match(handler, /\{count\}/);
+    assert.match(handler, /storFiles:\s*mls\.stor\.files/);
+    assert.match(handler, /setContent\(file as mls\.stor\.IFileInfo, \{ content: null \}\)/);
+    assert.match(handler, /file\.status = 'nochange'/);
+});
+
 test('save shows the blocked list that the core returns', () => {
     const handler = methodOf(DRAFT, 'private async _onSave');
     assert.match(handler, /saveToDraft\(/);
