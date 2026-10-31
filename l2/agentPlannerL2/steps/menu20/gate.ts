@@ -195,6 +195,44 @@ export function validateP2Menu(draft: MenuV2, input: P2MenuGateInput): P2MenuGat
     pagesByActor.set(actor.actorId, pagesVisibleToActor(draft, byId, actor.actorId));
   }
 
+  const seen = new Set<string>();
+  (draft.meta.placements ?? []).forEach((row, index) => {
+    const path = `$.meta.placements[${index}]`;
+    const pair = `${row.journeyId}\0${row.actorRef}`;
+    if (!journeyIds.has(row.journeyId)) {
+      error(issues, 'P2_MENU_PLACEMENT_JOURNEY_UNKNOWN', `Unknown journey ${row.journeyId}.`, path);
+    }
+    if (!actorIds.has(row.actorRef)) {
+      error(issues, 'P2_MENU_PLACEMENT_ACTOR_UNKNOWN', `Unknown actor ${row.actorRef}.`, path);
+    }
+    const found = byId.get(row.pageId);
+    if (!found) {
+      error(issues, 'P2_MENU_PLACEMENT_PAGE_UNKNOWN', `Unknown page ${row.pageId}.`, path);
+    } else if (found.node.kind !== 'page') {
+      error(issues, 'P2_MENU_PLACEMENT_NOT_PAGE', `${row.pageId} is not a page.`, path);
+    } else if (!(pagesByActor.get(row.actorRef) || []).some(page => page.id === row.pageId)) {
+      error(issues, 'P2_MENU_PLACEMENT_ACTOR_CANNOT_SEE', `Actor ${row.actorRef} cannot see page ${row.pageId}.`, path);
+    }
+    if (!row.reason.trim()) {
+      error(issues, 'P2_MENU_PLACEMENT_REASON_EMPTY', 'reason must be a non-empty string.', path);
+    }
+    if (seen.has(pair)) {
+      error(issues, 'P2_MENU_PLACEMENT_DUPLICATE', `Two places for ${row.journeyId} × ${row.actorRef}.`, path);
+    }
+    seen.add(pair);
+  });
+  for (const journey of sources.journeys) {
+    const pair = `${journey.journeyId}\0${journey.actorRef}`;
+    if (!seen.has(pair)) {
+      error(
+        issues,
+        'P2_MENU_PLACEMENT_MISSING',
+        `Journey ${journey.journeyId} for actor ${journey.actorRef} has no place.`,
+        '$.meta.placements',
+      );
+    }
+  }
+
   // meta.records: which pages maintain each kept record (read by needs30).
   const kept = new Set(collectRecordsKept(sources, grants).map(row => row.entityRef));
   const actorsOfPage = (pageId: string): string[] => [...pagesByActor.entries()]

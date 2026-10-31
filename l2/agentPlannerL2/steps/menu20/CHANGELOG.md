@@ -1,5 +1,9 @@
 # menu20
 
+## 2026-11-01 (d2_160)
+
+- `meta.placements`: one `screenAction` | `menuItem` | `listWithAdd` per journey × actor, with a reason. Structural gate only. The human prompt includes `## Module` with `sourcePrompt`.
+
 ## 2026-09-21 (p2_26)
 
 - Home organisms only from the beyond-journeys block; `P2ActorMustSeeTask` carries `entityRef`.

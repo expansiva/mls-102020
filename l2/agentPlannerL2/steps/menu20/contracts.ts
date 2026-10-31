@@ -17,11 +17,13 @@ import type {
   MenuNode,
   MenuOrganism,
   MenuPageNode,
+  MenuPlacement,
   MenuStampedNode,
   PoolMenuFile,
   PoolMenuMeta,
 } from '/_102035_/l2/solution/poolPlan.js';
 import {
+  MENU_PLACEMENTS,
   MENU_ACTIONS as POOL_MENU_ACTIONS,
   MENU_NODE_KINDS as POOL_MENU_NODE_KINDS,
   MENU_ORGANISM_KINDS as POOL_MENU_ORGANISM_KINDS,
@@ -349,7 +351,8 @@ export function normalizeMenuV2(value: unknown): MenuV2 {
   const root = asRecord(value, '$');
   exactKeys(root, ['tree', 'authorities', 'meta'], '$');
   const meta = asRecord(root.meta, '$.meta');
-  exactKeys(meta, ['journeys', 'processes', 'records'], '$.meta');
+  // Model answers must name a place for every journey. A menu.json written before the field never comes through here.
+  exactKeys(meta, ['journeys', 'processes', 'records', 'placements'], '$.meta');
   return {
     tree: list(root.tree, '$.tree').map((item, index) => normalizeNode(item, `$.tree[${index}]`)),
     authorities: normalizeAuthorities(root.authorities, '$.authorities'),
@@ -357,6 +360,7 @@ export function normalizeMenuV2(value: unknown): MenuV2 {
       journeys: normalizeIdPagesMap(meta.journeys, '$.meta.journeys', 'journeyId'),
       processes: normalizeIdPagesMap(meta.processes, '$.meta.processes', 'processId'),
       records: normalizeIdPagesMap(meta.records, '$.meta.records', 'entityId'),
+      placements: normalizePlacements(meta.placements, '$.meta.placements'),
     },
   };
 }
@@ -380,6 +384,7 @@ export function buildP2MenuFile(input: {
       journeys: input.draft.meta.journeys,
       processes: input.draft.meta.processes,
       records: input.draft.meta.records,
+      ...(input.draft.meta.placements !== undefined ? { placements: input.draft.meta.placements } : {}),
       removed: [],
     },
   };
@@ -622,6 +627,24 @@ function exactKeys(source: Record<string, unknown>, allowed: readonly string[], 
   for (const key of allowed) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) throw new Error(`${path}: missing field '${key}'.`);
   }
+}
+
+function normalizePlacements(value: unknown, path: string): MenuPlacement[] {
+  return list(value, path).map((item, index) => {
+    const row = asRecord(item, `${path}[${index}]`);
+    exactKeys(row, ['journeyId', 'actorRef', 'placement', 'pageId', 'reason'], `${path}[${index}]`);
+    const placement = text(row.placement);
+    if (!MENU_PLACEMENTS.includes(placement as typeof MENU_PLACEMENTS[number])) {
+      throw new Error(`${path}[${index}].placement must be ${MENU_PLACEMENTS.join(', ')}.`);
+    }
+    return {
+      journeyId: memberIdRequired(row.journeyId, `${path}[${index}].journeyId`),
+      actorRef: memberIdRequired(row.actorRef, `${path}[${index}].actorRef`),
+      placement: placement as typeof MENU_PLACEMENTS[number],
+      pageId: nodeId(row.pageId, `${path}[${index}].pageId`),
+      reason: requiredText(row.reason, `${path}[${index}].reason`),
+    };
+  });
 }
 
 function stripAction(value: unknown): unknown {

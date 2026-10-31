@@ -8,7 +8,7 @@ Module l4: every journey (id, actor, title, goal, steps), `access.defs.ts` actor
 
 ## Output
 
-`l4/<mod>/pool/l2/web/menu.json` (overwritten). Envelope fields (`schemaVersion`, `moduleName`, `userLanguage`, `device`) are filled by code. The model emits `tree`, `authorities`, `meta` (journeys/processes). `action` is stamped by L2 against what is already a screen in l2 (the manifesto materialization will write per device). That manifesto does not exist yet, so every node is `new` and `meta.removed` is `[]`. On approve, `pipeline.device` and `actionCounts` are recorded; `effort40` closes the pipeline. Gate warnings land on `pipeline.warnings`. Done-anchor `menu20-done`.
+`l4/<mod>/pool/l2/web/menu.json` (overwritten). Envelope fields (`schemaVersion`, `moduleName`, `userLanguage`, `device`) are filled by code. The model emits `tree`, `authorities`, `meta` (journeys/processes/records/`placements`). `placements` is one place per journey × actor (`screenAction`, `menuItem`, `listWithAdd`) plus a reason; an older file without the field still parses. `action` is stamped by L2 against what is already a screen in l2 (the manifesto materialization will write per device). That manifesto does not exist yet, so every node is `new` and `meta.removed` is `[]`. On approve, `pipeline.device` and `actionCounts` are recorded; `effort40` closes the pipeline. Gate warnings land on `pipeline.warnings`. Done-anchor `menu20-done`. The human prompt starts from `sourcePrompt` under `## Module` when `module.defs.ts` has one.
 
 ## Invariants
 

@@ -4,12 +4,13 @@ import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { d2LlmModelOf, d2LlmResponseInfo, recordD2LlmResponse, recordD2LlmVerdict } from '/_102020_/l2/helpers/llmResponses.js';
 import {
   accessFile,
+  moduleFile,
   readDefsJson,
   readJson,
   workflowsFile,
   writeJson,
 } from '/_102035_/l2/solution/fs.js';
-import type { Ns5AccessArtifact, Ns5WorkflowsArtifact } from '/_102035_/l2/solution/types.js';
+import type { Ns5AccessArtifact, Ns5ModuleArtifact, Ns5WorkflowsArtifact } from '/_102035_/l2/solution/types.js';
 import {
   P2_MENU_DEVICE,
   createP2RetryStep,
@@ -70,6 +71,7 @@ export interface P2MenuSources {
   sources: P2L4Sources;
   grants: P2GrantView[];
   processes: P2ProcessView[];
+  sourcePrompt?: string;
 }
 
 export function composeP2SystemPrompt(skillText: string, stepPrompt: string): string {
@@ -83,7 +85,7 @@ export function buildP2MenuHumanPrompt(input: {
   previousDraft?: unknown;
   currentNavigation?: readonly P2ConfigNavigationItem[] | null;
 }): string {
-  const { sources, grants, processes } = input.menuSources;
+  const { sources, grants, processes, sourcePrompt } = input.menuSources;
   const candidates = menuCandidates(sources, grants, processes);
   const actorLines = sources.actors.map(actor => `- ${actor.actorId} (${actor.kind}): ${actor.title}`);
   const grantLines = grants.map(grant => {
@@ -133,6 +135,7 @@ export function buildP2MenuHumanPrompt(input: {
     '## What this actor must see, beyond journeys',
     JSON.stringify(candidates.beyondJourneys, null, 2),
     '',
+    sourcePrompt ? ['## Module', sourcePrompt, ''].join('\n') : '',
     '## Actors',
     actorLines.length ? actorLines.join('\n') : '(none)',
     '',
@@ -154,14 +157,17 @@ export function buildP2MenuHumanPrompt(input: {
 
 export async function loadP2MenuSources(moduleName: string): Promise<P2MenuSources> {
   const sources = await loadP2L4Sources(moduleName);
-  const [access, workflows] = await Promise.all([
+  const [access, workflows, moduleArtifact] = await Promise.all([
     readDefsJson<Ns5AccessArtifact>(accessFile(moduleName)),
     readDefsJson<Ns5WorkflowsArtifact>(workflowsFile(moduleName)),
+    readDefsJson<Ns5ModuleArtifact>(moduleFile(moduleName)),
   ]);
+  const sourcePrompt = moduleArtifact?.sourcePrompt;
   return {
     sources,
     grants: parseP2Grants(access),
     processes: parseP2Processes(workflows),
+    ...(typeof sourcePrompt === 'string' && sourcePrompt.trim() ? { sourcePrompt } : {}),
   };
 }
 
