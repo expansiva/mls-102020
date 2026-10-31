@@ -28,7 +28,7 @@ import {
     type IPanelModel,
     type IPublishedRecord,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
-import { subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
+import { listedOwner, subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
 
 /// **collab_i18n_start**
 const message_en = {
@@ -58,6 +58,7 @@ const message_en = {
     noReleaseHelper: 'The release watcher is not available.',
     others: 'Other drafts',
     noOthers: 'No other drafts.',
+    unknownPerson: 'Unknown person',
     view: 'View',
     experiment: 'Try',
     experimentDisabled: 'This draft cannot be tried: its address does not round-trip.',
@@ -116,6 +117,7 @@ const messages: Record<string, MessageType> = {
         noReleaseHelper: 'O observador da release não está disponível.',
         others: 'Outros rascunhos',
         noOthers: 'Nenhum outro rascunho.',
+        unknownPerson: 'Pessoa desconhecida',
         view: 'Ver',
         experiment: 'Experimentar',
         experimentDisabled: 'Este rascunho não pode ser experimentado: o endereço não faz ida e volta.',
@@ -171,6 +173,7 @@ const messages: Record<string, MessageType> = {
         noReleaseHelper: 'El observador de la release no está disponible.',
         others: 'Otros borradores',
         noOthers: 'Ningún otro borrador.',
+        unknownPerson: 'Persona desconocida',
         view: 'Ver',
         experiment: 'Probar',
         experimentDisabled: 'Este borrador no se puede probar: la dirección no hace ida y vuelta.',
@@ -518,12 +521,23 @@ export class ServiceDraft102020 extends ServiceBase {
         `;
     }
 
+    /** Person from `listDrafts.owner`. Never the slug. */
+    private draftPerson(item: IListedDraft): string {
+        return listedOwner(item) ?? this.msg.unknownPerson;
+    }
+
+    private _warnMissingOwners(items: readonly IListedDraft[]): void {
+        for (const item of items) {
+            if (listedOwner(item) === null) console.warn('[serviceDraft] listDrafts owner is missing');
+        }
+    }
+
     private _renderOther(item: IListedDraft, busy: boolean) {
         const slug = slugForBranch(item.branch);
         const files = item.files ?? [];
         return html`
             <div class="other flex flex-col gap-3">
-                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.branch}</span><span>${item.branch}</span></div>
+                <div class="font-semibold">${this.draftPerson(item)}</div>
                 <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.ahead}</span><span>${item.ahead}</span></div>
                 <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.behind}</span><span>${item.behind}</span></div>
                 <div class="font-semibold">${this.msg.touched}</div>
@@ -538,7 +552,6 @@ export class ServiceDraft102020 extends ServiceBase {
                         title=${slug === null ? this.msg.experimentDisabled : nothing}
                         @click=${() => { if (slug) void this._onExperiment(slug); }}
                     >${this.msg.experiment}</button>
-                    <button disabled title=${this.msg.bringDisabled}>${this.msg.bring}</button>
                 </div>
                 ${this._diffBranch === item.branch && this._diffText !== null
                     ? html`<pre class="diff">${this._diffText || this.msg.noDiff}</pre>`
@@ -608,6 +621,7 @@ export class ServiceDraft102020 extends ServiceBase {
             const panel = await loadPanel(fetchImpl, project, slug);
             this._current = panel.current;
             this._others = panel.others;
+            this._warnMissingOwners(panel.others);
             if (!panel.current) console.warn('[serviceDraft] listDrafts has no row for', slug);
         } catch (err) {
             console.error('[serviceDraft] loadPanel failed:', err);

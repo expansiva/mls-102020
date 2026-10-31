@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
 import { pendingFiles, recordSentContent } from '/_102020_/l2/aura/studio/studioAutoSave.js';
-import { sendAutoSaveBatch } from '/_102020_/l2/aura/studio/studioEditTool.js';
+import { readFileSync } from 'node:fs';
+import { listedOwner, noteSharedFile, type IOtherDraftTouch, sendAutoSaveBatch } from '/_102020_/l2/aura/studio/studioEditTool.js';
+
+const TOOL = readFileSync(new URL('studioEditTool.ts', import.meta.url), 'utf8');
 
 interface ILocalWrite {
   contentType?: 'string' | 'blob' | 'base64';
@@ -258,4 +261,44 @@ test('a deleted file is sent without writing the captured text', async () => {
     host.mls.common = previous.common;
     host.mls.stor = previous.stor;
   }
+});
+
+test('a file in another draft warns once with the name and the edit is still sent', () => {
+  const warned = new Set<string>();
+  const others: IOtherDraftTouch[] = [{ owner: 'Ana Silva', files: ['l1/usecases/shared.ts'] }];
+  const notices: string[] = [];
+  const sent: string[] = [];
+  const shared = storFile('shared');
+  const free = storFile('free');
+  const show = (text: string) => { notices.push(text); };
+  const send = (file: mls.stor.IFileInfo) => { sent.push(file.shortName); };
+  const doc = (globalThis as { document?: { documentElement?: { lang: string } } }).document;
+  const previousLang = doc?.documentElement?.lang;
+  if (doc?.documentElement) doc.documentElement.lang = 'en';
+  try {
+    noteSharedFile(shared, others, warned, show, send);
+    noteSharedFile(shared, others, warned, show, send);
+    noteSharedFile(free, others, warned, show, send);
+    assert.deepEqual(notices, ['Ana Silva is also changing this file']);
+    assert.deepEqual(sent, ['shared', 'shared', 'free']);
+    assert.equal(listedOwner({ owner: 'Ana Silva', branch: 'user/abcdef0123456789' }), 'Ana Silva');
+    assert.equal(listedOwner({ branch: 'user/abcdef0123456789' }), null);
+    assert.equal(listedOwner({ owner: '  ', branch: 'user/abcdef0123456789' }), null);
+  } finally {
+    if (doc?.documentElement && previousLang !== undefined) doc.documentElement.lang = previousLang;
+  }
+});
+
+test('the other-draft list is read on enter and on open, not on each edit', () => {
+  const start = TOOL.slice(TOOL.indexOf('public start(): void'), TOOL.indexOf('public stop(): void'));
+  assert.match(start, /refreshOthers\(\)/);
+  const onFile = TOOL.slice(TOOL.indexOf('private readonly onFileAction'), TOOL.indexOf('private readonly onStyleChanged'));
+  const openAt = onFile.indexOf("action === 'open'");
+  const editAt = onFile.indexOf("action !== 'editorChanged'");
+  assert.ok(openAt !== -1 && editAt > openAt, 'open is handled before the edit');
+  assert.match(onFile.slice(openAt, editAt), /refreshOthers\(\)/);
+  assert.doesNotMatch(onFile.slice(editAt), /refreshOthers|loadPanel/);
+  const noteAt = TOOL.indexOf('export function noteSharedFile');
+  const note = TOOL.slice(noteAt, TOOL.indexOf('const AUTO_SAVE_MS', noteAt));
+  assert.doesNotMatch(note, /loadPanel|fetchImpl/);
 });

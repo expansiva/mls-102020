@@ -79,8 +79,15 @@ test('en, pt and es declare the same keys', () => {
     }
 });
 
-test('bring stays disabled with a tooltip and does not call mergeDraft', () => {
-    assert.match(DRAFT, /<button disabled title=\$\{this\.msg\.bringDisabled\}>/);
+test('other drafts show the person and the files, and bring is not a button', () => {
+    const render = methodOf(DRAFT, 'private _renderOther(');
+    assert.match(render, /draftPerson\(item\)/);
+    assert.match(render, /files\.map\(\(file\) => html`<div>\$\{file\}<\/div>`\)/);
+    assert.doesNotMatch(render, /\$\{item\.branch\}/);
+    assert.doesNotMatch(render, /msg\.bring/);
+    assert.match(DRAFT, /unknownPerson: 'Unknown person'/);
+    assert.match(DRAFT, /unknownPerson: 'Pessoa desconhecida'/);
+    assert.match(DRAFT, /unknownPerson: 'Persona desconocida'/);
     assert.match(DRAFT, /experimentDisabled/);
     assert.match(DRAFT, /slug === null \? this\.msg\.experimentDisabled/);
     assert.match(DRAFT, /!!ping\.promoting/);

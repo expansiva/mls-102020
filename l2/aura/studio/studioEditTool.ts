@@ -22,8 +22,10 @@ import {
   afterDraftSave,
   dropCapturedDraftText,
   holdCapturedDraftText,
+  loadPanel,
   saveToDraft,
   storeCapturedDraftText,
+  type FetchImpl,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { resetAuraSeed, seedActiveHeader, seedAuraStateFromHost } from '/_102020_/l2/aura/studio/studioAuraSeed.js';
@@ -37,6 +39,117 @@ import {
 import type { StudioEditor } from '/_102020_/l2/aura/studio/studioEditor.js';
 import type { StudioLiveUpdateWatcher } from '/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js';
 import { t } from '/_102020_/l2/aura/studio/studioMessages.js';
+import { getRuntimeLanguage } from '/_102033_/l2/shared/languageRuntime.js';
+
+/// **collab_i18n_start**
+const shared_en = {
+  alsoChanging: '{person} is also changing this file',
+  alsoChangingUnknown: 'Someone else is also changing this file',
+};
+const sharedMessages: Record<string, typeof shared_en> = {
+  en: shared_en,
+  pt: {
+    alsoChanging: '{person} também está alterando este arquivo',
+    alsoChangingUnknown: 'Outra pessoa também está alterando este arquivo',
+  },
+  es: {
+    alsoChanging: '{person} también está modificando este archivo',
+    alsoChangingUnknown: 'Otra persona también está modificando este archivo',
+  },
+};
+/// **collab_i18n_end**
+
+const fetchImpl: FetchImpl = (input, init) => fetch(input, init);
+
+/** One other person's draft, as `listDrafts` reported it. `owner` is never a slug. */
+export interface IOtherDraftTouch {
+  owner: string | null;
+  files: readonly string[];
+}
+
+/** `listDrafts.owner` when it is a non-empty string. A missing owner stays null — never the slug. */
+export function listedOwner(item: object): string | null {
+  if (!('owner' in item)) return null;
+  const raw = (item as { owner?: unknown }).owner;
+  if (typeof raw !== 'string') return null;
+  const name = raw.trim();
+  return name === '' ? null : name;
+}
+
+export function touchesFromDrafts(drafts: readonly object[]): IOtherDraftTouch[] {
+  return drafts.map((item) => {
+    const owner = listedOwner(item);
+    if (owner === null) console.warn('[studio] listDrafts owner is missing');
+    const rawFiles = 'files' in item ? (item as { files?: unknown }).files : undefined;
+    const files = Array.isArray(rawFiles)
+      ? rawFiles.filter((file): file is string => typeof file === 'string')
+      : [];
+    return { owner, files };
+  });
+}
+
+function draftFilePath(file: {
+  level?: number;
+  folder?: string;
+  shortName?: string;
+  extension?: string;
+}): string {
+  const name = file.shortName ?? '';
+  const folder = file.folder ?? '';
+  const extension = file.extension ?? '';
+  if (file.level === undefined && folder === '' && extension === '') return name;
+  const levelPart = file.level === undefined ? '' : `l${file.level}/`;
+  const folderPart = folder === '' ? '' : `${folder}/`;
+  return `${levelPart}${folderPart}${name}${extension}`;
+}
+
+function alsoChangingText(person: string | null): string {
+  const lang = typeof document === 'undefined' ? 'en' : (document.documentElement?.lang || 'en');
+  const key = getRuntimeLanguage(Object.keys(sharedMessages), lang) ?? 'en';
+  const catalog = sharedMessages[key] ?? shared_en;
+  if (!person) return catalog.alsoChangingUnknown;
+  return catalog.alsoChanging.replace('{person}', person);
+}
+
+/**
+ * First edit of a file that another draft already lists.
+ * Later edits of the same file return null. Does not read the network.
+ */
+export function sharedEditWarning(
+  file: { level?: number; folder?: string; shortName?: string; extension?: string },
+  others: readonly IOtherDraftTouch[],
+  warned: Set<string>,
+): string | null {
+  const path = draftFilePath(file);
+  if (path === '' || warned.has(path)) return null;
+  const names: string[] = [];
+  let listed = false;
+  for (const other of others) {
+    if (!other.files.includes(path)) continue;
+    listed = true;
+    if (other.owner && !names.includes(other.owner)) names.push(other.owner);
+  }
+  if (!listed) return null;
+  warned.add(path);
+  if (names.length === 0) {
+    console.warn('[studio] shared file has no owner', path);
+    return alsoChangingText(null);
+  }
+  return alsoChangingText(names.join(', '));
+}
+
+/** Warns once when the file is in another draft, then always hands the edit on. */
+export function noteSharedFile(
+  file: mls.stor.IFileInfo,
+  others: readonly IOtherDraftTouch[],
+  warned: Set<string>,
+  show: (text: string) => void,
+  send: (file: mls.stor.IFileInfo) => void,
+): void {
+  const text = sharedEditWarning(file, others, warned);
+  if (text) show(text);
+  send(file);
+}
 
 const AUTO_SAVE_MS = 3000;
 
@@ -221,6 +334,8 @@ function storFileFrom(ref: {
 
 class DraftAutoSave implements IDraftAutoSave {
   private listening = false;
+  private others: IOtherDraftTouch[] = [];
+  private readonly warnedFiles = new Set<string>();
   private readonly saver = createAutoSaver<mls.stor.IFileInfo>({
     debounceMs: AUTO_SAVE_MS,
     now: () => Date.now(),
@@ -269,6 +384,23 @@ class DraftAutoSave implements IDraftAutoSave {
     });
     // Files already dirty when Studio (or the active draft) comes on never fire a new event.
     for (const file of pending) this.saver.notify(file);
+    void this.refreshOthers();
+  }
+
+  /** List of other drafts. Called on enter and when a file opens — not on each keystroke. */
+  private async refreshOthers(): Promise<void> {
+    const project = siteProject();
+    const slug = activeDraft();
+    if (project === null || typeof slug !== 'string' || slug.length === 0) {
+      console.warn('[studio] shared-file list has no project or draft');
+      return;
+    }
+    try {
+      const panel = await loadPanel(fetchImpl, project, slug);
+      this.others = touchesFromDrafts(panel.others);
+    } catch (err) {
+      console.error('[studio] listDrafts for shared files failed', err);
+    }
   }
 
   public stop(): void {
@@ -293,8 +425,12 @@ class DraftAutoSave implements IDraftAutoSave {
       console.error('[studio] auto-save FileAction is not JSON', err);
       return;
     }
+    if (fileAction.action === 'open') {
+      void this.refreshOthers();
+      return;
+    }
     if (fileAction.action !== 'editorChanged' && fileAction.action !== 'statusOrErrorChanged') return;
-    this.note(storFileFrom(fileAction));
+    this.deliver(storFileFrom(fileAction));
   };
 
   private readonly onStyleChanged = (ev: mls.events.IEvent): void => {
@@ -307,8 +443,13 @@ class DraftAutoSave implements IDraftAutoSave {
       return;
     }
     if (!parsed?.storFile) return;
-    this.note(storFileFrom({ ...parsed.storFile, extension: '.less' }));
+    this.deliver(storFileFrom({ ...parsed.storFile, extension: '.less' }));
   };
+
+  private deliver(file: mls.stor.IFileInfo | undefined): void {
+    if (!file) return;
+    noteSharedFile(file, this.others, this.warnedFiles, showSharedNotice, (item) => this.note(item));
+  }
 
   private note(file: mls.stor.IFileInfo | undefined): void {
     if (!file) return;
@@ -328,6 +469,11 @@ class DraftAutoSave implements IDraftAutoSave {
 }
 
 let editor: StudioEditor | undefined;
+
+function showSharedNotice(text: string): void {
+  console.warn('[studio]', text);
+  editor?.showStatus(text, true);
+}
 let watcher: StudioLiveUpdateWatcher | undefined;
 let armed = false;
 /** Guard against re-entrancy: loading the editor is async and the slot can publish again meanwhile. */
