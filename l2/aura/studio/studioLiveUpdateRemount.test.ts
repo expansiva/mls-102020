@@ -217,3 +217,34 @@ test('T10: remount is a registered mode and the default is still off', async () 
   assert.equal(typeof remountMode.description, 'string');
   assert.ok(remountMode.description.length > 0);
 });
+
+// T11 — the mark has to be on the new node BEFORE replaceWith, because connectedCallback runs on insert.
+test('T11: a remounted node sees wasRebuiltByStudio true inside connectedCallback', async () => {
+  const { carryOver } = await load();
+  const registry = await loadRegistry();
+  const from = fakeElement();
+  const to = fakeElement();
+  let seen: boolean | undefined;
+  to.connectedCallback = function (this: Element) {
+    seen = registry.wasRebuiltByStudio(this);
+  };
+
+  carryOver(from as unknown as HTMLElement, to as unknown as HTMLElement, implWith([]));
+  (to.connectedCallback as (this: Element) => void).call(to as unknown as Element);
+
+  assert.equal(seen, true);
+});
+
+// T12 — a node that was never carried over (boot, first paint) must not claim it was rebuilt.
+test('T12: a normally created node sees wasRebuiltByStudio false inside connectedCallback', async () => {
+  const registry = await loadRegistry();
+  const node = fakeElement();
+  let seen: boolean | undefined;
+  node.connectedCallback = function (this: Element) {
+    seen = registry.wasRebuiltByStudio(this);
+  };
+
+  (node.connectedCallback as (this: Element) => void).call(node as unknown as Element);
+
+  assert.equal(seen, false);
+});
