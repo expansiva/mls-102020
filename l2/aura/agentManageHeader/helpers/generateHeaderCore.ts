@@ -101,8 +101,13 @@ export const RESERVED_HEADER_VARIANTS: readonly string[] = ['default', 'defaulta
 export const TAG_PLACEHOLDER = '${tag}';
 
 const KNOWN_ACTIONS: readonly AppHeaderAction[] = ['language', 'designSystem', 'modules', 'search', 'user'];
-/** Actions AuraHeaderBase implements itself; the rest are the subclass's to render. */
-const BASE_ACTIONS: readonly AppHeaderAction[] = ['language', 'designSystem', 'modules'];
+/**
+ * Actions AuraHeaderBase implements itself; the rest are the subclass's to render.
+ *
+ * `user` is the base's avatar. Leaving it out told the model to render the user itself while the
+ * contract's example already called renderActions() — and the band shipped two avatars.
+ */
+const BASE_ACTIONS: readonly AppHeaderAction[] = ['language', 'designSystem', 'modules', 'user'];
 
 function toKebab(value: string): string {
   return value.replace(/([a-z0-9])([A-Z])/gu, '$1-$2').toLowerCase();
@@ -450,6 +455,8 @@ export interface ValidateHeaderOptions {
   colorTokens?: string[];
   /** Locales the header was asked to speak; the messages block must cover exactly these. */
   locales?: string[];
+  /** Actions the profile enables (request.actions) — with `user`, renderActions() draws the avatar. */
+  actions?: string[];
 }
 
 /** Custom properties referenced with var(). */
@@ -520,6 +527,15 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
   }
   if (/this\.(userFirstName|userName)/u.test(bandHtml) && /(slice\(|charAt\(|\[0\])/u.test(bandHtml)) {
     errors.push('bandHtml must not derive an avatar initial by hand — this.renderUserAvatar() does it, with a fallback for the empty case');
+  }
+  // One avatar per band. The base also guards it at render time, but a band that asks twice is still
+  // wrong: which of the two places wins depends on template order, not on the design.
+  const avatarCalls = bandHtml.match(/this\.renderUserAvatar\s*\(/gu)?.length ?? 0;
+  const actionsCalls = bandHtml.match(/this\.renderActions\s*\(/gu)?.length ?? 0;
+  if (avatarCalls > 1) errors.push('bandHtml calls this.renderUserAvatar() more than once — the user gets one avatar');
+  if (actionsCalls > 1) errors.push('bandHtml calls this.renderActions() more than once — render the actions in one place');
+  if (avatarCalls > 0 && actionsCalls > 0 && options.actions?.includes('user')) {
+    errors.push('bandHtml calls this.renderUserAvatar() AND this.renderActions(), which already includes the avatar for the `user` action — drop this.renderUserAvatar()');
   }
 
   // Without the toggle, a mobile user has no way to open the aside.
@@ -780,6 +796,7 @@ export function sanitizeGeneratedHeader(
     allowedTokens: request.tokens,
     colorTokens: request.colorTokens,
     locales: request.locales,
+    actions: request.actions,
   });
   if (errors.length > 0) return { ok: false, error: errors.join('; ') };
 
@@ -808,7 +825,12 @@ export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): 
     request.brief ? `Brief: ${request.brief}` : '',
     request.brand?.title ? `Brand title: ${request.brand.title} (read it as this.brand.title — never hardcode)` : '',
     request.brand?.logoUrl ? `Brand logo: ${request.brand.logoUrl} (rendered by this.renderBrand())` : '',
-    baseHandled.length ? `Actions provided by the base (call this.renderActions()): ${baseHandled.join(', ')}` : '',
+    baseHandled.length
+      ? `Actions provided by the base (call this.renderActions() ONCE): ${baseHandled.join(', ')}`
+        + (baseHandled.includes('user')
+          ? '. The user avatar is already inside this.renderActions() — do not also call this.renderUserAvatar().'
+          : '')
+      : '',
     ownHandled.length
       ? `Actions YOU must render in the band: ${ownHandled.join(', ')}. They have NO route: render a `
         + `<button> whose @click calls this.emitHeaderAction('<action>') — never this.navigateTo and never an href.`

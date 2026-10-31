@@ -409,7 +409,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         const fullLabel = this.msg[`${key}Full` as keyof MessageType] || label; // tooltip: name in full
 
         return html`
-            <div title=${fullLabel} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
+            <div title=${fullLabel} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'cursor-not-allowed' : ''}">
                 <aura--widgets--aura-select-knob-102020
                     .min=${config.min}
                     .max=${config.max}

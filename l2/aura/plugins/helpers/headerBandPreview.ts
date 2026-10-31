@@ -27,6 +27,11 @@ export interface BandMountRequest {
   tag: string;
   bootConfig: unknown;
   regionProps: Record<string, unknown>;
+  /**
+   * "View as role": the authorities the band filters its links by. Always set by a preview — empty
+   * means every role — so the band never filters by the STUDIO user's own session.
+   */
+  previewAuthorities?: string[];
 }
 
 export interface BandBootInput {
@@ -36,6 +41,11 @@ export interface BandBootInput {
   navigation?: Array<{ label: string; href: string; description?: string }>;
   /** Locale codes the app runs, so the switcher has something to offer. */
   languages?: string[];
+  /** Module the preview pretends to be in; `navigation` is then that module's routes only. */
+  moduleId?: string;
+  basePath?: string;
+  /** The other modules, as the runtime's cross-module links. */
+  moduleLinks?: Array<{ label: string; href: string }>;
 }
 
 /**
@@ -47,13 +57,13 @@ export interface BandBootInput {
 export function bandBootConfig(input: BandBootInput): Record<string, unknown> {
   return {
     projectId: String(input.projectId),
-    moduleId: 'preview',
-    basePath: '/preview',
+    moduleId: input.moduleId ?? 'preview',
+    basePath: input.basePath ?? '/preview',
     shellMode: input.shellMode ?? 'spa',
     device: 'desktop',
     routes: [],
     navigation: (input.navigation ?? []).map((entry) => ({ ...entry })),
-    moduleLinks: [],
+    moduleLinks: (input.moduleLinks ?? []).map((entry) => ({ ...entry })),
     languages: [...(input.languages ?? [])],
     layout: {
       regions: { desktop: { header: true, aside: true, content: true }, mobile: { header: true, aside: true, content: true } },
@@ -100,10 +110,13 @@ export async function applyProjectTokens(host: HTMLElement, projectId: number): 
   return true;
 }
 
-function bandElement(tag: string, bootConfig: unknown, regionProps: Record<string, unknown>): HTMLElement {
-  const element = document.createElement(tag) as HTMLElement & { bootConfig?: unknown; regionProps?: unknown };
-  element.bootConfig = bootConfig;
-  element.regionProps = regionProps;
+function bandElement(request: BandMountRequest): HTMLElement {
+  const element = document.createElement(request.tag) as HTMLElement & {
+    bootConfig?: unknown; regionProps?: unknown; previewAuthorities?: string[];
+  };
+  element.bootConfig = request.bootConfig;
+  element.regionProps = request.regionProps;
+  element.previewAuthorities = [...(request.previewAuthorities ?? [])];
   return element;
 }
 
@@ -116,10 +129,20 @@ function bandElement(tag: string, bootConfig: unknown, regionProps: Record<strin
  * @returns undefined on success, or the reason it could not render (for the caller to show).
  */
 export async function mountHeaderBand(host: HTMLElement, request: BandMountRequest): Promise<string | undefined> {
+  // Last call wins. The import below can retry for seconds, and a host reused for ANOTHER header
+  // (lit keeps the node, only the attributes change) used to get the slower, older band dropped on
+  // top of the newer one.
+  const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  host.dataset.mountToken = token;
+  const place = () => {
+    if (host.dataset.mountToken !== token) return;
+    host.replaceChildren(bandElement(request));
+  };
+
   await applyProjectTokens(host, request.projectId);
 
   if (customElements.get(request.tag)) {
-    host.replaceChildren(bandElement(request.tag, request.bootConfig, request.regionProps));
+    place();
     return undefined;
   }
 
@@ -155,9 +178,11 @@ export async function mountHeaderBand(host: HTMLElement, request: BandMountReque
   }
 
   if (!customElements.get(request.tag)) {
+    // A superseded attempt has nothing to report: the host belongs to another header now.
+    if (host.dataset.mountToken !== token) return undefined;
     return `${request.tag} was not registered${lastError ? ` — ${lastError}` : ' (is the file compiled?)'}`;
   }
-  host.replaceChildren(bandElement(request.tag, request.bootConfig, request.regionProps));
+  place();
   return undefined;
 }
 

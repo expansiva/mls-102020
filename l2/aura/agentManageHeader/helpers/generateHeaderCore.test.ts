@@ -79,10 +79,13 @@ test('the prompt says which actions the base covers and which the model must ren
   const prompt = buildGenerateHeaderHumanPrompt(normalizeHeaderRequest({
     projectId: PROJECT,
     brand: { title: 'Sample App' },
-    actions: ['language', 'user'],
+    actions: ['language', 'user', 'search'],
   }));
-  assert.match(prompt, /Actions provided by the base[^\n]*language/);
-  assert.match(prompt, /Actions YOU must render[^\n]*user/);
+  assert.match(prompt, /Actions provided by the base[^\n]*language, user/);
+  // `user` is the base's avatar: telling the model to render it too is what doubled it.
+  assert.match(prompt, /do not also call this\.renderUserAvatar\(\)/);
+  assert.match(prompt, /Actions YOU must render[^\n]*search/);
+  assert.doesNotMatch(prompt, /Actions YOU must render[^\n]*user/);
   assert.match(prompt, /layout--app-header-999999/);
 });
 
@@ -640,6 +643,20 @@ test('a hand-rolled user button is refused (it loses the fallback and the menu)'
     validateHeaderParts(withBandHtml("${this.renderAsideToggle()}<button @click=${() => this.emitHeaderAction('search')}>s</button>")),
     [],
   );
+});
+
+test('the user gets one avatar (renderActions already draws it for `user`)', () => {
+  const both = withBandHtml('${this.renderAsideToggle()}${this.renderActions()}${this.renderUserAvatar()}');
+  assert.match(validateHeaderParts(both, { actions: ['user'] }).join('; '), /drop this\.renderUserAvatar/);
+  // Without `user`, renderActions draws no avatar — the explicit one is the only one.
+  assert.deepEqual(validateHeaderParts(both, { actions: ['language'] }), []);
+
+  const twice = withBandHtml('${this.renderAsideToggle()}${this.renderUserAvatar()}<span>${this.renderUserAvatar()}</span>');
+  assert.match(validateHeaderParts(twice).join('; '), /renderUserAvatar\(\) more than once/);
+  const actionsTwice = withBandHtml('${this.renderAsideToggle()}${this.renderActions()}${this.renderActions()}');
+  assert.match(validateHeaderParts(actionsTwice).join('; '), /renderActions\(\) more than once/);
+
+  assert.deepEqual(validateHeaderParts(withBandHtml('${this.renderAsideToggle()}${this.renderActions()}'), { actions: ['user'] }), []);
 });
 
 test('a custom property the header declares itself is not a design-system token', () => {

@@ -18,6 +18,13 @@ import {
   readLogoDraft,
   readProjectLanguages,
   readProjectRoutes,
+  groupRoutesByModule,
+  moduleNavigationForPreview,
+  moduleRoles,
+  previewAuthoritiesFor,
+  readHeaderBandCapabilities,
+  planSelectionEdit,
+  applyHeaderSelection,
   restoreHeaderBackup,
   scopeTokensCss,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
@@ -135,8 +142,8 @@ test('the project languages, themes and routes are read from the two documents',
     projects: {
       [String(PROJECT)]: {
         modules: [
-          { navigation: [{ label: 'Dash', href: '/m/dash' }, { href: '/m/plain' }, { label: 'Dup', href: '/m/dash' }] },
-          { navigation: [{ label: 'Other', href: '/m/other', description: 'why' }] },
+          { moduleId: 'm', navigation: [{ label: 'Dash', href: '/m/dash' }, { href: '/m/plain' }, { label: 'Dup', href: '/m/dash' }] },
+          { basePath: '/n', navigation: [{ label: 'Other', href: '/m/other', description: 'why' }] },
         ],
       },
       '102034': { modules: [{ navigation: [{ label: 'Backend', href: '/nope' }] }] },
@@ -146,6 +153,13 @@ test('the project languages, themes and routes are read from the two documents',
     'only the app project, deduped by href, in declaration order');
   assert.equal(routes[1].label, '/m/plain', 'a nameless route falls back to its href');
   assert.equal(routes[2].description, 'why');
+  assert.deepEqual(routes.map((route) => route.moduleId), ['m', 'm', 'n'], 'moduleId, else the basePath without the slash');
+
+  // Grouped for the Links tab: two modules with an "Início" each must not read as one list.
+  assert.deepEqual(
+    groupRoutesByModule(routes).map((group) => [group.moduleId, group.routes.map((route) => route.href)]),
+    [['m', ['/m/dash', '/m/plain']], ['n', ['/m/other']]],
+  );
 });
 
 // ── the request ────────────────────────────────────────────────────────────
@@ -593,4 +607,107 @@ test('regenerating a header keeps the brand it had', () => {
   const trimmed = (noLogo.config as any).clientShell.regions.header.profiles.defaultAura.brand;
   assert.equal(trimmed.title, 'Sample App', 'dropLogo drops the MARK, not the texts');
   assert.equal('logoSvg' in trimmed, false);
+});
+
+// ── selection edits without regenerating ──────────────────────────────────
+
+test('the band capabilities come from what its source calls', () => {
+  const caps = readHeaderBandCapabilities(buildHeaderSource(PROJECT, {
+    ...PARTS,
+    bandHtml: "${this.renderAsideToggle()}${this.renderNavLinks()}${this.renderActions()}${this.hasAction('search') ? html`<button>s</button>` : nothing}",
+  }));
+  assert.deepEqual(caps, { navLinks: true, actions: true, ownAvatar: false, search: true });
+  assert.deepEqual(readHeaderBandCapabilities('${this.renderUserAvatar()}'), { navLinks: false, actions: false, ownAvatar: true, search: false });
+});
+
+test('a selection edit is saved when the band reads it, and regenerated when it cannot', () => {
+  const languages = ['pt-BR', 'en'];
+  const view = readHeaderProfileView(config({ props: { actions: ['user'], navLinks: ['/m/a'] } }), PROJECT)!;
+  const form = formFromProfile(view, languages);
+  const full = { navLinks: true, actions: true, ownAvatar: false, search: false };
+  const plan = (patch: Partial<typeof form>, caps = full) => planSelectionEdit(view, { ...form, ...patch }, caps, languages);
+
+  assert.deepEqual(plan({}), { dirty: false, regenerate: [] }, 'untouched');
+  assert.deepEqual(plan({ navLinks: ['/m/a', '/m/b'] }), { dirty: true, regenerate: [] });
+  assert.deepEqual(plan({ navLinks: [] }), { dirty: true, regenerate: [] }, 'clearing is a config edit too');
+  assert.deepEqual(plan({ navLinks: ['/m/b'] }, { ...full, navLinks: false }).regenerate, ['links'],
+    'a band that never calls renderNavLinks cannot show links');
+  assert.deepEqual(plan({ actions: ['user', 'language'] }).regenerate, []);
+  assert.deepEqual(plan({ actions: [] }, { ...full, ownAvatar: true }).regenerate, ['actions'],
+    'an avatar the band draws itself ignores the action');
+  assert.deepEqual(plan({ actions: ['user', 'search'] }).regenerate, ['actions'], 'search is drawn by the band');
+  assert.deepEqual(plan({ locales: ['pt-BR'] }).regenerate, [], 'dropping a locale');
+
+  const onePt = readHeaderProfileView(config({ props: { locales: ['pt-BR'] } }), PROJECT)!;
+  assert.deepEqual(
+    planSelectionEdit(onePt, { ...formFromProfile(onePt, languages), locales: ['pt-BR', 'en'] }, full, languages).regenerate,
+    ['locales'],
+    'a new locale has no copy in the generated messages',
+  );
+  assert.deepEqual(planSelectionEdit(undefined, form, full).dirty, false, 'nothing applied, nothing to save');
+});
+
+test('saving the selection writes only the props of that profile', () => {
+  const base = config({ props: { actions: ['user'], navLinks: ['/m/a'], extra: 1 } });
+  const write = (patch: Record<string, unknown>) => applyHeaderSelection(base, {
+    profileName: 'defaultAura', actions: ['user'], navLinks: ['/m/a'], locales: [], keepEmptyNavLinks: true,
+    languages: ['pt-BR', 'en'], ...patch,
+  }) as any;
+  const props = (next: any) => next.clientShell.regions.header.profiles.defaultAura.props;
+
+  assert.deepEqual(props(write({ navLinks: ['/m/b'] })), { actions: ['user'], navLinks: ['/m/b'], extra: 1 });
+  // Absent = every route to the runtime; an empty list is the only way to say "none".
+  assert.deepEqual(props(write({ navLinks: [] })).navLinks, []);
+  assert.equal('navLinks' in props(write({ navLinks: [], keepEmptyNavLinks: false })), false);
+  assert.deepEqual(props(write({ locales: ['en'] })).locales, ['en']);
+  assert.equal('locales' in props(write({ locales: ['en', 'pt-BR'] })), false, 'every language = no list');
+
+  const next = write({ navLinks: ['/m/b'] });
+  assert.equal(next.clientShell.regions.header.profiles.defaultAura.renderer.tag, TAG, 'the band is untouched');
+  assert.equal(next.clientShell.regions.header.profiles.defaultAura.brand.title, 'Sample App');
+  assert.throws(() => write({ profileName: 'nope' }), /does not exist/);
+});
+
+test('the preview gets one module, like the app does', () => {
+  const routes = readProjectRoutes({
+    projects: {
+      [String(PROJECT)]: {
+        modules: [
+          { moduleId: 'a', basePath: '/a', navigation: [{ label: 'Início', href: '/a/inicio' }] },
+          { moduleId: 'b', basePath: '/b', navigation: [{ label: 'Início', href: '/b/inicio' }, { label: 'X', href: '/b/x' }] },
+        ],
+      },
+    },
+  }, PROJECT);
+  const b = moduleNavigationForPreview(routes, 'b');
+  assert.equal(b.basePath, '/b');
+  assert.deepEqual(b.navigation.map((route) => route.href), ['/b/inicio', '/b/x']);
+  assert.deepEqual(b.moduleLinks, [{ label: 'a', href: '/a' }]);
+  assert.equal(moduleNavigationForPreview(routes, 'gone').moduleId, 'a', 'unknown module = the first one');
+  assert.deepEqual(moduleNavigationForPreview([], 'a').navigation, []);
+});
+
+test('who sees a link comes from the menu (navigation actors)', () => {
+  const routes = readProjectRoutes({
+    projects: {
+      [String(PROJECT)]: {
+        modules: [
+          {
+            moduleId: 't',
+            basePath: '/t',
+            navigation: [
+              { label: 'Minhas', href: '/t/minhas', actors: ['funcionario', 'gestor'] },
+              { label: 'Equipe', href: '/t/equipe', actors: ['gestor'] },
+              { label: 'Ajuda', href: '/t/ajuda' },
+            ],
+          },
+          { moduleId: 'o', basePath: '/o', navigation: [{ label: 'X', href: '/o/x', actors: ['admin'] }] },
+        ],
+      },
+    },
+  }, PROJECT);
+  assert.deepEqual(routes.map((route) => route.actors), [['funcionario', 'gestor'], ['gestor'], [], ['admin']]);
+  assert.deepEqual(moduleRoles(routes, 't'), ['funcionario', 'gestor'], 'only that module, no duplicates');
+  assert.deepEqual(previewAuthoritiesFor('t', 'gestor'), ['t:gestor'], 'the runtime authority shape');
+  assert.deepEqual(previewAuthoritiesFor('t', ''), [], 'no role = no filter');
 });
