@@ -4,7 +4,7 @@ import test from 'node:test';
 import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
 import { pendingFiles, recordSentContent } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 import { readFileSync } from 'node:fs';
-import { listedOwner, noteSharedFile, type IOtherDraftTouch, sendAutoSaveBatch } from '/_102020_/l2/aura/studio/studioEditTool.js';
+import { deliverSharedEdit, listedOwner, noteSharedFile, type IOtherDraftTouch, type ISharedEditSession, sendAutoSaveBatch } from '/_102020_/l2/aura/studio/studioEditTool.js';
 
 const TOOL = readFileSync(new URL('studioEditTool.ts', import.meta.url), 'utf8');
 
@@ -289,7 +289,7 @@ test('a file in another draft warns once with the name and the edit is still sen
   }
 });
 
-test('the other-draft list is read on enter and on open, not on each edit', () => {
+test('the other-draft list is read on enter and on open; the edit goes through deliverSharedEdit', () => {
   const start = TOOL.slice(TOOL.indexOf('public start(): void'), TOOL.indexOf('public stop(): void'));
   assert.match(start, /refreshOthers\(\)/);
   const onFile = TOOL.slice(TOOL.indexOf('private readonly onFileAction'), TOOL.indexOf('private readonly onStyleChanged'));
@@ -297,8 +297,77 @@ test('the other-draft list is read on enter and on open, not on each edit', () =
   const editAt = onFile.indexOf("action !== 'editorChanged'");
   assert.ok(openAt !== -1 && editAt > openAt, 'open is handled before the edit');
   assert.match(onFile.slice(openAt, editAt), /refreshOthers\(\)/);
-  assert.doesNotMatch(onFile.slice(editAt), /refreshOthers|loadPanel/);
+  const deliverAt = TOOL.indexOf('private deliver(');
+  const deliver = TOOL.slice(deliverAt, TOOL.indexOf('private note(', deliverAt));
+  assert.match(deliver, /deliverSharedEdit\(/);
   const noteAt = TOOL.indexOf('export function noteSharedFile');
-  const note = TOOL.slice(noteAt, TOOL.indexOf('const AUTO_SAVE_MS', noteAt));
+  const noteEnd = TOOL.indexOf('export interface ISharedEditSession', noteAt);
+  const note = TOOL.slice(noteAt, noteEnd);
   assert.doesNotMatch(note, /loadPanel|fetchImpl/);
+});
+
+test('the first edit re-reads an empty open list once and warns; the second edit does not query', async () => {
+  const file = storFile('shared');
+  const session: ISharedEditSession = { refreshed: new Set(), others: [], warned: new Set() };
+  let queries = 0;
+  const notices: string[] = [];
+  const sent: string[] = [];
+  const doc = (globalThis as { document?: { documentElement?: { lang: string } } }).document;
+  const previousLang = doc?.documentElement?.lang;
+  if (doc?.documentElement) doc.documentElement.lang = 'en';
+  const refresh = async (): Promise<readonly IOtherDraftTouch[] | null> => {
+    queries += 1;
+    return [{ owner: 'Ana Silva', files: ['l1/usecases/shared.ts'] }];
+  };
+  const show = (text: string) => { notices.push(text); };
+  const send = (item: mls.stor.IFileInfo) => { sent.push(item.shortName); };
+  try {
+    await deliverSharedEdit(file, session, refresh, show, send);
+    await deliverSharedEdit(file, session, refresh, show, send);
+    assert.equal(queries, 1);
+    assert.deepEqual(notices, ['Ana Silva is also changing this file']);
+    assert.deepEqual(sent, ['shared', 'shared']);
+  } finally {
+    if (doc?.documentElement && previousLang !== undefined) doc.documentElement.lang = previousLang;
+  }
+});
+
+test('a failed list read on the first edit logs, sends the edit, and does not warn or query again', async () => {
+  const file = storFile('shared');
+  const session: ISharedEditSession = { refreshed: new Set(), others: [], warned: new Set() };
+  let queries = 0;
+  const notices: string[] = [];
+  const sent: string[] = [];
+  const errors: unknown[][] = [];
+  const previous = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args); };
+  try {
+    await deliverSharedEdit(
+      file,
+      session,
+      async () => {
+        queries += 1;
+        throw new Error('list down');
+      },
+      (text) => { notices.push(text); },
+      (item) => { sent.push(item.shortName); },
+    );
+    await deliverSharedEdit(
+      file,
+      session,
+      async () => {
+        queries += 1;
+        return [{ owner: 'Ana Silva', files: ['l1/usecases/shared.ts'] }];
+      },
+      (text) => { notices.push(text); },
+      (item) => { sent.push(item.shortName); },
+    );
+  } finally {
+    console.error = previous;
+  }
+  assert.equal(queries, 1);
+  assert.deepEqual(notices, []);
+  assert.deepEqual(sent, ['shared', 'shared']);
+  assert.equal(errors.length, 1);
+  assert.match(String(errors[0]?.[0]), /listDrafts for shared files failed/);
 });

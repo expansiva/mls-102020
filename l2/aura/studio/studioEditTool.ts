@@ -128,6 +128,42 @@ export function noteSharedFile(
   send(file);
 }
 
+/** Other-draft list for this Studio session: which files were already re-read, and which were warned. */
+export interface ISharedEditSession {
+  refreshed: Set<string>;
+  others: readonly IOtherDraftTouch[];
+  warned: Set<string>;
+}
+
+/**
+ * First change of each file in the session re-reads the other-draft list, then warns.
+ * Later changes of that file do not query. A throw is logged here; `null` means the caller already logged the failed read. Either way the edit is sent and no warning is shown.
+ */
+export async function deliverSharedEdit(
+  file: mls.stor.IFileInfo,
+  session: ISharedEditSession,
+  refresh: () => Promise<readonly IOtherDraftTouch[] | null>,
+  show: (text: string) => void,
+  send: (file: mls.stor.IFileInfo) => void,
+): Promise<void> {
+  const path = draftFilePath(file);
+  if (path !== '' && !session.refreshed.has(path)) {
+    session.refreshed.add(path);
+    let next: readonly IOtherDraftTouch[] | null = null;
+    try {
+      next = await refresh();
+    } catch (err) {
+      console.error('[studio] listDrafts for shared files failed', err);
+    }
+    if (next === null) {
+      send(file);
+      return;
+    }
+    session.others = next;
+  }
+  noteSharedFile(file, session.others, session.warned, show, send);
+}
+
 const AUTO_SAVE_MS = 3000;
 
 /** What the tool starts and stops. Tests pass a fake; the app uses `DraftAutoSave`. */
@@ -311,8 +347,11 @@ function storFileFrom(ref: {
 
 class DraftAutoSave implements IDraftAutoSave {
   private listening = false;
-  private others: IOtherDraftTouch[] = [];
-  private readonly warnedFiles = new Set<string>();
+  private readonly sharedEdits: ISharedEditSession = {
+    refreshed: new Set<string>(),
+    others: [],
+    warned: new Set<string>(),
+  };
   private readonly saver = createAutoSaver<mls.stor.IFileInfo>({
     debounceMs: AUTO_SAVE_MS,
     now: () => Date.now(),
@@ -364,19 +403,21 @@ class DraftAutoSave implements IDraftAutoSave {
     void this.refreshOthers();
   }
 
-  /** List of other drafts. Called on enter and when a file opens — not on each keystroke. */
-  private async refreshOthers(): Promise<void> {
+  /** List of other drafts. On enter, when a file opens, and on the first edit of each file — not on later edits of that file. */
+  private async refreshOthers(): Promise<readonly IOtherDraftTouch[] | null> {
     const project = siteProject();
     const slug = activeDraft();
     if (project === null || typeof slug !== 'string' || slug.length === 0) {
       console.warn('[studio] shared-file list has no project or draft');
-      return;
+      return null;
     }
     try {
       const panel = await loadPanel(fetchImpl, project, slug);
-      this.others = touchesFromDrafts(panel.others);
+      this.sharedEdits.others = touchesFromDrafts(panel.others);
+      return this.sharedEdits.others;
     } catch (err) {
       console.error('[studio] listDrafts for shared files failed', err);
+      return null;
     }
   }
 
@@ -425,7 +466,13 @@ class DraftAutoSave implements IDraftAutoSave {
 
   private deliver(file: mls.stor.IFileInfo | undefined): void {
     if (!file) return;
-    noteSharedFile(file, this.others, this.warnedFiles, showSharedNotice, (item) => this.note(item));
+    void deliverSharedEdit(
+      file,
+      this.sharedEdits,
+      () => this.refreshOthers(),
+      showSharedNotice,
+      (item) => this.note(item),
+    );
   }
 
   private note(file: mls.stor.IFileInfo | undefined): void {
