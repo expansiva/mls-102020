@@ -40,8 +40,10 @@ import {
   buildP2MenuFile,
   buildP2MenuTool,
   withP2MenuEnums,
+  dropUnknownMenuIcons,
   menuActionCounts,
   menuCandidates,
+  menuIconDropWarnings,
   normalizeMenuV2,
   parseP2Grants,
   parseP2Processes,
@@ -279,6 +281,8 @@ export async function afterP2MenuPromptStep(
       });
       throw new Error(feedback);
     }
+    const iconDrop = dropUnknownMenuIcons(draft);
+    draft = iconDrop.draft;
     const gate = validateP2Menu(draft, menuSources);
     if (!gate.ok) {
       const feedback = formatP2MenuGate(gate.issues);
@@ -306,7 +310,7 @@ export async function afterP2MenuPromptStep(
       draft,
     });
     const menuPath = await writeJson(p2MenuFile(moduleName, P2_MENU_DEVICE), artifact);
-    const warnings = formatP2MenuWarnings(gate.issues);
+    const warnings = [...formatP2MenuWarnings(gate.issues), ...menuIconDropWarnings(iconDrop.dropped)];
     pipeline = await writeStepState(pipeline, {
       status: 'approved',
       updatedAt: new Date().toISOString(),

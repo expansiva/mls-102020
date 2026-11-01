@@ -22,6 +22,7 @@ import type {
   PoolMenuFile,
   PoolMenuMeta,
 } from '/_102035_/l2/solution/poolPlan.js';
+import { isLucideIcon } from '/_102035_/l2/solution/lucideIcons.js';
 import {
   MENU_PLACEMENTS,
   MENU_ACTIONS as POOL_MENU_ACTIONS,
@@ -354,7 +355,7 @@ export function normalizeMenuV2(value: unknown): MenuV2 {
   // Model answers must name a place for every journey. A menu.json written before the field never comes through here.
   exactKeys(meta, ['journeys', 'processes', 'records', 'placements'], '$.meta');
   return {
-    tree: list(root.tree, '$.tree').map((item, index) => normalizeNode(item, `$.tree[${index}]`)),
+    tree: list(root.tree, '$.tree').map((item, index) => normalizeNode(item, `$.tree[${index}]`, 'model')),
     authorities: normalizeAuthorities(root.authorities, '$.authorities'),
     meta: {
       journeys: normalizeIdPagesMap(meta.journeys, '$.meta.journeys', 'journeyId'),
@@ -406,9 +407,31 @@ export function menuActionCounts(file: PoolMenuFile): Record<MenuAction, number>
 function stampAllNew(nodes: readonly MenuNode[], ready: null): MenuStampedNode[] {
   void ready;
   return nodes.map((node): MenuStampedNode => {
-    if (node.kind === 'page') return { ...node, action: 'new' };
+    if (node.kind === 'page') {
+      const { icon, ...page } = node;
+      return icon ? { ...page, icon, action: 'new' } : { ...page, action: 'new' };
+    }
     return { ...node, action: 'new', children: stampAllNew(node.children, ready) };
   });
+}
+
+/** Unknown Lucide names become `""`. Hubs, groups and every other field stay as they are. */
+export function dropUnknownMenuIcons(draft: MenuV2): { draft: MenuV2; dropped: Array<{ pageId: string; icon: string }> } {
+  const dropped: Array<{ pageId: string; icon: string }> = [];
+  const walk = (nodes: readonly MenuNode[]): MenuNode[] => nodes.map(node => {
+    if (node.kind === 'hub' || node.kind === 'group') return { ...node, children: walk(node.children) };
+    const icon = node.icon ?? '';
+    if (icon !== '' && !isLucideIcon(icon)) {
+      dropped.push({ pageId: node.id, icon });
+      return { ...node, icon: '' };
+    }
+    return node;
+  });
+  return { draft: { ...draft, tree: walk(draft.tree) }, dropped };
+}
+
+export function menuIconDropWarnings(dropped: readonly { pageId: string; icon: string }[]): string[] {
+  return dropped.map(row => `icon dropped: ${row.pageId} ${row.icon}`);
 }
 
 /** Read a stamped menu tree, stripping `action` so the node shape matches the draft. */
@@ -444,16 +467,16 @@ export function buildP2MenuTool(schema: Record<string, unknown>): mls.msg.LLMToo
   );
 }
 
-function normalizeNode(value: unknown, path: string): MenuNode {
+function normalizeNode(value: unknown, path: string, mode: 'model' | 'file' = 'file'): MenuNode {
   const source = asRecord(value, path);
   const kind = text(source.kind);
-  if (kind === 'hub') return normalizeHub(source, path);
-  if (kind === 'page') return normalizePage(source, path);
-  if (kind === 'group') return normalizeGroup(source, path);
+  if (kind === 'hub') return normalizeHub(source, path, mode);
+  if (kind === 'page') return normalizePage(source, path, mode);
+  if (kind === 'group') return normalizeGroup(source, path, mode);
   throw new Error(`${path}.kind must be hub, page or group.`);
 }
 
-function normalizeHub(source: Record<string, unknown>, path: string): MenuHubNode {
+function normalizeHub(source: Record<string, unknown>, path: string, mode: 'model' | 'file'): MenuHubNode {
   exactKeys(source, ['id', 'kind', 'label', 'context', 'text', 'children'], path);
   const children = list(source.children, `${path}.children`);
   return {
@@ -462,13 +485,15 @@ function normalizeHub(source: Record<string, unknown>, path: string): MenuHubNod
     label: requiredText(source.label, `${path}.label`),
     context: entityIdRequired(source.context, `${path}.context`),
     text: requiredText(source.text, `${path}.text`),
-    children: children.map((item, index) => normalizeNode(item, `${path}.children[${index}]`)),
+    children: children.map((item, index) => normalizeNode(item, `${path}.children[${index}]`, mode)),
   };
 }
 
-function normalizePage(source: Record<string, unknown>, path: string): MenuPageNode {
-  exactKeys(source, ['id', 'kind', 'label', 'organisms'], path);
-  return {
+function normalizePage(source: Record<string, unknown>, path: string, mode: 'model' | 'file'): MenuPageNode {
+  const keys = ['id', 'kind', 'label', 'organisms'];
+  if (mode === 'model' || Object.prototype.hasOwnProperty.call(source, 'icon')) keys.push('icon');
+  exactKeys(source, keys, path);
+  const page: MenuPageNode = {
     id: nodeId(source.id, `${path}.id`),
     kind: 'page',
     label: requiredText(source.label, `${path}.label`),
@@ -476,9 +501,14 @@ function normalizePage(source: Record<string, unknown>, path: string): MenuPageN
       normalizeOrganism(item, `${path}.organisms[${index}]`)
     )),
   };
+  if (mode === 'model' || Object.prototype.hasOwnProperty.call(source, 'icon')) {
+    if (typeof source.icon !== 'string') throw new Error(`${path}.icon must be a string.`);
+    page.icon = source.icon.trim();
+  }
+  return page;
 }
 
-function normalizeGroup(source: Record<string, unknown>, path: string): MenuGroupNode {
+function normalizeGroup(source: Record<string, unknown>, path: string, mode: 'model' | 'file'): MenuGroupNode {
   exactKeys(source, ['id', 'kind', 'label', 'text', 'children'], path);
   const children = list(source.children, `${path}.children`);
   return {
@@ -486,7 +516,7 @@ function normalizeGroup(source: Record<string, unknown>, path: string): MenuGrou
     kind: 'group',
     label: requiredText(source.label, `${path}.label`),
     text: requiredText(source.text, `${path}.text`),
-    children: children.map((item, index) => normalizeNode(item, `${path}.children[${index}]`)),
+    children: children.map((item, index) => normalizeNode(item, `${path}.children[${index}]`, mode)),
   };
 }
 

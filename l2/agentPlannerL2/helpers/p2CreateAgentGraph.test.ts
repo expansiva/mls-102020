@@ -20,6 +20,8 @@ const ALLOWED_102035 = new Set([
   '/_102035_/l2/solution/ontologyPaths.js',
   // p2_34: the pool's one type (lists and versions of menu/needs/backend/effort); it imports nothing.
   '/_102035_/l2/solution/poolPlan.js',
+  // d2_161: the Lucide name list the menu20 checks icons against; data only, it imports nothing.
+  '/_102035_/l2/solution/lucideIcons.js',
 ]);
 
 type Offence = { file: string; reason: string };

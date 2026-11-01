@@ -29,8 +29,10 @@ import {
   buildP2MenuTool,
   withP2MenuEnums,
   collectRecordsKept,
+  dropUnknownMenuIcons,
   menuActionCounts,
   menuCandidates,
+  menuIconDropWarnings,
   normalizeMenuV2,
   parseP2Grants,
   parseP2Processes,
@@ -168,14 +170,28 @@ function loadAccessOntology(root: string): {
 function loadDraft(): unknown {
   const raw = JSON.parse(readFileSync(DRAFT_PATH, 'utf8')) as { meta: Record<string, unknown> };
   raw.meta.placements = mensalidadesPlacements();
+  stampEmptyPageIcons(raw);
   return raw;
 }
 
-/** Fixture answers predate placements. The model response still has to carry the key. */
+/** Fixture answers predate placements and page icons. The model response still has to carry both keys. */
 function readMenuResponse(file: string): unknown {
   const raw = JSON.parse(readFileSync(file, 'utf8')) as { meta: Record<string, unknown> };
   if (!Object.prototype.hasOwnProperty.call(raw.meta, 'placements')) raw.meta.placements = [];
+  stampEmptyPageIcons(raw);
   return raw;
+}
+
+function stampEmptyPageIcons(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(stampEmptyPageIcons);
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  const node = value as Record<string, unknown>;
+  if (node.kind === 'page' && !Object.prototype.hasOwnProperty.call(node, 'icon')) node.icon = '';
+  if (node.children) stampEmptyPageIcons(node.children);
+  if (node.tree) stampEmptyPageIcons(node.tree);
 }
 
 function pagesForActor(draft: MenuV2, actorRef: string): string[] {
@@ -1264,4 +1280,69 @@ void test('d2_160 placements: schema, parser, gate and menu.json', () => {
   });
   assert.ok(human.indexOf('## Module') >= 0 && human.indexOf('## Module') < human.indexOf('## Actors'));
   assert.ok(human.includes(sourcePrompt));
+});
+
+void test('d2_161 page icon is optional on disk and checked against Lucide after the model answer', async () => {
+  const schema = loadSchema() as { $defs: { pageNode: { required: string[] } } };
+  assert.ok(schema.$defs.pageNode.required.includes('icon'));
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /`icon` is a Lucide icon name that represents the screen, or `""` when none fits/);
+  assert.equal(prompt.includes('list-checks'), false);
+
+  const bare = JSON.parse(readFileSync(DRAFT_PATH, 'utf8')) as { meta: Record<string, unknown>; tree: unknown[] };
+  bare.meta.placements = mensalidadesPlacements();
+  assert.throws(() => normalizeMenuV2(bare), /missing field 'icon'/);
+
+  const blank = normalizeMenuV2(loadDraft());
+  assert.equal(firstPage(blank).icon, '');
+  const blankDrop = dropUnknownMenuIcons(blank);
+  assert.deepEqual(blankDrop.dropped, []);
+  const blankFile = buildP2MenuFile({ moduleName: MODULE, userLanguage: 'pt-BR', draft: blankDrop.draft });
+  assert.equal(JSON.stringify(blankFile).includes('"icon"'), false);
+  const legacy: PoolMenuFile = blankFile;
+  const pagesHaveIcon = (nodes: readonly { kind: string; icon?: string; children?: readonly { kind: string; icon?: string; children?: never[] }[] }[]): boolean => (
+    nodes.some(node => node.kind === 'page' ? node.icon !== undefined : pagesHaveIcon(node.children || []))
+  );
+  assert.equal(pagesHaveIcon(parsePreviousMenuTree(legacy)), false);
+
+  const named = structuredClone(loadDraft()) as { tree: Array<{ children: Array<Record<string, unknown>> }> };
+  named.tree[0].children[0].icon = 'list-checks';
+  const kept = dropUnknownMenuIcons(normalizeMenuV2(named));
+  assert.deepEqual(kept.dropped, []);
+  const namedFile = buildP2MenuFile({ moduleName: MODULE, userLanguage: 'pt-BR', draft: kept.draft });
+  const written = namedFile.tree[0];
+  assert.equal(written.kind, 'hub');
+  const writtenPage = written.kind === 'hub' ? written.children[0] : undefined;
+  assert.equal(writtenPage?.kind, 'page');
+  assert.equal(writtenPage?.kind === 'page' ? writtenPage.icon : '', 'list-checks');
+
+  const unknown = structuredClone(loadDraft()) as { tree: Array<{ children: Array<Record<string, unknown>> }> };
+  unknown.tree[0].children[0].icon = 'not-a-real-icon';
+  const parsed = normalizeMenuV2(unknown);
+  const before = structuredClone(parsed);
+  const dropped = dropUnknownMenuIcons(parsed);
+  assert.deepEqual(dropped.dropped, [{ pageId: firstPage(before).id, icon: 'not-a-real-icon' }]);
+  assert.deepEqual(menuIconDropWarnings(dropped.dropped), [`icon dropped: ${firstPage(before).id} not-a-real-icon`]);
+  const restored = structuredClone(dropped.draft);
+  const restoredPage = firstPage(restored);
+  restoredPage.icon = 'not-a-real-icon';
+  assert.deepEqual(restored, before);
+  const droppedFile = buildP2MenuFile({ moduleName: MODULE, userLanguage: 'pt-BR', draft: dropped.draft });
+  assert.equal(JSON.stringify(droppedFile).includes('"icon"'), false);
+
+  const host = installHost();
+  seedAgentFiles(host);
+  seedL4(host);
+  seedPipeline(host);
+  seed(host, {
+    folder: `${MODULE}/pool/l2`,
+    shortName: '20260918201156_mensalidadesAcademia-20260918201156_1',
+    extension: '.json',
+    content: readFileSync(path.join(HERE, '../entry10/fixtures/pool-l2-20260918201156.json'), 'utf8'),
+  });
+  const step = menuStep();
+  const payload = { type: 'flexible', result: unknown };
+  await afterP2MenuPromptStep(agentMeta(), contextWith(step, payload), step, step, 1);
+  const approved = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { warnings: string[] };
+  assert.deepEqual(approved.warnings, [`icon dropped: ${firstPage(before).id} not-a-real-icon`]);
 });

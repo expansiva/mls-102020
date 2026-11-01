@@ -43,7 +43,7 @@ For each journey × actor, pick one place. The signals are the ones already in t
 ## Node kinds
 
 - `hub`: the person picks a record of `context` (an l4 entity) before acting — the "Project". Has `text` and `children`. When the grant is anchored on the person themselves, the hub opens with that record already selected; say so in `text`.
-- `page`: a screen. No `text`. Has `organisms[]`.
+- `page`: a screen. No `text`. Has `organisms[]`. `icon` is a Lucide icon name that represents the screen, or `""` when none fits. Do not invent a name; an unknown name is dropped by the code.
 - `group`: a folder with no context. Use only when there are many leaves.
 
 Ids are `snake_case`. Suffix an actor only when the same thing exists for different actors outside a hub.
