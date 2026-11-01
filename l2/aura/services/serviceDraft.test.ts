@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
 import { bindAutoSaveFactory, syncDraftAutoSave, type IDraftAutoSave } from '/_102020_/l2/aura/studio/studioEditTool.js';
+import { readSourcesFromGitHub, writeSourcesFromGitHub } from '/_102033_/l2/cbe/studioSourcesOption.js';
 
 const SERVICES = fileURLToPath(new URL('.', import.meta.url));
 const DRAFT = readFileSync(`${SERVICES}serviceDraft.ts`, 'utf8');
@@ -233,6 +234,44 @@ test('the watcher gate is the same start and stop', () => {
     assert.doesNotMatch(TOOL, /readDraftCookie/);
     const teardown = TOOL.slice(TOOL.indexOf('function teardown'), TOOL.indexOf('async function apply'));
     assert.match(teardown, /syncDraftAutoSave\(false, false\)/);
+});
+
+test('the GitHub sources box writes 1 when checked, off when cleared, and says the next load', () => {
+    const panel = methodOf(DRAFT, 'private _renderPanel()');
+    assert.match(panel, /\$\{this\._renderSourcesOption\(\)\}/);
+    const block = methodOf(DRAFT, 'private _renderSourcesOption()');
+    const row = block.slice(block.indexOf('<label'), block.indexOf('</label>'));
+    assert.match(row, /type="checkbox"/);
+    assert.match(row, /sourcesFromGitHub/);
+    assert.match(row, /sourcesNextLoad/);
+    assert.match(block, /\.checked=\$\{this\._sourcesFromGitHub\}/);
+    const handler = methodOf(DRAFT, 'private _onSourcesFromGitHub');
+    assert.match(handler, /writeSourcesFromGitHub\(input\.checked\)/);
+    assert.match(handler, /this\._sourcesFromGitHub = readSourcesFromGitHub\(\)/);
+    assert.match(DRAFT, /@state\(\) private _sourcesFromGitHub = false/);
+    assert.match(DRAFT, /sourcesFromGitHub: 'Fetch sources from GitHub'/);
+    assert.match(DRAFT, /sourcesFromGitHub: 'Buscar fontes no GitHub'/);
+    assert.match(DRAFT, /sourcesFromGitHub: 'Buscar fuentes en GitHub'/);
+    assert.match(DRAFT, /sourcesNextLoad: 'Applies on the next load\.'/);
+    assert.match(DRAFT, /sourcesNextLoad: 'Vale na próxima carga\.'/);
+    assert.match(DRAFT, /sourcesNextLoad: 'Se aplica en la próxima carga\.'/);
+    const storage = new Map<string, string>();
+    const previous = (globalThis as { localStorage?: unknown }).localStorage;
+    (globalThis as { localStorage: unknown }).localStorage = {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => { storage.set(key, value); },
+    };
+    try {
+        assert.equal(readSourcesFromGitHub(), false);
+        writeSourcesFromGitHub(true);
+        assert.equal(storage.get('collabStudioSourcesFromGitHub'), '1');
+        writeSourcesFromGitHub(false);
+        assert.equal(storage.get('collabStudioSourcesFromGitHub'), '');
+        assert.equal(readSourcesFromGitHub(), false);
+    } finally {
+        if (previous === undefined) delete (globalThis as { localStorage?: unknown }).localStorage;
+        else (globalThis as { localStorage: unknown }).localStorage = previous;
+    }
 });
 
 test('serviceDraft is on l5ServicesLeft before serviceSave', () => {

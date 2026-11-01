@@ -6,6 +6,7 @@ import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/
 import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
 import { activeDraft, enterDraft, isVmDriver, postDraftEnter, requestModeChange, sendServiceWorkerMode } from '/_102033_/l2/cbe/studioDraft.js';
 import { loadProjectDefinitions } from '/_102033_/l2/cbe/initStudio.js';
+import { readSourcesFromGitHub, writeSourcesFromGitHub } from '/_102033_/l2/cbe/studioSourcesOption.js';
 import {
     afterDraftSave,
     branchForSlug,
@@ -86,6 +87,8 @@ const message_en = {
     autoSaveFailed: 'not saved: {reason}',
     syncPublished: 'Bring in published changes',
     syncConflict: 'Conflicts with the published version in: {files}. Nothing was changed.',
+    sourcesFromGitHub: 'Fetch sources from GitHub',
+    sourcesNextLoad: 'Applies on the next load.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -145,6 +148,8 @@ const messages: Record<string, MessageType> = {
         autoSaveFailed: 'não salvo: {reason}',
         syncPublished: 'Trazer o publicado',
         syncConflict: 'Conflito com o publicado em: {files}. Nada foi alterado.',
+        sourcesFromGitHub: 'Buscar fontes no GitHub',
+        sourcesNextLoad: 'Vale na próxima carga.',
     },
     es: {
         svcTitle: 'Borrador',
@@ -201,6 +206,8 @@ const messages: Record<string, MessageType> = {
         autoSaveFailed: 'no guardado: {reason}',
         syncPublished: 'Traer lo publicado',
         syncConflict: 'Conflicto con lo publicado en: {files}. No se cambió nada.',
+        sourcesFromGitHub: 'Buscar fuentes en GitHub',
+        sourcesNextLoad: 'Se aplica en la próxima carga.',
     },
 };
 /// **collab_i18n_end**
@@ -332,9 +339,11 @@ export class ServiceDraft102020 extends ServiceBase {
     private _autoSaveTimer = 0;
     private _unsubAutoSave: (() => void) | undefined;
     @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null };
+    @state() private _sourcesFromGitHub = false;
 
     connectedCallback(): void {
         super.connectedCallback();
+        this._sourcesFromGitHub = readSourcesFromGitHub();
         this._unsubAutoSave = subscribeAutoSave((state) => {
             this._autoSave = state;
             this._syncAutoSaveClock(state.on && state.lastSentAt !== null && !state.error);
@@ -352,6 +361,7 @@ export class ServiceDraft102020 extends ServiceBase {
 
     onServiceClick(visible: boolean, _reinit: boolean, _el: IToolbarContent | null): void {
         if (!visible) return;
+        this._sourcesFromGitHub = readSourcesFromGitHub();
         this.msg = messages[this.getMessageKey(messages)] || messages.en;
         this.menu.title = this.msg.svcTitle;
         this.menu.updateTitle?.();
@@ -398,6 +408,7 @@ export class ServiceDraft102020 extends ServiceBase {
         const busy = this._phase === 'loading' || this._phase === 'publishing';
         return html`
             <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
+                ${this._renderSourcesOption()}
                 ${this._phase === 'loading' ? html`<p class="px-4 py-4">${this.msg.loading}</p>` : nothing}
                 ${this._phase === 'publishing' ? html`<p class="px-4 py-4">${this._pingText()}</p>` : nothing}
                 ${this._phase === 'error' ? html`<p class="px-4 py-4 text-amber-700 dark:text-amber-300">${this._error}</p>` : nothing}
@@ -411,6 +422,32 @@ export class ServiceDraft102020 extends ServiceBase {
                 ${this._renderOthers(busy)}
             </div>
         `;
+    }
+
+    private _renderSourcesOption() {
+        return html`
+            <div class=${blockClass}>
+                <label class="flex items-center gap-3">
+                    <input
+                        type="checkbox"
+                        .checked=${this._sourcesFromGitHub}
+                        @change=${(event: Event) => { this._onSourcesFromGitHub(event); }}
+                    />
+                    <span>${this.msg.sourcesFromGitHub}</span>
+                    <span>${this.msg.sourcesNextLoad}</span>
+                </label>
+            </div>
+        `;
+    }
+
+    private _onSourcesFromGitHub(event: Event): void {
+        const input = event.currentTarget;
+        if (!(input instanceof HTMLInputElement)) {
+            console.error('[serviceDraft] sources option change is not a checkbox');
+            return;
+        }
+        writeSourcesFromGitHub(input.checked);
+        this._sourcesFromGitHub = readSourcesFromGitHub();
     }
 
     private _autoSaveLine(): string {
