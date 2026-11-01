@@ -1,9 +1,10 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/draftPanelCore.ts" enhancement="_blank" />
-// Pure decisions for the Studio draft panel. No Lit, and no read of window or document.
-// fetch, the release wait, reload, setContents, saveL5File, and the stor
-// snapshot all come in as arguments. `listLocalFiles` is the caller's injection — its return
-// value is `storFiles` here. `afterDraftSave` is the one default that calls `mls`, the same
-// cleanup as serviceSave.afterUpdate; tests pass their own deps.
+// Pure decisions for the Studio draft panel. No Lit. fetch, the release wait, reload,
+// setContents, saveL5File, and the stor snapshot all come in as arguments.
+// `listLocalFiles` is the caller's injection — its return value is `storFiles` here.
+// `afterDraftSave` is the one default that calls `mls`, the same cleanup as
+// serviceSave.afterUpdate; tests pass their own deps. A successful `saveToDraft`
+// dispatches `collabDraftSaved` on `window` (the shell listens; the cm does not).
 //
 // Branch slugs mirror the server (cbeDraft.parseDraftSlug). The first `_` of a user slug is `@`
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
@@ -52,6 +53,25 @@ export interface IPublishedRecord {
 
 export interface ISetContentsResult {
   result: boolean;
+}
+
+/** Window event after a successful draft send. The shell listens; there is no import either way. */
+export const COLLAB_DRAFT_SAVED = 'collabDraftSaved';
+
+export interface ICollabDraftSavedDetail {
+  project: number;
+  paths: string[];
+}
+
+function dispatchDraftSaved(project: number, paths: string[]): void {
+  const target = (globalThis as { window?: EventTarget }).window;
+  if (!target || typeof target.dispatchEvent !== 'function') return;
+  const detail: ICollabDraftSavedDetail = { project, paths };
+  try {
+    target.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, { detail }));
+  } catch (err) {
+    console.error('[draftPanel] collabDraftSaved was not dispatched:', err);
+  }
 }
 
 export interface IFetchResponse {
@@ -515,6 +535,8 @@ export async function saveToDraft<T extends IPanelStorFile>(
     return fail('setContents refused the draft save');
   }
   for (const file of clean) await clearLocal(file);
+  const first = clean[0];
+  if (first) dispatchDraftSaved(first.project, clean.map((file) => shortPathOf(file)));
   return { blocked };
 }
 

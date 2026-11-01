@@ -6,6 +6,7 @@ import {
   branchForSlug,
   callExec,
   collectEditedFiles,
+  COLLAB_DRAFT_SAVED,
   discard,
   loadPanel,
   localEdits,
@@ -19,6 +20,7 @@ import {
   syncWithPublished,
   viewDiff,
   type FetchImpl,
+  type ICollabDraftSavedDetail,
   type IDraftWaitResult,
   type IListedDraft,
   type IPanelStorFile,
@@ -466,6 +468,53 @@ test('saveToDraft restores inLocalStorage when setContents throws and does not c
   );
   assert.equal(file.inLocalStorage, true);
   assert.equal(cleared, 0);
+});
+
+test('saveToDraft dispatches collabDraftSaved once with the sent paths', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const target = new EventTarget();
+  host.window = target;
+  const events: ICollabDraftSavedDetail[] = [];
+  const listener = (event: Event): void => {
+    events.push((event as CustomEvent<ICollabDraftSavedDetail>).detail);
+  };
+  target.addEventListener(COLLAB_DRAFT_SAVED, listener);
+  try {
+    const config: IPanelStorFile = {
+      project: 102047,
+      inLocalStorage: true,
+      level: 5,
+      folder: '',
+      shortName: 'config',
+      extension: '.json',
+    };
+    await saveToDraft([config], 'save config', async () => [{ result: true }], async () => {});
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0], { project: 102047, paths: ['l5/config.json'] });
+
+    const page: IPanelStorFile = {
+      project: 102047,
+      inLocalStorage: true,
+      level: 2,
+      folder: '',
+      shortName: 'page',
+      extension: '.ts',
+    };
+    await saveToDraft([page], 'save page', async () => [{ result: true }], async () => {});
+    assert.equal(events.length, 2);
+    assert.deepEqual(events[1], { project: 102047, paths: ['l2/page.ts'] });
+
+    await assert.rejects(
+      () => saveToDraft([config], 'refused', async () => [{ result: false }], async () => {}),
+      /setContents refused the draft save/,
+    );
+    assert.equal(events.length, 2);
+  } finally {
+    target.removeEventListener(COLLAB_DRAFT_SAVED, listener);
+    if (previous) host.window = previous;
+    else delete host.window;
+  }
 });
 
 test('localEdits is empty, one file, or many, and a deletion counts', () => {
