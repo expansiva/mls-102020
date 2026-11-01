@@ -146,6 +146,42 @@ test('a new entry gets the frontend fields; an existing one keeps every field it
   assert.deepEqual(composeM4ModuleEntry(src, entry).changes, []);
 });
 
+test('icon is copied onto a new item only when the page has one; an existing item keeps the icon the hand set', () => {
+  const base = sources('reembolsoDespesas', ['inicio', 'minhas_despesas', 'despesas_aprovadas']);
+  const menu = structuredClone(base.menu) as { tree: Array<Record<string, unknown>> };
+  const stamp = (pageId: string, icon: string) => {
+    const walk = (list: Array<Record<string, unknown>>) => {
+      for (const node of list) {
+        if (node.id === pageId) node.icon = icon;
+        if (Array.isArray(node.children)) walk(node.children as Array<Record<string, unknown>>);
+      }
+    };
+    walk(menu.tree);
+  };
+  stamp('inicio', '  house  ');
+  stamp('minhas_despesas', '');
+  stamp('despesas_aprovadas', 'wallet');
+  const src = { ...base, menu };
+  const fresh = composeM4ModuleEntry(src);
+  const items = fresh.entry.navigation as Array<Record<string, unknown>>;
+  const byId = (id: string) => items.find(item => item.id === id)!;
+  assert.equal(byId('inicio').icon, 'house');
+  assert.equal('icon' in byId('minhas_despesas'), false);
+  assert.equal(byId('despesas_aprovadas').icon, 'wallet');
+  const current = {
+    navigation: [
+      { id: 'inicio', label: 'Começo', href: '/reembolsoDespesas/inicio', description: 'à mão', actors: ['colaborador'], icon: 'pencil' },
+      { id: 'minhas_despesas', label: 'Minhas', href: '/reembolsoDespesas/minhas_despesas', description: 'à mão', actors: ['colaborador'] },
+    ],
+  };
+  const again = composeM4ModuleEntry(src, current);
+  const kept = again.entry.navigation as Array<Record<string, unknown>>;
+  assert.equal(kept.find(item => item.id === 'inicio')!.icon, 'pencil');
+  assert.equal('icon' in kept.find(item => item.id === 'minhas_despesas')!, false);
+  assert.equal(kept.find(item => item.id === 'despesas_aprovadas')!.icon, 'wallet');
+  assert.deepEqual(again.navigationAdded, ['despesas_aprovadas']);
+});
+
 test('menu helpers: hubs, authorities through a hub, first sentence', () => {
   const menu = { tree: [{ id: 'area', kind: 'hub', children: [{ id: 'a', kind: 'page', label: 'A' }, { id: 'b', kind: 'page' }] }, { id: 'c', kind: 'page', label: 'C' }], authorities: { 'actor:x': ['area'], 'actor:y': ['c', 'a'] } };
   const { order, hubs } = m4MenuPages(menu);
