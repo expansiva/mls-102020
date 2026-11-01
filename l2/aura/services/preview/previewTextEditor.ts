@@ -116,6 +116,21 @@ export function applyTextEdit(origin: TextOrigin, newText: string, source: strin
   return { success: false, error: 'Unknown origin type' };
 }
 
+const DYNAMIC_EDIT_MESSAGE: Record<string, string> = {
+  en: 'This text comes from an expression, not from fixed text or the catalog; edit it at level 2',
+  pt: 'Este texto vem de uma expressão, não de um texto fixo nem do catálogo; edite no nível 2',
+  es: 'Este texto viene de una expresión, no de un texto fijo ni del catálogo; edítalo en el nivel 2',
+};
+
+/** Mensagem ao usuário quando a origem continua dynamic. null se a origem é editável. */
+export function dynamicEditNotice(origin: TextOrigin, lang: string): string | null {
+  if (origin.type !== 'dynamic') return null;
+  const primary = primaryLang(lang);
+  const message = DYNAMIC_EDIT_MESSAGE[primary] || DYNAMIC_EDIT_MESSAGE.en;
+  console.warn('[TextEdit] dynamic origin:', origin.reason);
+  return message;
+}
+
 
 // --- Busca em i18n ---
 
@@ -202,24 +217,25 @@ function extractI18nBlock(source: string): { start: number; end: number } | null
 }
 
 /**
- * Faz parse dos objetos message_xx dentro do bloco i18n.
- * Suporta:
+ * Faz parse dos objetos de catálogo dentro do bloco i18n.
+ * Suporta o nome antigo e o da página gerada, com tipo opcional:
  *   const message_en = { key: 'value', ... }
  *   const message_en: Record<string, string> = { key: 'value', ... }
- *   const message_en: MessageType = { key: 'value', ... }
+ *   const pageMessage_pt_br: typeof pageMessage_en = { key: 'value', ... }
+ *   const pageMessage_en_us: MessageType = { key: 'value', ... }
  */
 function parseMessageObjects(source: string, block: { start: number; end: number }): IMessageObject[] {
   const blockSource = source.substring(block.start, block.end);
   const results: IMessageObject[] = [];
 
-  // Regex para encontrar declarações de objetos message_xx
-  // Captura: nome do objeto e o conteúdo entre { }
-  const objRegex = /const\s+(message_(\w+))\s*(?::\s*[^=]+)?\s*=\s*\{/g;
+  // `message_<lang>` e `<prefixo>Message_<lang>` (`pageMessage_pt_br`). O sufixo fica como está
+  // (`pt_br`); a comparação com o idioma ativo trata `-` e `_` como iguais.
+  const objRegex = /const\s+(\w*?[mM]essage_(\w+))\s*(?::\s*[^=]+)?\s*=\s*\{/g;
   let match: RegExpExecArray | null;
 
   while ((match = objRegex.exec(blockSource)) !== null) {
-    const name = match[1];     // message_en
-    const lang = match[2];     // en
+    const name = match[1];     // message_en | pageMessage_pt_br
+    const lang = match[2];     // en | pt_br
     const objStartInBlock = match.index + match[0].length - 1; // posição do {
 
     // Encontra o } correspondente
@@ -483,18 +499,41 @@ function applyStaticEdit(origin: IStaticOrigin, newText: string, source: string)
   };
 }
 
+function normLang(lang: string): string {
+  return lang.trim().toLowerCase().replace(/-/g, '_');
+}
+
+function primaryLang(lang: string): string {
+  const normalized = normLang(lang);
+  const splitAt = normalized.indexOf('_');
+  return splitAt === -1 ? normalized : normalized.slice(0, splitAt);
+}
+
+/** Igual primeiro (já normalizado); senão, o mesmo idioma principal (`pt` casa `pt_br`). */
+function entriesForLang<T extends { lang: string }>(entries: readonly T[], lang: string): T[] {
+  const exact = entries.filter(entry => normLang(entry.lang) === normLang(lang));
+  if (exact.length > 0) return exact;
+  const primary = primaryLang(lang);
+  if (!primary) return [];
+  return entries.filter(entry => primaryLang(entry.lang) === primary);
+}
+
 /**
  * Aplica edição de texto i18n.
- * Se lang é informado, edita só aquele idioma.
+ * Se lang é informado, edita só aquele idioma (igual, senão o mesmo idioma principal).
  * Se não, edita todos.
- * 
+ *
  * IMPORTANTE: edita de trás pra frente para não invalidar offsets
  */
 function applyI18nEdit(origin: II18nOrigin, newText: string, source: string, lang?: string): IEditResult {
   // Filtra por idioma se especificado
   let entries = origin.languages;
   if (lang) {
-    entries = entries.filter(e => e.lang === lang);
+    const forLang = entriesForLang(entries, lang);
+    // Page with only some languages (102047 comandaRestaurante has just `pageMessage_pt`) and an
+    // active language it does not have: `findAllI18nMatches` already matched the text in the first
+    // catalog, so the edit goes to that same first entry instead of failing without a word.
+    entries = forLang.length > 0 ? forLang : entries.slice(0, 1);
   }
 
   if (entries.length === 0) {
@@ -769,9 +808,8 @@ export function findAllI18nMatches(text: string, source: string, lang?: string):
   const normalizedText = trimmed.replace(/\s+/g, ' ');
   const matchingKeys: string[] = [];
 
-  const primaryObj = lang
-    ? messageObjects.find(o => o.lang === lang) || messageObjects[0]
-    : messageObjects[0];
+  const preferred = lang ? entriesForLang(messageObjects, lang) : [];
+  const primaryObj = preferred[0] || messageObjects[0];
 
   for (const [key, entry] of Object.entries(primaryObj.entries)) {
     const normalizedValue = entry.value.replace(/\s+/g, ' ').trim();

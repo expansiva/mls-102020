@@ -3,7 +3,7 @@
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { customElement } from 'lit/decorators.js';
 import { setState, initState, getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
-import { findTextOriginByOccurrence, findTextOriginByKey, applyTextEdit, type TextOrigin } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
+import { findTextOriginByOccurrence, findTextOriginByKey, applyTextEdit, dynamicEditNotice, type TextOrigin } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
 
 @customElement('aura--services--preview--preview-editor-l3-102020')
 class PreviewEditorL3 extends StateLitElement {
@@ -165,6 +165,20 @@ class PreviewEditorL3 extends StateLitElement {
       .l3-edit-error {
         animation: l3-error-flash 600ms ease;
         border-radius: 2px;
+      }
+
+      .l3-edit-reason {
+        position: fixed;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        z-index: 100000;
+        max-width: 420px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        background: #1f1f1f;
+        color: #fff;
+        font: 13px/1.4 sans-serif;
       }
     `;
     document.head.appendChild(style);
@@ -514,10 +528,12 @@ class PreviewEditorL3 extends StateLitElement {
 
     if (origin.type === 'dynamic') {
       if (restoredNode) restoredNode.textContent = oldText;
+      const message = dynamicEditNotice(origin, String(lang || 'en'));
       if (editTarget) {
         editTarget.classList.add('l3-edit-error');
         setTimeout(() => editTarget.classList.remove('l3-edit-error'), 650);
       }
+      if (message) this.showDynamicReason(message);
       return;
     }
 
@@ -525,7 +541,12 @@ class PreviewEditorL3 extends StateLitElement {
 
     console.log('[TextEdit] applyTextEdit result:', { success: result.success, error: result.error });
 
-    if (!result.success || !result.newSource) return;
+    if (!result.success || !result.newSource) {
+      // The optimistic text is already on screen; nothing was saved, so put the old text back.
+      console.error('[TextEdit] applyTextEdit failed:', result.error);
+      if (restoredNode) restoredNode.textContent = oldText;
+      return;
+    }
 
     setState('preview.pausePreview', true);
     activeModel.model.pushEditOperations(
@@ -536,6 +557,19 @@ class PreviewEditorL3 extends StateLitElement {
       }],
       () => null,
     );
+  }
+
+  private showDynamicReason(message: string): void {
+    const existing = this.querySelector('.l3-edit-reason');
+    const note = existing instanceof HTMLElement ? existing : document.createElement('div');
+    if (!existing) {
+      note.className = 'l3-control l3-edit-reason';
+      this.appendChild(note);
+    }
+    note.textContent = message;
+    const previous = Number(note.dataset.timer || '0');
+    if (previous) window.clearTimeout(previous);
+    note.dataset.timer = String(window.setTimeout(() => note.remove(), 4000));
   }
 
   private async getSharedTsModel(): Promise<any | null> {

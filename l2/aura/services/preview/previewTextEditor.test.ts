@@ -7,7 +7,15 @@
 // the knob answered "could not replace the molecule in the source" for a tag sitting right there.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { replaceComponentTag } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
+import {
+  applyTextEdit,
+  dynamicEditNotice,
+  findAllI18nMatches,
+  findTextOrigin,
+  findTextOriginByKey,
+  findTextOriginByOccurrence,
+  replaceComponentTag,
+} from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
 
 // The import half of the swap resolves a TAG to a FILE (`resolveTagToFile`), so the stor has to know
 // the two molecules — without them that branch is skipped and the tests below would pass while
@@ -249,4 +257,124 @@ test('the opening and the closing rewritten are always the same element', () => 
   assert.match(after, new RegExp(`<${SWAP_TAG} data-icon="x" />`, 'u'));
   // ...and the pair that changed opens and closes with the same new name.
   assert.match(after, /<groupselectone--ml-select-native><Label>a<\/Label><\/groupselectone--ml-select-native>/u);
+});
+
+// Trecho real de mls-102047 l2/reembolsoDespesas/web/desktop/page11/inicio.ts (catálogo da página).
+const INICIO = `
+/// **collab_i18n_start**
+const pageMessage_pt_br = {
+pageTitle: 'Despesas aguardando sua decisão',
+pageIntro: 'Veja o que a equipe enviou e escolha por onde começar a análise.',
+metricLabel: 'Aguardando decisão',
+};
+const pageMessage_en_us: typeof pageMessage_pt_br = {
+pageTitle: 'Expenses waiting for your decision',
+pageIntro: 'See what your team has sent and choose where to start the review.',
+metricLabel: 'Awaiting decision',
+};
+const pageMessage_es_es: typeof pageMessage_pt_br = {
+pageTitle: 'Gastos pendientes de tu decisión',
+pageIntro: 'Mira lo que envió el equipo y elige por dónde empezar el análisis.',
+metricLabel: 'Pendientes de decisión',
+};
+type PageMessageType = typeof pageMessage_pt_br;
+const pageMessages: Record<string, PageMessageType> = {
+'pt-br': pageMessage_pt_br,
+'en-us': pageMessage_en_us,
+'es-es': pageMessage_es_es,
+};
+/// **collab_i18n_end**
+<p>\${this.msg['pageIntro']}</p>
+`;
+
+const PT_INTRO = 'Veja o que a equipe enviou e escolha por onde começar a análise.';
+const EN_INTRO = 'See what your team has sent and choose where to start the review.';
+
+function declareEnFirst(source: string): string {
+  const ptStart = source.indexOf('const pageMessage_pt_br = {');
+  const enStart = source.indexOf('const pageMessage_en_us');
+  const esStart = source.indexOf('const pageMessage_es_es');
+  if (ptStart < 0 || enStart < 0 || esStart < 0 || !(ptStart < enStart && enStart < esStart)) {
+    throw new Error('excerpt lost the pageMessage_pt_br / en_us / es_es order');
+  }
+  return source.slice(0, ptStart) + source.slice(enStart, esStart) + source.slice(ptStart, enStart) + source.slice(esStart);
+}
+
+test('pageIntro do inicio resolve como i18n com pt_br e en_us', () => {
+  const origin = findTextOriginByKey('pageIntro', INICIO, 'pt-br');
+  assert.equal(origin.type, 'i18n');
+  if (origin.type !== 'i18n') return;
+  assert.deepEqual(origin.languages.map(entry => entry.lang), ['pt_br', 'en_us', 'es_es']);
+  assert.equal(origin.languages.find(entry => entry.lang === 'pt_br')?.value, PT_INTRO);
+  assert.equal(origin.languages.find(entry => entry.lang === 'en_us')?.value, EN_INTRO);
+  assert.equal(origin.templateExpression, "this.msg['pageIntro']");
+});
+
+test('idioma ativo pt acha pt_br mesmo quando en_us vem primeiro', () => {
+  const source = declareEnFirst(INICIO);
+  const matches = findAllI18nMatches(PT_INTRO, source, 'pt');
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].key, 'pageIntro');
+  assert.equal(findAllI18nMatches(EN_INTRO, source, 'pt').length, 0);
+
+  const origin = findTextOriginByKey('pageIntro', source, 'pt');
+  const edited = applyTextEdit(origin, 'Novo texto', source, 'pt');
+  assert.equal(edited.success, true);
+  assert.match(edited.newSource || '', /pageMessage_pt_br = \{\npageTitle: 'Despesas aguardando sua decisão',\npageIntro: 'Novo texto',/);
+  assert.match(edited.newSource || '', /See what your team has sent and choose where to start the review\./);
+});
+
+test('página só com pageMessage_pt e idioma ativo en: a edição grava no catálogo que existe', () => {
+  // 102047 comandaRestaurante/web/desktop/page11/inicio.ts: catálogo único em pt; o log do nível 3 dizia lang: en.
+  const source = `
+/// **collab_i18n_start**
+const pageMessage_pt = {
+  pageTitle: 'Visão geral',
+  pageIntro: 'Acompanhe a operação e decida o próximo atendimento ou fechamento.',
+};
+type PageMessageType = typeof pageMessage_pt;
+const pageMessages: Record<string, PageMessageType> = { pt: pageMessage_pt };
+/// **collab_i18n_end**
+`;
+  const text = 'Acompanhe a operação e decida o próximo atendimento ou fechamento.';
+  const origin = findTextOriginByOccurrence(text, source, 0, 'en');
+  assert.equal(origin.type, 'i18n');
+  const edited = applyTextEdit(origin, 'Novo texto', source, 'en');
+  assert.equal(edited.success, true);
+  assert.match(edited.newSource || '', /pageIntro: 'Novo texto',/);
+  assert.match(edited.newSource || '', /pageTitle: 'Visão geral',/);
+});
+
+test('message_en antigo, com tipo opcional, continua editável', () => {
+  const source = `
+/// **collab_i18n_start**
+const message_en: typeof x = { hello: 'Hello' };
+const message_pt: MessageType = { hello: 'Olá' };
+/// **collab_i18n_end**
+`;
+  const origin = findTextOriginByKey('hello', source, 'en');
+  assert.equal(origin.type, 'i18n');
+  if (origin.type !== 'i18n') return;
+  assert.deepEqual(origin.languages.map(entry => entry.lang), ['en', 'pt']);
+  const edited = applyTextEdit(origin, 'Hi', source, 'en');
+  assert.equal(edited.success, true);
+  assert.match(edited.newSource || '', /const message_en: typeof x = \{ hello: 'Hi' \}/);
+  assert.match(edited.newSource || '', /const message_pt: MessageType = \{ hello: 'Olá' \}/);
+});
+
+test('origem dynamic chama a mensagem ao usuário', () => {
+  const origin = findTextOrigin('Acompanhe a operação…', INICIO);
+  assert.equal(origin.type, 'dynamic');
+  const warnings: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  try {
+    assert.match(dynamicEditNotice(origin, 'en') || '', /expression/);
+    assert.match(dynamicEditNotice(origin, 'pt-BR') || '', /expressão/);
+    assert.match(dynamicEditNotice(origin, 'es_es') || '', /expresión/);
+  } finally {
+    console.warn = original;
+  }
+  assert.equal(warnings.length, 3);
+  assert.equal(dynamicEditNotice(findTextOriginByKey('pageIntro', INICIO, 'pt'), 'pt'), null);
 });
