@@ -27,7 +27,6 @@ import { getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { getActualLanguage, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { currentLanguage, describePageFolder } from '/_102020_/l2/aura/studio/studioEditTarget.js';
 import {
-  ADD_GROUPS,
   ANIMATION_GROUPS,
   CASCADE_MAX_CHILDREN,
   CASCADE_STEPS,
@@ -43,6 +42,10 @@ import {
   applyTypedValue,
   addUtility,
   addableProperties,
+  INSPECTOR_GROUPS,
+  inspectorGroupOf,
+  inspectorGroupOfProperty,
+  type InspectorGroup,
   addableProperty,
   buildAnimationClass,
   chipAvailability,
@@ -67,7 +70,6 @@ import {
   splitUtilities,
   utilityLabel,
   utilityOptions,
-  type AddGroup,
   type AnimationScreen,
   type ClassChannel,
   type AnimationStateKey,
@@ -461,8 +463,8 @@ export abstract class ClassPickerBase extends StateLitElement {
    * and pasting on another is the whole gesture.
    */
   @state() private clipboard: IStyleClipboard | null = null;
-  /** Group of the "+" whose properties are showing. */
-  @state() private addGroup: AddGroup | null = null;
+  /** Groups of the Style tab the user folded or opened, by section and subject; unset = by content. */
+  @state() private groupsOpen: Record<string, boolean> = {};
   /** Property whose design-system palette is open in the "+" (colour does not seed a value). */
   @state() private addColor: string | null = null;
   /** Which section's "+" is open — a molecule has several (its inside, its tag, its slots). */
@@ -542,7 +544,6 @@ export abstract class ClassPickerBase extends StateLitElement {
       this.customEditing = null;
       this.typedEditing = null;
       // The "+" is answered by what the element already has, and that just changed.
-      this.addGroup = null;
       this.addColor = null;
     }
     if (changed.has('target') && previous?.tag !== this.target?.tag) {
@@ -550,6 +551,7 @@ export abstract class ClassPickerBase extends StateLitElement {
       this.editPart = 'inner';
       this.slotTreeOpen = false;
       this.slotGroupsOpen = [];
+      this.groupsOpen = {};
       this.pendingState = {};
       this.roleEditing = null;
     }
@@ -1106,7 +1108,6 @@ export abstract class ClassPickerBase extends StateLitElement {
     const choose = (next: 'inner' | 'tag' | number): void => {
       this.editPart = next;
       this.slotTreeOpen = false;
-      this.addGroup = null;
       this.addColor = null;
       this.preview(null);
     };
@@ -1180,13 +1181,79 @@ export abstract class ClassPickerBase extends StateLitElement {
     return html`<div class="acp-slot-tree">${rows}</div>`;
   }
 
-  /** One attribute's rows and its "+". */
+  /**
+   * One attribute's rows, grouped by SUBJECT (TASK-102020-picker-inspector, phase 2).
+   *
+   * Each group is a line with a summary of what it holds — readable folded — and, open, its rows and
+   * its own "+". Every group starts folded, so an element is a short list of subjects and not a wall
+   * of rows. A group with nothing to show and nothing to offer is not drawn.
+   */
   protected renderSection(side: IPickerSide) {
     const tokens = splitUtilities(side.literal);
-    return html`${tokens.length
-    ? tokens.map((token) => this.renderClassBlock(token, side))
-    : html`<div class="acp-block acp-readonly"><span class="acp-reason">${t('panel.noClasses')}</span></div>`}
-      ${this.renderAdd(side)}`;
+    const options = addableProperties(side.literal, { childCount: this.target?.childCount ?? 0, channel: side.channel });
+    // Inside a molecule the parent-facing classes do not work, and the section says where they go.
+    const channelHint = side.channel === 'data-class'
+      ? html`<small class="acp-hint">${t('panel.addChannelHint')}</small>`
+      : nothing;
+    return html`${INSPECTOR_GROUPS.map((group) => this.renderGroup(
+      group,
+      side,
+      tokens.filter((token) => inspectorGroupOf(token) === group),
+      options.filter((entry) => inspectorGroupOfProperty(entry.property) === group),
+    ))}
+      ${channelHint}`;
+  }
+
+  /** One subject: its line (name, summary, count) and, open, its rows and its "+". */
+  protected renderGroup(group: InspectorGroup, side: IPickerSide, tokens: IUtilityToken[], adds: IAddableProperty[]) {
+    if (!tokens.length && !adds.length) return nothing;
+    const key = `${sideId(side)}:${group}`;
+    // Every group starts FOLDED (decided with the user, 2026-11-03): the summary on the line already
+    // says what is there, and opening is the gesture that asks for the rows.
+    const open = this.groupsOpen[key] ?? false;
+    const summary = tokens.map((token) => token.raw).join(' ');
+    // Open, the rows sit INSIDE the group: indented under its name, behind a guide line, with quieter
+    // labels — the subject is the parent and its properties are children, not sections of their own.
+    return html`<div class="acp-group ${open ? 'acp-open' : ''}">
+      <button type="button" class="acp-group-head" aria-expanded=${open ? 'true' : 'false'} title=${summary}
+        @click=${() => { this.groupsOpen = { ...this.groupsOpen, [key]: !open }; }}>
+        <span class="acp-group-caret">${open ? '▾' : '▸'}</span>
+        <span class="acp-group-name">${t(`inspector.${group}`)}</span>
+        <span class="acp-group-sum">${summary || '—'}</span>
+        ${tokens.length ? html`<span class="acp-group-count">${tokens.length}</span>` : nothing}
+      </button>
+      ${open ? html`<div class="acp-group-body">
+        ${tokens.map((token) => this.renderClassBlock(token, side))}${this.renderGroupAdd(group, side, adds)}
+      </div>` : nothing}
+    </div>`;
+  }
+
+  /**
+   * The "+" of one subject: the properties this element does not have yet, from the same catalog as
+   * before (TASK-102033-picker-add-property) — chosen inside the subject, so the old two-step menu
+   * (group, then property) is gone. Colour opens the design-system palette right here.
+   */
+  protected renderGroupAdd(group: InspectorGroup, side: IPickerSide, adds: IAddableProperty[]) {
+    if (!adds.length) return nothing;
+    if (this.addColor && this.addChannel === sideId(side) && inspectorGroupOfProperty(this.addColor) === group) {
+      const entry = addableProperty(this.addColor);
+      const roles = entry?.family ? newRoleOptions(entry.family, this.dsRoles, (cssVar) => this.resolveVar(cssVar)) : [];
+      return html`<div class="acp-block acp-add">
+        <span class="acp-head-row">
+          <span class="acp-label">${t(this.addColor)}</span>
+          <button type="button" class="acp-link" @click=${() => { this.addColor = null; }}>${t('panel.customCancel')}</button>
+        </span>
+        ${roles.length
+    ? html`<span class="acp-role-list">${roles.map((option) => html`<button type="button" class="acp-role-item"
+            @click=${() => this.addSeed(this.addColor ?? '', option, side)}>${this.roleRow(option)}</button>`)}</span>`
+    : html`<span class="acp-reason">${t('reason.noDsTokens')}</span>`}
+        <small class="acp-hint">${t('panel.addColor')}</small>
+      </div>`;
+    }
+    return html`<div class="acp-group-add" title=${t('panel.addTitle')}>
+      <span class="acp-group-plus">+</span>
+      <span class="acp-chips">${adds.map((entry) => this.addChip(entry, side))}</span>
+    </div>`;
   }
 
   /**
@@ -1280,69 +1347,6 @@ export abstract class ClassPickerBase extends StateLitElement {
       @click=${() => { this.typedEditing = sideKey(side, token); this.focusTypedSoon(); }}>…</button>`;
   }
 
-  /**
-   * The "+": a property this element does not have yet.
-   *
-   * Two steps, never a form — the category, then the property — because the catalog is ~20 entries and
-   * a flat list of twenty in a 340px panel is a scroll, not a menu. The new property is born with the
-   * value the project uses most; colour is the exception (no concentration to call a default), and it
-   * opens the design-system palette instead of guessing.
-   */
-  protected renderAdd(side: IPickerSide) {
-    const editable = side.editable;
-    const options = addableProperties(side.literal, { childCount: this.target?.childCount ?? 0, channel: side.channel });
-
-    // Inside a molecule the parent-facing classes do not work, and the "+" says where they go instead.
-    const channelHint = side.channel === 'data-class'
-      ? html`<small class="acp-hint">${t('panel.addChannelHint')}</small>`
-      : nothing;
-
-    if (!options.length) {
-      return html`<div class="acp-block acp-add acp-readonly">
-        <span class="acp-label">${t('panel.addProperty')}</span>
-        <span class="acp-reason">${t('panel.addNothing')}</span>
-        ${channelHint}
-      </div>`;
-    }
-
-    if (this.addColor && this.addChannel === sideId(side)) {
-      const entry = addableProperty(this.addColor);
-      const roles = entry?.family ? newRoleOptions(entry.family, this.dsRoles, (cssVar) => this.resolveVar(cssVar)) : [];
-      return html`<div class="acp-block acp-add">
-        <span class="acp-head-row">
-          <span class="acp-label">${t(this.addColor)}</span>
-          <button type="button" class="acp-link" @click=${() => { this.addColor = null; }}>${t('panel.customCancel')}</button>
-        </span>
-        ${roles.length
-    ? html`<span class="acp-role-list">${roles.map((option) => html`<button type="button" class="acp-role-item"
-            @click=${() => this.addSeed(this.addColor ?? '', option, side)}>${this.roleRow(option)}</button>`)}</span>`
-    : html`<span class="acp-reason">${t('reason.noDsTokens')}</span>`}
-        <small class="acp-hint">${t('panel.addColor')}</small>
-      </div>`;
-    }
-
-    if (this.addGroup && this.addChannel === sideId(side)) {
-      const group = this.addGroup;
-      return html`<div class="acp-block acp-add">
-        <span class="acp-head-row">
-          <span class="acp-label">${t('panel.addPick')} · ${t(`group.${group}`)}</span>
-          <button type="button" class="acp-link" @click=${() => { this.addGroup = null; }}>${t('panel.customCancel')}</button>
-        </span>
-        <span class="acp-chips">${options.filter((entry) => entry.group === group).map((entry) => this.addChip(entry, side))}</span>
-      </div>`;
-    }
-
-    // Only the groups that have something to offer for THIS element: an empty category is a promise
-    // the panel cannot keep.
-    const groups = ADD_GROUPS.filter((group) => options.some((entry) => entry.group === group));
-    return html`<div class="acp-block acp-add">
-      <span class="acp-label" title=${t('panel.addTitle')}>${t('panel.addProperty')}</span>
-      <span class="acp-chips">${groups.map((group) => html`<button type="button" class="acp-chip" ?disabled=${!editable}
-        @click=${() => { this.addGroup = group; this.addChannel = sideId(side); }}>${t(`group.${group}`)}</button>`)}</span>
-      ${channelHint}
-    </div>`;
-  }
-
   protected addChip(entry: IAddableProperty, side: IPickerSide) {
     const editable = side.editable;
     const seed = entry.seed;
@@ -1363,7 +1367,6 @@ export abstract class ClassPickerBase extends StateLitElement {
   }
 
   protected addSeed(property: string, cls: string, side: IPickerSide): void {
-    this.addGroup = null;
     this.addColor = null;
     this.applyLiteral(addUtility(side.literal, cls), t('status.propertyAdded', { property: t(property) }), side);
   }

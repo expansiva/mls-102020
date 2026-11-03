@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
   ADD_GROUPS,
+  INSPECTOR_GROUPS,
   ANIMATION_GROUPS,
   MISSING_IN_SOURCE,
   MOTION_SAFE_HINT,
@@ -91,6 +92,8 @@ function idsFromCore(): string[] {
     for (const entry of addableProperties(context, { childCount: 4 })) add(entry.property);
   }
   for (const group of ADD_GROUPS) add(`group.${group}`);
+  // The Style tab's subjects (TASK-102020-picker-inspector): the group name is looked up dynamically.
+  for (const group of INSPECTOR_GROUPS) add(`inspector.${group}`);
 
   // Row labels: every family and variant this module can name.
   const samples = [

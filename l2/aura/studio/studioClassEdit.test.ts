@@ -5,6 +5,9 @@ import test from 'node:test';
 import {
   ANIMATION_GROUPS,
   channelClasses,
+  INSPECTOR_GROUPS,
+  inspectorGroupOf,
+  inspectorProperties,
   classChannelOf,
   findAttributeValue,
   fitsChannel,
@@ -3392,4 +3395,35 @@ test('a slot\'s data-class: the <Label> of the real button is found, written and
   const now = readDataClass(written.source, again, 'font-bold');
   if (now.kind !== 'literal') assert.fail('the written literal is found');
   assert.equal(spliceChannel(written.source, { startOffset: now.start, endOffset: now.end }, 'data-class', '').source, AGENDA);
+});
+
+// --- The inspector's subjects (TASK-102020-picker-inspector, phase 2) ---
+
+test('every property the core can name has exactly one subject in the Style tab', () => {
+  // The source is the inventory: every `'prop.x'` this module writes is a label a row can show.
+  const CORE = readFileSync(new URL('studioClassEdit.ts', import.meta.url), 'utf8');
+  const named = [...new Set([...CORE.matchAll(/'(prop\.[a-zA-Z]+)'/gu)].map((match) => match[1]))];
+  const filed = inspectorProperties();
+  assert.ok(named.length >= 128, `the scan found the properties (${named.length})`);
+  assert.deepEqual(named.filter((property) => !filed.includes(property)), [], 'properties with no subject');
+  assert.deepEqual(filed.filter((property) => !named.includes(property)), [], 'subjects for properties that do not exist');
+  assert.equal(new Set(filed).size, filed.length, 'no property in two subjects');
+  assert.equal(INSPECTOR_GROUPS[INSPECTOR_GROUPS.length - 1], 'other', 'the unknown ones come last');
+});
+
+test('real classes land in the subject a person would look for them in', () => {
+  const groupOf = (raw: string) => inspectorGroupOf(splitUtilities(raw)[0]);
+  const expected: Record<string, string> = {
+    'w-full': 'size', 'self-end': 'size', 'col-span-2': 'size', 'md:w-1/2': 'size',
+    flex: 'layout', 'gap-4': 'layout', 'space-y-4': 'layout', 'items-center': 'layout', 'grid-cols-2': 'layout',
+    'p-4': 'spacing', 'mt-3': 'spacing', 'md:p-6': 'spacing',
+    'text-sm': 'text', 'font-semibold': 'text', 'text-left': 'text',
+    'text-[var(--text-muted,#64748b)]': 'color', 'bg-[var(--surface,#fff)]': 'color', 'text-gray-400': 'color',
+    'rounded-lg': 'border', border: 'border', 'border-b': 'border', 'shadow-sm': 'border',
+    'cursor-pointer': 'effect',
+    'animate-pulse': 'animation', transition: 'animation', 'starting:opacity-0': 'animation',
+    'starting:w-0': 'animation', '[&>*:nth-child(2)]:delay-150': 'animation',
+    isolate: 'other',
+  };
+  for (const [raw, group] of Object.entries(expected)) assert.equal(groupOf(raw), group, raw);
 });

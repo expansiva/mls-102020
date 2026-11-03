@@ -3456,6 +3456,85 @@ export function diffLiterals(before: string, after: string): IStyleDiff {
   };
 }
 
+// --- The inspector's subjects (TASK-102020-picker-inspector, phase 2) ---
+//
+// The Style tab groups its rows by SUBJECT, the way a design tool's inspector does, instead of listing
+// the classes in source order (padding far from margin, colour far from border). This is a different
+// question from `styleCategory`, which the paste asks: there `gap` is spacing and text, colour and border
+// are all "appearance"; here the user looks for "the text", "the colours", "the border" separately, and
+// `gap`/`space` are how a container lays out its children, so they sit with Layout.
+
+/** A group of the Style tab, in the order the tab shows them. */
+export type InspectorGroup = 'size' | 'layout' | 'spacing' | 'text' | 'color' | 'border' | 'effect' | 'animation' | 'other';
+
+export const INSPECTOR_GROUPS: readonly InspectorGroup[] = [
+  'size', 'layout', 'spacing', 'text', 'color', 'border', 'effect', 'animation', 'other',
+];
+
+/**
+ * Every property `utilityLabel` names, and its group. Written out property by property on purpose: a
+ * rule ("anything starting with prop.margin") would quietly file the next property somewhere, and the
+ * test that every known property has exactly one group is what keeps this honest.
+ */
+const INSPECTOR_GROUP_OF: Record<string, InspectorGroup> = {};
+const inspectorMembers: Record<Exclude<InspectorGroup, 'other'>, readonly string[]> = {
+  size: [
+    'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight', 'aspect', 'positioning',
+    'top', 'right', 'bottom', 'left', 'inset', 'insetX', 'insetY', 'zIndex',
+    'colSpan', 'rowSpan', 'order', 'flexGrow', 'self',
+  ],
+  layout: [
+    'display', 'flexDirection', 'flexWrap', 'items', 'justify', 'gap', 'gapX', 'gapY', 'spaceX', 'spaceY',
+    'gridCols', 'gridRows', 'overflow', 'overflowX', 'overflowY', 'objectFit', 'verticalAlign',
+  ],
+  spacing: [
+    'padding', 'paddingX', 'paddingY', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'paddingStart', 'paddingEnd', 'margin', 'marginX', 'marginY', 'marginTop', 'marginRight',
+    'marginBottom', 'marginLeft', 'marginStart', 'marginEnd',
+  ],
+  text: [
+    'textSize', 'fontWeight', 'fontStyle', 'textAlign', 'textCase', 'textWrap', 'textOverflow', 'whitespace',
+    'wordBreak', 'underline', 'leading', 'tracking', 'numeric', 'content',
+  ],
+  color: [
+    'bgColor', 'textColor', 'borderColor', 'ringColor', 'divideColor', 'decorationColor', 'placeholderColor',
+    'accentColor', 'caretColor', 'fill', 'stroke', 'gradientFrom', 'gradientVia', 'gradientTo', 'opacity',
+  ],
+  border: [
+    'borderWidth', 'borderStyle', 'borderSideTop', 'borderSideRight', 'borderSideBottom', 'borderSideLeft',
+    'borderSideX', 'borderSideY', 'divideAxis', 'radius', 'radiusTop', 'radiusRight', 'radiusBottom',
+    'radiusLeft', 'radiusTopLeft', 'radiusTopRight', 'radiusBottomRight', 'radiusBottomLeft',
+    'ringWidth', 'outline', 'shadow',
+  ],
+  effect: ['blur', 'brightness', 'contrast', 'saturate', 'cursor', 'pointerEvents', 'userSelect', 'srOnly'],
+  animation: [
+    'animation', 'animationSpeed', 'animationRepeat', 'animationPlayState', 'transition', 'duration',
+    'delay', 'easing', 'translateX', 'translateY', 'scale', 'scaleX', 'scaleY', 'rotate',
+  ],
+};
+for (const [group, names] of Object.entries(inspectorMembers)) {
+  for (const name of names) INSPECTOR_GROUP_OF[`prop.${name}`] = group as InspectorGroup;
+}
+
+/** The group of a property id (`prop.padding`); `other` for one the inspector does not know. */
+export function inspectorGroupOfProperty(property: string | null | undefined): InspectorGroup {
+  return (property && INSPECTOR_GROUP_OF[property]) || 'other';
+}
+
+/**
+ * The group of a class. Motion first, like `styleCategory`: an entrance (`starting:w-0`) or a cascade
+ * (`[&>*:nth-child(2)]:delay-150`) is animation whatever property it carries.
+ */
+export function inspectorGroupOf(token: IUtilityToken): InspectorGroup {
+  if (styleCategory(token) === 'animation') return 'animation';
+  return inspectorGroupOfProperty(utilityLabel(token).property);
+}
+
+/** Every property id the inspector files — for the test that each known property has one group. */
+export function inspectorProperties(): string[] {
+  return Object.keys(INSPECTOR_GROUP_OF);
+}
+
 // --- The channel: `class`, or a molecule's `data-class` (TASK-102020-picker-molecule-data-class) ---
 //
 // A molecule does not read the `class` of its host. It reads `data-class` (the `cssClass` of

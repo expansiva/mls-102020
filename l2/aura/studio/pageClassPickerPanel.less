@@ -140,6 +140,25 @@ aura--studio--page-class-picker-102020 {
   .acp-menu-item.acp-danger { color: var(--pcp-err-text); background: var(--pcp-err-bg); }
   .acp-menu-icon { width: 16px; text-align: center; color: var(--pcp-muted); }
   .acp-menu-sep { height: 1px; margin: 4px 0; background: var(--pcp-border); }
+  // The Style tab by subject: one line per group (name, summary of its classes, count), rows below when open.
+  .acp-group { border-bottom: 1px solid var(--pcp-border-soft); }
+  .acp-group-head { display: flex; gap: 6px; align-items: baseline; width: 100%; padding: 6px 10px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; color: var(--pcp-text); }
+  .acp-group-head:hover { background: var(--pcp-accent-faint); }
+  .acp-group-caret { width: 10px; color: var(--pcp-faint); }
+  .acp-group-name { flex: 0 0 auto; font-weight: 600; }
+  .acp-group-sum { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 11px; color: var(--pcp-faint); }
+  .acp-group-count { color: var(--pcp-faint); font-size: 11px; }
+  .acp-group-add { display: flex; gap: 6px; align-items: baseline; padding: 4px 10px 8px 26px; }
+  // Open, a group is a PARENT: its rows are indented under the name, behind a guide line, with labels
+  // quieter than the name. Without this the rows read as sections of their own, at the group's level.
+  .acp-group.acp-open > .acp-group-head .acp-group-name { color: var(--pcp-strong); }
+  .acp-group-body { margin: 0 10px 8px 15px; padding-left: 11px; border-left: 1px solid var(--pcp-border); }
+  .acp-group-body .acp-block { padding: 4px 0 6px; }
+  .acp-group-body .acp-block + .acp-block { border-top: 0; }
+  .acp-group-body .acp-label { margin-bottom: 4px; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--pcp-muted); }
+  .acp-group-body .acp-group-add { padding: 4px 0 2px; }
+  .acp-group-body .acp-block.acp-add { margin-top: 2px; }
+  .acp-group-plus { color: var(--pcp-faint); }
   // The part of a molecule the Style tab edits: inside, tag, slots.
   .acp-parts { display: flex; margin: 8px 10px 4px; border: 1px solid var(--pcp-border); border-radius: 6px; overflow: hidden; }
   .acp-part { flex: 1 1 0; min-width: 0; padding: 4px 6px; border: 0; background: transparent; font: inherit; color: var(--pcp-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
