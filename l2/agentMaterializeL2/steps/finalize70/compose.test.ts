@@ -8,7 +8,7 @@ import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shar
 import { composeM4ModuleEntry, m4FirstSentence, m4MenuActors, m4MenuPages, type M4FinalizePage } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
 import { m4ModuleLanguages } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
 
-const root = new URL('../../../../../mls-102047/', import.meta.url);
+const root = new URL('./fixtures/reembolsoDespesas/', import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), 'utf8');
 const readTarefas = (path: string) => readFileSync(new URL(path, new URL('./fixtures/tarefas/', import.meta.url)), 'utf8');
 function sources(module: string, pageIds: string[], load: (path: string) => string = read) {

@@ -9,7 +9,7 @@ import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js'
 import { pageSourceInfo } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { configInfo, formatM4FinalizeReport, menuInfo, moduleDefsInfo, runM4Finalize, type M4FinalizePort, type M4FinalizeReceipt } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
 
-const root = new URL('../../../../../mls-102047/', import.meta.url);
+const root = new URL('./fixtures/reembolsoDespesas/', import.meta.url);
 const disk = (path: string) => readFileSync(new URL(path, root), 'utf8');
 const identity = { project: 102047, module: 'reembolsoDespesas' };
 const key = (info: Ns5FileInfo) => `${info.project}/l${info.level}/${info.folder}/${info.shortName}${info.extension}`;
