@@ -1,10 +1,12 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioEditTool.test.ts" enhancement="_blank" />
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
+import { setAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { pendingFiles, recordSentContent } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 import { readFileSync } from 'node:fs';
-import { deliverSharedEdit, listedOwner, noteSharedFile, type IOtherDraftTouch, type ISharedEditSession, sendAutoSaveBatch } from '/_102020_/l2/aura/studio/studioEditTool.js';
+import { rememberCollabMode } from '/_102033_/l2/cbe/studioDraft.js';
+import { deliverSharedEdit, listedOwner, noteSharedFile, subscribeAutoSave, syncDraftAutoSave, type IAutoSavePanelState, type IOtherDraftTouch, type ISharedEditSession, sendAutoSaveBatch } from '/_102020_/l2/aura/studio/studioEditTool.js';
 
 const TOOL = readFileSync(new URL('studioEditTool.ts', import.meta.url), 'utf8');
 
@@ -370,4 +372,192 @@ test('a failed list read on the first edit logs, sends the edit, and does not wa
   assert.deepEqual(sent, ['shared', 'shared']);
   assert.equal(errors.length, 1);
   assert.match(String(errors[0]?.[0]), /listDrafts for shared files failed/);
+});
+
+interface IChainWindow {
+  addEventListener?: EventTarget['addEventListener'];
+  removeEventListener?: EventTarget['removeEventListener'];
+  dispatchEvent?: EventTarget['dispatchEvent'];
+}
+
+interface IChainListener {
+  level: number;
+  type: string;
+  fn: (ev: mls.events.IEvent) => void;
+}
+
+function chainFile(shortName: string, status: string, inLocalStorage: boolean): mls.stor.IFileInfo {
+  return {
+    project: 7,
+    level: 1,
+    shortName,
+    folder: 'mod',
+    extension: '.ts',
+    status,
+    hasError: false,
+    inLocalStorage,
+  } as mls.stor.IFileInfo;
+}
+
+function chainKey(file: mls.stor.IFileInfo): string {
+  return `${file.level}/${file.folder}/${file.shortName}${file.extension}`;
+}
+
+async function drain(): Promise<void> {
+  for (let i = 0; i < 30; i++) await Promise.resolve();
+}
+
+function postChain(running: number): void {
+  const target = globalThis as unknown as EventTarget;
+  target.dispatchEvent(new CustomEvent('collabAgentChain', { detail: { running } }));
+}
+
+/**
+ * Silent local file plus a deletion that only arrives by FileAction while the chain is open.
+ * `duringChain` runs after the hold has already refused a send. The 1→0 flush is one batch.
+ */
+async function proveChainFlush(tag: string, duringChain: () => void): Promise<unknown> {
+  const host = globalThis as unknown as IHost & {
+    mls: IHost['mls'] & {
+      sites?: { getMode?: () => string };
+      events?: {
+        addListener: (level: number, type: string, fn: (ev: mls.events.IEvent) => void) => void;
+        removeEventListener: (levels: number[] | undefined, types: string[] | undefined, fn: (ev: mls.events.IEvent) => void) => void;
+      };
+    };
+  };
+  const win = globalThis as unknown as IChainWindow;
+  const previous = {
+    editor: host.mls.editor,
+    common: host.mls.common,
+    stor: host.mls.stor,
+    sites: host.mls.sites,
+    events: host.mls.events,
+    fetch: globalThis.fetch,
+    addEventListener: win.addEventListener,
+    removeEventListener: win.removeEventListener,
+    dispatchEvent: win.dispatchEvent,
+  };
+  const bus = new EventTarget();
+  win.addEventListener = bus.addEventListener.bind(bus);
+  win.removeEventListener = bus.removeEventListener.bind(bus);
+  win.dispatchEvent = bus.dispatchEvent.bind(bus);
+  const listeners: IChainListener[] = [];
+  host.mls.events = {
+    addListener(level, type, fn) { listeners.push({ level, type, fn }); },
+    removeEventListener(levels, types, fn) {
+      for (let i = listeners.length - 1; i >= 0; i--) {
+        const item = listeners[i];
+        if (!item || item.fn !== fn) continue;
+        if (levels && !levels.includes(item.level)) continue;
+        if (types && !types.includes(item.type)) continue;
+        listeners.splice(i, 1);
+      }
+    },
+  };
+  const copied = chainFile(`copied-${tag}`, 'new', true);
+  const removed = chainFile(`removed-${tag}`, 'deleted', false);
+  const files: Record<string, mls.stor.IFileInfo> = {};
+  const batches: mls.stor.IFileInfo[][] = [];
+  host.mls.sites = { getMode: () => 'studio' };
+  host.mls.editor = {
+    getKeyModel: (_project: number, shortName: string) => shortName,
+    models: {
+      [copied.shortName]: { ts: { model: { getValue: () => `copied-body-${tag}` } } },
+      [removed.shortName]: { ts: { model: { getValue: () => `removed-body-${tag}` } } },
+    },
+    deleteModels: () => undefined,
+  };
+  host.mls.common = { crc: { crc32: (value: string) => value.length } };
+  host.mls.stor = {
+    files,
+    getKeyToFile: (file: mls.stor.IFileInfo) => chainKey(file),
+    getKeyToFiles: (_project: number, level: number, shortName: string, folder: string, extension: string) => (
+      `${level}/${folder}/${shortName}${extension}`
+    ),
+    setContents: async (batch: readonly mls.stor.IFileInfo[]) => {
+      batches.push([...batch]);
+      return batch.map(() => ({ result: true }));
+    },
+    localStor: { setContent: async () => true },
+    cache: { setContent: async () => true },
+  } as IHost['mls']['stor'];
+  globalThis.fetch = (async () => ({
+    status: 200,
+    json: async () => ({ status: 'listed', drafts: [] }),
+  })) as typeof fetch;
+  rememberCollabMode({ mode: 'studio', project: 7, draft: 'user-chain' });
+  setAuraState('actualProject', 7);
+  const seen: IAutoSavePanelState[] = [];
+  const unsub = subscribeAutoSave((state) => { seen.push(state); });
+  mock.timers.enable({ apis: ['setTimeout'] });
+  let thrown: unknown;
+  try {
+    syncDraftAutoSave(true, true);
+    postChain(1);
+    assert.equal(seen.at(-1)?.agentWorking, true);
+    assert.equal(copied.inLocalStorage, true);
+    files[chainKey(copied)] = copied;
+    files[chainKey(removed)] = removed;
+    const desc = JSON.stringify({
+      action: 'editorChanged',
+      project: 7,
+      level: 1,
+      shortName: removed.shortName,
+      folder: 'mod',
+      extension: '.ts',
+    });
+    for (const item of listeners) {
+      if (item.level === 1 && item.type === 'FileAction') item.fn({ level: 1, type: 'FileAction', desc });
+    }
+    await drain();
+    assert.equal(seen.at(-1)?.agentWorking, true);
+    assert.equal(seen.at(-1)?.pending, 2);
+    mock.timers.tick(3000);
+    await drain();
+    assert.equal(batches.length, 0);
+    try {
+      duringChain();
+    } catch (err) {
+      thrown = err;
+    }
+    assert.equal(seen.at(-1)?.agentWorking, true);
+    postChain(0);
+    assert.equal(seen.at(-1)?.agentWorking, false);
+    mock.timers.tick(3000);
+    await drain();
+    assert.equal(batches.length, 1);
+    const names = batches[0]?.map((file) => file.shortName).sort();
+    assert.deepEqual(names, [`copied-${tag}`, `removed-${tag}`]);
+    assert.equal(batches[0]?.find((file) => file.shortName === removed.shortName)?.status, 'deleted');
+    assert.equal(batches[0]?.find((file) => file.shortName === copied.shortName), copied);
+  } finally {
+    postChain(0);
+    mock.timers.tick(3000);
+    await drain();
+    syncDraftAutoSave(false, false);
+    unsub();
+    rememberCollabMode({ mode: 'production' });
+    mock.timers.reset();
+    host.mls.editor = previous.editor;
+    host.mls.common = previous.common;
+    host.mls.stor = previous.stor;
+    host.mls.sites = previous.sites;
+    host.mls.events = previous.events;
+    globalThis.fetch = previous.fetch;
+    win.addEventListener = previous.addEventListener;
+    win.removeEventListener = previous.removeEventListener;
+    win.dispatchEvent = previous.dispatchEvent;
+  }
+  return thrown;
+}
+
+test('agent chain 0→1 sends nothing; 1→0 sends one batch, including after an exception in the chain', async () => {
+  const quiet = await proveChainFlush('quiet', () => {});
+  assert.equal(quiet, undefined);
+  const thrown = await proveChainFlush('threw', () => {
+    throw new Error('agent chain failed');
+  });
+  assert.ok(thrown instanceof Error);
+  assert.equal(thrown.message, 'agent chain failed');
 });

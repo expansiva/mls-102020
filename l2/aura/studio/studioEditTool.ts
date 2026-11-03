@@ -178,12 +178,14 @@ export interface IAutoSavePanelState {
   lastSentAt: number | null;
   pending: number;
   error: string | null;
+  /** An agent chain is open. The send waits until `running` returns to 0. */
+  agentWorking: boolean;
 }
 
 let createAutoSave: () => IDraftAutoSave = () => new DraftAutoSave();
 let autoSave: IDraftAutoSave | undefined;
 
-let panelState: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null };
+let panelState: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null, agentWorking: false };
 const panelListeners = new Set<(state: IAutoSavePanelState) => void>();
 
 function publishPanel(next: IAutoSavePanelState): void {
@@ -345,8 +347,25 @@ function storFileFrom(ref: {
   return file ?? undefined;
 }
 
+/** `collabAgentChain` detail. `null` when the event is not that shape; the cause is logged. */
+function agentChainRunning(ev: Event): number | null {
+  if (!(ev instanceof CustomEvent)) {
+    console.error('[studio] collabAgentChain is not a CustomEvent');
+    return null;
+  }
+  const running = (ev.detail as { running?: unknown } | null)?.running;
+  if (typeof running !== 'number' || !Number.isFinite(running) || running < 0) {
+    console.error('[studio] collabAgentChain has no running count', ev.detail);
+    return null;
+  }
+  return running;
+}
+
 class DraftAutoSave implements IDraftAutoSave {
   private listening = false;
+  private chainListening = false;
+  /** Open agent chains. Above 0, notifies stay pending and nothing is sent. */
+  private agentRunning = 0;
   private readonly sharedEdits: ISharedEditSession = {
     refreshed: new Set<string>(),
     others: [],
@@ -355,7 +374,7 @@ class DraftAutoSave implements IDraftAutoSave {
   private readonly saver = createAutoSaver<mls.stor.IFileInfo>({
     debounceMs: AUTO_SAVE_MS,
     now: () => Date.now(),
-    hasDraft: () => this.listening && studioDraftOn(),
+    hasDraft: () => this.listening && studioDraftOn() && this.agentRunning === 0,
     onError: (reason) => {
       const project = siteProject();
       publishPanel({
@@ -363,6 +382,7 @@ class DraftAutoSave implements IDraftAutoSave {
         lastSentAt: panelState.lastSentAt,
         pending: project === null ? panelState.pending : pendingNow(project).length,
         error: reason instanceof Error ? reason.message : String(reason),
+        agentWorking: this.agentRunning > 0,
       });
     },
     send: async (files) => {
@@ -379,6 +399,7 @@ class DraftAutoSave implements IDraftAutoSave {
         lastSentAt: Date.now(),
         pending: pendingNow(project).length,
         error: null,
+        agentWorking: this.agentRunning > 0,
       });
     },
   });
@@ -390,6 +411,7 @@ class DraftAutoSave implements IDraftAutoSave {
     mls.events.addListener(3, 'FileAction', this.onFileAction);
     mls.events.addListener(2, 'styleChanged' as mls.events.TypeEvent, this.onStyleChanged);
     this.listening = true;
+    this.listenForAgentChain();
     const project = siteProject();
     const pending = project === null ? [] : pendingNow(project);
     publishPanel({
@@ -397,6 +419,7 @@ class DraftAutoSave implements IDraftAutoSave {
       lastSentAt: panelState.lastSentAt,
       pending: pending.length,
       error: panelState.error,
+      agentWorking: this.agentRunning > 0,
     });
     // Files already dirty when Studio (or the active draft) comes on never fire a new event.
     for (const file of pending) this.saver.notify(file);
@@ -426,12 +449,84 @@ class DraftAutoSave implements IDraftAutoSave {
     mls.events.removeEventListener([1, 2, 3], ['FileAction'], this.onFileAction);
     mls.events.removeEventListener([2], ['styleChanged' as mls.events.TypeEvent], this.onStyleChanged);
     this.listening = false;
+    this.stopListeningForAgentChain();
     publishPanel({
       on: false,
       lastSentAt: panelState.lastSentAt,
       pending: panelState.pending,
       error: panelState.error,
+      agentWorking: this.agentRunning > 0,
     });
+  }
+
+  private listenForAgentChain(): void {
+    const target = (globalThis as { window?: EventTarget }).window;
+    if (!target || typeof target.addEventListener !== 'function') {
+      console.error('[studio] collabAgentChain: window.addEventListener is missing');
+      return;
+    }
+    target.addEventListener('collabAgentChain', this.onAgentChain);
+    this.chainListening = true;
+  }
+
+  private stopListeningForAgentChain(): void {
+    if (!this.chainListening) return;
+    const target = (globalThis as { window?: EventTarget }).window;
+    if (!target || typeof target.removeEventListener !== 'function') {
+      console.error('[studio] collabAgentChain: window.removeEventListener is missing');
+      return;
+    }
+    target.removeEventListener('collabAgentChain', this.onAgentChain);
+    this.chainListening = false;
+  }
+
+  private readonly onAgentChain = (ev: Event): void => {
+    const running = agentChainRunning(ev);
+    if (running === null) return;
+    const was = this.agentRunning;
+    this.agentRunning = running;
+    if (running > 0) {
+      this.holdForAgent();
+      return;
+    }
+    if (was > 0) this.releaseAfterAgent();
+  };
+
+  /** Chain is open. File notices still update the pending count; the saver does not send. */
+  private holdForAgent(): void {
+    const project = siteProject();
+    publishPanel({
+      on: this.listening,
+      lastSentAt: panelState.lastSentAt,
+      pending: project === null ? panelState.pending : pendingNow(project).length,
+      error: panelState.error,
+      agentWorking: true,
+    });
+  }
+
+  /** Chain closed (success, error, or cancel). One notify of everything still pending. */
+  private releaseAfterAgent(): void {
+    const project = siteProject();
+    if (project === null) {
+      console.error('[studio] auto-save has no site project');
+      publishPanel({
+        on: this.listening,
+        lastSentAt: panelState.lastSentAt,
+        pending: panelState.pending,
+        error: panelState.error,
+        agentWorking: false,
+      });
+      return;
+    }
+    const pending = pendingNow(project);
+    publishPanel({
+      on: this.listening,
+      lastSentAt: panelState.lastSentAt,
+      pending: pending.length,
+      error: panelState.error,
+      agentWorking: false,
+    });
+    for (const file of pending) this.saver.notify(file);
   }
 
   private readonly onFileAction = (ev: mls.events.IEvent): void => {
@@ -487,6 +582,7 @@ class DraftAutoSave implements IDraftAutoSave {
       lastSentAt: panelState.lastSentAt,
       pending: pendingNow(project).length,
       error: panelState.error,
+      agentWorking: this.agentRunning > 0,
     });
     if (pendingFiles([file], project).length === 1) this.saver.notify(file);
   }

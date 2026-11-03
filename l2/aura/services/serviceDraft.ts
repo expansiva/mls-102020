@@ -84,6 +84,7 @@ const message_en = {
     autoSaveWaiting: 'Auto-save: on · no send yet · {pending} pending',
     autoSaveOff: 'Auto-save: off',
     autoSaveFailed: 'not saved: {reason}',
+    autoSaveAgent: 'Agent working: the send waits until the end',
     syncPublished: 'Bring in published changes',
     syncConflict: 'Conflicts with the published version in: {files}. Nothing was changed.',
 };
@@ -143,6 +144,7 @@ const messages: Record<string, MessageType> = {
         autoSaveWaiting: 'Auto-save: ligado · ainda sem envio · {pending} pendentes',
         autoSaveOff: 'Auto-save: desligado',
         autoSaveFailed: 'não salvo: {reason}',
+        autoSaveAgent: 'Agente trabalhando: o envio fica para o fim',
         syncPublished: 'Trazer o publicado',
         syncConflict: 'Conflito com o publicado em: {files}. Nada foi alterado.',
     },
@@ -199,6 +201,7 @@ const messages: Record<string, MessageType> = {
         autoSaveWaiting: 'Auto-save: activo · todavía sin envío · {pending} pendientes',
         autoSaveOff: 'Auto-save: apagado',
         autoSaveFailed: 'no guardado: {reason}',
+        autoSaveAgent: 'Agente trabajando: el envío queda para el final',
         syncPublished: 'Traer lo publicado',
         syncConflict: 'Conflicto con lo publicado en: {files}. No se cambió nada.',
     },
@@ -331,7 +334,7 @@ export class ServiceDraft102020 extends ServiceBase {
     private _pingTimer = 0;
     private _autoSaveTimer = 0;
     private _unsubAutoSave: (() => void) | undefined;
-    @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null };
+    @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null, agentWorking: false };
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -415,8 +418,9 @@ export class ServiceDraft102020 extends ServiceBase {
 
     private _autoSaveLine(): string {
         const state = this._autoSave;
-        if (state.error) return this.msg.autoSaveFailed.replace('{reason}', state.error);
         if (!state.on) return this.msg.autoSaveOff;
+        if (state.agentWorking) return this.msg.autoSaveAgent;
+        if (state.error) return this.msg.autoSaveFailed.replace('{reason}', state.error);
         if (state.lastSentAt === null) {
             return this.msg.autoSaveWaiting.replace('{pending}', String(state.pending));
         }

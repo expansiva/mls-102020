@@ -159,13 +159,18 @@ test('serviceDraft.less stays within 15 lines', () => {
 
 test('the browser block shows auto-save on, off and the failure', () => {
     const line = methodOf(DRAFT, 'private _autoSaveLine()');
-    const errorAt = line.indexOf('state.error');
     const offAt = line.indexOf('!state.on');
+    const agentAt = line.indexOf('state.agentWorking');
+    const errorAt = line.indexOf('state.error');
     const onAt = line.indexOf('autoSaveOn');
-    assert.ok(errorAt !== -1 && offAt > errorAt && onAt > offAt, 'failure, then off, then the last-send line');
+    assert.ok(offAt !== -1 && agentAt > offAt && errorAt > agentAt && onAt > errorAt, 'off, then the agent hold, then failure, then the last-send line');
+    assert.match(line, /autoSaveAgent/);
     assert.match(line, /autoSaveWaiting/);
     assert.match(line, /autoSaveFailed/);
     assert.match(line, /autoSaveOff/);
+    assert.match(DRAFT, /Agent working: the send waits until the end/);
+    assert.match(DRAFT, /Agente trabalhando: o envio fica para o fim/);
+    assert.match(DRAFT, /Agente trabajando: el envío queda para el final/);
     assert.match(DRAFT, /Auto-save: ligado · último envio há \{ago\}s · \{pending\} pendentes/);
     assert.match(DRAFT, /não salvo: \{reason\}/);
     const local = methodOf(DRAFT, 'private _renderLocal');
