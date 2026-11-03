@@ -30,6 +30,7 @@ import {
   readPoolEffort,
   readProductSnapshot,
   recordPhase,
+  refusedPages,
   releasePages,
   screenCostLines,
   reviewDefsRun,
@@ -144,6 +145,7 @@ async function beforePromptStep(
   const materialize = getAllSteps(context.task?.iaCompressed?.nextSteps).find(item => planIdOf(item) === NR_MATERIALIZE_PLAN);
   const outcome = materializerOutcome(materialize);
   const completed = outcome.status === 'completed';
+  const refused = refusedPages(materialize);
   const prompt = step.prompt || '';
   const degrees = degreesOf(prompt);
   const body = closeNotice(
@@ -152,8 +154,10 @@ async function beforePromptStep(
     commandLines(prompt),
     completed,
     screenCostLines(context.task?.iaCompressed?.nextSteps, degrees),
+    refused,
   );
-  const notice = statusText(body, completed ? 'done' : 'failed');
+  const kind: NrStatusPrefix = completed ? (refused.length > 0 ? 'refused' : 'done') : 'failed';
+  const notice = statusText(body, kind);
   return [updateStatus(context, parentStep, step, hookSequential, outcome.status, notice)];
 }
 
