@@ -285,6 +285,11 @@ aura--studio--page-class-picker-102020 {
   .acp-role-value { flex: 0 0 auto; font-family: monospace; color: var(--pcp-muted); }
   .acp-head-row { display: flex; align-items: baseline; gap: 6px; }
   .acp-head-row .acp-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  // The !important of a row, written out in mono like the classes: quiet when off, blue when on.
+  .acp-important { flex: 0 0 auto; height: 18px; margin-right: 6px; padding: 0 5px; border: 1px solid var(--pcp-border-strong); border-radius: 4px; background: transparent; cursor: pointer; font-family: monospace; font-size: 11px; line-height: 16px; color: var(--pcp-muted); }
+  .acp-important:hover:not([disabled]) { color: var(--pcp-strong); border-color: var(--pcp-muted); }
+  .acp-important.acp-active { color: var(--pcp-link); background: var(--pcp-accent-soft); border-color: var(--pcp-accent); }
+  .acp-important[disabled] { opacity: 0.3; cursor: not-allowed; }
   .acp-remove {
     flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
     color: var(--pcp-muted); font-size: 13px; line-height: 1; padding: 0 2px;

@@ -170,6 +170,14 @@ test('the Animations tab is categories, not screens, and acts on the chosen part
   assert.ok(editor.includes('const literal = sideOf(state, channel, slot)?.literal'));
 });
 
+test('what the "+" adds goes through classToAdd, so a data-class gets it already important', () => {
+  const base = code('classPickerBase.ts');
+  const seed = base.slice(base.indexOf('protected addSeed('), base.indexOf('protected addSeed(') + 400);
+  assert.ok(seed.includes('addUtility(side.literal, classToAdd(cls, side.channel))'), 'the write');
+  const chip = base.slice(base.indexOf('protected addChip('), base.indexOf('protected addSeed('));
+  assert.ok(chip.includes('classToAdd(seed, side.channel)'), 'the chip previews and checks what it will write');
+});
+
 /**
  * The Properties tab (TASK-102020-picker-molecule-properties) is the same block in both panels: the
  * rows come decided by studioMoleculeProps, and each panel only renders them and emits.

@@ -1,6 +1,8 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioClassEdit.test.ts" enhancement="_blank" />
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
   ANIMATION_GROUPS,
@@ -8,6 +10,8 @@ import {
   INSPECTOR_GROUPS,
   inspectorGroupOf,
   inspectorProperties,
+  toggleImportant,
+  classToAdd,
   animationTokens,
   classChannelOf,
   findAttributeValue,
@@ -3449,4 +3453,73 @@ test('motion lives in one tab: the Animations tab owns it, the Style tab does no
   const children = animationTokens(cascade);
   assert.ok(children.owned.some((cls) => cls.startsWith('[&>')), cascade);
   assert.deepEqual(children.unknown, [], cascade);
+});
+
+// --- !important (TASK-102020-picker-inspector, phase 4) ---
+
+test('a class marked !important is read as the plain class, with the mark kept apart', () => {
+  const [suffix] = splitUtilities('md:hover:p-4!');
+  assert.deepEqual(
+    { base: suffix.base, family: suffix.family, value: suffix.value, variants: suffix.variants, important: suffix.important, prefix: suffix.importantPrefix },
+    { base: 'p-4', family: 'p', value: '4', variants: ['md', 'hover'], important: true, prefix: false },
+  );
+  const [legacy] = splitUtilities('md:!p-4');
+  assert.deepEqual({ base: legacy.base, important: legacy.important, prefix: legacy.importantPrefix }, { base: 'p-4', important: true, prefix: true });
+  const [color] = splitUtilities('text-[var(--status-warning-text,#e8c352)]!');
+  assert.equal(color.arbitrary, true);
+  assert.equal(color.important, true);
+  // A plain class has no mark; a lone "!" is not a class with a mark.
+  assert.equal(splitUtilities('p-4')[0].important, undefined);
+  assert.equal(splitUtilities('!')[0].important, undefined);
+  // The subject is the plain class's.
+  assert.equal(inspectorGroupOf(suffix), 'spacing');
+  assert.equal(inspectorGroupOf(color), 'color');
+});
+
+test('changing the value keeps the !, in the form it was written', () => {
+  const options = utilityOptions(splitUtilities('p-4!')[0]);
+  assert.ok(options.options.includes('p-4!'), 'the current one is still current');
+  assert.ok(options.options.every((option) => option.endsWith('!')), options.options.join(' '));
+  assert.equal(composeUtility(splitUtilities('md:!p-4')[0], '6'), 'md:!p-6');
+  const roles = utilityOptions(splitUtilities('text-[var(--text-strong,#111)]!')[0], 2, ['--text-strong', '--text-muted']);
+  assert.ok(roles.options.length > 0 && roles.options.every((option) => option.endsWith('!')), roles.options.join(' '));
+});
+
+test('the ! is turned on and off on one class, every other character kept', () => {
+  const literal = 'flex  md:p-4 text-sm';
+  const padding = splitUtilities(literal)[1];
+  const on = toggleImportant(literal, padding);
+  assert.equal(on, 'flex  md:p-4! text-sm');
+  assert.equal(toggleImportant(on, splitUtilities(on)[1]), literal);
+  // Off drops the Tailwind 3 form too.
+  assert.equal(toggleImportant('!p-4', splitUtilities('!p-4')[0]), 'p-4');
+});
+
+test('the Tailwind of the lockfile makes a trailing ! an !important rule', async () => {
+  const { compile } = await import('tailwindcss');
+  const here = fileURLToPath(new URL('.', import.meta.url));
+  const root = path.resolve(here, '../../../..');
+  const twDir = path.join(root, 'node_modules/tailwindcss');
+  const loadStylesheet = async (id: string, base: string) => {
+    const file = id === 'tailwindcss'
+      ? path.join(twDir, 'index.css')
+      : id.startsWith('tailwindcss/') ? path.join(twDir, id.slice('tailwindcss/'.length)) : path.resolve(base, id);
+    return { path: file, base: path.dirname(file), content: readFileSync(file, 'utf8') };
+  };
+  const compiler = await compile('@import "tailwindcss";', { base: root, loadStylesheet });
+  const css = compiler.build(['text-[var(--status-warning-text,#e8c352)]!', 'md:p-4!']);
+  assert.ok(css.includes('color: var(--status-warning-text,#e8c352) !important;'), 'the colour rule is !important');
+  assert.ok(css.includes('padding: calc(var(--spacing) * 4) !important;'), 'and so is the padding, under its variant');
+});
+
+test("a class ADDED to a molecule's data-class goes in already important; into class, as written", () => {
+  // Decided with the user (2026-11-03): in data-class the new class shares the element with the variant.
+  assert.equal(classToAdd('p-2', 'data-class'), 'p-2!');
+  assert.equal(classToAdd('md:w-full', 'data-class'), 'md:w-full!');
+  assert.equal(classToAdd('text-[var(--text-strong,#111)]', 'data-class'), 'text-[var(--text-strong,#111)]!');
+  // Never twice, in either form.
+  assert.equal(classToAdd('p-2!', 'data-class'), 'p-2!');
+  assert.equal(classToAdd('!p-2', 'data-class'), '!p-2');
+  // A core element, or a molecule's tag: as written.
+  assert.equal(classToAdd('p-2', 'class'), 'p-2');
 });

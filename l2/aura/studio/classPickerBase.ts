@@ -65,6 +65,8 @@ import {
   removeCascade,
   removeUtility,
   replaceUtility,
+  toggleImportant,
+  classToAdd,
   typedValueSpec,
   roleLabel,
   roleVar,
@@ -1300,6 +1302,7 @@ export abstract class ClassPickerBase extends StateLitElement {
 
     const head = html`<span class="acp-head-row">
       <span class="acp-label" title=${token.raw}>${text}</span>
+      ${this.importantButton(token, side)}
       ${this.removeButton(token, text, side)}
     </span>`;
 
@@ -1334,6 +1337,23 @@ export abstract class ClassPickerBase extends StateLitElement {
    * out, and the panel comes back offering the "+". The one exception is an element the editor could
    * only find by COUNTING its literal — there the literal is the address (see canRemoveLast).
    */
+  /**
+   * The `!important` of a row (TASK-102020-picker-inspector, phase 4): lit (blue, like a selection) when the
+   * class is important, quiet when it is not, and a click turns it on or off. Written out in mono like the
+   * classes, on purpose: a lone `!` in a box read as a warning (the user's smoke, 2026-11-03). The reason to reach for it is in the tooltip — a
+   * molecule's `data-class` that loses to the variant's own class wins with it.
+   */
+  protected importantButton(token: IUtilityToken, side: IPickerSide) {
+    const on = Boolean(token.important);
+    const next = toggleImportant(side.literal, token);
+    return html`<button type="button" class="acp-important ${on ? 'acp-active' : ''}" ?disabled=${!side.editable}
+      title=${t(on ? 'panel.importantOn' : 'panel.importantOff')} aria-pressed=${on ? 'true' : 'false'}
+      @mouseenter=${() => this.previewLiteral(next, side)}
+      @mouseleave=${() => this.previewLiteral(null)}
+      @click=${() => this.applyLiteral(next, t(on ? 'status.importantRemoved' : 'status.importantAdded', { cls: token.base }), side)}
+    >!important</button>`;
+  }
+
   protected removeButton(token: IUtilityToken, name: string, side: IPickerSide) {
     const editable = side.editable;
     const stranded = splitUtilities(side.literal).length <= 1 && !side.canRemoveLast;
@@ -1378,14 +1398,16 @@ export abstract class ClassPickerBase extends StateLitElement {
   protected addChip(entry: IAddableProperty, side: IPickerSide) {
     const editable = side.editable;
     const seed = entry.seed;
+    // What the click writes: in a molecule's data-class, the seed already `!important` (classToAdd).
+    const written = seed ? classToAdd(seed, side.channel) : null;
     // Same rule as every other chip: a class with no rule in the built css is marked, never silent.
-    const jitOnly = Boolean(seed) && !this.builtClasses.has(seed ?? '');
-    const title = seed
-      ? (jitOnly ? `${seed} — ${t('panel.publishNote')}` : seed)
+    const jitOnly = Boolean(written) && !this.builtClasses.has(written ?? '');
+    const title = written
+      ? (jitOnly ? `${written} — ${t('panel.publishNote')}` : written)
       : t('panel.addColor');
 
     return html`<button type="button" class="acp-chip ${jitOnly ? 'acp-jit' : ''}" ?disabled=${!editable} title=${title}
-      @mouseenter=${() => { if (seed) this.previewLiteral(addUtility(side.literal, seed), side); }}
+      @mouseenter=${() => { if (written) this.previewLiteral(addUtility(side.literal, written), side); }}
       @mouseleave=${() => this.previewLiteral(null)}
       @click=${() => {
         if (seed) this.addSeed(entry.property, seed, side);
@@ -1396,7 +1418,8 @@ export abstract class ClassPickerBase extends StateLitElement {
 
   protected addSeed(property: string, cls: string, side: IPickerSide): void {
     this.addColor = null;
-    this.applyLiteral(addUtility(side.literal, cls), t('status.propertyAdded', { property: t(property) }), side);
+    // Into a molecule's data-class the new class goes in already `!important` (classToAdd).
+    this.applyLiteral(addUtility(side.literal, classToAdd(cls, side.channel)), t('status.propertyAdded', { property: t(property) }), side);
   }
 
   /**

@@ -37,6 +37,14 @@ export interface IUtilityToken {
   arbitrary: boolean;
   /** `[animation-duration:2s]` — an arbitrary PROPERTY: the css property it sets. */
   property?: string;
+  /**
+   * `p-4!` (Tailwind 4) or `!p-4` (the Tailwind 3 prefix, still accepted): the class is `!important`
+   * (TASK-102020-picker-inspector, phase 4). The `!` is NOT part of `base`, so the family, the value and
+   * the subject are read as for the plain class. Optional: tokens built by hand are not important.
+   */
+  important?: boolean;
+  /** The `!` was written in front — kept that way when the value changes. */
+  importantPrefix?: boolean;
   /** Position among the tokens of the literal (whitespace-separated), 0-based. */
   index: number;
   /** Offset of `raw` inside the literal — how replaceUtility keeps the original whitespace. */
@@ -155,7 +163,17 @@ function wholeClassFamily(base: string): IWholeClassFamily | undefined {
 /** Rebuilds a whole class (no family/value split) keeping the variants. */
 function composeWhole(token: IUtilityToken, cls: string): string {
   const prefix = token.variants.length ? `${token.variants.join(':')}:` : '';
-  return `${prefix}${cls}`;
+  return withImportantMark(token, prefix, cls);
+}
+
+/**
+ * Variants + base, with the token's `!` put back where it was written: at the end (Tailwind 4) or in
+ * front of the base (Tailwind 3). Every class this module rebuilds from a token goes through here, so a
+ * new value never drops the `!`.
+ */
+function withImportantMark(token: IUtilityToken, prefix: string, body: string): string {
+  if (!token.important) return `${prefix}${body}`;
+  return token.importantPrefix ? `${prefix}!${body}` : `${prefix}${body}!`;
 }
 
 /**
@@ -255,7 +273,18 @@ export function splitUtilities(literal: string): IUtilityToken[] {
     // (`hover:[animation-play-state:paused]`), and cutting there turned the class into the nonsense
     // variant `[animation-play-state` with the base `paused]`.
     const parts = splitOutsideBrackets(raw);
-    const base = parts.pop() ?? '';
+    let base = parts.pop() ?? '';
+    // The important mark sits on the base, after the variants: `md:p-4!`, or `md:!p-4` in Tailwind 3.
+    let important = false;
+    let importantPrefix = false;
+    if (base.length > 1 && base.endsWith('!')) {
+      important = true;
+      base = base.slice(0, -1);
+    } else if (base.length > 1 && base.startsWith('!')) {
+      important = true;
+      importantPrefix = true;
+      base = base.slice(1);
+    }
     const variants = parts;
     const negative = base.startsWith('-');
     const bare = negative ? base.slice(1) : base;
@@ -287,6 +316,7 @@ export function splitUtilities(literal: string): IUtilityToken[] {
       value,
       arbitrary: !property && value.startsWith('['),
       property,
+      ...(important ? { important, importantPrefix } : {}),
       index,
       offset: match.index ?? 0,
     });
@@ -315,10 +345,36 @@ function splitOutsideBrackets(raw: string): string[] {
 export function composeUtility(token: IUtilityToken, value: string): string {
   const prefix = token.variants.length ? `${token.variants.join(':')}:` : '';
   // An arbitrary property has its own shape: `[animation-duration:2s]`, not `family-value`.
-  if (token.property) return `${prefix}[${token.property}:${value}]`;
+  if (token.property) return withImportantMark(token, prefix, `[${token.property}:${value}]`);
   const sign = token.negative ? '-' : '';
   const suffix = value === '' ? '' : `-${value}`;
-  return `${prefix}${sign}${token.family}${suffix}`;
+  return withImportantMark(token, prefix, `${sign}${token.family}${suffix}`);
+}
+
+/**
+ * The class the "+" writes, for the channel it goes into (decided with the user, 2026-11-03).
+ *
+ * Into a molecule's `data-class` — its inside or a slot — a NEW class goes in already `!important`: it
+ * shares the element with the variant's own classes and, without the mark, the order of the css decides
+ * who wins. Into a plain `class` (a core element, a molecule's tag) it goes in as written. Only adding
+ * follows this: changing the value of a class that is already there keeps it as it was.
+ */
+export function classToAdd(cls: string, channel: ClassChannel): string {
+  if (channel !== 'data-class') return cls;
+  const [token] = splitUtilities(cls);
+  if (!token || token.important) return cls;
+  return `${cls}!`;
+}
+
+/**
+ * Turns a class `!important` or back (TASK-102020-picker-inspector, phase 4) — only that class, every
+ * other character of the literal kept. Turning it on writes the Tailwind 4 form (`p-4!`); turning it off
+ * drops either form.
+ */
+export function toggleImportant(literal: string, token: IUtilityToken): string {
+  const prefix = token.variants.length ? `${token.variants.join(':')}:` : '';
+  const next = token.important ? `${prefix}${token.base}` : `${prefix}${token.base}!`;
+  return replaceUtility(literal, token.raw, next, token.index);
 }
 
 export type UtilityOptionKind = 'scale' | 'color' | 'role' | 'list' | 'none';
