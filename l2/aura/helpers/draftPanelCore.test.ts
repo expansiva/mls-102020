@@ -8,7 +8,9 @@ import {
   collectEditedFiles,
   COLLAB_DRAFT_SAVED,
   discard,
+  discardModule,
   loadPanel,
+  modulePendingCount,
   localEdits,
   actionCounts,
   buildDraftTree,
@@ -813,6 +815,148 @@ test('storeCapturedDraftText writes the captured string and reports a failed wri
     console.error = previousError;
     host.mls.stor.localStor = previous;
   }
+});
+
+function moduleConfig(ordersNav: string, extraModule: boolean): string {
+  const modules: unknown[] = [
+    {
+      moduleId: 'orders',
+      navigation: [{ id: 'orders', label: ordersNav }],
+      shellMode: 'spa',
+    },
+    {
+      moduleId: 'billing',
+      navigation: [{ id: 'billing', label: 'Billing' }],
+    },
+  ];
+  if (!extraModule) modules.splice(1, 1);
+  return JSON.stringify({
+    studio: { defaultDraft: 'team-102047' },
+    projects: {
+      '102047': {
+        root: '../mls-102047',
+        modules,
+        persistenceModules: [{ moduleId: 'orders', tableDefsDir: './keep' }],
+      },
+      '102099': { modules: [{ moduleId: 'other', navigation: [{ id: 'other' }] }] },
+    },
+  });
+}
+
+test('discardModule sends the four paths, swaps only that module block, and undoes its local copies', async () => {
+  const current = moduleConfig('Draft orders', true);
+  const published = moduleConfig('Published orders', true);
+  const publishedParsed = JSON.parse(published) as {
+    projects: { '102047': { modules: { moduleId: string; navigation: { label: string }[] }[] } };
+  };
+  publishedParsed.projects['102047'].modules[0]?.navigation.push({ id: 'extra', label: 'Published extra' });
+  const publishedJson = JSON.stringify(publishedParsed);
+
+  const oldNew: IPanelStorFile = {
+    project: 102047, status: 'new', shortName: 'agent', level: 1, folder: 'orders_old', extension: '.ts',
+  };
+  const localChanged: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'page', level: 2, folder: 'orders/pipeline', extension: '.ts',
+  };
+  const otherModule: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'bill', level: 2, folder: 'billing', extension: '.ts',
+  };
+  const clean: IPanelStorFile = {
+    project: 102047, status: 'nochange', shortName: 'kept', level: 2, folder: 'orders', extension: '.ts',
+  };
+  const storFiles: Record<string, IPanelStorFile> = {
+    old: oldNew,
+    local: localChanged,
+    other: otherModule,
+    clean,
+  };
+  const calls: string[] = [];
+  let saved = '';
+  await discardModule({
+    fetchImpl: async (_input, init) => {
+      calls.push('restore');
+      const body = JSON.parse(init.body) as { action: string; project: number; draft: string; ref: string; paths: string[] };
+      assert.equal(body.action, 'draftRestorePaths');
+      assert.equal(body.project, 102047);
+      assert.equal(body.draft, 'team-102047');
+      assert.equal(body.ref, 'main');
+      assert.deepEqual(body.paths, ['l1/orders', 'l1/orders_old', 'l2/orders', 'l4/orders']);
+      return jsonResponse({ statusCode: 200, status: 'restored', paths: body.paths, head: 'abc' });
+    },
+    saveL5File: async (project, shortName, content, comment) => {
+      calls.push('save');
+      assert.equal(project, 102047);
+      assert.equal(shortName, 'config');
+      assert.equal(comment, 'discard module orders');
+      saved = content;
+      return true;
+    },
+    undoFile: async (file) => {
+      calls.push(`undo:${file.level}/${file.folder}/${file.shortName}`);
+      if (file.status === 'new') delete storFiles.old;
+      file.inLocalStorage = false;
+      file.status = 'nochange';
+    },
+    storFiles,
+    reloadLive: async () => { calls.push('reload'); },
+  }, 102047, 'team-102047', 'orders', current, publishedJson);
+
+  assert.deepEqual(calls, [
+    'restore',
+    'save',
+    'undo:1/orders_old/agent',
+    'undo:2/orders/pipeline/page',
+    'reload',
+  ]);
+  assert.equal(storFiles.old, undefined);
+  assert.equal(otherModule.inLocalStorage, true);
+  assert.equal(clean.status, 'nochange');
+  const written = JSON.parse(saved) as {
+    studio: { defaultDraft: string };
+    projects: Record<string, {
+      root?: string;
+      persistenceModules?: { moduleId: string }[];
+      modules: { moduleId: string; navigation: unknown; shellMode?: string }[];
+    }>;
+  };
+  const project = written.projects['102047'];
+  assert.ok(project);
+  assert.equal(written.studio.defaultDraft, 'team-102047');
+  assert.equal(project.root, '../mls-102047');
+  assert.deepEqual(project.persistenceModules, [{ moduleId: 'orders', tableDefsDir: './keep' }]);
+  assert.deepEqual(project.modules[0], {
+    moduleId: 'orders',
+    navigation: [{ id: 'orders', label: 'Published orders' }, { id: 'extra', label: 'Published extra' }],
+    shellMode: 'spa',
+  });
+  assert.deepEqual(project.modules[1], {
+    moduleId: 'billing',
+    navigation: [{ id: 'billing', label: 'Billing' }],
+  });
+  assert.deepEqual(written.projects['102099'], JSON.parse(current).projects['102099']);
+  assert.equal(modulePendingCount([
+    { path: 'l2/orders/pipeline/a.ts', inBrowser: true, inDraft: false, hasError: false },
+    { path: 'l1/orders_old/agent.ts', inBrowser: true, inDraft: true, hasError: false },
+    { path: 'l2/billing/bill.ts', inBrowser: false, inDraft: true, hasError: false },
+    { path: 'l2/ordersExtra/no.ts', inBrowser: true, inDraft: false, hasError: false },
+  ], 'orders'), 2);
+});
+
+test('discardModule shows the server reason and does not touch config or local copies', async () => {
+  const calls: string[] = [];
+  await assert.rejects(
+    () => discardModule({
+      fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+      saveL5File: async () => { calls.push('save'); return true; },
+      undoFile: async () => { calls.push('undo'); },
+      storFiles: {
+        a: { project: 102047, status: 'new', shortName: 'agent', level: 1, folder: 'orders_old', extension: '.ts' },
+      },
+      reloadLive: async () => { calls.push('reload'); },
+    }, 102047, 'user-ada_example_com', 'orders', moduleConfig('Draft', true), moduleConfig('Published', true)),
+    /draft\.not_owner/,
+  );
+  assert.deepEqual(calls, []);
 });
 
 test('1016 pipeline files open closed, one level line, and only the children of an open node', () => {

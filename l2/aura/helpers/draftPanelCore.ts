@@ -103,6 +103,8 @@ export interface IExecFailure {
   code: string;
   statusCode: number;
   files?: string[];
+  /** Server reason, such as `draft.not_owner`. The panel translates the known ones. */
+  msg?: string;
 }
 
 export interface IExecSuccess {
@@ -239,6 +241,7 @@ export async function callExec(
     const failure: IExecFailure = { ok: false, code: parsed.code, statusCode };
     const files = stringList(parsed.files);
     if (files !== undefined) failure.files = files;
+    if (typeof parsed.msg === 'string') failure.msg = parsed.msg;
     return failure;
   }
 
@@ -404,6 +407,209 @@ export async function discard(
     }
   }
   effects.reload();
+}
+
+/** One path segment. A slash or `..` would restore something outside the module. */
+const MODULE_SEGMENT = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * Directories the draft restore puts back to `main`.
+ * The route rejects a trailing slash (`draft.path_invalid`), so these have none.
+ */
+export function moduleRestorePaths(moduleName: string): string[] {
+  return [
+    `l1/${moduleName}`,
+    `l1/${moduleName}_old`,
+    `l2/${moduleName}`,
+    `l4/${moduleName}`,
+  ];
+}
+
+/** A file of the module, including the `_old` directory. A longer name (`ordersExtra`) does not match. */
+export function pathInModule(filePath: string, moduleName: string): boolean {
+  if (!MODULE_SEGMENT.test(moduleName)) return false;
+  return moduleRestorePaths(moduleName).some((prefix) => filePath === prefix || filePath.startsWith(`${prefix}/`));
+}
+
+/** Pending files of one module, across l1, l1 `_old`, l2 and l4. */
+export function modulePendingCount(files: readonly IPendingFile[], moduleName: string): number {
+  let count = 0;
+  for (const file of files) {
+    if (pathInModule(file.path, moduleName)) count += 1;
+  }
+  return count;
+}
+
+export interface IDiscardModuleEffects {
+  fetchImpl: FetchImpl;
+  saveL5File: SaveL5File;
+  /** Same undo as one file: `undoFile` in the stor lib, which drops a `new` file. */
+  undoFile: (file: IPanelStorFile) => Promise<void>;
+  storFiles: Readonly<Record<string, IPanelStorFile | null | undefined>>;
+  /** Reread the project and swap the visible screen. */
+  reloadLive: () => Promise<void>;
+}
+
+function parseConfigObject(text: string, which: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return fail(`l5/config.json (${which}) is not JSON: ${message}`);
+  }
+  if (!isRecord(parsed)) return fail(`l5/config.json (${which}) is not an object`);
+  return parsed;
+}
+
+function projectNode(config: Record<string, unknown>, project: number, required: boolean): Record<string, unknown> | null {
+  const projects = config.projects;
+  if (projects === undefined && !required) return null;
+  if (!isRecord(projects)) return fail('l5/config.json projects is not an object');
+  const node = projects[String(project)];
+  if (node === undefined) {
+    if (!required) return null;
+    return fail(`l5/config.json has no project ${project}`);
+  }
+  if (!isRecord(node)) return fail(`l5/config.json project ${project} is not an object`);
+  return node;
+}
+
+function moduleList(node: Record<string, unknown>): unknown[] {
+  const modules = node.modules;
+  if (modules === undefined) return [];
+  if (!Array.isArray(modules)) return fail('l5/config.json modules is not an array');
+  return modules;
+}
+
+function moduleIdOf(block: unknown): string | null {
+  if (!isRecord(block)) return null;
+  return typeof block.moduleId === 'string' ? block.moduleId : null;
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/** Replaces one module object. Its `navigation` travels inside the object. Other modules stay. */
+function swapModule(currentModules: readonly unknown[], publishedModules: readonly unknown[], moduleName: string): unknown[] {
+  const published = publishedModules.find((block) => moduleIdOf(block) === moduleName);
+  const next: unknown[] = [];
+  let placed = false;
+  for (const block of currentModules) {
+    if (moduleIdOf(block) !== moduleName) {
+      next.push(block);
+      continue;
+    }
+    if (!placed && published !== undefined) {
+      next.push(cloneJson(published));
+      placed = true;
+    }
+  }
+  if (!placed && published !== undefined) {
+    const index = publishedModules.findIndex((block) => moduleIdOf(block) === moduleName);
+    const at = index < 0 ? next.length : Math.min(index, next.length);
+    next.splice(at, 0, cloneJson(published));
+  }
+  return next;
+}
+
+/**
+ * The current `l5/config.json` with only this module's block taken from the published text.
+ * `changed` is false when that block already matches, so the caller does not rewrite the file.
+ */
+export function replaceModuleBlock(
+  currentJson: string,
+  publishedJson: string,
+  project: number,
+  moduleName: string,
+): { content: string; changed: boolean } {
+  if (!MODULE_SEGMENT.test(moduleName)) return fail(`module name is invalid: ${moduleName}`);
+  const current = parseConfigObject(currentJson, 'current');
+  const published = parseConfigObject(publishedJson, 'published');
+  const currentProject = projectNode(current, project, true);
+  if (!currentProject) return fail(`l5/config.json has no project ${project}`);
+  const publishedProject = projectNode(published, project, false);
+  const currentModules = moduleList(currentProject);
+  const publishedModules = publishedProject ? moduleList(publishedProject) : [];
+  const next = swapModule(currentModules, publishedModules, moduleName);
+  if (JSON.stringify(next) === JSON.stringify(currentModules)) {
+    return { content: currentJson, changed: false };
+  }
+  currentProject.modules = next;
+  return { content: JSON.stringify(current), changed: true };
+}
+
+function isModuleLocalCopy(file: IPanelStorFile): boolean {
+  if (file.inLocalStorage) return true;
+  return file.status === 'new' || file.status === 'changed' || file.status === 'deleted' || file.status === 'renamed';
+}
+
+function moduleLocalFiles(
+  storFiles: Readonly<Record<string, IPanelStorFile | null | undefined>>,
+  project: number,
+  moduleName: string,
+): IPanelStorFile[] {
+  const found: IPanelStorFile[] = [];
+  for (const file of Object.values(storFiles)) {
+    if (!file || file.project !== project) continue;
+    if (!pathInModule(shortPathOf(file), moduleName)) continue;
+    if (!isModuleLocalCopy(file)) continue;
+    found.push(file);
+  }
+  found.sort((a, b) => shortPathOf(a).localeCompare(shortPathOf(b)));
+  return found;
+}
+
+/**
+ * Puts one module back to the published sources.
+ * The server restores the four directories. `l5/config.json` keeps every other block.
+ * Local copies of those paths, including a `new` file under `_old`, go through `undoFile`.
+ */
+export async function discardModule(
+  effects: IDiscardModuleEffects,
+  project: number,
+  slug: string,
+  moduleName: string,
+  currentJson: string,
+  publishedJson: string,
+): Promise<void> {
+  if (!MODULE_SEGMENT.test(moduleName)) return fail(`module name is invalid: ${moduleName}`);
+  const paths = moduleRestorePaths(moduleName);
+  const result = await callExec(effects.fetchImpl, 'draftRestorePaths', {
+    project,
+    draft: slug,
+    ref: 'main',
+    paths,
+  });
+  if (!result.ok) return fail(result.msg ?? result.code);
+  if (result.status !== 'restored' && result.status !== 'unchanged') {
+    return fail(result.status ?? 'draftRestorePaths failed');
+  }
+  const replaced = replaceModuleBlock(currentJson, publishedJson, project, moduleName);
+  if (replaced.changed) {
+    const saved = await effects.saveL5File(project, 'config', replaced.content, `discard module ${moduleName}`);
+    if (!saved) return fail('saveL5File refused l5/config.json');
+  }
+  const failures: string[] = [];
+  for (const file of moduleLocalFiles(effects.storFiles, project, moduleName)) {
+    try {
+      await effects.undoFile(file);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const label = shortPathOf(file);
+      console.error('[draftPanel]', `undoFile ${label}: ${message}`);
+      failures.push(`${label}: ${message}`);
+    }
+  }
+  if (failures.length > 0) return fail(failures.join('; '));
+  try {
+    await effects.reloadLive();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[draftPanel]', `reloadLive: ${message}`);
+    return fail(message);
+  }
 }
 
 /** `DRAFT_CONFLICT: <files>` — the panel turns this into `syncConflict`. */

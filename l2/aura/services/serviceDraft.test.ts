@@ -279,6 +279,43 @@ test('actions stay on top and the tree paints only open rows', () => {
     assert.match(DRAFT, /draft-actions/);
 });
 
+test('discard module confirms the count, then restores through the core and undoFile', () => {
+    const handler = methodOf(DRAFT, 'private async _onModuleDiscard');
+    const confirmAt = handler.indexOf('confirm(');
+    const publishedAt = handler.indexOf('_readPublishedConfig(project)');
+    const callAt = handler.indexOf('await discardModule(');
+    assert.ok(confirmAt !== -1 && publishedAt > confirmAt && callAt > publishedAt, 'confirm, then the published config, then the restore');
+    assert.match(handler, /confirmDiscardModule/);
+    assert.match(handler, /\{count\}/);
+    assert.match(handler, /\{module\}/);
+    assert.match(handler, /undoFile\(file as mls\.stor\.IFileInfo\)/);
+    assert.match(handler, /loadProjectDefinitions\(project\)/);
+    assert.match(handler, /_draftReason\(message\)/);
+    assert.match(handler, /_noteModuleDiscarded\(moduleName\)/);
+    assert.match(DRAFT, /moduleDiscarded: 'Discarded module \{module\}.'/)
+    assert.doesNotMatch(handler, /location\.reload/);
+    const published = methodOf(DRAFT, 'private async _readPublishedConfig');
+    assert.match(published, /getHistoryContent/);
+    assert.match(published, /'main'/);
+    assert.match(published, /console\.error\(/);
+    const reason = methodOf(DRAFT, 'private _draftReason');
+    for (const code of [
+        'draft.ref_invalid',
+        'draft.ref_not_ancestor',
+        'draft.path_invalid',
+        'draft.path_outside_layers',
+        'draft.path_local',
+        'draft.paths_required',
+        'draft.not_owner',
+        'draft.bad_slug',
+    ]) {
+        assert.match(reason, new RegExp(code.replaceAll('.', '\\.')));
+    }
+    assert.match(DRAFT, /Discard \{count\} changes in \{module\}\?/);
+    assert.match(DRAFT, /Descartar \{count\} alterações do módulo \{module\}\?/);
+    assert.match(DRAFT, /¿Descartar \{count\} cambios del módulo \{module\}\?/);
+});
+
 test('serviceDraft is on l5ServicesLeft before serviceSave', () => {
     const draftAt = PLUGIN.indexOf("widget: '_102020_/l2/aura/services/serviceDraft'");
     const saveAt = PLUGIN.indexOf("widget: '_100554_serviceSave'");

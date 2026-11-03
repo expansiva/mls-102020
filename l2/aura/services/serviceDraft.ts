@@ -3,6 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
+import { undoFile } from '/_102027_/l2/libStor.js';
 import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
 import { activeDraft, enterDraft, isVmDriver, postDraftEnter, requestModeChange, sendServiceWorkerMode } from '/_102033_/l2/cbe/studioDraft.js';
 import { loadProjectDefinitions } from '/_102033_/l2/cbe/initStudio.js';
@@ -13,8 +14,10 @@ import {
     buildDraftTree,
     collectEditedFiles,
     discard,
+    discardModule,
     loadPanel,
     localEdits,
+    modulePendingCount,
     panelModel,
     pendingFiles,
     visibleTreeRows,
@@ -83,6 +86,16 @@ const message_en = {
     withError: 'with error',
     undoLocal: 'Undo local',
     confirmUndo: 'Discard the local copy of {file}?',
+    confirmDiscardModule: 'Discard {count} changes in {module}?',
+    moduleDiscarded: 'Discarded module {module}.',
+    draftRefInvalid: 'The published version to restore is not valid.',
+    draftRefNotAncestor: 'That version is not an ancestor of this draft.',
+    draftPathInvalid: 'A module path is not valid.',
+    draftPathOutsideLayers: 'A module path is outside the project layers.',
+    draftPathLocal: 'A module path is local-only and cannot be restored.',
+    draftPathsRequired: 'The module has no paths to restore.',
+    draftNotOwner: 'This draft belongs to someone else.',
+    draftBadSlug: 'This draft address is not valid.',
     draftTitle: 'In draft {slug} (saved, not published)',
     publishedTitle: 'Published',
     release: 'Release',
@@ -146,6 +159,16 @@ const messages: Record<string, MessageType> = {
         withError: 'com erro',
         undoLocal: 'Desfazer local',
         confirmUndo: 'Descartar a cópia local de {file}?',
+        confirmDiscardModule: 'Descartar {count} alterações do módulo {module}?',
+        moduleDiscarded: 'Módulo {module} descartado.',
+        draftRefInvalid: 'A versão publicada para restaurar não é válida.',
+        draftRefNotAncestor: 'Essa versão não é ancestral deste rascunho.',
+        draftPathInvalid: 'Um caminho do módulo não é válido.',
+        draftPathOutsideLayers: 'Um caminho do módulo está fora das camadas do projeto.',
+        draftPathLocal: 'Um caminho do módulo é só local e não pode ser restaurado.',
+        draftPathsRequired: 'O módulo não tem caminhos para restaurar.',
+        draftNotOwner: 'Este rascunho é de outra pessoa.',
+        draftBadSlug: 'O endereço deste rascunho não é válido.',
         draftTitle: 'No rascunho {slug} (salvo, não publicado)',
         publishedTitle: 'Publicado',
         release: 'Release',
@@ -206,6 +229,16 @@ const messages: Record<string, MessageType> = {
         withError: 'con error',
         undoLocal: 'Deshacer local',
         confirmUndo: '¿Descartar la copia local de {file}?',
+        confirmDiscardModule: '¿Descartar {count} cambios del módulo {module}?',
+        moduleDiscarded: 'Módulo {module} descartado.',
+        draftRefInvalid: 'La versión publicada para restaurar no es válida.',
+        draftRefNotAncestor: 'Esa versión no es antepasada de este borrador.',
+        draftPathInvalid: 'Una ruta del módulo no es válida.',
+        draftPathOutsideLayers: 'Una ruta del módulo está fuera de las capas del proyecto.',
+        draftPathLocal: 'Una ruta del módulo es solo local y no se puede restaurar.',
+        draftPathsRequired: 'El módulo no tiene rutas para restaurar.',
+        draftNotOwner: 'Este borrador es de otra persona.',
+        draftBadSlug: 'La dirección de este borrador no es válida.',
         draftTitle: 'En el borrador {slug} (guardado, no publicado)',
         publishedTitle: 'Publicado',
         release: 'Release',
@@ -482,7 +515,7 @@ export class ServiceDraft102020 extends ServiceBase {
                     : html`<button class="text-left" @click=${() => { this._toggleNode(row.id); }}>${this._open.has(row.id) ? '▾' : '▸'} ${row.name}</button>`}
                 <span>${marks}</span>
                 ${row.kind === 'module'
-                    ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { this._onDiscardModule(row.name); }}>${this.msg.discardModule}</button>`
+                    ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onModuleDiscard(row.name); }}>${this.msg.discardModule}</button>`
                     : nothing}
                 ${row.kind === 'file' && row.inBrowser
                     ? html`<button
@@ -945,8 +978,96 @@ export class ServiceDraft102020 extends ServiceBase {
         }
     }
 
-    private _onDiscardModule(moduleName: string): void {
-        console.error('[serviceDraft] discard module is not available yet:', moduleName);
+    private _moduleCount(moduleName: string): number {
+        const project = this._projectId;
+        if (!project) return 0;
+        const local = localEdits(mls.stor.files, project);
+        const draft = this._current ? this._current.files : [];
+        return modulePendingCount(pendingFiles(local, draft), moduleName);
+    }
+
+    /** Known `draft.*` reasons from the restore route. Anything else stays as the server sent it. */
+    private _draftReason(reason: string): string {
+        const known: Record<string, string> = {
+            'draft.ref_invalid': this.msg.draftRefInvalid,
+            'draft.ref_not_ancestor': this.msg.draftRefNotAncestor,
+            'draft.path_invalid': this.msg.draftPathInvalid,
+            'draft.path_outside_layers': this.msg.draftPathOutsideLayers,
+            'draft.path_local': this.msg.draftPathLocal,
+            'draft.paths_required': this.msg.draftPathsRequired,
+            'draft.not_owner': this.msg.draftNotOwner,
+            'draft.bad_slug': this.msg.draftBadSlug,
+        };
+        return known[reason] ?? reason;
+    }
+
+    private async _readPublishedConfig(project: number): Promise<string> {
+        const key = mls.stor.getKeyToFile({ project, level: 5, shortName: 'config', folder: '', extension: '.json' });
+        const file = mls.stor.files[key];
+        if (!file) {
+            console.error('[serviceDraft] l5/config.json is not in stor:', key);
+            throw new Error(this.msg.configMissing);
+        }
+        let driver: unknown;
+        try {
+            driver = await mls.stor.others.getDefaultDriver(project);
+        } catch (err) {
+            console.error('[serviceDraft] getDefaultDriver failed while reading published config:', err);
+            throw new Error(this.msg.configMissing);
+        }
+        const read = (driver as { getHistoryContent?: (file: mls.stor.IFileInfo, ref: string) => Promise<string | null> }).getHistoryContent;
+        if (typeof read !== 'function') {
+            console.error('[serviceDraft] getHistoryContent is missing');
+            throw new Error(this.msg.configMissing);
+        }
+        let content: string | null;
+        try {
+            content = await read.call(driver, file, 'main');
+        } catch (err) {
+            console.error('[serviceDraft] published l5/config.json failed:', err);
+            throw new Error(this.msg.configMissing);
+        }
+        if (typeof content !== 'string') {
+            console.error('[serviceDraft] published l5/config.json is not text');
+            throw new Error(this.msg.configMissing);
+        }
+        return content;
+    }
+
+    private async _onModuleDiscard(moduleName: string): Promise<void> {
+        const project = this._projectId;
+        if (!project || !this._slug || !isVmDriver(this._driver)) return;
+        const count = this._moduleCount(moduleName);
+        const question = this.msg.confirmDiscardModule.replace('{count}', String(count)).replace('{module}', moduleName);
+        if (!confirm(question)) return;
+        this._error = '';
+        this._note = '';
+        this._phase = 'loading';
+        try {
+            const current = await this._readConfigJson(project);
+            const published = await this._readPublishedConfig(project);
+            await discardModule({
+                fetchImpl,
+                saveL5File: (id, shortName, content, comment) => saveL5File(id, shortName, content, comment),
+                undoFile: (file) => undoFile(file as mls.stor.IFileInfo),
+                storFiles: mls.stor.files,
+                reloadLive: () => loadProjectDefinitions(project),
+            }, project, this._slug, moduleName, current, published);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[serviceDraft] discard module failed:', message);
+            this._error = this._draftReason(message);
+            this._phase = 'error';
+            return;
+        }
+        await this._load(true);
+        this._noteModuleDiscarded(moduleName);
+    }
+
+    /** `_load` clears the note. Put it back only when the refresh itself did not fail. */
+    private _noteModuleDiscarded(moduleName: string): void {
+        if (this._phase === 'error') return;
+        this._note = this.msg.moduleDiscarded.replace('{module}', moduleName);
     }
 
     private async _onDiscard(): Promise<void> {
