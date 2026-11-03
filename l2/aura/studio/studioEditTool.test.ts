@@ -561,3 +561,33 @@ test('agent chain 0→1 sends nothing; 1→0 sends one batch, including after an
   assert.ok(thrown instanceof Error);
   assert.equal(thrown.message, 'agent chain failed');
 });
+
+test('a file with no open model (an agent wrote it) is sent without a console.error', async () => {
+  const host = globalThis as unknown as IHost;
+  const previous = { editor: host.mls.editor, common: host.mls.common, stor: host.mls.stor };
+  const sent: string[] = [];
+  const errors: unknown[][] = [];
+  const file = storFile('agentWrote');
+  host.mls.editor = { getKeyModel: () => 'agentWrote', models: {} };
+  host.mls.common = { crc: { crc32: (value: string) => value.length } };
+  host.mls.stor = {
+    files: previous.stor.files,
+    setContents: async (files: unknown) => {
+      sent.push(...(files as { shortName: string }[]).map((item) => item.shortName));
+      return [{ result: true }];
+    },
+    localStor: { setContent: async () => true },
+  };
+  const original = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args); };
+  try {
+    await sendAutoSaveBatch([file], 7, () => {});
+    assert.deepEqual(sent, ['agentWrote'], 'the file still goes to the draft');
+    assert.deepEqual(errors, [], 'no console.error for a file without a model');
+  } finally {
+    console.error = original;
+    host.mls.editor = previous.editor;
+    host.mls.common = previous.common;
+    host.mls.stor = previous.stor;
+  }
+});

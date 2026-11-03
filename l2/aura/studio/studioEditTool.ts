@@ -313,10 +313,10 @@ export async function sendAutoSaveBatch(
   for (const file of toSend) {
     if (file.status === 'deleted' || file.hasError) continue;
     const text = captured.get(file);
-    if (text === undefined) {
-      console.error('[studio] auto-save captured no text to record', file.shortName);
-      continue;
-    }
+    // No open model (a file an agent wrote, a new file nobody opened): it was sent from its local
+    // record, and with no model there is no later text to compare, so there is no CRC to keep.
+    // Not an error: an agent chain writes hundreds of these, and each one used to log one.
+    if (text === undefined) continue;
     // Last-send CRC only. `originalCRC` stays the published baseline.
     recordSentContent(file, text);
     if (pendingFiles([file], project).length === 1) onStillPending(file);
