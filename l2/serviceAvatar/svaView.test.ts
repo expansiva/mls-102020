@@ -48,9 +48,8 @@ test('steps are found in nextSteps and in interaction payloads', () => {
   assert.deepEqual(allSteps(task).map(item => item.stepId), [1, 2, 3]);
 });
 
-test('the service is registered for level 7 with the widget path it is served from', () => {
-  const index = readFileSync(path.resolve(HERE, '../pluginCollabCoreIndex.ts'), 'utf8');
-  assert.match(index, /scope: \['l7ServicesLeft'\],[\s\S]{0,80}widget: '_102020_\/l2\/serviceAvatar\/serviceAvatar'/);
+// Not registered in pluginCollabCoreIndex.ts on purpose (Wagner, 03/11/2026).
+test('the service declares level 7, its widget path and its tag', () => {
   const service = readFileSync(path.join(HERE, 'serviceAvatar.ts'), 'utf8');
   assert.match(service, /widget: '_102020_\/l2\/serviceAvatar\/serviceAvatar'/);
   assert.match(service, /level: \[7\]/);
