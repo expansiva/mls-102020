@@ -7,7 +7,9 @@ import test from 'node:test';
 
 const EDITOR = readFileSync(new URL('studioEditor.ts', import.meta.url), 'utf8');
 const TARGET = readFileSync(new URL('studioEditTarget.ts', import.meta.url), 'utf8');
-const PANEL = readFileSync(new URL('classPickerPanel.ts', import.meta.url), 'utf8');
+/** The floating panel as it renders: its chrome plus the content it inherits (classPickerBase). */
+const PANEL = readFileSync(new URL('classPickerBase.ts', import.meta.url), 'utf8')
+  + readFileSync(new URL('classPickerPanel.ts', import.meta.url), 'utf8');
 const CORE = readFileSync(new URL('studioClassEdit.ts', import.meta.url), 'utf8');
 /** The panel's looks moved out of the component when it went light DOM (classPickerPanel.less). */
 const PANEL_CSS = readFileSync(new URL('classPickerPanel.less', import.meta.url), 'utf8');
@@ -225,18 +227,38 @@ test('a molecule has two sides — its tag class and its inner data-class — an
   const show = EDITOR.slice(EDITOR.indexOf('private async showClassPanel'));
   const flow = show.slice(0, show.indexOf('\n  }\n'));
   assert.ok(flow.includes('await this.resolveClassAnchor(el, literal, state);'), 'the tag is resolved as always');
-  assert.ok(flow.includes('if (inner) await this.resolveDataClassAnchor(el, inner.literal, inner);'), 'and the inside too');
+  assert.ok(flow.includes('await this.resolveDataClassAnchor(el, inner.literal, inner);'), 'and the inside too');
+  // And its slots (TASK-102020-picker-molecule-slots).
+  assert.ok(flow.includes('state.slots = await this.resolveSlots(el);'), 'and the slots');
 
-  assert.ok(EDITOR.includes("this.applyLiteralChange(e.detail.literal, e.detail.what, e.detail.attribute ?? 'class')"));
+  assert.ok(EDITOR.includes("this.applyLiteralChange(e.detail.literal, e.detail.what, e.detail.attribute ?? 'class', e.detail.slot)"));
   const apply = EDITOR.slice(EDITOR.indexOf('private async applyLiteralChange'));
-  assert.ok(apply.slice(0, apply.indexOf('\n  }')).includes('sideOf(state, attribute)'), 'the write reads the side it was asked for');
+  assert.ok(apply.slice(0, apply.indexOf('\n  }')).includes('sideOf(state, attribute, slot)'), 'the write reads the side it was asked for');
   const write = EDITOR.slice(EDITOR.indexOf('private async writeLiteral'));
   const body = write.slice(0, write.indexOf('\n  }'));
-  assert.ok(body.includes('sideOf(state, attribute)'));
+  assert.ok(body.includes('sideOf(state, attribute, slot)'));
   assert.ok(body.includes('attribute,'), 'the history step carries the attribute, so undo writes the same one');
   // The animations act on the box the user sees.
   const animation = EDITOR.slice(EDITOR.indexOf('private previewAnimation'));
   assert.ok(animation.slice(0, animation.indexOf('\n  }')).includes('mainChannel(state)'));
+});
+
+test('a slot is edited in its own hidden element, and the write names it', () => {
+  // TASK-102020-picker-molecule-slots: the slot is the PAGE's markup, counted only among slots under
+  // its molecule (9 molecules render a root <label>, same tagName as the <Label> slot).
+  const tree = EDITOR.slice(EDITOR.indexOf('private ownerTree()'));
+  assert.ok(tree.slice(0, tree.indexOf('\n  }\n')).includes('slotElement: (el) => this.isSlotSource(el)'));
+  const slot = EDITOR.slice(EDITOR.indexOf('private isSlotSource'));
+  assert.ok(slot.slice(0, slot.indexOf('\n  }\n')).includes("style.display === 'none'"), 'the molecule HID it');
+  const path = EDITOR.slice(EDITOR.indexOf('private domPathOf'));
+  assert.ok(path.slice(0, path.indexOf('\n  }\n')).includes('this.isSlotSource(sibling) === slot'), 'siblings: slots only');
+
+  assert.ok(EDITOR.includes("e.detail.attribute ?? 'class', e.detail.slot)"), 'the apply carries the slot');
+  assert.ok(EDITOR.includes("detail.attribute ?? 'class', detail.slot)"), 'and so does the preview');
+  const write = EDITOR.slice(EDITOR.indexOf('private async writeLiteral'));
+  const body = write.slice(0, write.indexOf('\n  }\n'));
+  assert.ok(body.includes('sideOf(state, attribute, slot)') && body.includes('elementOf(state, slot)'),
+    'the write lands on the slot element — and the history step holds it, so undo does too');
 });
 
 test('undo walks the same write as any other edit, and the shortcut stays contained', () => {
@@ -582,19 +604,19 @@ test('the panel never picks a key for an ambiguous text', () => {
   // has no position in the DOM to break the tie with. Picking one would write a sentence the user
   // never pointed at.
   // The FULL signature: `private textKeys` (the chosen-key state) is a prefix of this name.
-  const key = memberOf(PANEL, 'private textKey(text: IPickerText)', '\n  }');
+  const key = memberOf(PANEL, 'protected textKey(text: IPickerText)', '\n  }');
   assert.ok(key.includes('text.keys.length === 1'), 'one key needs no choosing');
   assert.ok(key.includes("return chosen && text.keys.includes(chosen) ? chosen : '';"), 'anything else asks');
 
   // Full signature again: `renderTexts` (the section) is a prefix of `renderText` (the row).
-  const row = memberOf(PANEL, 'private renderText(text: IPickerText)', '\n  }');
+  const row = memberOf(PANEL, 'protected renderText(text: IPickerText)', '\n  }');
   assert.ok(row.includes("t('panel.textPickKey'"), 'and the row says so');
   assert.ok(row.includes("t('reason.attrNotInCatalog')"), 'a text with no key shows the reason');
   // The input only exists once a key is settled.
   assert.ok(row.indexOf('const chosen = this.textKey(text);') < row.indexOf('acp-text-input'));
 
   // Enter applies, Esc gives up, and the write is asked for ONCE (Enter plus the blur that follows).
-  const commit = memberOf(PANEL, 'private commitText', '\n  }');
+  const commit = memberOf(PANEL, 'protected commitText', '\n  }');
   assert.ok(commit.includes('this.lastSent[text.attribute]'), 'the same edit is not sent twice');
   assert.ok(commit.includes("'picker-text'"));
   // The panel asks; it never writes.

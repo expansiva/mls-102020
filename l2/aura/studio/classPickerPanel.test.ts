@@ -30,6 +30,15 @@ function code(file: string): string {
 const PANELS = ['classPickerPanel', 'pageClassPickerPanel'];
 
 /**
+ * What a panel RENDERS: its own chrome plus the content it inherits from classPickerBase
+ * (TASK-102020-picker-inspector, phase 0). Every guard below reads the two together.
+ */
+function panelCode(panel: string): string {
+  return `${code('classPickerBase.ts')}
+${code(`${panel}.ts`)}`;
+}
+
+/**
  * Classes the templates compose at RUNTIME, which no static scan can see.
  *
  * Empty since the paste summary left the panel (it was `class="acp-dir acp-${direction}"`). It stays
@@ -84,14 +93,17 @@ const CHANNEL_CALLS = [
   // A molecule: two sections, the inside and the tag.
   '${this.renderSection(inner)}',
   '${this.renderSection(this.tagSide)}',
-  // What goes out names its attribute.
-  'detail: { literal, what, attribute: side.channel }',
-  '{ literal, attribute: side.channel }',
+  // What goes out names its attribute — and its slot (TASK-102020-picker-molecule-slots).
+  'detail: { literal, what, attribute: side.channel, slot: side.slot }',
+  '{ literal, attribute: side.channel, slot: side.slot }',
+  // The slots section, each slot through the same renderSection as the inside and the tag.
+  '${this.renderSlots()}',
+  '${this.renderSection(this.slotSide(at))}',
 ];
 
 test('both panels decide the vocabulary with the same core calls, and pass the channel to each', () => {
   for (const panel of PANELS) {
-    const TS = code(`${panel}.ts`);
+    const TS = panelCode(panel);
     for (const call of CHANNEL_CALLS) assert.ok(TS.includes(call), `${panel}: ${call}`);
     // No vocabulary call left without the section's channel.
     const bareOptions = [...TS.matchAll(/utilityOptions\(token, 2,[^\n]*\)/gu)].filter((match) => !match[0].includes('side.channel'));
@@ -106,8 +118,8 @@ test('both panels decide the vocabulary with the same core calls, and pass the c
  * rows come decided by studioMoleculeProps, and each panel only renders them and emits.
  */
 test('both panels render the Properties tab the same way, and neither decides what is written', () => {
-  const block = (TS: string): string => TS.slice(TS.indexOf('private renderProps()'), TS.indexOf('private emitProp('));
-  const [floating, docked] = PANELS.map((panel) => code(`${panel}.ts`));
+  const block = (TS: string): string => TS.slice(TS.indexOf('protected renderProps()'), TS.indexOf('protected emitProp('));
+  const [floating, docked] = PANELS.map((panel) => panelCode(panel));
   assert.ok(block(floating).length > 200, 'the floating panel has the tab');
   assert.equal(block(docked), block(floating), 'the two copies of the tab drifted apart');
   for (const [panel, TS] of [[PANELS[0], floating], [PANELS[1], docked]]) {
@@ -121,7 +133,7 @@ test('both panels render the Properties tab the same way, and neither decides wh
 });
 
 for (const panel of PANELS) {
-  const TS = code(`${panel}.ts`);
+  const TS = panelCode(panel);
   const LESS = code(`${panel}.less`);
 
   test(`${panel}: every class the panel renders carries the prefix`, () => {

@@ -339,6 +339,11 @@ const message_pt = {
   'panel.sectionInner': 'Por dentro (data-class)',
   'panel.sectionInnerTitle': 'a caixa que aparece na tela: a molécula aplica o data-class no elemento de dentro',
   'panel.sectionTag': 'Na tag (class)',
+  'panel.sectionSlots': 'Slots',
+  'panel.sectionSlotsTitle': 'as partes que a página escreve dentro da molécula (Label, Helper, Column…): a'
+    + ' molécula aplica o data-class de cada uma no que ela desenha para aquela parte',
+  'panel.slotNoClasses': 'nenhuma classe ainda',
+  'panel.slotRepeatedNote': 'este slot se repete; algumas moléculas só leem o data-class do primeiro',
   'panel.sectionTagTitle': 'a própria tag da molécula, a caixa que o pai organiza: block, col-span, flex-1,'
     + ' self, margens; por padrão ela é inline, e largura e margem vertical só pegam com block',
   'panel.addColor': 'escolha o papel do design system para começar',
@@ -996,6 +1001,11 @@ const message_en: typeof message_pt = {
   'panel.sectionInner': 'Inside (data-class)',
   'panel.sectionInnerTitle': 'the box you see: the molecule applies data-class to its inner element',
   'panel.sectionTag': 'On the tag (class)',
+  'panel.sectionSlots': 'Slots',
+  'panel.sectionSlotsTitle': 'the parts the page writes inside the molecule (Label, Helper, Column…): the molecule'
+    + ' applies each one\'s data-class to what it renders for that part',
+  'panel.slotNoClasses': 'no classes yet',
+  'panel.slotRepeatedNote': 'this slot repeats; some molecules only read the first one\'s data-class',
   'panel.sectionTagTitle': 'the molecule\'s own tag, the box its parent lays out: block, col-span, flex-1, self,'
     + ' margins; it is inline by default, so width and vertical margin only take with block',
   'panel.addColor': 'pick the design-system role to start from',

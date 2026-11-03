@@ -96,6 +96,10 @@ aura--studio--class-picker-102020 {
   .acp-note { padding: 6px 10px; border-bottom: 1px solid rgba(245,247,250,0.08); color: #cbd5e1; line-height: 1.35; }
   // The heading of each section of a molecule: its inside (data-class) and its tag (class).
   .acp-section { padding: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #94a3b8; }
+  // One folded line per slot of a molecule; its classes trail in grey so a scan shows which have any.
+  .acp-slot-head { display: flex; gap: 6px; align-items: baseline; width: 100%; padding: 4px 10px; border: 0; background: transparent; color: #e2e8f0; font: inherit; text-align: left; cursor: pointer; }
+  .acp-slot-head:hover, .acp-slot-head.acp-active { background: rgba(245,247,250,0.06); }
+  .acp-slot-classes { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; font-size: 11px; }
   .acp-note.acp-warning { background: rgba(245,166,35,0.14); color: #ffd8a1; }
   .acp-note.acp-refusal { background: rgba(229,57,53,0.16); color: #ffc9c7; }
 

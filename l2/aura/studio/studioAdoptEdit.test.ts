@@ -486,7 +486,8 @@ test('only a CORE html element can be adopted — a molecule is another question
 test('the panel does not even OFFER the tab outside a core element', () => {
   // The rule is one function and the panel asks it — a second copy of "does it have a hyphen" is how
   // the two sides start disagreeing.
-  const panel = readFileSync(fileURLToPath(new URL('classPickerPanel.ts', import.meta.url)), 'utf8');
+  // The panel content is classPickerBase, inherited by both pickers (TASK-102020-picker-inspector).
+  const panel = readFileSync(fileURLToPath(new URL('classPickerBase.ts', import.meta.url)), 'utf8');
   assert.match(panel, /isCoreElementTag\(this\.target\?\.tag \?\? ''\)/u);
   assert.match(panel, /this\.isCoreElement \? this\.tabButton\('molecules'/u);
 });

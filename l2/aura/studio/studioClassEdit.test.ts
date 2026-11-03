@@ -3336,3 +3336,60 @@ test('a local arrow function inside a method does not split the method', () => {
   const list = tree.elements.findIndex((element) => element.literal === 'list');
   assert.ok(tree.links.some((link) => link.root === list && link.parent === main));
 });
+
+// --- A molecule's slots (TASK-102020-picker-molecule-slots) ---
+
+test('a slot the page wrote inside a molecule is the page\'s, and what the molecule rendered is not', () => {
+  // <page> > <ml-button> > { <Label> (hidden slot) > <strong>, <label> (rendered root) > <span> }
+  const page = owned({
+    name: 'page',
+    kids: [{
+      name: 'button',
+      tag: 'ml-button',
+      kids: [
+        { name: 'Label', kids: [{ name: 'strong' }] },
+        { name: 'rendered', kids: [{ name: 'span' }] },
+      ],
+    }],
+  });
+  const slots = new Set(['Label']);
+  const tree: IOwnerTree<OwnedNode> = { ...OWNER, slotElement: (node) => slots.has(node.name) };
+
+  // The slot and what is inside it: no owner break — the page wrote them.
+  for (const name of ['Label', 'strong']) {
+    const chain = ownerChain(pick(page, name), page, tree);
+    assert.equal(chain.ownerBreak, -1, name);
+    assert.deepEqual(chain.chain.map((node) => node.name), name === 'Label' ? ['button', 'Label'] : ['button', 'Label', 'strong']);
+  }
+  // What the molecule rendered still breaks at the molecule.
+  const rendered = ownerChain(pick(page, 'span'), page, tree);
+  assert.equal(rendered.chain[rendered.ownerBreak].name, 'button');
+  // A tree that knows nothing of slots behaves as it always did.
+  assert.equal(ownerChain(pick(page, 'Label'), page, OWNER).chain[0].name, 'button');
+  assert.equal(ownerChain(pick(page, 'Label'), page, OWNER).ownerBreak, 0);
+});
+
+test('a slot\'s data-class: the <Label> of the real button is found, written and taken out', () => {
+  // One scan: the parent index points into THIS array.
+  const elements = scanTemplateTree(AGENDA).elements;
+  const more = elements.filter((element) => element.tag === BUTTON)[1];
+  const label = elements.find((element) => element.parent === elements.indexOf(more));
+  assert.ok(label, 'the <Label> slot is a child of the button in the source');
+  if (!label) return;
+
+  // None today: the first write inserts, on the slot and nowhere else.
+  const read = readDataClass(AGENDA, label, '');
+  if (read.kind !== 'insert') assert.fail('the slot has no data-class yet');
+  const written = spliceChannel(AGENDA, { startOffset: read.at, endOffset: read.at, insert: true }, 'data-class', 'font-bold');
+  assert.ok(written.source.includes('<Label data-class="font-bold">${this.msg.maisConsultas}</Label>'));
+  assert.ok(written.source.includes('data-class="mt-3"'), 'the button\'s own data-class is untouched');
+
+  // And back out, byte for byte — the undo.
+  const after = scanTemplateTree(written.source).elements;
+  const moreAfter = after.filter((element) => element.tag === BUTTON)[1];
+  const again = after.find((element) => element.parent === after.indexOf(moreAfter));
+  if (!again) assert.fail('the slot is found again');
+  const now = readDataClass(written.source, again, 'font-bold');
+  if (now.kind !== 'literal') assert.fail('the written literal is found');
+  assert.equal(spliceChannel(written.source, { startOffset: now.start, endOffset: now.end }, 'data-class', '').source, AGENDA);
+});

@@ -273,14 +273,33 @@ function describePropWrite(prop: IMoleculeConfigProp, write: PropWrite): string 
   return write.kind === 'bare' ? attribute : `${attribute}="${write.text}"`;
 }
 
-/** The side of the selection an attribute names: the element itself for `class`, the inner box for `data-class`. */
-function sideOf(state: IClassPanelState, attribute: ClassChannel): IChannelSide | null {
+/**
+ * The side of the selection a write names: the element itself for `class`, the inner box for
+ * `data-class` — or, with `slot`, one of the molecule's slots (always through its `data-class`).
+ */
+function sideOf(state: IClassPanelState, attribute: ClassChannel, slot?: number): IChannelSide | null {
+  if (slot !== undefined) return attribute === 'data-class' ? state.slots[slot] ?? null : null;
   return attribute === 'class' ? state : state.inner;
+}
+
+/** The element a write lands on: a slot's own hidden element, or the selection. */
+function elementOf(state: IClassPanelState, slot?: number): HTMLElement | null {
+  return slot === undefined ? state.el : state.slots[slot]?.el ?? null;
 }
 
 /** The box the user SEES — where the animations and the copy/paste act: a molecule's inner one. */
 function mainChannel(state: IClassPanelState): ClassChannel {
   return state.inner ? 'data-class' : 'class';
+}
+
+/**
+ * The slot tags a molecule declares (`slotTags` of moleculeBase), upper-cased like `tagName`; null for
+ * anything that declares none. Read from the instance: it is runtime data, protected only in TS.
+ */
+function slotTagsOf(el: Element): Set<string> | null {
+  const tags = (el as unknown as { slotTags?: unknown }).slotTags;
+  if (!Array.isArray(tags) || !tags.length) return null;
+  return new Set(tags.map((tag) => String(tag).toUpperCase()));
 }
 
 function anchorPathOf(anchor: ClassAnchor | null): IDomPathStep[] | null {
@@ -535,6 +554,19 @@ interface IChannelSide {
   refusal?: IMessageRef;
 }
 
+/**
+ * One slot element of a molecule (`<Label>`, `<Column>`), edited through its `data-class`
+ * (TASK-102020-picker-molecule-slots). The element is the HIDDEN one the page wrote — the molecule
+ * reads its `data-class` and applies it to what it renders for that slot.
+ */
+interface ISlotSide extends IChannelSide {
+  el: HTMLElement;
+  /** The slot tag as the molecule declares it (`Label`, `TableRow`). */
+  name: string;
+  /** 1-based position among this molecule's slots of the same name. */
+  index: number;
+}
+
 interface IClassPanelState {
   el: HTMLElement;
   /**
@@ -557,6 +589,8 @@ interface IClassPanelState {
    * selection).
    */
   inner: IChannelSide | null;
+  /** A molecule's slots present in the page; empty for anything else. */
+  slots: ISlotSide[];
   /** Text attributes of the selection, resolved against this screen's catalogs. */
   texts: IAttrText[];
   tokens: IUtilityToken[];
@@ -1410,7 +1444,57 @@ export class StudioEditor {
         // `null` would make the page's own element a foreign component and collapse every click.
         return tag.includes('-') && pageTag !== null && tag !== pageTag ? tag : null;
       },
+      slotElement: (el) => this.isSlotSource(el),
     };
+  }
+
+  /**
+   * Whether `el` is a slot element the PAGE wrote inside a molecule (TASK-102020-picker-molecule-slots).
+   *
+   * The walk goes up through slot tags only (`<Columns>` → `<Column>`) to the molecule that declares
+   * them, and the top one must be a direct child the molecule HID (`_hideSlotTags`). The hiding is what
+   * tells `<Label>` from the `<label>` 9 molecules render at their root: same `tagName`, and only the
+   * slot is `display: none`.
+   */
+  private isSlotSource(el: Element): boolean {
+    const path: Element[] = [];
+    let node: Element = el;
+    for (let guard = 0; guard < 64; guard += 1) {
+      const parent = node.parentElement;
+      if (!parent || node === this.host) return false;
+      path.push(node);
+      const tags = slotTagsOf(parent);
+      if (tags) {
+        return (node as HTMLElement).style.display === 'none' && path.every((step) => tags.has(step.tagName));
+      }
+      // Another component in between owns what is below it.
+      if (parent.tagName.includes('-')) return false;
+      node = parent;
+    }
+    return false;
+  }
+
+  /**
+   * The slot elements of a molecule that exist in the page, in document order.
+   *
+   * Direct hidden children first, then the slots nested in them (`TableBody > TableRow > TableCell`),
+   * never entering anything that is not a slot tag — a nested molecule inside slot content owns its
+   * own slots.
+   */
+  private slotElementsOf(molecule: HTMLElement): HTMLElement[] {
+    const tags = slotTagsOf(molecule);
+    if (!tags) return [];
+    const found: HTMLElement[] = [];
+    const visit = (parent: Element): void => {
+      for (const child of Array.from(parent.children)) {
+        if (!tags.has(child.tagName)) continue;
+        if (parent === molecule && (child as HTMLElement).style.display !== 'none') continue;
+        found.push(child as HTMLElement);
+        visit(child);
+      }
+    };
+    visit(molecule);
+    return found;
   }
 
   /**
@@ -1932,7 +2016,7 @@ export class StudioEditor {
   }
 
   private onPickerApply = (e: CustomEvent<IPickerApply>): void => {
-    void this.applyLiteralChange(e.detail.literal, e.detail.what, e.detail.attribute ?? 'class');
+    void this.applyLiteralChange(e.detail.literal, e.detail.what, e.detail.attribute ?? 'class', e.detail.slot);
   };
 
   private onPickerPreview = (e: CustomEvent<IPickerPreview | null>): void => {
@@ -1944,7 +2028,7 @@ export class StudioEditor {
     // A paste asks for a whole class attribute; an animation asks for one option, which the editor
     // still has to turn into a literal (and replay, when it is an entrance).
     if (detail.literal !== undefined) {
-      this.previewLiteral(detail.literal, undefined, detail.attribute ?? 'class');
+      this.previewLiteral(detail.literal, undefined, detail.attribute ?? 'class', detail.slot);
       return;
     }
     this.previewAnimation(detail.option ?? null);
@@ -2083,6 +2167,7 @@ export class StudioEditor {
       levels: this.selectionLevels(el),
       literal,
       inner,
+      slots: [],
       texts: [],
       tokens: splitUtilities(literal),
       file: null,
@@ -2132,7 +2217,10 @@ export class StudioEditor {
     // anchored by position alone, and the first write inserts the attribute. A molecule's inner box
     // is found by position only (resolveDataClassAnchor).
     await this.resolveClassAnchor(el, literal, state);
-    if (inner) await this.resolveDataClassAnchor(el, inner.literal, inner);
+    if (inner) {
+      await this.resolveDataClassAnchor(el, inner.literal, inner);
+      state.slots = await this.resolveSlots(el);
+    }
     // The text of an attribute is a different edit with the same address (the catalog key), so it is
     // resolved here too — and it does NOT depend on the class anchor: an element whose class literal
     // could not be located can still have a `title` that is perfectly editable.
@@ -2218,21 +2306,28 @@ export class StudioEditor {
    * Three answers, like `class`: a literal (edit it), a binding (read-only, with the reason) and none
    * at all (the first write inserts ` data-class="…"`).
    */
-  private async resolveDataClassAnchor(el: HTMLElement, literal: string, state: IChannelSide): Promise<void> {
+  private async resolveDataClassAnchor(
+    el: HTMLElement,
+    literal: string,
+    state: IChannelSide,
+    treeOf: (candidate: IStudioEditTarget) => ITemplateTree = (candidate) => scanTemplateTree(candidate.model.model.getValue()),
+  ): Promise<string> {
     const path = this.domPathOf(el);
     const candidates = await this.resolveCandidates();
 
     for (const candidate of path.length ? candidates : []) {
       const source = candidate.model.model.getValue();
-      const resolved = resolveStructuralAnchor(scanTemplateTree(source), path);
+      const resolved = resolveStructuralAnchor(treeOf(candidate), path);
       if (!resolved.ok) continue;
       const declared = readDataClass(source, resolved.element, literal);
+      // Which source node this is — one node inside a `.map()` renders many times.
+      const key = `${candidate.project}:${candidate.folder}/${candidate.shortName}@${resolved.element.openStart}`;
 
       // A binding is an expression of the page, and this module never rewrites an expression.
       if (declared.kind === 'computed') {
         state.file = candidate;
         state.refusal = declared.reason;
-        return;
+        return key;
       }
       // What the screen shows has to be what the file says, or the anchor found another element.
       if (declared.kind === 'mismatch') continue;
@@ -2240,9 +2335,52 @@ export class StudioEditor {
       state.file = candidate;
       state.anchor = declared.kind === 'literal' ? { kind: 'structural', path } : { kind: 'insert', path };
       state.warning = resolved.renders > 1 ? repeatedRenderWarning(resolved.renders) : undefined;
-      return;
+      return key;
     }
     state.refusal = NOT_LOCATED;
+    return '';
+  }
+
+  /**
+   * The molecule's slots that exist in the page, each with its `data-class` located in the source
+   * (TASK-102020-picker-molecule-slots).
+   *
+   * One tree per candidate file for the whole molecule: a table has dozens of slot elements, and
+   * scanning the file once per slot is what would make the selection slow. A source node rendered many
+   * times (a `<TableRow>` inside `${rows.map(…)}`) is ONE slot to edit — its first rendering stands
+   * for all of them, with the repeated-render warning.
+   */
+  private async resolveSlots(molecule: HTMLElement): Promise<ISlotSide[]> {
+    const trees = new Map<IStudioEditTarget, ITemplateTree>();
+    const treeOf = (candidate: IStudioEditTarget): ITemplateTree => {
+      let tree = trees.get(candidate);
+      if (!tree) {
+        tree = scanTemplateTree(candidate.model.model.getValue());
+        trees.set(candidate, tree);
+      }
+      return tree;
+    };
+
+    const declared = slotTagsOf(molecule);
+    const names = (molecule as unknown as { slotTags?: string[] }).slotTags ?? [];
+    const seen = new Set<string>();
+    const counts = new Map<string, number>();
+    const sides: ISlotSide[] = [];
+    for (const el of this.slotElementsOf(molecule)) {
+      if (!declared) break;
+      const name = names.find((tag) => tag.toUpperCase() === el.tagName) ?? el.tagName.toLowerCase();
+      const side: ISlotSide = { el, name, index: 0, literal: el.getAttribute('data-class') ?? '', file: null, anchor: null };
+      const key = await this.resolveDataClassAnchor(el, side.literal, side, treeOf);
+      if (key) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      const index = (counts.get(name) ?? 0) + 1;
+      counts.set(name, index);
+      side.index = index;
+      sides.push(side);
+    }
+    return sides;
   }
 
   /** The element of the page's source the selection IS, when its position resolved it. */
@@ -2354,9 +2492,14 @@ export class StudioEditor {
     for (const node of chain) {
       const parent = node.parentElement;
       if (!parent) return [];
+      // Under a molecule the page's source holds only its slot elements; what the molecule rendered
+      // shares the same children list (and, for 9 molecules, the same `LABEL` tagName), so it is left
+      // out of the count.
+      const slot = slotTagsOf(parent) ? this.isSlotSource(node) : null;
       const siblings = Array.from(parent.children).filter((sibling) => sibling.tagName === node.tagName
         && !sibling.classList.contains('se-edit-span')
-        && !sibling.classList.contains(CONTROL_CLASS));
+        && !sibling.classList.contains(CONTROL_CLASS)
+        && (slot === null || this.isSlotSource(sibling) === slot));
       const index = siblings.indexOf(node);
       if (index < 0) return [];
 
@@ -2659,6 +2802,18 @@ export class StudioEditor {
           canRemoveLast: inner.anchor?.kind !== 'occurrence',
         }
         : undefined,
+      // The molecule's slots, as data: the "Slots" section. The position in this array is the handle
+      // the panel sends back.
+      slots: state.slots.map((slot) => ({
+        name: slot.name,
+        index: slot.index,
+        repeated: state.slots.filter((other) => other.name === slot.name).length > 1,
+        literal: slot.literal,
+        editable: !slot.refusal && Boolean(slot.file) && slot.anchor !== null,
+        refusal: slot.refusal,
+        warning: slot.warning,
+        canRemoveLast: slot.anchor?.kind !== 'occurrence',
+      })),
       // DATA, never the nodes: the panel gets a tag, a literal and the index that points back into
       // `state.levels`, which is the only place the elements themselves live.
       levels: state.levels.map((node, index) => ({
@@ -3081,7 +3236,7 @@ export class StudioEditor {
    * paste needs: the result stays on screen while the pointer is on the button and the eyes are on
    * the summary, instead of vanishing mid-read.
    */
-  private previewLiteral(literal: string | null, timeout?: number, attribute: ClassChannel = 'class'): void {
+  private previewLiteral(literal: string | null, timeout?: number, attribute: ClassChannel = 'class', slot?: number): void {
     // Cancel first, ALWAYS — even with no panel state left. This is the undo of the previous preview.
     if (this.previewTimer !== null) {
       clearTimeout(this.previewTimer);
@@ -3096,16 +3251,19 @@ export class StudioEditor {
 
     const state = this.classPanel;
     if (!literal || !state || this.applying) return;
+    const el = elementOf(state, slot);
+    if (!el) return;
 
     // On a molecule's inner box this is `data-class`: an attribute the molecule observes (`cssClass`),
-    // so setting it re-renders the inner root — the box that actually shows the change.
-    this.previewEl = state.el;
+    // so setting it re-renders the inner root — the box that actually shows the change. A slot's
+    // `data-class` is watched too (moleculeBase observes attribute changes on its slot elements).
+    this.previewEl = el;
     this.previewAttribute = attribute;
-    this.previewRestore = state.el.getAttribute(attribute);
-    state.el.setAttribute(attribute, literal);
+    this.previewRestore = el.getAttribute(attribute);
+    el.setAttribute(attribute, literal);
     // An entrance has to be REPLAYED to be seen: the element is already rendered, and
-    // `@starting-style` only applies on a first render.
-    if (this.hasEntrance(literal)) this.replayEntrance(state.el);
+    // `@starting-style` only applies on a first render. A slot is hidden: its molecule replays.
+    if (this.hasEntrance(literal)) this.replayEntrance(slot === undefined ? el : state.el);
     if (timeout) this.previewTimer = window.setTimeout(() => this.previewLiteral(null), timeout);
   }
 
@@ -3182,10 +3340,10 @@ export class StudioEditor {
    * bookkeeping, and any failure puts the old attribute back, so the screen never claims an edit that
    * did not land.
    */
-  private async applyLiteralChange(newLiteral: string, what: string, attribute: ClassChannel): Promise<void> {
+  private async applyLiteralChange(newLiteral: string, what: string, attribute: ClassChannel, slot?: number): Promise<void> {
     const state = this.classPanel;
-    // The side the panel named: the tag's `class`, or a molecule's inner `data-class`.
-    const side = state ? sideOf(state, attribute) : null;
+    // The side the panel named: the tag's `class`, a molecule's inner `data-class`, or a slot's.
+    const side = state ? sideOf(state, attribute, slot) : null;
     if (!state || !side?.file || !side.anchor) return;
     const { el } = state;
     if (newLiteral === side.literal) return;
@@ -3198,7 +3356,7 @@ export class StudioEditor {
     }
     this.applying = true;
     try {
-      await this.writeLiteral(state, attribute, newLiteral, what);
+      await this.writeLiteral(state, attribute, newLiteral, what, slot);
     } finally {
       this.applying = false;
     }
@@ -3207,10 +3365,16 @@ export class StudioEditor {
   }
 
   /** The write itself. Split out so `applying` covers all of it, including the failure paths. */
-  private async writeLiteral(state: IClassPanelState, attribute: ClassChannel, newLiteral: string, what: string): Promise<void> {
-    const side = sideOf(state, attribute);
-    if (!side) return;
-    const { el } = state;
+  private async writeLiteral(
+    state: IClassPanelState,
+    attribute: ClassChannel,
+    newLiteral: string,
+    what: string,
+    slot?: number,
+  ): Promise<void> {
+    const side = sideOf(state, attribute, slot);
+    const el = elementOf(state, slot);
+    if (!side || !el) return;
     const { literal, file, anchor } = side;
     if (!file || !anchor) return;
 
@@ -4192,8 +4356,12 @@ export class StudioEditor {
     // The literal (and where it repeats) just changed: the open panel has to be re-anchored, exactly
     // as after a normal edit.
     const el = step.el.deref();
-    if (el?.isConnected && this.selectedEl === el) await this.showClassPanel(el);
-    else this.renderClassPanel();
+    const selected = this.selectedEl;
+    // A step on one of the selection's SLOTS re-anchors the selection too: the slot is hidden inside
+    // it, and its section would otherwise keep showing the old literal.
+    if (el?.isConnected && selected && (selected === el || (selected.contains(el) && this.isSlotSource(el)))) {
+      await this.showClassPanel(selected);
+    } else this.renderClassPanel();
   }
 
   /** Replays one step in one direction. The two kinds differ only in which writer they call. */

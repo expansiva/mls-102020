@@ -177,7 +177,9 @@ test('every id the PANEL asks for has words too', () => {
   // The core is not the only source of ids: most of the panel's own words are written as `t('...')`
   // right in the markup, and a typo there renders the id on screen. The dynamic ones (`group.${…}`,
   // the property of a "+" chip) come through the core list above.
-  const panel = readFileSync(`${STUDIO_DIR}classPickerPanel.ts`, 'utf8');
+  // Both pickers: the shared content (classPickerBase) and each one's chrome.
+  const panel = ['classPickerBase', 'classPickerPanel', 'pageClassPickerPanel']
+    .map((file) => readFileSync(`${STUDIO_DIR}${file}.ts`, 'utf8')).join('\n');
   const asked = [...panel.matchAll(/\bt\('([a-zA-Z][\w.]*)'/gu)].map((match) => match[1]);
   assert.ok(asked.length > 40, 'the scan found the calls');
   assert.deepEqual([...new Set(asked.filter((id) => !CATALOG.has(id)))], []);
@@ -282,7 +284,9 @@ test('every text attribute the editor offers has a name a human can read', () =>
   // The label is looked up DYNAMICALLY (`t(TEXT_ATTR_LABEL[attribute])`), which the scan above cannot
   // see: a missing entry would render `attr.placeholder` in the panel, or the raw attribute name.
   // It also keeps the two lists aligned — the editor's closed list and the panel's vocabulary.
-  const panel = readFileSync(`${STUDIO_DIR}classPickerPanel.ts`, 'utf8');
+  // Both pickers: the shared content (classPickerBase) and each one's chrome.
+  const panel = ['classPickerBase', 'classPickerPanel', 'pageClassPickerPanel']
+    .map((file) => readFileSync(`${STUDIO_DIR}${file}.ts`, 'utf8')).join('\n');
   const editor = readFileSync(`${STUDIO_DIR}studioEditor.ts`, 'utf8');
 
   const block = panel.slice(panel.indexOf('const TEXT_ATTR_LABEL'), panel.indexOf('};', panel.indexOf('const TEXT_ATTR_LABEL')));

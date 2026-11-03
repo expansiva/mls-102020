@@ -222,7 +222,9 @@ test('siblings are the ones in the same template plus the helpers mounted among 
 // --- Source guards for the editor that uses it ---
 
 const EDITOR = readFileSync(new URL('studioEditor.ts', import.meta.url), 'utf8');
-const PANEL = readFileSync(new URL('classPickerPanel.ts', import.meta.url), 'utf8');
+/** The floating panel as it renders: its chrome plus the content it inherits (classPickerBase). */
+const PANEL = readFileSync(new URL('classPickerBase.ts', import.meta.url), 'utf8')
+  + readFileSync(new URL('classPickerPanel.ts', import.meta.url), 'utf8');
 
 /** Code lines only: a mention inside a comment is documentation, not a call. */
 function codeLines(source: string): string[] {
@@ -518,7 +520,7 @@ test('what the user has to know about a duplicate is on screen BEFORE the click'
   assert.ok(options.includes('planRemove(source'), 'and the remove planner');
 
   // The panel puts the notes where they are read: the button's own tooltip.
-  const button = PANEL.slice(PANEL.indexOf('private duplicateButton'), PANEL.indexOf('private removeElementButton'));
+  const button = PANEL.slice(PANEL.indexOf('protected duplicateButton'), PANEL.indexOf('protected removeElementButton'));
   assert.ok(button.includes('duplicateNotes'), 'the notes reach the title');
   assert.ok(button.includes("t('panel.duplicate')"));
 });
@@ -527,11 +529,11 @@ test('remove asks twice, and only remove asks', () => {
   // The undo is exact but lives in this session's memory: close the Studio and the markup is gone
   // from the source. That is what the second click is for — and it is a click on the button, not a
   // browser `confirm()` (which the app does not own and cannot style).
-  const button = PANEL.slice(PANEL.indexOf('private removeElementButton'), PANEL.indexOf('private historyButton'));
+  const button = PANEL.slice(PANEL.indexOf('protected removeElementButton'), PANEL.indexOf('protected historyButton'));
   assert.ok(button.includes('this.confirmRemove'), 'armed by the first click');
   assert.equal(codeLines(PANEL).some((line) => line.includes('confirm(')), false, 'never the browser dialog');
 
-  const arm = PANEL.slice(PANEL.indexOf('private onRemoveElement'), PANEL.indexOf('private historyButton'));
+  const arm = PANEL.slice(PANEL.indexOf('protected onRemoveElement'), PANEL.indexOf('protected historyButton'));
   assert.ok(arm.includes('if (!this.confirmRemove) {'), 'the first click only arms');
   assert.ok(arm.indexOf('this.confirmRemove = false;') < arm.indexOf("'picker-remove'"), 'and it disarms as it fires');
 
@@ -540,7 +542,7 @@ test('remove asks twice, and only remove asks', () => {
   assert.ok(will.slice(0, will.indexOf('\n  }')).includes("if (changed.has('target')) this.confirmRemove = false;"));
 
   // Duplicating does not ask: it is undoable AND visible.
-  const duplicate = PANEL.slice(PANEL.indexOf('private duplicateButton'), PANEL.indexOf('private removeElementButton'));
+  const duplicate = PANEL.slice(PANEL.indexOf('protected duplicateButton'), PANEL.indexOf('protected removeElementButton'));
   assert.equal(duplicate.includes('confirm'), false);
 });
 

@@ -3978,6 +3978,14 @@ export interface IOwnerTree<T> {
   slotSource: (node: T, key: string) => T | null;
   /** Tag of the custom element, or null when the node is not one. */
   component: (node: T) => string | null;
+  /**
+   * True when the node is one of a molecule's SLOT elements (`<Label>`, `<Column>`), written by the
+   * page and only hidden by the molecule (TASK-102020-picker-molecule-slots).
+   *
+   * Like content that came through a live anchor, it was HANDED to the component, so the component
+   * above it does not own it. Optional: a tree without it behaves as before.
+   */
+  slotElement?: (node: T) => boolean;
 }
 
 export interface IOwnerChain<T> {
@@ -4049,6 +4057,8 @@ export function ownerChain<T>(node: T, root: T, tree: IOwnerTree<T>): IOwnerChai
       }
       fromSource = false;
     }
+    // A slot element the page wrote is handed to the component above it, exactly like a live source.
+    if (tree.slotElement?.(current)) fromSource = true;
 
     chain.unshift(current);
     current = tree.parent(current);
