@@ -6,6 +6,7 @@ import { undoFile } from '/_102027_/l2/libStor.js';
 import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
 import { loadProjectDefinitions } from '/_102033_/l2/cbe/initStudio.js';
 import { activeDraft } from '/_102033_/l2/cbe/studioDraft.js';
+import { draftPublishedCommit, requestDraftDiff } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import { discardModule, type FetchImpl } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 
 const NO_ACTIVE_DRAFT = 'draft.no_active_draft';
@@ -33,8 +34,28 @@ async function readCurrentConfig(project: number): Promise<string> {
     return content;
 }
 
-async function readPublishedConfig(project: number): Promise<string> {
+/**
+ * The published commit (`main`) as a sha. `getHistoryContent` takes only a hex commit: any other
+ * `ref` (a branch name) comes back as null content. `draftDiff` already hands it back as `main`.
+ */
+async function publishedCommit(project: number, slug: string): Promise<string> {
+    const known = draftPublishedCommit();
+    if (known) return known;
+    try {
+        const diff = await requestDraftDiff(project, slug);
+        const main = diff.main ?? draftPublishedCommit();
+        if (main) return main;
+    } catch (err) {
+        console.error('[draftModuleDiscard] draftDiff failed while looking for the published commit:', err);
+        throw new Error(CONFIG_MISSING);
+    }
+    console.error('[draftModuleDiscard] draftDiff has no published commit');
+    throw new Error(CONFIG_MISSING);
+}
+
+async function readPublishedConfig(project: number, slug: string): Promise<string> {
     const file = configFile(project);
+    const ref = await publishedCommit(project, slug);
     let driver: unknown;
     try {
         driver = await mls.stor.others.getDefaultDriver(project);
@@ -49,7 +70,7 @@ async function readPublishedConfig(project: number): Promise<string> {
     }
     let content: string | null;
     try {
-        content = await read.call(driver, file, 'main');
+        content = await read.call(driver, file, ref);
     } catch (err) {
         console.error('[draftModuleDiscard] published l5/config.json failed:', err);
         throw new Error(CONFIG_MISSING);
@@ -72,7 +93,7 @@ export async function discardModuleInStudio(project: number, moduleName: string)
         throw new Error(NO_ACTIVE_DRAFT);
     }
     const current = await readCurrentConfig(project);
-    const published = await readPublishedConfig(project);
+    const published = await readPublishedConfig(project, slug);
     await discardModule({
         fetchImpl,
         saveL5File: (id, shortName, content, comment) => saveL5File(id, shortName, content, comment),

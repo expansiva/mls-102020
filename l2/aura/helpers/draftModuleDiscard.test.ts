@@ -28,12 +28,13 @@ test('discardModuleInStudio wires the same effects the panel used to call', () =
     const body = SOURCE.slice(start);
     assert.match(body, /activeDraft\(\)/);
     assert.match(body, /readCurrentConfig\(project\)/);
-    assert.match(body, /readPublishedConfig\(project\)/);
+    assert.match(body, /readPublishedConfig\(project, slug\)/);
     assert.match(SOURCE, /draft\.no_active_draft/);
     assert.match(body, /throw new Error\(NO_ACTIVE_DRAFT\)/);
     assert.match(body, /console\.error\(/);
     assert.match(SOURCE, /getHistoryContent/);
-    assert.match(SOURCE, /'main'/);
+    assert.match(SOURCE, /publishedCommit\(project, slug\)/);
+    assert.doesNotMatch(SOURCE, /read\.call\(driver, file, 'main'\)/);
     assert.match(body, /saveL5File\(id, shortName, content, comment\)/);
     assert.match(body, /undoFile\(file as mls\.stor\.IFileInfo\)/);
     assert.match(body, /loadProjectDefinitions\(project\)/);
@@ -110,7 +111,8 @@ test('discardModuleInStudio calls draftRestorePaths and saveL5File, and throws t
             cache: { clearProjectsCache: async () => undefined },
             others: {
                 getDefaultDriver: async () => ({
-                    getHistoryContent: async () => published,
+                    // The server takes only a hex commit; a branch name such as 'main' gives null.
+                    getHistoryContent: async (_file: unknown, ref: string) => (/^[0-9a-f]+$/.test(ref) ? published : null),
                 }),
             },
         },
@@ -128,7 +130,7 @@ test('discardModuleInStudio calls draftRestorePaths and saveL5File, and throws t
             return {
                 ok: true,
                 status: 200,
-                json: async () => ({ statusCode: 200, status: 'files', head: 'abc', main: 'abc', files: [] }),
+                json: async () => ({ statusCode: 200, status: 'files', head: 'abc', main: 'abc123', files: [] }),
             };
         }
         throw new Error(`unexpected action ${body.action}`);
@@ -136,7 +138,8 @@ test('discardModuleInStudio calls draftRestorePaths and saveL5File, and throws t
     rememberCollabMode({ mode: 'studio', project: 102047, draft: 'team-102047' });
     try {
         await discardModuleInStudio(102047, 'orders');
-        assert.equal(calls[0], 'draftRestorePaths');
+        // No published commit known yet: one draftDiff finds `main`, then the restore runs.
+        assert.deepEqual(calls.slice(0, 2), ['draftDiff', 'draftRestorePaths']);
         assert.ok(calls.includes('save'));
         assert.match(saved, /Published orders/);
         assert.doesNotMatch(saved, /Draft orders/);
@@ -155,6 +158,7 @@ test('discardModuleInStudio calls draftRestorePaths and saveL5File, and throws t
             () => discardModuleInStudio(102047, 'orders'),
             /draft\.not_owner/,
         );
+        // `main` is remembered now: no second draftDiff.
         assert.deepEqual(calls, ['draftRestorePaths']);
     } finally {
         globalThis.fetch = previousFetch;
