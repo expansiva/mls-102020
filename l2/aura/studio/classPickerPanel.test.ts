@@ -41,11 +41,18 @@ ${code(`${panel}.ts`)}`;
 /**
  * Classes the templates compose at RUNTIME, which no static scan can see.
  *
- * Empty since the paste summary left the panel (it was `class="acp-dir acp-${direction}"`). It stays
- * as the place to list such a class if one comes back: an interpolated name is invisible to the scan
- * below, and would be reported as styled-but-never-rendered.
+ * `acp-slot-structure` is the one today: the slot tree passes it as an argument (`node(…, kind)`), so
+ * the scan of the `class="…"` attribute only sees `${kind}`.
  */
-const DYNAMIC: string[] = [];
+const DYNAMIC: string[] = ['acp-slot-structure'];
+
+/**
+ * Font Awesome's own classes (`fa-solid fa-circle-info`), the system's icon font, 6.6, injected by the
+ * studio header. Exempt from the prefix and from "styled here", on purpose: the font's stylesheet is
+ * what styles them, they are not Tailwind utilities, and a client page that also uses Font Awesome uses
+ * the same library — there is nothing to collide with.
+ */
+const ICON_FONT = /^fa-/u;
 
 /** Every class the panel can put on an element, from the templates. */
 function renderedClasses(TS: string): string[] {
@@ -63,7 +70,7 @@ function renderedClasses(TS: string): string[] {
   // A chunk that ends where an interpolation begins is half a name (`acp-` of `acp-${direction}`).
   for (const name of [...found]) if (name.endsWith('-')) found.delete(name);
   for (const name of DYNAMIC) found.add(name);
-  return [...found];
+  return [...found].filter((name) => !ICON_FONT.test(name));
 }
 
 /**
@@ -90,15 +97,15 @@ const CHANNEL_CALLS = [
   'pasteStyleInto(this.literal, clip.literal, this.channel).literal',
   'pasteStyleInto(this.literal, clip.literal, this.channel);',
   "side.channel === 'data-class'",
-  // A molecule: two sections, the inside and the tag.
-  '${this.renderSection(inner)}',
-  '${this.renderSection(this.tagSide)}',
+  // A molecule: ONE part at a time, chosen in the part selector (TASK-102020-picker-inspector).
+  '${this.renderParts()}',
+  'this.renderSection(inner)',
+  'this.renderSection(this.tagSide)',
   // What goes out names its attribute — and its slot (TASK-102020-picker-molecule-slots).
   'detail: { literal, what, attribute: side.channel, slot: side.slot }',
   '{ literal, attribute: side.channel, slot: side.slot }',
-  // The slots section, each slot through the same renderSection as the inside and the tag.
-  '${this.renderSlots()}',
-  '${this.renderSection(this.slotSide(at))}',
+  // A slot through the same renderSection as the inside and the tag.
+  'this.renderSection(this.slotSide(part))',
 ];
 
 test('both panels decide the vocabulary with the same core calls, and pass the channel to each', () => {
@@ -114,6 +121,33 @@ test('both panels decide the vocabulary with the same core calls, and pass the c
 });
 
 /**
+ * The chrome of TASK-102020-picker-inspector, phase 1: undo/redo in sight and the rest of the element
+ * actions in a ⋯ menu, in BOTH panels — and the content they share is the base's, not a copy.
+ */
+test('both chromes show undo/redo and put the other actions in the ⋯ menu', () => {
+  const base = code('classPickerBase.ts');
+  for (const panel of PANELS) {
+    const own = code(`${panel}.ts`);
+    assert.ok(own.includes('extends ClassPickerBase'), `${panel} inherits the content`);
+    assert.ok(own.includes('${this.renderActions()}'), `${panel} draws the shared actions`);
+    for (const moved of ['moveButton(', 'duplicateButton(', 'removeElementButton(', 'renderCopyIcon(', 'renderPasteIcon(']) {
+      assert.equal(own.includes(moved), false, `${panel}: ${moved} is in the menu, not in the chrome`);
+    }
+  }
+  const actions = base.slice(base.indexOf('protected renderActions()'), base.indexOf('protected menuItem('));
+  assert.ok(actions.includes("this.historyButton('undo')") && actions.includes("this.historyButton('redo')"), 'undo/redo stay in sight');
+  for (const item of ["this.moveButton('up')", "this.moveButton('down')", 'this.duplicateButton()', 'this.removeElementButton()', 'this.renderCopyIcon()', 'this.renderPasteIcon()']) {
+    assert.ok(actions.includes(item), `${item} is a line of the menu`);
+  }
+  // Remove still asks twice: its first click keeps the menu open.
+  const remove = base.slice(base.indexOf('protected removeElementButton'), base.indexOf('protected onRemoveElement'));
+  assert.ok(remove.includes('keepOpen: true'));
+  // Tabs: Style, Animation, Component, and Info as an icon.
+  assert.ok(base.includes("this.tabButton('classes', 'panel.tabStyle')"));
+  assert.ok(base.includes('acp-tab-icon'));
+});
+
+/**
  * The Properties tab (TASK-102020-picker-molecule-properties) is the same block in both panels: the
  * rows come decided by studioMoleculeProps, and each panel only renders them and emits.
  */
@@ -125,7 +159,7 @@ test('both panels render the Properties tab the same way, and neither decides wh
   for (const [panel, TS] of [[PANELS[0], floating], [PANELS[1], docked]]) {
     assert.ok(TS.includes("'picker-props-open'"), `${panel}: the tab asks when it opens`);
     assert.ok(TS.includes("'picker-prop'"), `${panel}: the tab emits the write`);
-    assert.ok(TS.includes("this.tabButton('props', 'panel.tabProps')"), `${panel}: the tab button`);
+    assert.ok(TS.includes("this.tabButton('props', 'panel.tabComponent')"), `${panel}: the tab button`);
     for (const decision of ['planPropWrite', 'splicePropAttribute', 'moleculePropsSchema']) {
       assert.ok(!TS.includes(decision), `${panel}: ${decision} is the editor's, not the panel's`);
     }

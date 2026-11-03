@@ -302,6 +302,16 @@ function slotTagsOf(el: Element): Set<string> | null {
   return new Set(tags.map((tag) => String(tag).toUpperCase()));
 }
 
+/**
+ * A slot's own text, cut short, for the panel's tree. Only a slot with no slot inside it: a
+ * `<TableRow>` would read as all of its cells glued together.
+ */
+function slotHint(el: HTMLElement, tags: Set<string>): string {
+  if (Array.from(el.children).some((child) => tags.has(child.tagName))) return '';
+  const text = (el.textContent ?? '').replace(/\s+/gu, ' ').trim();
+  return text.length > 24 ? `${text.slice(0, 24)}…` : text;
+}
+
 function anchorPathOf(anchor: ClassAnchor | null): IDomPathStep[] | null {
   if (!anchor || anchor.kind === 'occurrence') return null;
   return [...anchor.path];
@@ -565,6 +575,10 @@ interface ISlotSide extends IChannelSide {
   name: string;
   /** 1-based position among this molecule's slots of the same name. */
   index: number;
+  /** How many slots it is nested in — the indent of the panel's slot tree. */
+  depth: number;
+  /** The slot's own text, cut short — what tells two slots of the same name apart in the tree. */
+  hint: string;
 }
 
 interface IClassPanelState {
@@ -1474,6 +1488,13 @@ export class StudioEditor {
     return false;
   }
 
+  /** How many slot elements sit between `el` and its molecule. */
+  private slotDepth(el: HTMLElement, molecule: HTMLElement): number {
+    let depth = 0;
+    for (let node = el.parentElement; node && node !== molecule; node = node.parentElement) depth += 1;
+    return depth;
+  }
+
   /**
    * The slot elements of a molecule that exist in the page, in document order.
    *
@@ -2369,7 +2390,10 @@ export class StudioEditor {
     for (const el of this.slotElementsOf(molecule)) {
       if (!declared) break;
       const name = names.find((tag) => tag.toUpperCase() === el.tagName) ?? el.tagName.toLowerCase();
-      const side: ISlotSide = { el, name, index: 0, literal: el.getAttribute('data-class') ?? '', file: null, anchor: null };
+      const side: ISlotSide = {
+        el, name, index: 0, depth: this.slotDepth(el, molecule), hint: slotHint(el, declared),
+        literal: el.getAttribute('data-class') ?? '', file: null, anchor: null,
+      };
       const key = await this.resolveDataClassAnchor(el, side.literal, side, treeOf);
       if (key) {
         if (seen.has(key)) continue;
@@ -2808,6 +2832,8 @@ export class StudioEditor {
         name: slot.name,
         index: slot.index,
         repeated: state.slots.filter((other) => other.name === slot.name).length > 1,
+        depth: slot.depth,
+        hint: slot.hint,
         literal: slot.literal,
         editable: !slot.refusal && Boolean(slot.file) && slot.anchor !== null,
         refusal: slot.refusal,

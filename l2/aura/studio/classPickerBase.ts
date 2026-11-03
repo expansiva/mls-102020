@@ -215,6 +215,10 @@ export interface IPickerSlot {
   index: number;
   /** More than one slot of this name — the label carries the index. */
   repeated: boolean;
+  /** How many slots it is nested in (`TableHead` in `TableRow` in `TableHeader` = 2) — the tree's indent. */
+  depth: number;
+  /** The slot's own text, cut short ("Paciente") — what tells `TableHead 2` from `TableHead 3`. */
+  hint: string;
   literal: string;
   editable: boolean;
   refusal?: IMessageRef;
@@ -463,8 +467,18 @@ export abstract class ClassPickerBase extends StateLitElement {
   @state() private addColor: string | null = null;
   /** Which section's "+" is open — a molecule has several (its inside, its tag, its slots). */
   @state() private addChannel = 'class';
-  /** The slot whose rows are open in the Slots section; one at a time, null when all are folded. */
-  @state() private openSlot: number | null = null;
+  /**
+   * Which part of a molecule the Style tab edits (TASK-102020-picker-inspector, phase 1): its inside
+   * (`data-class`), its tag (`class`) or one of its slots, by index in `target.slots`. One at a time —
+   * the stacked sections were the clutter.
+   */
+  @state() private editPart: 'inner' | 'tag' | number = 'inner';
+  /** The slot tree under the part selector is open. */
+  @state() private slotTreeOpen = false;
+  /** Repeated slots (`TableHead ×5`) whose items are showing in the tree, by group key. */
+  @state() private slotGroupsOpen: string[] = [];
+  /** The ⋯ menu of the chrome is open. */
+  @state() private menuOpen = false;
   /** Token index whose typed-value input is open. */
   @state() private typedEditing: string | null = null;
   /** State keys the scenario panel is currently simulating — see renderScenarioBadge. */
@@ -532,7 +546,10 @@ export abstract class ClassPickerBase extends StateLitElement {
       this.addColor = null;
     }
     if (changed.has('target') && previous?.tag !== this.target?.tag) {
-      this.openSlot = null;
+      // A new element starts on the box the user sees.
+      this.editPart = 'inner';
+      this.slotTreeOpen = false;
+      this.slotGroupsOpen = [];
       this.pendingState = {};
       this.roleEditing = null;
     }
@@ -552,6 +569,10 @@ export abstract class ClassPickerBase extends StateLitElement {
     // The arming never survives a render: whatever else changed, the second click has to be a
     // deliberate second click on the same element.
     if (changed.has('target')) this.confirmRemove = false;
+    // Nor does the menu: every action in it ends in a write, and the write answers with a new target.
+    if (changed.has('target')) this.menuOpen = false;
+    // A slot that is no longer there (the page was rebuilt) is not a part to stay on.
+    if (typeof this.editPart === 'number' && !this.target?.slots[this.editPart]) this.editPart = 'inner';
     // A different element means a different sentence behind the same attribute name. The editor
     // re-validates the key against what it offered, so a stale choice cannot write — but it could
     // still SHOW the wrong key, and that is a lie the panel must not tell.
@@ -599,14 +620,16 @@ export abstract class ClassPickerBase extends StateLitElement {
       ${this.renderChain(target)}
       ${this.renderTexts(target)}
       <div class="acp-tabs">
-        ${this.tabButton('classes', 'panel.tabClasses')}
+        ${this.tabButton('classes', 'panel.tabStyle')}
         ${this.tabButton('animations', 'panel.tabAnimations')}
-        ${this.isCoreElement ? this.tabButton('molecules', 'panel.tabMolecules') : nothing}
-        ${this.isMolecule ? this.tabButton('props', 'panel.tabProps') : nothing}
-        ${this.tabButton('info', 'panel.tabInfo')}
+        ${this.isCoreElement ? this.tabButton('molecules', 'panel.tabComponent') : nothing}
+        ${this.isMolecule ? this.tabButton('props', 'panel.tabComponent') : nothing}
+        <span class="acp-spacer"></span>
+        <button type="button" class="acp-tab acp-tab-icon ${this.infoOpen ? 'acp-active' : ''}"
+          title=${t('panel.tabInfo')} aria-label=${t('panel.tabInfo')}
+          @click=${() => { this.tab = 'info'; this.preview(null); }}><i class="fa-solid fa-circle-info" aria-hidden="true"></i></button>
       </div>
-      ${target.refusal && this.tab !== 'props' ? html`<div class="acp-note acp-refusal">${tr(target.refusal)}</div>` : nothing}
-      ${target.warning && this.tab !== 'props' ? html`<div class="acp-note acp-warning">${tr(target.warning)}</div>` : nothing}
+      ${this.showsTopNotes ? this.renderNotes(target.refusal, target.warning) : nothing}
       ${this.tab === 'animations' ? this.renderAnimations() : nothing}
       ${this.tab === 'molecules' ? this.renderMolecules() : nothing}
       ${this.tab === 'props' ? this.renderProps() : nothing}
@@ -776,10 +799,13 @@ export abstract class ClassPickerBase extends StateLitElement {
   protected moveButton(direction: 'up' | 'down') {
     const can = direction === 'up' ? this.target?.canMoveUp : this.target?.canMoveDown;
     const reason = direction === 'up' ? this.target?.moveUpReason : this.target?.moveDownReason;
-    return html`<button type="button" class="acp-history" ?disabled=${!can}
-      title=${can ? t(`panel.move${direction === 'up' ? 'Up' : 'Down'}`) : (tr(reason) || t('panel.moveNo'))}
-      @click=${() => this.dispatchEvent(new CustomEvent(`picker-move-${direction}`, { bubbles: true, composed: true }))}
-    >${direction === 'up' ? '\u2191' : '\u2193'}</button>`;
+    return this.menuItem({
+      icon: direction === 'up' ? '\u2191' : '\u2193',
+      label: t(direction === 'up' ? 'panel.menuMoveUp' : 'panel.menuMoveDown'),
+      title: can ? t(`panel.move${direction === 'up' ? 'Up' : 'Down'}`) : (tr(reason) || t('panel.moveNo')),
+      disabled: !can,
+      onClick: () => this.dispatchEvent(new CustomEvent(`picker-move-${direction}`, { bubbles: true, composed: true })),
+    });
   }
 
   /**
@@ -794,10 +820,14 @@ export abstract class ClassPickerBase extends StateLitElement {
     const title = can
       ? [t('panel.duplicate'), ...notes].join(' · ')
       : (tr(this.target?.duplicateReason) || t('panel.duplicateNo'));
-    return html`<button type="button" class="acp-history ${notes.length ? 'acp-noted' : ''}"
-      ?disabled=${!can} title=${title}
-      @click=${() => this.dispatchEvent(new CustomEvent('picker-duplicate', { bubbles: true, composed: true }))}
-    >${DUPLICATE_ICON}</button>`;
+    return this.menuItem({
+      icon: DUPLICATE_ICON,
+      label: t('panel.menuDuplicate'),
+      title,
+      disabled: !can,
+      noted: notes.length > 0,
+      onClick: () => this.dispatchEvent(new CustomEvent('picker-duplicate', { bubbles: true, composed: true })),
+    });
   }
 
   /**
@@ -810,12 +840,20 @@ export abstract class ClassPickerBase extends StateLitElement {
   protected removeElementButton() {
     const can = this.target?.canRemove ?? false;
     if (!can) {
-      return html`<button type="button" class="acp-history" disabled
-        title=${tr(this.target?.removeReason) || t('panel.removeNo')}>${REMOVE_ICON}</button>`;
+      return this.menuItem({
+        icon: REMOVE_ICON, label: t('panel.menuRemove'),
+        title: tr(this.target?.removeReason) || t('panel.removeNo'), disabled: true, onClick: () => undefined,
+      });
     }
-    return html`<button type="button" class="acp-history ${this.confirmRemove ? 'acp-danger' : ''}"
-      title=${this.confirmRemove ? t('panel.removeConfirm') : t('panel.remove')}
-      @click=${this.onRemoveElement}>${REMOVE_ICON}</button>`;
+    // The first click ARMS and keeps the menu open — the second, on the same line, is what writes.
+    return this.menuItem({
+      icon: REMOVE_ICON,
+      label: t(this.confirmRemove ? 'panel.menuRemoveConfirm' : 'panel.menuRemove'),
+      title: this.confirmRemove ? t('panel.removeConfirm') : t('panel.remove'),
+      danger: this.confirmRemove,
+      keepOpen: true,
+      onClick: this.onRemoveElement,
+    });
   }
 
   /** First click arms, second writes. Nothing else on this panel needs two clicks. */
@@ -825,6 +863,7 @@ export abstract class ClassPickerBase extends StateLitElement {
       return;
     }
     this.confirmRemove = false;
+    this.menuOpen = false;
     this.dispatchEvent(new CustomEvent('picker-remove', { bubbles: true, composed: true }));
   };
 
@@ -840,6 +879,29 @@ export abstract class ClassPickerBase extends StateLitElement {
       title=${what ? t(`panel.${direction}Of`, { what }) : t(`panel.${direction}`)}
       @click=${() => this.dispatchEvent(new CustomEvent(`picker-${direction}`, { bubbles: true, composed: true }))}
     >${direction === 'undo' ? '\u21B6' : '\u21B7'}</button>`;
+  }
+
+  /**
+   * Whether the element's refusal and warning go above the tabs.
+   *
+   * They are the TAG's — the element as the page wrote it. In the Style tab of a molecule each part
+   * shows its own instead (renderClasses), so the tag's never sits on top of the inside's rows; and the
+   * Properties tab answers for itself.
+   */
+  protected get showsTopNotes(): boolean {
+    if (this.tab === 'props') return false;
+    return !(this.tab === 'classes' && this.innerSide);
+  }
+
+  /** The Info tab is the one showing — it is an icon at the end of the tab row, not a named tab. */
+  protected get infoOpen(): boolean {
+    return this.tab === 'info';
+  }
+
+  /** A refusal and a warning, each only when there is one. */
+  protected renderNotes(refusal?: IMessageRef, warning?: IMessageRef) {
+    return html`${refusal ? html`<div class="acp-note acp-refusal">${tr(refusal)}</div>` : nothing}
+      ${warning ? html`<div class="acp-note acp-warning">${tr(warning)}</div>` : nothing}`;
   }
 
   protected tabButton(id: 'classes' | 'animations' | 'info' | 'molecules' | 'props', label: string) {
@@ -1010,45 +1072,112 @@ export abstract class ClassPickerBase extends StateLitElement {
   protected renderClasses() {
     const inner = this.innerSide;
     if (!inner) return html`<div class="acp-rows">${this.renderSection(this.tagSide)}</div>`;
-    // A molecule: the inside first (the box the user sees, where most edits go), then the tag (the
-    // box its parent lays out). Each section says which attribute it writes.
-    const refusal = this.target?.inner?.refusal;
-    const warning = this.target?.inner?.warning;
-    return html`<div class="acp-rows">
-      <div class="acp-section" title=${t('panel.sectionInnerTitle')}>${t('panel.sectionInner')}</div>
-      ${refusal ? html`<div class="acp-note acp-refusal">${tr(refusal)}</div>` : nothing}
-      ${warning ? html`<div class="acp-note acp-warning">${tr(warning)}</div>` : nothing}
-      ${this.renderSection(inner)}
-      <div class="acp-section" title=${t('panel.sectionTagTitle')}>${t('panel.sectionTag')}</div>
-      ${this.renderSection(this.tagSide)}
-      ${this.renderSlots()}
-    </div>`;
+    // A molecule: ONE part at a time, chosen above (TASK-102020-picker-inspector, phase 1). Each part
+    // brings its own refusal and warning — the tag's never sits on top of the inside's rows.
+    const part = this.editPart;
+    const slot = typeof part === 'number' ? this.target?.slots[part] : undefined;
+    let body;
+    if (slot && typeof part === 'number') {
+      body = html`${this.renderNotes(slot.refusal, slot.warning)}
+        ${slot.repeated ? html`<div class="acp-note">${t('panel.slotRepeatedNote')}</div>` : nothing}
+        ${this.renderSection(this.slotSide(part))}`;
+    } else if (part === 'tag') {
+      body = html`${this.renderNotes(this.target?.refusal, this.target?.warning)}${this.renderSection(this.tagSide)}`;
+    } else {
+      body = html`${this.renderNotes(this.target?.inner?.refusal, this.target?.inner?.warning)}${this.renderSection(inner)}`;
+    }
+    return html`${this.renderParts()}<div class="acp-rows">${body}</div>`;
   }
 
   /**
-   * The molecule's slots (TASK-102020-picker-molecule-slots): one folded line per slot the page wrote,
-   * and the rows of the one that is open.
+   * The part selector of a molecule: `Interior | Na página | Slots ▾`.
    *
-   * Folded by default because a table has a dozen of them and the classes of the box itself come
-   * first. Only the slots that EXIST in the page are listed: adding one is writing content.
+   * The first two are always one click away — they are the common switch. The slots live behind the
+   * third, because a table has 17 of them (measured on the 102047: 359 of 620 molecules have 0–1 slot,
+   * 55 have 7 or more). With ONE slot the segment carries its name and is a plain choice; with none it
+   * is not there.
    */
-  protected renderSlots() {
+  protected renderParts() {
     const slots = this.target?.slots ?? [];
-    if (!slots.length) return nothing;
-    return html`<div class="acp-section" title=${t('panel.sectionSlotsTitle')}>${t('panel.sectionSlots')}</div>
-      ${slots.map((slot, at) => {
-    const open = this.openSlot === at;
-    const label = slot.repeated ? `${slot.name} ${slot.index}` : slot.name;
-    return html`<button type="button" class="acp-slot-head ${open ? 'acp-active' : ''}"
-        title=${slot.literal || t('panel.slotNoClasses')}
-        @click=${() => { this.openSlot = open ? null : at; this.addGroup = null; this.addColor = null; }}
-      >${open ? '▾' : '▸'} ${label}<span class="acp-slot-classes">${slot.literal}</span></button>
-      ${open ? html`
-        ${slot.refusal ? html`<div class="acp-note acp-refusal">${tr(slot.refusal)}</div>` : nothing}
-        ${slot.warning ? html`<div class="acp-note acp-warning">${tr(slot.warning)}</div>` : nothing}
-        ${slot.repeated ? html`<div class="acp-note">${t('panel.slotRepeatedNote')}</div>` : nothing}
-        ${this.renderSection(this.slotSide(at))}` : nothing}`;
-  })}`;
+    const part = this.editPart;
+    const segment = (on: boolean, label: string, sub: string, title: string, onClick: () => void) => html`
+      <button type="button" class="acp-part ${on ? 'acp-active' : ''}" title=${title} @click=${onClick}
+        >${label}<span class="acp-part-sub">${sub}</span></button>`;
+    const choose = (next: 'inner' | 'tag' | number): void => {
+      this.editPart = next;
+      this.slotTreeOpen = false;
+      this.addGroup = null;
+      this.addColor = null;
+      this.preview(null);
+    };
+
+    let slotSegment: unknown = nothing;
+    if (slots.length === 1) {
+      slotSegment = segment(part === 0, slots[0].name, t('panel.partSlot'), t('panel.sectionSlotsTitle'), () => choose(0));
+    } else if (slots.length > 1) {
+      const chosen = typeof part === 'number' ? slots[part] : undefined;
+      slotSegment = segment(
+        Boolean(chosen),
+        `${chosen ? this.slotLabel(chosen) : t('panel.partSlots')} ${this.slotTreeOpen ? '▴' : '▾'}`,
+        t('panel.partSlotsCount', { count: slots.length }),
+        t('panel.sectionSlotsTitle'),
+        () => { this.slotTreeOpen = !this.slotTreeOpen; },
+      );
+    }
+
+    return html`<div class="acp-parts">
+        ${segment(part === 'inner', t('panel.partInner'), 'data-class', t('panel.sectionInnerTitle'), () => choose('inner'))}
+        ${segment(part === 'tag', t('panel.partTag'), 'class', t('panel.sectionTagTitle'), () => choose('tag'))}
+        ${slotSegment}
+      </div>
+      ${this.slotTreeOpen && slots.length > 1 ? this.renderSlotTree(choose) : nothing}`;
+  }
+
+  /** `Label`, or `TableHead 2` when the name repeats. */
+  protected slotLabel(slot: IPickerSlot): string {
+    return slot.repeated ? `${slot.name} ${slot.index}` : slot.name;
+  }
+
+  /**
+   * The molecule's slots as the page nests them, with repeated siblings folded (`TableHead ×5`).
+   *
+   * A slot that only holds other slots (`TableHeader`, `TableRow`) is still a choice — it has a
+   * `data-class` like any other — but it reads quieter: it is structure, not something on screen.
+   */
+  protected renderSlotTree(choose: (next: number) => void) {
+    const slots = this.target?.slots ?? [];
+    const rows: unknown[] = [];
+    for (let at = 0; at < slots.length; at += 1) {
+      const slot = slots[at];
+      const container = (slots[at + 1]?.depth ?? -1) > slot.depth;
+      // Siblings of the same name, one after the other at the same depth: one folded group.
+      let end = at;
+      while (end + 1 < slots.length && slots[end + 1].name === slot.name && slots[end + 1].depth === slot.depth) end += 1;
+      const pad = (extra: number): string => `padding-left:${10 + (slot.depth + extra) * 12}px`;
+      const node = (index: number, label: string, kind: string, indent = 0) => {
+        const item = slots[index];
+        return html`<button type="button" class="acp-slot-node ${this.editPart === index ? 'acp-active' : ''} ${kind}"
+          style=${pad(indent)} title=${item.literal || t('panel.slotNoClasses')} @click=${() => choose(index)}
+          >${label}<span class="acp-slot-hint">${item.literal}</span></button>`;
+      };
+      if (end === at) {
+        rows.push(node(at, slot.hint ? `${slot.name} · ${slot.hint}` : slot.name, container ? 'acp-slot-structure' : ''));
+        continue;
+      }
+      const key = `${slot.depth}:${slot.name}:${at}`;
+      const open = this.slotGroupsOpen.includes(key) || (typeof this.editPart === 'number' && this.editPart >= at && this.editPart <= end);
+      rows.push(html`<button type="button" class="acp-slot-node acp-slot-group" style=${pad(0)}
+        @click=${() => { this.slotGroupsOpen = open ? this.slotGroupsOpen.filter((other) => other !== key) : [...this.slotGroupsOpen, key]; }}
+        >${open ? '▾' : '▸'} ${slot.name}<span class="acp-slot-hint">×${end - at + 1}</span></button>`);
+      if (open) {
+        for (let index = at; index <= end; index += 1) {
+          const item = slots[index];
+          rows.push(node(index, item.hint ? `${item.index} · ${item.hint}` : `${item.index}`, '', 1));
+        }
+      }
+      at = end;
+    }
+    return html`<div class="acp-slot-tree">${rows}</div>`;
   }
 
   /** One attribute's rows and its "+". */
@@ -1249,9 +1378,13 @@ export abstract class ClassPickerBase extends StateLitElement {
    */
   protected renderCopyIcon() {
     const has = Boolean(this.literal.trim());
-    return html`<button type="button" class="acp-icon" ?disabled=${!has}
-      title=${has ? t('panel.copyStyleTitle') : t('status.nothingToCopy')}
-      @click=${this.onCopy}>\u29C9</button>`;
+    return this.menuItem({
+      icon: '\u29C9',
+      label: t('panel.menuCopy'),
+      title: has ? t('panel.copyStyleTitle') : t('status.nothingToCopy'),
+      disabled: !has,
+      onClick: this.onCopy,
+    });
   }
 
   /**
@@ -1268,11 +1401,66 @@ export abstract class ClassPickerBase extends StateLitElement {
     const result = clip ? pasteStyleInto(this.literal, clip.literal, this.channel).literal : '';
     const nothingToDo = !clip || !editable || result === this.literal;
 
-    return html`<button type="button" class="acp-icon" ?disabled=${nothingToDo}
-      title=${clip ? t('panel.pasteFromTitle', { tag: clip.tag }) : t('panel.pasteEmpty')}
-      @mouseenter=${() => { if (!nothingToDo) this.previewLiteral(result); }}
-      @mouseleave=${() => this.previewLiteral(null)}
-      @click=${() => this.onPaste()}>\u{1F4CB}</button>`;
+    return this.menuItem({
+      icon: '\u{1F4CB}',
+      label: t('panel.menuPaste'),
+      title: clip ? t('panel.pasteFromTitle', { tag: clip.tag }) : t('panel.pasteEmpty'),
+      disabled: nothingToDo,
+      onEnter: () => { if (!nothingToDo) this.previewLiteral(result); },
+      onLeave: () => this.previewLiteral(null),
+      onClick: () => this.onPaste(),
+    });
+  }
+
+  /**
+   * The chrome's actions (TASK-102020-picker-inspector, phase 1): undo and redo in sight, the rest in a
+   * ⋯ menu with their NAMES written.
+   *
+   * Ten icons of one weight, from four subjects, was the clutter: the panel's own chrome now shows only
+   * what is used all the time, and the menu reads as a list of things to do. Every line keeps its
+   * tooltip — the reason it is off, the notes of a duplicate — exactly as the icons had it.
+   */
+  protected renderActions() {
+    return html`${this.historyButton('undo')}
+      ${this.historyButton('redo')}
+      <span class="acp-menu-wrap"
+        @keydown=${(e: KeyboardEvent) => { if (e.key === 'Escape' && this.menuOpen) { e.stopPropagation(); this.menuOpen = false; } }}>
+        <button type="button" class="acp-icon ${this.menuOpen ? 'acp-active' : ''}" title=${t('panel.moreActions')}
+          aria-label=${t('panel.moreActions')} aria-expanded=${this.menuOpen ? 'true' : 'false'}
+          @click=${() => { this.menuOpen = !this.menuOpen; this.confirmRemove = false; }}>\u22EF</button>
+        ${this.menuOpen ? html`<div class="acp-menu" role="menu">
+          ${this.moveButton('up')}
+          ${this.moveButton('down')}
+          <div class="acp-menu-sep"></div>
+          ${this.duplicateButton()}
+          ${this.removeElementButton()}
+          <div class="acp-menu-sep"></div>
+          ${this.renderCopyIcon()}
+          ${this.renderPasteIcon()}
+        </div>` : nothing}
+      </span>`;
+  }
+
+  /** One line of the ⋯ menu: an icon, a name, the tooltip that says why — and it closes the menu. */
+  protected menuItem(item: {
+    icon: string;
+    label: string;
+    title: string;
+    disabled?: boolean;
+    noted?: boolean;
+    danger?: boolean;
+    /** Arming a two-click action: the menu stays open for the second click. */
+    keepOpen?: boolean;
+    onClick: () => void;
+    onEnter?: () => void;
+    onLeave?: () => void;
+  }) {
+    return html`<button type="button" role="menuitem"
+      class="acp-menu-item ${item.noted ? 'acp-noted' : ''} ${item.danger ? 'acp-danger' : ''}"
+      ?disabled=${item.disabled ?? false} title=${item.title}
+      @mouseenter=${() => item.onEnter?.()} @mouseleave=${() => item.onLeave?.()}
+      @click=${() => { if (!item.keepOpen) this.menuOpen = false; item.onClick(); }}
+      ><span class="acp-menu-icon">${item.icon}</span>${item.label}</button>`;
   }
 
   protected onPaste(): void {

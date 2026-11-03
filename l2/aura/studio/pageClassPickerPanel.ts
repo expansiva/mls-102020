@@ -37,11 +37,10 @@ export const PAGE_CLASS_PICKER_TAG = 'aura--studio--page-class-picker-102020';
 /**
  * How long the header's tag may be before it is cut.
  *
- * Twice the floating panel's: here the tag has a line of its own (the actions are on the toolbar row
- * below it), so the only thing it shares the row with is the close. The whole name is in the tooltip,
- * and the `.less` keeps an ellipsis as the second line of defence.
+ * The same as the floating panel's: both have one row with five controls next to the tag. The whole
+ * name is in the tooltip, and the `.less` keeps an ellipsis as the second line of defence.
  */
-const HEAD_TAG_MAX = 32;
+const HEAD_TAG_MAX = 22;
 
 @customElement(PAGE_CLASS_PICKER_TAG)
 export class PageClassPickerPanel extends ClassPickerBase {
@@ -102,30 +101,19 @@ export class PageClassPickerPanel extends ClassPickerBase {
   }
 
   /**
-   * Two rows instead of one: the side panel is about as narrow as the floating one, and here the tag is
-   * worth reading in full — the actions get a toolbar of their own.
+   * One row, like the floating one: the tag, undo/redo and the ⋯ menu, the switch and the close. The
+   * toolbar row it used to have was for eight icons; with the actions in the menu there is room for all
+   * of it next to the tag.
    */
   protected renderChrome(target: IPickerTarget) {
-    return html`
-      <div class="acp-head">
-        <span class="acp-tag" title=${target.tag}>${ellipsize(target.tag, HEAD_TAG_MAX)}</span>
-        ${this.renderScenarioBadge()}
-        <span class="acp-spacer"></span>
-        ${this.floatButton()}
-        <button type="button" class="acp-close" title=${t('panel.close')} @click=${this.onClose}>&times;</button>
-      </div>
-      <div class="acp-toolbar">
-        ${this.moveButton('up')}
-        ${this.moveButton('down')}
-        ${this.duplicateButton()}
-        ${this.removeElementButton()}
-        <span class="acp-toolbar-sep"></span>
-        ${this.historyButton('undo')}
-        ${this.historyButton('redo')}
-        <span class="acp-toolbar-sep"></span>
-        ${this.renderCopyIcon()}
-        ${this.renderPasteIcon()}
-      </div>`;
+    return html`<div class="acp-head">
+      <span class="acp-tag" title=${target.tag}>${ellipsize(target.tag, HEAD_TAG_MAX)}</span>
+      ${this.renderScenarioBadge()}
+      <span class="acp-spacer"></span>
+      ${this.renderActions()}
+      ${this.floatButton()}
+      <button type="button" class="acp-close" title=${t('panel.close')} @click=${this.onClose}>&times;</button>
+    </div>`;
   }
 
   /** The way out to the floating panel — next to the close, with the rest of the panel's own chrome. */

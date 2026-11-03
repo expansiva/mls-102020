@@ -94,12 +94,31 @@ aura--studio--class-picker-102020 {
   .acp-tab.acp-active { color: #f5f7fa; border-bottom-color: #4287f5; }
 
   .acp-note { padding: 6px 10px; border-bottom: 1px solid rgba(245,247,250,0.08); color: #cbd5e1; line-height: 1.35; }
-  // The heading of each section of a molecule: its inside (data-class) and its tag (class).
-  .acp-section { padding: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #94a3b8; }
-  // One folded line per slot of a molecule; its classes trail in grey so a scan shows which have any.
-  .acp-slot-head { display: flex; gap: 6px; align-items: baseline; width: 100%; padding: 4px 10px; border: 0; background: transparent; color: #e2e8f0; font: inherit; text-align: left; cursor: pointer; }
-  .acp-slot-head:hover, .acp-slot-head.acp-active { background: rgba(245,247,250,0.06); }
-  .acp-slot-classes { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; font-size: 11px; }
+  // The tabs end in an icon (the Info tab) pushed to the right by the spacer.
+  .acp-tab-icon { margin-left: auto; padding-left: 8px; padding-right: 8px; font-size: 13px; line-height: 1; }
+  // The chrome actions: undo and redo in sight, the rest in the menu under the three dots.
+  .acp-menu-wrap { position: relative; display: inline-flex; }
+  .acp-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 2; min-width: 180px; padding: 4px 0; border-radius: 6px; background: #26323d; border: 1px solid rgba(245,247,250,0.12); }
+  .acp-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 10px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; color: #e2e8f0; }
+  .acp-menu-item:hover:not([disabled]) { background: rgba(245,247,250,0.06); }
+  .acp-menu-item[disabled] { opacity: 0.4; cursor: default; }
+  .acp-menu-item.acp-noted { color: #ffd8a1; }
+  .acp-menu-item.acp-danger { color: #fca5a5; background: rgba(229,57,53,0.18); }
+  .acp-menu-icon { width: 16px; text-align: center; color: #94a3b8; }
+  .acp-menu-sep { height: 1px; margin: 4px 0; background: rgba(245,247,250,0.12); }
+  // The part of a molecule the Style tab edits: inside, tag, slots.
+  .acp-parts { display: flex; margin: 8px 10px 4px; border: 1px solid rgba(245,247,250,0.12); border-radius: 6px; overflow: hidden; }
+  .acp-part { flex: 1 1 0; min-width: 0; padding: 4px 6px; border: 0; background: transparent; font: inherit; color: #94a3b8; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acp-part + .acp-part { border-left: 1px solid rgba(245,247,250,0.12); }
+  .acp-part.acp-active { background: rgba(66,135,245,0.18); color: #9cc3ff; }
+  .acp-part-sub { display: block; font-size: 10px; color: #64748b; }
+  // The slot tree under the selector, as the page nests the slots.
+  .acp-slot-tree { margin: 0 10px 6px; padding: 4px 0; border: 1px solid rgba(245,247,250,0.12); border-radius: 6px; }
+  .acp-slot-node { display: flex; gap: 6px; align-items: baseline; width: 100%; padding-top: 2px; padding-bottom: 2px; padding-right: 10px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; color: #e2e8f0; }
+  .acp-slot-node:hover { background: rgba(245,247,250,0.06); }
+  .acp-slot-node.acp-active { background: rgba(66,135,245,0.18); color: #9cc3ff; }
+  .acp-slot-group, .acp-slot-structure { color: #94a3b8; }
+  .acp-slot-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #64748b; font-size: 11px; }
   .acp-note.acp-warning { background: rgba(245,166,35,0.14); color: #ffd8a1; }
   .acp-note.acp-refusal { background: rgba(229,57,53,0.16); color: #ffc9c7; }
 

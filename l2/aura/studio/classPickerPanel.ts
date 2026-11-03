@@ -48,12 +48,12 @@ export const CLASS_PICKER_TAG = 'aura--studio--class-picker-102020';
  * How long the header's tag may be before it is cut.
  *
  * More room than a breadcrumb level (it is one item, not nine) and still a hard limit, because the
- * header is a single flex row with eight icon buttons and a close on it: a molecule tag
- * (`grouptriggeraction--ml-button-group`, 35 characters) pushed all of them out of the panel. The
- * whole name is in the tooltip, and the `.less` keeps an ellipsis as the second line of defence — a
- * cut by character count cannot know the width of the glyphs.
+ * header is a single flex row: a molecule tag (`grouptriggeraction--ml-button-group`, 35 characters)
+ * used to push its eight icons out of the panel. With the actions in the ⋯ menu the row holds five,
+ * so the tag got room back. The whole name is in the tooltip, and the `.less` keeps an ellipsis as
+ * the second line of defence — a cut by character count cannot know the width of the glyphs.
  */
-const HEAD_TAG_MAX = 16;
+const HEAD_TAG_MAX = 22;
 
 @customElement(CLASS_PICKER_TAG)
 export class ClassPickerPanel extends ClassPickerBase {
@@ -79,20 +79,13 @@ export class ClassPickerPanel extends ClassPickerBase {
     super.disconnectedCallback();
   }
 
-  /** One row: the tag, every action, the way back to the Pages panel and the close. */
+  /** One row: the tag, undo/redo and the ⋯ menu, the way back to the Pages panel and the close. */
   protected renderChrome(target: IPickerTarget) {
     return html`<div class="acp-head">
       <span class="acp-tag" title=${target.tag}>${ellipsize(target.tag, HEAD_TAG_MAX)}</span>
       ${this.renderScenarioBadge()}
-      ${this.moveButton('up')}
-      ${this.moveButton('down')}
-      ${this.duplicateButton()}
-      ${this.removeElementButton()}
-      ${this.historyButton('undo')}
-      ${this.historyButton('redo')}
-      ${this.renderCopyIcon()}
-      ${this.renderPasteIcon()}
       <span class="acp-spacer"></span>
+      ${this.renderActions()}
       ${this.canDock ? html`<button type="button" class="acp-icon" title=${t('panel.dockReturn')}
         @click=${this.onDockReturn}>↙</button>` : nothing}
       <button type="button" class="acp-close" title=${t('panel.close')} @click=${this.onClose}>&times;</button>
