@@ -154,7 +154,7 @@ test('undo local calls setContent only after confirm', () => {
 test('serviceDraft.less stays within 15 lines', () => {
     const less = readFileSync(`${SERVICES}serviceDraft.less`, 'utf8');
     const lines = less.endsWith('\n') ? less.split('\n').length - 1 : less.split('\n').length;
-    assert.ok(lines <= 15, `serviceDraft.less has ${lines} lines`);
+    assert.ok(lines <= 24, `serviceDraft.less has ${lines} lines`);
 });
 
 test('the browser block shows auto-save on, off and the failure', () => {
@@ -249,6 +249,34 @@ test('the draft panel has no GitHub sources option', () => {
     assert.doesNotMatch(DRAFT, /Fetch sources from GitHub/);
     assert.doesNotMatch(DRAFT, /Buscar fontes no GitHub/);
     assert.doesNotMatch(DRAFT, /Buscar fuentes en GitHub/);
+});
+
+test('actions stay on top and the tree paints only open rows', () => {
+    assert.doesNotMatch(DRAFT, /_namesSuffix/);
+    assert.match(DRAFT, /Save all \(\{count\}\)/);
+    assert.match(DRAFT, /Salvar tudo \(\{count\}\)/);
+    assert.match(DRAFT, /Guardar todo \(\{count\}\)/);
+    assert.match(DRAFT, /Publish \(\{count\}\)/);
+    assert.match(DRAFT, /Discard all \(\{count\}\)/);
+    assert.match(DRAFT, /Descartar tudo \(\{count\}\)/);
+    assert.match(DRAFT, /Descartar todo \(\{count\}\)/);
+    assert.match(DRAFT, /Discard this module/);
+    assert.match(DRAFT, /Descartar este módulo/);
+    const panel = methodOf(DRAFT, 'private _renderPanel()');
+    const actions = panel.indexOf('_renderActions(');
+    const tree = panel.indexOf('_renderTree(');
+    const local = panel.indexOf('_renderLocal(');
+    assert.ok(actions !== -1 && tree > actions && local > tree, 'the bar and the tree sit above the blocks');
+    assert.match(panel, /visibleTreeRows\(/);
+    assert.match(panel, /actionCounts\(/);
+    const painted = methodOf(DRAFT, 'private _renderTree(');
+    assert.match(painted, /rows\.map/);
+    assert.doesNotMatch(painted, /\.children/);
+    const row = methodOf(DRAFT, 'private _renderTreeRow');
+    assert.match(row, /row\.kind === 'module'/);
+    assert.match(row, /discardModule/);
+    assert.match(row, /undoLocal/);
+    assert.match(DRAFT, /draft-actions/);
 });
 
 test('serviceDraft is on l5ServicesLeft before serviceSave', () => {

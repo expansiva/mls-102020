@@ -10,8 +10,12 @@ import {
   discard,
   loadPanel,
   localEdits,
+  actionCounts,
+  buildDraftTree,
   panelModel,
+  pendingFiles,
   publish,
+  visibleTreeRows,
   readPublished,
   saveDefaultDraft,
   saveToDraft,
@@ -809,4 +813,61 @@ test('storeCapturedDraftText writes the captured string and reports a failed wri
     console.error = previousError;
     host.mls.stor.localStor = previous;
   }
+});
+
+test('1016 pipeline files open closed, one level line, and only the children of an open node', () => {
+  const files = Array.from({ length: 1016 }, (_, index) => ({
+    shortPath: `l2/comandaRestaurante/pipeline/agentDefsL2/file${index}.ts`,
+    hasError: false,
+  }));
+  const pending = pendingFiles(files, []);
+  const tree = buildDraftTree(pending);
+  assert.equal(tree.length, 1);
+  assert.equal(tree[0].name, 'l2');
+  assert.equal(tree[0].kind, 'level');
+  assert.equal(tree[0].count, 1016);
+  assert.equal(tree[0].inBrowser, 1016);
+  assert.equal(tree[0].children[0].kind, 'module');
+  assert.equal(tree[0].children[0].name, 'comandaRestaurante');
+
+  const closed = visibleTreeRows(tree, new Set());
+  assert.equal(closed.length, 1);
+  assert.equal(closed[0].name, 'l2');
+  assert.equal(closed.filter((row) => row.kind === 'file').length, 0);
+
+  const opened = visibleTreeRows(tree, new Set(['l2']));
+  assert.deepEqual(opened.map((row) => row.name), ['l2', 'comandaRestaurante']);
+
+  const moduleOpen = visibleTreeRows(tree, new Set(['l2', 'l2/comandaRestaurante']));
+  assert.deepEqual(moduleOpen.map((row) => row.name), ['l2', 'comandaRestaurante', 'pipeline']);
+  assert.equal(moduleOpen.filter((row) => row.kind === 'file').length, 0);
+
+  const folderOpen = visibleTreeRows(tree, new Set([
+    'l2',
+    'l2/comandaRestaurante',
+    'l2/comandaRestaurante/pipeline',
+    'l2/comandaRestaurante/pipeline/agentDefsL2',
+  ]));
+  assert.equal(folderOpen.filter((row) => row.kind === 'file').length, 1016);
+
+  assert.deepEqual(actionCounts(files, []), { save: 1016, publish: 0, discard: 1016 });
+
+  const twoLevels = buildDraftTree(pendingFiles(
+    [{ shortPath: 'l2/comandaRestaurante/pipeline/a.ts', hasError: true }],
+    ['l4/outro/b.ts', 'l2/comandaRestaurante/pipeline/a.ts'],
+  ));
+  const levelLines = visibleTreeRows(twoLevels, new Set());
+  assert.deepEqual(levelLines.map((row) => row.name), ['l2', 'l4']);
+  assert.equal(levelLines[0].withError, 1);
+  assert.equal(levelLines[0].inBrowser, 1);
+  assert.equal(levelLines[0].inDraft, 1);
+  assert.equal(levelLines[1].inDraft, 1);
+  assert.equal(levelLines[1].inBrowser, 0);
+  assert.deepEqual(
+    actionCounts(
+      [{ shortPath: 'l2/comandaRestaurante/pipeline/a.ts', hasError: true }],
+      ['l4/outro/b.ts', 'l2/comandaRestaurante/pipeline/a.ts'],
+    ),
+    { save: 1, publish: 2, discard: 2 },
+  );
 });

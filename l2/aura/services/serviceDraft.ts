@@ -9,11 +9,15 @@ import { loadProjectDefinitions } from '/_102033_/l2/cbe/initStudio.js';
 import {
     afterDraftSave,
     branchForSlug,
+    actionCounts,
+    buildDraftTree,
     collectEditedFiles,
     discard,
     loadPanel,
     localEdits,
     panelModel,
+    pendingFiles,
+    visibleTreeRows,
     publish,
     readPublished,
     saveDefaultDraft,
@@ -23,10 +27,11 @@ import {
     viewDiff,
     type FetchImpl,
     type IDraftWaitResult,
+    type IActionCounts,
     type IListedDraft,
-    type ILocalEdit,
     type IPanelModel,
     type IPublishedRecord,
+    type IVisibleTreeRow,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { listedOwner, subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
 
@@ -42,9 +47,12 @@ const message_en = {
     behind: 'Behind',
     touched: 'Touched files',
     noFiles: 'No touched files.',
-    save: 'Save to draft',
-    publish: 'Publish',
-    discard: 'Discard',
+    saveAll: 'Save all ({count})',
+    publishAll: 'Publish ({count})',
+    discardAll: 'Discard all ({count})',
+    markBrowser: 'in the browser',
+    markDraft: 'in the draft',
+    discardModule: 'Discard this module',
     askComment: 'Message',
     confirmPublish: 'Publish your {count} changes?',
     confirmDiscard: 'Discard your {count} changes from your draft?',
@@ -102,9 +110,12 @@ const messages: Record<string, MessageType> = {
         behind: 'Atrás',
         touched: 'Arquivos tocados',
         noFiles: 'Nenhum arquivo tocado.',
-        save: 'Salvar no rascunho',
-        publish: 'Publicar',
-        discard: 'Descartar',
+        saveAll: 'Salvar tudo ({count})',
+        publishAll: 'Publicar ({count})',
+        discardAll: 'Descartar tudo ({count})',
+        markBrowser: 'no navegador',
+        markDraft: 'no rascunho',
+        discardModule: 'Descartar este módulo',
         askComment: 'Mensagem',
         confirmPublish: 'Publicar as suas {count} alterações?',
         confirmDiscard: 'Descartar as suas {count} alterações do seu rascunho?',
@@ -159,9 +170,12 @@ const messages: Record<string, MessageType> = {
         behind: 'Por detrás',
         touched: 'Archivos tocados',
         noFiles: 'Ningún archivo tocado.',
-        save: 'Guardar en el borrador',
-        publish: 'Publicar',
-        discard: 'Descartar',
+        saveAll: 'Guardar todo ({count})',
+        publishAll: 'Publicar ({count})',
+        discardAll: 'Descartar todo ({count})',
+        markBrowser: 'en el navegador',
+        markDraft: 'en el borrador',
+        discardModule: 'Descartar este módulo',
         askComment: 'Mensaje',
         confirmPublish: '¿Publicar sus {count} cambios?',
         confirmDiscard: '¿Descartar sus {count} cambios de su borrador?',
@@ -335,6 +349,7 @@ export class ServiceDraft102020 extends ServiceBase {
     private _autoSaveTimer = 0;
     private _unsubAutoSave: (() => void) | undefined;
     @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null, agentWorking: false };
+    @state() private _open = new Set<string>();
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -381,8 +396,11 @@ export class ServiceDraft102020 extends ServiceBase {
         return template.replace('{count}', String(count));
     }
 
-    private _namesSuffix(names: string): string {
-        return names ? ` — ${names}` : '';
+    private _toggleNode(id: string): void {
+        const next = new Set(this._open);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        this._open = next;
     }
 
     private _renderPanel() {
@@ -398,20 +416,81 @@ export class ServiceDraft102020 extends ServiceBase {
             published: project ? readStoredPublished(project) : null,
             release: this._releaseId,
         });
+        const pending = pendingFiles(model.local.files, model.draft.files);
+        const rows = visibleTreeRows(buildDraftTree(pending), this._open);
+        const counts = actionCounts(model.local.files, model.draft.files);
+        const byPath = new Map<string, mls.stor.IFileInfo>();
+        const paired = Math.min(edited.length, local.length);
+        for (let index = 0; index < paired; index += 1) {
+            const edit = local[index];
+            const file = edited[index];
+            if (edit && file) byPath.set(edit.shortPath, file);
+        }
         const busy = this._phase === 'loading' || this._phase === 'publishing';
         return html`
             <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
+                ${this._renderActions(counts, busy)}
                 ${this._phase === 'loading' ? html`<p class="px-4 py-4">${this.msg.loading}</p>` : nothing}
                 ${this._phase === 'publishing' ? html`<p class="px-4 py-4">${this._pingText()}</p>` : nothing}
                 ${this._phase === 'error' ? html`<p class="px-4 py-4 text-amber-700 dark:text-amber-300">${this._error}</p>` : nothing}
                 ${this._errorFiles.length
                     ? html`<div class="flex flex-col gap-0.5 px-4">${this._errorFiles.map((file) => html`<div>${file}</div>`)}</div>`
                     : nothing}
-                ${this._renderLocal(model, edited, busy)}
+                ${this._renderTree(rows, byPath, busy)}
+                ${this._renderLocal(model)}
                 ${this._renderDraft(model, busy)}
                 ${this._renderPublished(model)}
                 ${this._note ? html`<p class="px-4 py-4">${this._note}</p>` : nothing}
                 ${this._renderOthers(busy)}
+            </div>
+        `;
+    }
+
+    private _renderActions(counts: IActionCounts, busy: boolean) {
+        const save = this.msg.saveAll.replace('{count}', String(counts.save));
+        const publish = this.msg.publishAll.replace('{count}', String(counts.publish));
+        const discard = this.msg.discardAll.replace('{count}', String(counts.discard));
+        return html`
+            <div class="draft-actions flex flex-wrap gap-3 px-4 py-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
+                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${save}</button>
+                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
+                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
+            </div>
+        `;
+    }
+
+    private _renderTree(rows: readonly IVisibleTreeRow[], byPath: ReadonlyMap<string, mls.stor.IFileInfo>, busy: boolean) {
+        if (rows.length === 0) return nothing;
+        return html`
+            <div class="flex flex-col gap-0.5 px-4 py-3">
+                ${rows.map((row) => this._renderTreeRow(row, byPath.get(row.id), busy))}
+            </div>
+        `;
+    }
+
+    private _renderTreeRow(row: IVisibleTreeRow, file: mls.stor.IFileInfo | undefined, busy: boolean) {
+        const marks = [
+            this._countLabel(row.count),
+            row.inBrowser > 0 ? `${this.msg.markBrowser} ${row.inBrowser}` : '',
+            row.inDraft > 0 ? `${this.msg.markDraft} ${row.inDraft}` : '',
+            row.withError > 0 ? `${this.msg.withError} ${row.withError}` : '',
+        ].filter((part) => part !== '').join(' · ');
+        return html`
+            <div class="flex items-center gap-3" style="padding-left: ${row.depth * 12}px">
+                ${row.kind === 'file'
+                    ? html`<span>${row.name}</span>`
+                    : html`<button class="text-left" @click=${() => { this._toggleNode(row.id); }}>${this._open.has(row.id) ? '▾' : '▸'} ${row.name}</button>`}
+                <span>${marks}</span>
+                ${row.kind === 'module'
+                    ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { this._onDiscardModule(row.name); }}>${this.msg.discardModule}</button>`
+                    : nothing}
+                ${row.kind === 'file' && row.inBrowser
+                    ? html`<button
+                        class=${actionClass}
+                        ?disabled=${busy || !file}
+                        @click=${() => { if (file) void this._onUndoLocal(file, row.id); }}
+                    >${this.msg.undoLocal}</button>`
+                    : nothing}
             </div>
         `;
     }
@@ -439,46 +518,26 @@ export class ServiceDraft102020 extends ServiceBase {
         this._autoSaveTimer = window.setInterval(() => { this.requestUpdate(); }, 1000);
     }
 
-    private _renderLocal(model: IPanelModel, edited: mls.stor.IFileInfo[], busy: boolean) {
-        const files = model.local.files;
-        const heading = `${this.msg.localTitle}: ${this._countLabel(model.local.count)}${this._namesSuffix(files.map((file) => file.shortPath).join(', '))}`;
+    private _renderLocal(model: IPanelModel) {
+        const heading = `${this.msg.localTitle}: ${this._countLabel(model.local.count)}`;
         return html`
             <div class=${blockClass}>
                 <div class="font-semibold">${heading}</div>
                 <p>${this._autoSaveLine()}</p>
-                ${files.length === 0
+                ${model.local.count === 0
                     ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noLocal}</p>`
-                    : html`<div class="flex flex-col gap-0.5">
-                        ${files.map((file, index) => this._renderLocalFile(file, edited[index], busy))}
-                    </div>`}
+                    : nothing}
                 ${this._blocked.length
                     ? html`<p class="text-amber-700 dark:text-amber-300">${this.msg.blocked}</p>
                         <div class="flex flex-col gap-0.5">${this._blocked.map((file) => html`<div>${fileLabel(file)}</div>`)}</div>`
                     : nothing}
-                <div class="flex flex-wrap gap-3">
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${this.msg.save}</button>
-                </div>
-            </div>
-        `;
-    }
-
-    private _renderLocalFile(edit: ILocalEdit, file: mls.stor.IFileInfo | undefined, busy: boolean) {
-        return html`
-            <div class="flex items-center gap-3">
-                <span>${edit.shortPath}</span>
-                ${edit.hasError ? html`<span class="text-amber-700 dark:text-amber-300">${this.msg.withError}</span>` : nothing}
-                <button
-                    class=${actionClass}
-                    ?disabled=${busy || !file}
-                    @click=${() => { if (file) void this._onUndoLocal(file, edit.shortPath); }}
-                >${this.msg.undoLocal}</button>
             </div>
         `;
     }
 
     private _renderDraft(model: IPanelModel, busy: boolean) {
         const current = this._current;
-        const heading = `${this.msg.draftTitle.replace('{slug}', this._slug)}: ${this._countLabel(model.draft.count)}${this._namesSuffix(model.draft.files.join(', '))}`;
+        const heading = `${this.msg.draftTitle.replace('{slug}', this._slug)}: ${this._countLabel(model.draft.count)}`;
         return html`
             <div class=${blockClass}>
                 <div class="font-semibold">${heading}</div>
@@ -487,10 +546,8 @@ export class ServiceDraft102020 extends ServiceBase {
                 <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.behind}</span><span>${current ? current.behind : ''}</span></div>
                 ${model.draft.files.length === 0
                     ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noFiles}</p>`
-                    : html`<div class="flex flex-col gap-0.5">${model.draft.files.map((file) => html`<div>${file}</div>`)}</div>`}
+                    : nothing}
                 <div class="flex flex-wrap gap-3">
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${this.msg.publish}</button>
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${this.msg.discard}</button>
                     <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>
                     ${current && current.behind > 0
                         ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSyncPublished(); }}>${this.msg.syncPublished}</button>`
@@ -502,7 +559,7 @@ export class ServiceDraft102020 extends ServiceBase {
 
     private _renderPublished(model: IPanelModel) {
         const published = model.published;
-        const heading = `${this.msg.publishedTitle}: ${this._countLabel(published.count)}${this._namesSuffix(published.files.join(', '))}`;
+        const heading = `${this.msg.publishedTitle}: ${this._countLabel(published.count)}`;
         return html`
             <div class=${blockClass}>
                 <div class="font-semibold">${heading}</div>
@@ -886,6 +943,10 @@ export class ServiceDraft102020 extends ServiceBase {
             this._error = err instanceof Error ? err.message : String(err);
             this._phase = 'error';
         }
+    }
+
+    private _onDiscardModule(moduleName: string): void {
+        console.error('[serviceDraft] discard module is not available yet:', moduleName);
     }
 
     private async _onDiscard(): Promise<void> {

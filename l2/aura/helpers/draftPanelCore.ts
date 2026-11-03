@@ -497,6 +497,179 @@ export function panelModel(input: IPanelModelInput): IPanelModel {
   };
 }
 
+/** One pending path. The same path can sit in the browser and in the draft. */
+export interface IPendingFile {
+  path: string;
+  inBrowser: boolean;
+  inDraft: boolean;
+  hasError: boolean;
+}
+
+export type DraftTreeKind = 'level' | 'module' | 'folder' | 'file';
+
+/** Level, then module, then folders, then the file. Counts cover every file under the node. */
+export interface IDraftTreeNode {
+  id: string;
+  name: string;
+  kind: DraftTreeKind;
+  count: number;
+  inBrowser: number;
+  inDraft: number;
+  withError: number;
+  children: IDraftTreeNode[];
+}
+
+/** A row the panel may paint. Closed nodes contribute no children. */
+export interface IVisibleTreeRow {
+  id: string;
+  name: string;
+  kind: DraftTreeKind;
+  depth: number;
+  count: number;
+  inBrowser: number;
+  inDraft: number;
+  withError: number;
+}
+
+export interface IActionCounts {
+  save: number;
+  publish: number;
+  discard: number;
+}
+
+interface IMutableTreeNode {
+  id: string;
+  name: string;
+  kind: DraftTreeKind;
+  files: IPendingFile[];
+  children: Map<string, IMutableTreeNode>;
+}
+
+function rememberPending(byPath: Map<string, IPendingFile>, path: string, fromDraft: boolean, hasError: boolean): void {
+  if (path.trim() === '') {
+    console.error('[draftPanel] pending file has an empty path');
+    return;
+  }
+  const found = byPath.get(path);
+  if (found) {
+    if (fromDraft) found.inDraft = true;
+    else found.inBrowser = true;
+    if (hasError) found.hasError = true;
+    return;
+  }
+  const created: IPendingFile = {
+    path,
+    inBrowser: !fromDraft,
+    inDraft: fromDraft,
+    hasError,
+  };
+  byPath.set(path, created);
+}
+
+/** Browser edits and draft paths, one entry per path. */
+export function pendingFiles(local: readonly ILocalEdit[], draftPaths: readonly string[]): IPendingFile[] {
+  const byPath = new Map<string, IPendingFile>();
+  for (const file of local) rememberPending(byPath, file.shortPath, false, file.hasError);
+  for (const path of draftPaths) rememberPending(byPath, path, true, false);
+  return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function childOf(parent: IMutableTreeNode, name: string, kind: DraftTreeKind): IMutableTreeNode {
+  const found = parent.children.get(name);
+  if (found) return found;
+  const id = parent.id === '' ? name : `${parent.id}/${name}`;
+  const created: IMutableTreeNode = { id, name, kind, files: [], children: new Map() };
+  parent.children.set(name, created);
+  return created;
+}
+
+function tally(files: readonly IPendingFile[]): Pick<IDraftTreeNode, 'count' | 'inBrowser' | 'inDraft' | 'withError'> {
+  let inBrowser = 0;
+  let inDraft = 0;
+  let withError = 0;
+  for (const file of files) {
+    if (file.inBrowser) inBrowser += 1;
+    if (file.inDraft) inDraft += 1;
+    if (file.hasError) withError += 1;
+  }
+  return { count: files.length, inBrowser, inDraft, withError };
+}
+
+function freezeNode(node: IMutableTreeNode): IDraftTreeNode {
+  const children = [...node.children.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((child) => freezeNode(child));
+  return { id: node.id, name: node.name, kind: node.kind, ...tally(node.files), children };
+}
+
+function attachPending(root: IMutableTreeNode, file: IPendingFile): void {
+  const parts = file.path.split('/').filter((part) => part !== '');
+  if (parts.length === 0) return;
+  if (parts.length === 1) {
+    const leaf = childOf(root, parts[0], 'file');
+    leaf.files.push(file);
+    return;
+  }
+  const level = childOf(root, parts[0], 'level');
+  level.files.push(file);
+  if (parts.length === 2) {
+    const leaf = childOf(level, parts[1], 'file');
+    leaf.files.push(file);
+    return;
+  }
+  const moduleNode = childOf(level, parts[1], 'module');
+  moduleNode.files.push(file);
+  let parent = moduleNode;
+  for (let index = 2; index < parts.length - 1; index += 1) {
+    const folder = childOf(parent, parts[index], 'folder');
+    folder.files.push(file);
+    parent = folder;
+  }
+  const leaf = childOf(parent, parts[parts.length - 1], 'file');
+  leaf.files.push(file);
+}
+
+/** `lN` → module → folders → file. A path with no folder under the level is a file of that level. */
+export function buildDraftTree(files: readonly IPendingFile[]): IDraftTreeNode[] {
+  const root: IMutableTreeNode = { id: '', name: '', kind: 'folder', files: [], children: new Map() };
+  for (const file of files) attachPending(root, file);
+  return [...root.children.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((node) => freezeNode(node));
+}
+
+/** Rows for the open set. A closed node does not add its children. */
+export function visibleTreeRows(roots: readonly IDraftTreeNode[], open: ReadonlySet<string>): IVisibleTreeRow[] {
+  const rows: IVisibleTreeRow[] = [];
+  const walk = (nodes: readonly IDraftTreeNode[], depth: number): void => {
+    for (const node of nodes) {
+      rows.push({
+        id: node.id,
+        name: node.name,
+        kind: node.kind,
+        depth,
+        count: node.count,
+        inBrowser: node.inBrowser,
+        inDraft: node.inDraft,
+        withError: node.withError,
+      });
+      if (open.has(node.id)) walk(node.children, depth + 1);
+    }
+  };
+  walk(roots, 0);
+  return rows;
+}
+
+/** Save counts browser files, publish counts draft paths, discard counts the union. */
+export function actionCounts(local: readonly ILocalEdit[], draftPaths: readonly string[] | null): IActionCounts {
+  const draft = draftPaths ?? [];
+  return {
+    save: local.length,
+    publish: draft.length,
+    discard: pendingFiles(local, draft).length,
+  };
+}
+
 /**
  * Files with `hasError` stay out of the write unless they are deletions (the server must see
  * the delete). `setContents` is called only with the clean files, and only when there is one.
