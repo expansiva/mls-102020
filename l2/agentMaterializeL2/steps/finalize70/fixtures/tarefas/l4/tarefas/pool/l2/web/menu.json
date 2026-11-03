@@ -1,0 +1,235 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "tarefas",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "minha_area",
+      "kind": "hub",
+      "label": "Minha área",
+      "context": "MembroEquipe",
+      "text": "Abre já com você selecionado: suas tarefas, o que espera por você e seus avisos diários de vencimento.",
+      "children": [
+        {
+          "id": "inicio_membro",
+          "kind": "page",
+          "label": "Início",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Minhas tarefas abertas, quantas vencem hoje e quantas estão atrasadas, com o progresso da checklist de cada uma."
+            },
+            {
+              "kind": "alerts",
+              "text": "Aviso diário das 8h: abro o aviso de hoje e vejo minhas tarefas que vencem hoje ou estão atrasadas."
+            },
+            {
+              "kind": "inbox",
+              "text": "O que espera por mim: tarefas atribuídas para iniciar, entregas enviadas para eu revisar e tarefas devolvidas para eu ajustar e reenviar."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "minhas_tarefas",
+          "kind": "page",
+          "label": "Minhas tarefas",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Tarefas que criei ou pelas quais sou responsável, com lista, responsável, prioridade, prazo, situação, subtarefas e progresso da checklist; filtro por criadas por mim, atribuídas a mim, em revisão e devolvidas."
+            },
+            {
+              "kind": "detail",
+              "text": "A tarefa aberta: descrição, lista, criador, responsável, prazo, situação, motivo da devolução quando houver e checklist com itens marcados."
+            },
+            {
+              "kind": "form",
+              "text": "Criar ou editar a tarefa: escolho a lista, preencho título, descrição, prioridade e prazo, escolho o responsável pelo nome e ajusto os itens da checklist."
+            },
+            {
+              "kind": "actions",
+              "text": "Criar tarefa, iniciar, marcar item da checklist, enviar para revisão, aceitar a entrega, devolver com motivo, reenviar para revisão, editar, trocar o responsável e cancelar uma tarefa que criei."
+            },
+            {
+              "kind": "timeline",
+              "text": "Histórico da tarefa: criação, atribuição e aviso ao responsável, início, envio para revisão, aceite ou devolução com motivo, reatribuição e cancelamento."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "meus_avisos",
+          "kind": "page",
+          "label": "Meus avisos de vencimento",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Meus avisos diários por data de referência, com quantidade de tarefas e de atrasadas."
+            },
+            {
+              "kind": "detail",
+              "text": "O aviso do dia: as tarefas abertas que vencem hoje ou estão atrasadas, com prazo e situação de cada uma."
+            },
+            {
+              "kind": "timeline",
+              "text": "Quando o sistema gerou e finalizou cada aviso diário às 8h."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "inicio_gestor",
+      "kind": "page",
+      "label": "Painel da equipe",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Tarefas abertas por lista, quantas vencem hoje e quantas estão atrasadas na equipe, com o progresso das checklists."
+        },
+        {
+          "kind": "inbox",
+          "text": "Tarefas da equipe que podem pedir minha ação: trocar o responsável ou cancelar."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "tarefas_equipe",
+      "kind": "page",
+      "label": "Tarefas da equipe",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Quadro de todas as tarefas da equipe, filtrando por lista, responsável, prioridade, prazo e situação."
+        },
+        {
+          "kind": "detail",
+          "text": "Detalhe da tarefa: criador, responsável, prazo, situação, subtarefas e checklist."
+        },
+        {
+          "kind": "actions",
+          "text": "Trocar o responsável de qualquer tarefa, escolhendo uma pessoa da equipe, e cancelar qualquer tarefa da equipe."
+        },
+        {
+          "kind": "timeline",
+          "text": "Histórico da tarefa: criação, início, revisões, devoluções, reatribuições com aviso ao novo responsável e cancelamento."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "listas",
+      "kind": "page",
+      "label": "Listas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Listas que agrupam as tarefas, com a quantidade de tarefas abertas em cada uma."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastrar uma nova lista ou alterar o nome e os dados de uma lista existente."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "membros_equipe",
+      "kind": "page",
+      "label": "Pessoas da equipe",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Pessoas da equipe que podem criar tarefas e ser responsáveis."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastrar ou atualizar o nome e os dados de uma pessoa da equipe."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:membroEquipe": [
+      "inicio_membro",
+      "minhas_tarefas",
+      "meus_avisos"
+    ],
+    "actor:gestor": [
+      "inicio_gestor",
+      "tarefas_equipe",
+      "listas",
+      "membros_equipe",
+      "meus_avisos"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "criarTarefa": [
+        "minhas_tarefas"
+      ],
+      "executarTarefa": [
+        "inicio_membro",
+        "minhas_tarefas"
+      ],
+      "revisarTarefa": [
+        "inicio_membro",
+        "minhas_tarefas"
+      ],
+      "retomarTarefaDevolvida": [
+        "inicio_membro",
+        "minhas_tarefas"
+      ],
+      "editarTarefa": [
+        "minhas_tarefas"
+      ],
+      "cancelarTarefaCriador": [
+        "minhas_tarefas"
+      ],
+      "reatribuirTarefaCriador": [
+        "minhas_tarefas"
+      ],
+      "avisoDiarioVencimentos": [
+        "inicio_membro",
+        "meus_avisos"
+      ],
+      "manterListas": [
+        "listas"
+      ],
+      "acompanharTarefasEquipe": [
+        "inicio_gestor",
+        "tarefas_equipe"
+      ],
+      "reatribuirTarefaGestor": [
+        "tarefas_equipe"
+      ],
+      "cancelarTarefaGestor": [
+        "tarefas_equipe"
+      ]
+    },
+    "processes": {
+      "cicloTarefa": [
+        "inicio_membro",
+        "minhas_tarefas",
+        "inicio_gestor",
+        "tarefas_equipe"
+      ],
+      "avisoDiario": [
+        "inicio_membro",
+        "meus_avisos"
+      ]
+    },
+    "records": {
+      "MembroEquipe": [
+        "membros_equipe"
+      ]
+    },
+    "removed": []
+  }
+}
