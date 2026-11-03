@@ -8,15 +8,16 @@ import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shar
 import { composeM4ModuleEntry, m4FirstSentence, m4MenuActors, m4MenuPages, type M4FinalizePage } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
 import { m4ModuleLanguages } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
 
-const root = new URL('../../../../../mls-102047/', import.meta.url);
+const root = new URL('./fixtures/reembolsoDespesas/', import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), 'utf8');
-function sources(module: string, pageIds: string[]) {
+const readTarefas = (path: string) => readFileSync(new URL(path, new URL('./fixtures/tarefas/', import.meta.url)), 'utf8');
+function sources(module: string, pageIds: string[], load: (path: string) => string = read) {
   const pages: M4FinalizePage[] = pageIds.map(pageId => ({
     pageId,
-    intent: parseL2Page11(read(`l2/${module}/web/desktop/page11/${pageId}.defs.ts`)).definition.intent,
-    sharedActors: parseL2Shared(read(`l2/${module}/web/shared/${pageId}.defs.ts`)).definition.access.actors,
+    intent: parseL2Page11(load(`l2/${module}/web/desktop/page11/${pageId}.defs.ts`)).definition.intent,
+    sharedActors: parseL2Shared(load(`l2/${module}/web/shared/${pageId}.defs.ts`)).definition.access.actors,
   }));
-  return { project: 102047, module, pages, menu: JSON.parse(read(`l4/${module}/pool/l2/web/menu.json`)), ...m4ModuleLanguages(read(`l4/${module}/module.defs.ts`)) };
+  return { project: 102047, module, pages, menu: JSON.parse(load(`l4/${module}/pool/l2/web/menu.json`)), ...m4ModuleLanguages(load(`l4/${module}/module.defs.ts`)) };
 }
 const configEntry = (module: string) => (JSON.parse(read('l5/config.json')) as { projects: Record<string, { modules: Array<Record<string, unknown>> }> }).projects['102047'].modules.find(item => item.moduleId === module);
 
@@ -42,7 +43,7 @@ test('reembolsoDespesas: the composed entry is the hand-written one, except the 
 
 test('tarefas: the minha_area hub is flattened, meus_avisos gets both actors, each actor lands on the first page of its own list', () => {
   const pageIds = ['inicio_gestor', 'inicio_membro', 'listas', 'membros_equipe', 'meus_avisos', 'minhas_tarefas', 'tarefas_equipe'];
-  const { entry, changes, navigationKept } = composeM4ModuleEntry(sources('tarefas', pageIds));
+  const { entry, changes, navigationKept } = composeM4ModuleEntry(sources('tarefas', pageIds, readTarefas));
   assert.equal(navigationKept, 0);
   const navigation = entry.navigation as Array<{ id: string; actors: string[]; landing?: true }>;
   assert.deepEqual(navigation.map(item => item.id), ['inicio_membro', 'minhas_tarefas', 'meus_avisos', 'inicio_gestor', 'tarefas_equipe', 'listas', 'membros_equipe']);

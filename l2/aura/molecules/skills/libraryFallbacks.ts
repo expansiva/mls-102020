@@ -7,8 +7,8 @@
 // Why this exists: agentImproveMolecule2/i3-edit, migrating a sheet, cannot obey "keep the fallback
 // the sheet already used" — every role is introduced fresh in a migration. Without this table the
 // model unifies two different concepts into one role, changing a VALUE to make the gate's message
-// go away. Measured on the groupEnterMoney pilot (see
-// todo/resolvidos/202609/todo-gate-fallback-migracao.md): a focus border lost its highlight because the
+// go away. Measured on the groupEnterMoney pilot, where a migration retry changed a value to silence
+// the gate: a focus border lost its highlight because the
 // retry rewrote `--focus-ring` to `--border-default`'s value instead of leaving the site on its own
 // role.
 //
@@ -17,7 +17,7 @@
 // below — never hand-edit it, regenerate it.
 //
 // ⚠️ THE LEDGER AGES, AND AGING BLINDS THE GATE that reads it (i3-edit/gate.ts's `ledgerConflictSites`,
-// AKA G3). Two rules, both learned from todo/resolvidos/202609/todo-gate-ledger-conflito.md:
+// AKA G3). Two rules, both learned when a regenerated ledger went blind on a role the library no longer agrees on:
 //
 // 1. Only regenerate from a library `harness/check-ds-tokens.mjs` calls clean. Running `--write` after
 //    a conflict has already landed in mls-102040 writes down the FORGETTING of it: the generator only

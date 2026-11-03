@@ -13,9 +13,6 @@ Studio mode on the app (Ctrl+Alt+S), level 7, tab **collabStudio** on the left. 
 avatar on `document.body`. It stays when you leave the tab, until the page reloads. The tab has a
 button to hide/show it.
 
-Registered in `l2/pluginCollabCoreIndex.ts` (scope `l7ServicesLeft`). That is the only file outside
-this folder, because plugin indexes are read from the root of `l2`.
-
 ## Files
 
 ```

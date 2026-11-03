@@ -49,6 +49,7 @@ import {
   diffTrees,
   snapshotEntries,
 } from '/_102020_/l2/agentPlannerL2/helpers/treeFingerprint.js';
+import { installMlsStub } from '../../../../test/mlsStub.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(
@@ -88,31 +89,32 @@ function seed(host: Host, folder: string, shortName: string, content = '', level
 
 function installHost(): Host {
   const host: Host = { files: {}, deleted: [], written: [] };
-  (globalThis as unknown as Record<string, unknown>).mls = {
+  installMlsStub({
     actualProject: PROJECT,
     events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
-    stor: {
-      files: host.files,
-      getKeyToFile: keyOf,
-      addOrUpdateFile: async (info: { project: number; level: number; folder: string; shortName: string; extension: string }) => host.files[keyOf(info)] || seed(
-        host,
-        info.folder,
-        info.shortName,
-        '',
-        info.level,
-        info.extension,
-      ),
-      localStor: {
-        setContent: async (file: Stored, value: { content: string }) => {
-          host.written.push(keyOf(file));
-          file.content = value.content;
-        },
-        listFolder: () => [],
-        deleteFile: (file: Stored) => {
-          host.deleted.push(`${file.folder}/${file.shortName}`);
-          const stored = host.files[keyOf(file)];
-          if (stored) stored.status = 'deleted';
-        },
+  });
+  // Same stor the tests already drove. The stub keeps fireFileAction and getProjectDependencies.
+  (globalThis as unknown as { mls: { stor: unknown } }).mls.stor = {
+    files: host.files,
+    getKeyToFile: keyOf,
+    addOrUpdateFile: async (info: { project: number; level: number; folder: string; shortName: string; extension: string }) => host.files[keyOf(info)] || seed(
+      host,
+      info.folder,
+      info.shortName,
+      '',
+      info.level,
+      info.extension,
+    ),
+    localStor: {
+      setContent: async (file: Stored, value: { content: string }) => {
+        host.written.push(keyOf(file));
+        file.content = value.content;
+      },
+      listFolder: () => [],
+      deleteFile: (file: Stored) => {
+        host.deleted.push(`${file.folder}/${file.shortName}`);
+        const stored = host.files[keyOf(file)];
+        if (stored) stored.status = 'deleted';
       },
     },
   };

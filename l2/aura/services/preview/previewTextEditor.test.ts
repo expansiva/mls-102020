@@ -16,22 +16,18 @@ import {
   findTextOriginByOccurrence,
   replaceComponentTag,
 } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
+import { installMlsStub } from '../../../../../test/mlsStub.js';
 
 // The import half of the swap resolves a TAG to a FILE (`resolveTagToFile`), so the stor has to know
 // the two molecules — without them that branch is skipped and the tests below would pass while
 // saying nothing about it.
-//
-// Filled into the stub the RUNNER installed (test/setup-l2.ts), instead of importing it: a relative
-// import into `test/` drags that folder into the tsconfig program, and the stub is a partial `mls` on
-// purpose — it does not typecheck as the real namespace and was never meant to.
-const stub = globalThis as unknown as {
-  mls: { actualProject: number; stor: { files: Record<string, unknown> } };
-};
-stub.mls.actualProject = 102040;
-stub.mls.stor.files = {
-  'ml-button-standard': { project: 102040, level: 2, folder: 'molecules/grouptriggeraction', shortName: 'ml-button-standard', extension: '.ts' },
-  'ml-icon-button': { project: 102040, level: 2, folder: 'molecules/grouptriggeraction', shortName: 'ml-icon-button', extension: '.ts' },
-};
+installMlsStub({
+  actualProject: 102040,
+  files: {
+    'ml-button-standard': { project: 102040, level: 2, folder: 'molecules/grouptriggeraction', shortName: 'ml-button-standard', extension: '.ts' },
+    'ml-icon-button': { project: 102040, level: 2, folder: 'molecules/grouptriggeraction', shortName: 'ml-icon-button', extension: '.ts' },
+  },
+});
 
 const OLD = 'grouptriggeraction--ml-button-standard';
 const NEW = 'grouptriggeraction--ml-icon-button';

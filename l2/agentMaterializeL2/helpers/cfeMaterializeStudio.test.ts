@@ -327,6 +327,8 @@ test('resume removes only a stale generated pageTests companion', async () => {
     getContent: async () => file.content,
   };
   g.mls = {
+    // st23 s1: deleteFile calls mls.events.fireFileAction; without it the delete is reported as failed.
+    events: { fireFileAction() { /* noop */ } },
     stor: {
       files: { [key]: file },
       getKeyToFile: (value: any) => `${value.project}:${value.level}:${value.folder}:${value.shortName}:${value.extension}`,

@@ -11,7 +11,7 @@ import { GENOME_UX_DECISION_SYSTEM_PROMPT, genomeUxDecisionPrompt, genomeUxGroup
 
 // The case that motivated the page data (22/10/2026): tarefas/inicio_membro on trendWall got sparkline molecules
 // although its contract returns only totals, no series.
-const WEB = new URL('../../../../mls-102047/l2/tarefas/web/', import.meta.url);
+const WEB = new URL('./fixtures/tarefas/l2/tarefas/web/', import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, WEB), 'utf8');
 
 void test('page data of a real page: the shared states per organism and the contract row types', () => {

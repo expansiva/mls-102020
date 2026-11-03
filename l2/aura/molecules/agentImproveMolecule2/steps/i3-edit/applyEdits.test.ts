@@ -199,11 +199,12 @@ test('texto que realmente não está lá diz isso, e não culpa o espaçamento',
   assert.match(result.errors[0], /not even ignoring whitespace/);
 });
 
-test('find e content iguais a menos de espaçamento é erro, não substituição vazia', () => {
+test('a whitespace-only find/content pair is a no-op, and an all-no-op attempt fails', () => {
+  // CHANGELOG 2026-09-10 (2): a no-op edit is skipped; if every edit is a no-op the attempt still fails.
   const result = applyEdits(files({ ts: { present: true, source: COLAPSADO } }), [
     edit({ artifact: 'ts', find: 'this.nodeIdCounter = 0;', content: '  this.nodeIdCounter = 0;  ' }),
   ]);
-  assert.match(result.errors[0], /identical/);
+  assert.match(result.errors[0], /every edit applied but the content is unchanged/);
 });
 
 // ---- 2026-08-13: indentation is the FILE's, not the model's ----

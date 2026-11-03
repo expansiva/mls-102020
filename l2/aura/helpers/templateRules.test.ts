@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/templateRules.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { extractTemplateRules, validateTemplateRules } from '/_102020_/l2/aura/helpers/templateRules.js';
@@ -12,10 +12,10 @@ const TEMPLATES = new URL('../../../l4/collabux/templates/', import.meta.url);
 const SKILLS = new URL('../molecules/skills/', import.meta.url);
 const LEGACY = /^page\d\d\.md$/;
 
-const isDir = (url: URL) => statSync(url).isDirectory();
-
 /** The catalog group ids: folders of `aura/molecules/skills/` named `group*`. */
-const GROUP_IDS = readdirSync(SKILLS).filter(name => name.startsWith('group') && isDir(new URL(`${name}/`, SKILLS)));
+const GROUP_IDS = readdirSync(SKILLS, { withFileTypes: true })
+  .filter(entry => entry.isDirectory() && entry.name.startsWith('group'))
+  .map(entry => entry.name);
 
 const md = (...lines: string[]) => lines.join('\r\n');
 const block = (json: string) => ['## Molecule rules', '', '```json', json, '```'];
@@ -165,8 +165,9 @@ function guard(rel: string, text: string): string[] {
   return validate(r.rules).map(p => `${rel}: ${p}`);
 }
 
-const newTemplates = readdirSync(TEMPLATES)
-  .filter(category => isDir(new URL(`${category}/`, TEMPLATES)))
+const newTemplates = readdirSync(TEMPLATES, { withFileTypes: true })
+  .filter(entry => entry.isDirectory())
+  .map(entry => entry.name)
   .flatMap(category => readdirSync(new URL(`${category}/`, TEMPLATES))
     .filter(file => file.endsWith('.md') && !LEGACY.test(file))
     .map(file => `${category}/${file}`));

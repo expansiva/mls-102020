@@ -32,5 +32,4 @@
   `n7-index` and `s3-indexts`: the three import the same mold, so they must not diverge
   on what counts as coverage. An empty or degraded usage skill never fails. The mold
   itself was fixed in the same pass (a gap for the contract layer plus a paragraph
-  saying the two layers are additive, not alternatives). Control:
-  todo/resolvidos/202609/todo-molde-vitrine-e-gate.md
+  saying the two layers are additive, not alternatives). The mold must demonstrate the usage contract, and the two layers stay additive.

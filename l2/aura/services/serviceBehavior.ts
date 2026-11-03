@@ -17,6 +17,7 @@ import {
     type NewReleaseModuleSummary,
 } from '/_102035_/l2/newRelease/helpers/l4Reader.js';
 import { listReleaseChoices, revisionsForKnob, selectedRevisionIndex, type ReleaseChoice } from '/_102035_/l2/newRelease/helpers/revisionSelection.js';
+import { readActiveL4Change } from '/_102035_/l2/solution/candidate/moduleRevision.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
@@ -237,7 +238,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         this.requestUpdate();
     }
 
-    private async _loadModules(preferredModule = '', token = ++this._loadToken, preferredVersion: NewReleaseVersion = 'asis'): Promise<void> {
+    private async _loadModules(preferredModule = '', token = ++this._loadToken, preferredVersion?: NewReleaseVersion): Promise<void> {
         const modules = this._projectEligible ? await listNs5ModuleSummaries(this._project) : [];
         if (token !== this._loadToken) return;
         this._modules = modules;
@@ -246,14 +247,16 @@ export class ServiceBehavior102020 extends ServiceBase {
         await this._loadVersions(token, preferredVersion);
     }
 
-    private async _loadVersions(token: number, preferredVersion: NewReleaseVersion = 'asis'): Promise<void> {
+    private async _loadVersions(token: number, preferredVersion?: NewReleaseVersion): Promise<void> {
         const project = this._project;
         const moduleName = this._module?.name;
         this._releases = [];
-        const releases = moduleName ? await listReleaseChoices(project, moduleName) : [];
+        const [releases, active] = moduleName
+            ? await Promise.all([listReleaseChoices(project, moduleName), preferredVersion ? Promise.resolve(null) : readActiveL4Change(project, moduleName)])
+            : [[], null];
         if (token !== this._loadToken || project !== this._project || moduleName !== this._module?.name) return;
         this._releases = releases;
-        this._versionValue = selectedRevisionIndex(this._versions, preferredVersion);
+        this._versionValue = selectedRevisionIndex(this._versions, preferredVersion ?? (active ? 'tobe' : 'asis'));
     }
 
     private _knobConfig(key: ContextKey): IKnobConfig {

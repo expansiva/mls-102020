@@ -16,6 +16,7 @@ import {
 } from '/_102020_/l2/agentPlannerL2/steps/needs30/agentP2Needs.js';
 import { poolStamp, readPoolTraceAt, type PoolMessage } from '/_102035_/l2/solution/pool.js';
 import type { PoolNeedsFile } from '/_102035_/l2/solution/poolPlan.js';
+import { installMlsStub } from '../../../../../test/mlsStub.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
@@ -59,30 +60,31 @@ function seed(host: Host, opts: { project?: number; level?: number; folder: stri
 
 function installHost(): Host {
   const host: Host = { files: {}, deleted: [] };
-  (globalThis as unknown as Record<string, unknown>).mls = {
+  installMlsStub({
     actualProject: PROJECT,
     events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
-    stor: {
-      files: host.files,
-      getKeyToFile: keyOf,
-      addOrUpdateFile: (info: { project: number; level: number; folder: string; shortName: string; extension: string; source?: string }) => {
-        return seed(host, {
-          project: info.project,
-          level: info.level,
-          folder: info.folder,
-          shortName: info.shortName,
-          extension: info.extension,
-          content: info.source || '',
-        });
-      },
-      localStor: {
-        setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
-        listFolder: () => [],
-        deleteFile: (file: Stored) => {
-          host.deleted.push(`${file.folder}/${file.shortName}`);
-          const stored = host.files[keyOf(file)];
-          if (stored) stored.status = 'deleted';
-        },
+  });
+  // Same stor the tests already drove. The stub keeps fireFileAction and getProjectDependencies.
+  (globalThis as unknown as { mls: { stor: unknown } }).mls.stor = {
+    files: host.files,
+    getKeyToFile: keyOf,
+    addOrUpdateFile: (info: { project: number; level: number; folder: string; shortName: string; extension: string; source?: string }) => {
+      return seed(host, {
+        project: info.project,
+        level: info.level,
+        folder: info.folder,
+        shortName: info.shortName,
+        extension: info.extension,
+        content: info.source || '',
+      });
+    },
+    localStor: {
+      setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
+      listFolder: () => [],
+      deleteFile: (file: Stored) => {
+        host.deleted.push(`${file.folder}/${file.shortName}`);
+        const stored = host.files[keyOf(file)];
+        if (stored) stored.status = 'deleted';
       },
     },
   };
