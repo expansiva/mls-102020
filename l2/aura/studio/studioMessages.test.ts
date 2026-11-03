@@ -184,6 +184,8 @@ test('every id the PANEL asks for has words too', () => {
   const panel = ['classPickerBase', 'classPickerPanel', 'pageClassPickerPanel']
     .map((file) => readFileSync(`${STUDIO_DIR}${file}.ts`, 'utf8')).join('\n');
   const asked = [...panel.matchAll(/\bt\('([a-zA-Z][\w.]*)'/gu)].map((match) => match[1]);
+  // The Animations tab's categories come from a table (`t(category.title)`), not from a `t('…')`.
+  asked.push(...[...panel.matchAll(/'(anim\.cat\.[a-zA-Z]+)'/gu)].map((match) => match[1]));
   assert.ok(asked.length > 40, 'the scan found the calls');
   assert.deepEqual([...new Set(asked.filter((id) => !CATALOG.has(id)))], []);
 });

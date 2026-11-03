@@ -8,6 +8,7 @@ import {
   INSPECTOR_GROUPS,
   inspectorGroupOf,
   inspectorProperties,
+  animationTokens,
   classChannelOf,
   findAttributeValue,
   fitsChannel,
@@ -3426,4 +3427,26 @@ test('real classes land in the subject a person would look for them in', () => {
     isolate: 'other',
   };
   for (const [raw, group] of Object.entries(expected)) assert.equal(groupOf(raw), group, raw);
+});
+
+test('motion lives in one tab: the Animations tab owns it, the Style tab does not list it twice', () => {
+  // An entrance writes a permanent state next to its first frame; both are the animation's.
+  const fade = applyAnimationOption('p-4', 'fadeIn');
+  const split = animationTokens(fade);
+  assert.ok(split.owned.includes('opacity-100') && split.owned.some((cls) => cls.endsWith('opacity-0')), fade);
+  assert.equal(split.owned.includes('p-4'), false, 'padding stays in the Style tab');
+  assert.deepEqual(split.unknown, [], 'the catalog explains all of it');
+
+  // A lone opacity is plain style: no option is on to explain it.
+  assert.deepEqual(animationTokens('opacity-100 p-4').owned, []);
+
+  // A catalog animation is owned and known; motion the catalog does not know is owned and "other".
+  assert.deepEqual(animationTokens('animate-pulse'), { owned: ['animate-pulse'], unknown: [] });
+  assert.deepEqual(animationTokens('animate-[wiggle_1s] p-2'), { owned: ['animate-[wiggle_1s]'], unknown: ['animate-[wiggle_1s]'] });
+
+  // The cascade writes into the children; the tab reads it, so it is not "other".
+  const cascade = applyCascade('flex', 150, 3, readAnimationState('flex')).literal;
+  const children = animationTokens(cascade);
+  assert.ok(children.owned.some((cls) => cls.startsWith('[&>')), cascade);
+  assert.deepEqual(children.unknown, [], cascade);
 });

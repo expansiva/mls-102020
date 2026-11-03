@@ -2052,7 +2052,7 @@ export class StudioEditor {
       this.previewLiteral(detail.literal, undefined, detail.attribute ?? 'class', detail.slot);
       return;
     }
-    this.previewAnimation(detail.option ?? null);
+    this.previewAnimation(detail.option ?? null, detail.attribute, detail.slot);
   };
 
   private onPickerStatus = (e: CustomEvent<string>): void => {
@@ -3237,21 +3237,22 @@ export class StudioEditor {
    *
    * `previewAnimation(null)` is how the rest of the editor CANCELS any preview, whatever kind.
    */
-  private previewAnimation(optionId: string | null): void {
+  private previewAnimation(optionId: string | null, attribute?: ClassChannel, slot?: number): void {
     const state = this.classPanel;
     if (!optionId || !state) {
       this.previewLiteral(null);
       return;
     }
-    // The animations tab works on the box the user SEES: a molecule's inner one.
-    const attribute = mainChannel(state);
-    const literal = sideOf(state, attribute)?.literal ?? '';
+    // On the part the panel named (the Animations tab follows the part selector); with none, the box the
+    // user SEES — a molecule's inner one.
+    const channel = attribute ?? mainChannel(state);
+    const literal = sideOf(state, channel, slot)?.literal ?? '';
     // Already on the element: there is nothing to show that is not already showing.
     if (activeAnimations(literal).includes(optionId)) {
       this.previewLiteral(null);
       return;
     }
-    this.previewLiteral(applyAnimationOption(literal, optionId, readAnimationState(literal)), 1500, attribute);
+    this.previewLiteral(applyAnimationOption(literal, optionId, readAnimationState(literal)), 1500, channel, slot);
   }
 
   /**

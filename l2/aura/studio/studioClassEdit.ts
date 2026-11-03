@@ -3535,6 +3535,53 @@ export function inspectorProperties(): string[] {
   return Object.keys(INSPECTOR_GROUP_OF);
 }
 
+/** Which classes of an attribute the Animations tab answers for. */
+export interface IAnimationTokens {
+  /** Raw classes the Animations tab owns — the Style tab does not show them. */
+  owned: string[];
+  /** The owned ones the catalog does not explain — the tab's "Outras" category. */
+  unknown: string[];
+}
+
+/**
+ * The split between the Style tab and the Animations tab (TASK-102020-picker-inspector, phase 3).
+ *
+ * Motion lives in ONE place. A class of the animation subject is the Animations tab's — and so is a
+ * class that is only there because an animation put it there: an entrance writes `opacity-100` next to
+ * `starting:opacity-0`, and on its own `opacity-100` would read as an opacity in the Style tab's colours.
+ * Only the classes of an option that is actually ON count: a lone `opacity-100` is plain style.
+ *
+ * `unknown` is motion the catalog does not explain (`duration-700` with no option around it): without a
+ * category of its own it would be visible in neither tab.
+ */
+export function animationTokens(literal: string): IAnimationTokens {
+  const active = ANIMATION_GROUPS.flatMap((group) => group.options).filter((option) => isOptionActive(literal, option));
+  const activeClasses = new Set(active.flatMap((option) => option.classes));
+  // An entrance or a hover effect brings a plain `transition` with it (applyAnimationOption): no option
+  // lists it, and without this it would read as motion the catalog does not know.
+  const transitioned = ANIMATION_GROUPS
+    .filter((group) => group.kind === 'entrance' || group.kind === 'hover')
+    .some((group) => group.options.some((option) => isOptionActive(literal, option)));
+  if (transitioned) activeClasses.add('transition');
+  const cascade = readCascade(literal).step !== null;
+  const typed = ANIMATION_GROUPS.filter((group) => group.custom && readAnimationCustom(literal, group.id) !== null);
+  const typedFixed = new Set(typed.flatMap((group) => group.custom?.templates ?? []).filter((cls) => !cls.includes('{')));
+
+  const owned: string[] = [];
+  const unknown: string[] = [];
+  for (const token of splitUtilities(literal)) {
+    const motion = inspectorGroupOf(token) === 'animation';
+    const bare = bareOf(token.raw);
+    const byOption = activeClasses.has(bare) || typedFixed.has(bare);
+    const byTyped = typed.some((group) => group.custom && isCustomToken(group.custom, token));
+    const byCascade = cascade && token.raw.startsWith('[&>');
+    if (!motion && !byOption && !byTyped) continue;
+    owned.push(token.raw);
+    if (motion && !byOption && !byTyped && !byCascade && !CATALOG_CLASSES.has(bare)) unknown.push(token.raw);
+  }
+  return { owned, unknown };
+}
+
 // --- The channel: `class`, or a molecule's `data-class` (TASK-102020-picker-molecule-data-class) ---
 //
 // A molecule does not read the `class` of its host. It reads `data-class` (the `cssClass` of

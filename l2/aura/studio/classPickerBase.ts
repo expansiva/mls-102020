@@ -34,6 +34,7 @@ import {
   activeAnimations,
   animationOption,
   animationScreen,
+  animationTokens,
   applyAnimationCustom,
   applyAnimationGroup,
   applyAnimationOption,
@@ -71,6 +72,8 @@ import {
   utilityLabel,
   utilityOptions,
   type AnimationScreen,
+  type IAnimationRow,
+  type IAnimationScreenSpec,
   type ClassChannel,
   type AnimationStateKey,
   type IAddableProperty,
@@ -92,6 +95,24 @@ import { t, tr, type IMessageRef } from '/_102020_/l2/aura/studio/studioMessages
  * name is in the tooltip, and the hover shows the element itself.
  */
 const CHAIN_LABEL_MAX = 10;
+
+/** A category of the Animations tab: the detail screen whose rows it shows. */
+interface IAnimationCategory {
+  id: string;
+  title: string;
+  screen: AnimationScreen;
+}
+
+/**
+ * The Animations tab, in order (TASK-102020-picker-inspector, phase 3): what happens when the element
+ * appears, what loops, what answers the mouse, and the tuning that applies to all of them.
+ */
+const ANIMATION_CATEGORIES: readonly IAnimationCategory[] = [
+  { id: 'entrance', title: 'anim.cat.entrance', screen: 'entrance' },
+  { id: 'continuous', title: 'anim.cat.continuous', screen: 'continuous' },
+  { id: 'hover', title: 'anim.cat.hover', screen: 'hover' },
+  { id: 'advanced', title: 'anim.cat.advanced', screen: 'advanced' },
+];
 
 /** A label cut to fit, with the ellipsis that says it was cut. The full text goes in a tooltip. */
 export function ellipsize(text: string, max: number): string {
@@ -446,7 +467,6 @@ export abstract class ClassPickerBase extends StateLitElement {
   @property({ attribute: false }) props?: IPickerProps;
 
   @state() private tab: 'classes' | 'animations' | 'info' | 'molecules' | 'props' = 'classes';
-  @state() private screen: AnimationScreen = 'root';
   /** Group whose "custom value" input is open. */
   @state() private customEditing: string | null = null;
   /** Token index whose role palette is expanded. */
@@ -623,7 +643,7 @@ export abstract class ClassPickerBase extends StateLitElement {
       ${this.renderTexts(target)}
       <div class="acp-tabs">
         ${this.tabButton('classes', 'panel.tabStyle')}
-        ${this.tabButton('animations', 'panel.tabAnimations')}
+        ${this.tabButton('animations', 'panel.tabAnimations', animationTokens(this.mainSide.literal).owned.length)}
         ${this.isCoreElement ? this.tabButton('molecules', 'panel.tabComponent') : nothing}
         ${this.isMolecule ? this.tabButton('props', 'panel.tabComponent') : nothing}
         <span class="acp-spacer"></span>
@@ -892,7 +912,19 @@ export abstract class ClassPickerBase extends StateLitElement {
    */
   protected get showsTopNotes(): boolean {
     if (this.tab === 'props') return false;
-    return !(this.tab === 'classes' && this.innerSide);
+    return !((this.tab === 'classes' || this.tab === 'animations') && this.innerSide);
+  }
+
+  /** The chosen part's refusal and warning (and, for a repeated slot, that it repeats). */
+  protected renderPartNotes() {
+    const part = this.editPart;
+    const slot = typeof part === 'number' ? this.target?.slots[part] : undefined;
+    if (slot) {
+      return html`${this.renderNotes(slot.refusal, slot.warning)}
+        ${slot.repeated ? html`<div class="acp-note">${t('panel.slotRepeatedNote')}</div>` : nothing}`;
+    }
+    if (part === 'tag') return this.renderNotes(this.target?.refusal, this.target?.warning);
+    return this.renderNotes(this.target?.inner?.refusal, this.target?.inner?.warning);
   }
 
   /** The Info tab is the one showing — it is an icon at the end of the tab row, not a named tab. */
@@ -906,9 +938,11 @@ export abstract class ClassPickerBase extends StateLitElement {
       ${warning ? html`<div class="acp-note acp-warning">${tr(warning)}</div>` : nothing}`;
   }
 
-  protected tabButton(id: 'classes' | 'animations' | 'info' | 'molecules' | 'props', label: string) {
+  protected tabButton(id: 'classes' | 'animations' | 'info' | 'molecules' | 'props', label: string, count = 0) {
     return html`<button type="button" class="acp-tab ${this.tab === id ? 'acp-active' : ''}"
-      @click=${() => { this.tab = id; this.preview(null); this.openTab(id); }}>${t(label)}</button>`;
+      @click=${() => { this.tab = id; this.preview(null); this.openTab(id); }}>${t(label)}${count
+  ? html`<span class="acp-tab-count">${count}</span>`
+  : nothing}</button>`;
   }
 
   /**
@@ -1077,18 +1111,10 @@ export abstract class ClassPickerBase extends StateLitElement {
     // A molecule: ONE part at a time, chosen above (TASK-102020-picker-inspector, phase 1). Each part
     // brings its own refusal and warning — the tag's never sits on top of the inside's rows.
     const part = this.editPart;
-    const slot = typeof part === 'number' ? this.target?.slots[part] : undefined;
-    let body;
-    if (slot && typeof part === 'number') {
-      body = html`${this.renderNotes(slot.refusal, slot.warning)}
-        ${slot.repeated ? html`<div class="acp-note">${t('panel.slotRepeatedNote')}</div>` : nothing}
-        ${this.renderSection(this.slotSide(part))}`;
-    } else if (part === 'tag') {
-      body = html`${this.renderNotes(this.target?.refusal, this.target?.warning)}${this.renderSection(this.tagSide)}`;
-    } else {
-      body = html`${this.renderNotes(this.target?.inner?.refusal, this.target?.inner?.warning)}${this.renderSection(inner)}`;
-    }
-    return html`${this.renderParts()}<div class="acp-rows">${body}</div>`;
+    const side = typeof part === 'number' && this.target?.slots[part]
+      ? this.slotSide(part)
+      : part === 'tag' ? this.tagSide : inner;
+    return html`${this.renderParts()}${this.renderPartNotes()}<div class="acp-rows">${this.renderSection(side)}</div>`;
   }
 
   /**
@@ -1189,13 +1215,15 @@ export abstract class ClassPickerBase extends StateLitElement {
    * of rows. A group with nothing to show and nothing to offer is not drawn.
    */
   protected renderSection(side: IPickerSide) {
-    const tokens = splitUtilities(side.literal);
+    // Motion lives in the Animations tab (animationTokens): its classes are not listed here twice.
+    const owned = new Set(animationTokens(side.literal).owned);
+    const tokens = splitUtilities(side.literal).filter((token) => !owned.has(token.raw));
     const options = addableProperties(side.literal, { childCount: this.target?.childCount ?? 0, channel: side.channel });
     // Inside a molecule the parent-facing classes do not work, and the section says where they go.
     const channelHint = side.channel === 'data-class'
       ? html`<small class="acp-hint">${t('panel.addChannelHint')}</small>`
       : nothing;
-    return html`${INSPECTOR_GROUPS.map((group) => this.renderGroup(
+    return html`${INSPECTOR_GROUPS.filter((group) => group !== 'animation').map((group) => this.renderGroup(
       group,
       side,
       tokens.filter((token) => inspectorGroupOf(token) === group),
@@ -1744,22 +1772,72 @@ export abstract class ClassPickerBase extends StateLitElement {
 
   // ─── Animations tab ────────────────────────────────────────────────────────
 
+  /**
+   * The Animations tab by CATEGORY (TASK-102020-picker-inspector, phase 3).
+   *
+   * It used to navigate between SCREENS (root → entrance / continuous / hover / advanced, with a back
+   * link). It now has the Style tab's shape: categories that fold, each with a summary of what is on,
+   * all starting folded, no screen to leave. The rows inside are the detail screens' rows, unchanged —
+   * the catalog, the preview and the writes are the same. On a molecule it acts on the part chosen in
+   * the selector, like the Style tab.
+   */
   protected renderAnimations() {
-    const spec = animationScreen(this.screen);
-    const editable = this.mainSide.editable;
+    const side = this.mainSide;
+    const editable = side.editable;
     const state = this.animationState();
-    const activeOptions = new Set(activeAnimations(this.literal));
-    const activeGroups = new Set(activeAnimationGroups(this.literal));
-
-    return html`
-      ${spec.back ? html`<div class="acp-crumb">
-        <button type="button" class="acp-link" @click=${() => this.goTo(spec.back!)}>‹ ${t('panel.back')}</button>
-        <span class="acp-here">${t(spec.title)}</span>
-      </div>` : nothing}
-      ${spec.note ? html`<div class="acp-note">${t(spec.note)}</div>` : nothing}
-      ${this.screen === 'root' && !activeOptions.size ? html`<div class="acp-note">${t('panel.previewHint')}</div>` : nothing}
+    const active = new Set(activeAnimations(side.literal));
+    const activeGroups = new Set(activeAnimationGroups(side.literal));
+    const unknown = animationTokens(side.literal).unknown;
+    return html`${this.innerSide ? html`${this.renderParts()}${this.renderPartNotes()}` : nothing}
+      ${!active.size && !unknown.length ? html`<div class="acp-note">${t('panel.previewHint')}</div>` : nothing}
       <div class="acp-rows">
-        ${spec.rows.map((row) => {
+        ${ANIMATION_CATEGORIES.map((category) => this.renderAnimationCategory(category, side, state, active, activeGroups, editable))}
+        ${this.renderOtherAnimations(side, unknown)}
+      </div>`;
+  }
+
+  /** One category: its line (name and what is on) and, open, the rows of its detail screen. */
+  protected renderAnimationCategory(
+    category: IAnimationCategory,
+    side: IPickerSide,
+    state: IAnimationState,
+    active: Set<string>,
+    activeGroups: Set<string>,
+    editable: boolean,
+  ) {
+    const spec = animationScreen(category.screen);
+    const key = `anim:${sideId(side)}:${category.id}`;
+    const open = this.groupsOpen[key] ?? false;
+    const summary = this.animationSummary(spec, side.literal, active, state);
+    return html`<div class="acp-group ${open ? 'acp-open' : ''}">
+      <button type="button" class="acp-group-head" aria-expanded=${open ? 'true' : 'false'} title=${summary}
+        @click=${() => { this.groupsOpen = { ...this.groupsOpen, [key]: !open }; this.customEditing = null; this.preview(null); }}>
+        <span class="acp-group-caret">${open ? '▾' : '▸'}</span>
+        <span class="acp-group-name">${t(category.title)}</span>
+        <span class="acp-group-sum">${summary || '—'}</span>
+      </button>
+      ${open ? html`<div class="acp-group-body">
+        ${spec.note ? html`<small class="acp-hint">${t(spec.note)}</small>` : nothing}
+        ${spec.rows.map((row) => this.renderAnimationRow(row, state, active, activeGroups, editable))}
+        ${spec.motionSwitch ? html`
+          <label class="acp-switch">
+            <input type="checkbox" .checked=${state.motionSafe} ?disabled=${!editable}
+              @change=${(e: Event) => this.applyState('motionSafe', String((e.target as HTMLInputElement).checked))}>
+            ${t('panel.motionSafe')}
+          </label>
+          <small class="acp-hint">${t('panel.motionSafeHint')}</small>` : nothing}
+      </div>` : nothing}
+    </div>`;
+  }
+
+  /** One row of a category — what a detail screen used to show for it. */
+  protected renderAnimationRow(
+    row: IAnimationRow,
+    state: IAnimationState,
+    active: Set<string>,
+    activeGroups: Set<string>,
+    editable: boolean,
+  ) {
     if (row.cascade) return this.renderCascade();
     const chips = row.state
       ? row.state.options.map((option) => this.chip({
@@ -1771,29 +1849,59 @@ export abstract class ClassPickerBase extends StateLitElement {
       }))
       : row.mode === 'groups'
         ? (row.groups ?? []).map((group) => this.groupChip(group, activeGroups, state, editable))
-        : (row.group ? row.group.options.map((option) => this.optionChip(row.group!, option, activeOptions, state, editable)) : []);
-
+        : (row.group ? row.group.options.map((option) => this.optionChip(row.group!, option, active, state, editable)) : []);
     return html`<div class="acp-block">
-          <span class="acp-label">${t(row.title)}</span>
-          <span class="acp-chips">
-            ${chips}
-            ${row.more ? html`<button type="button" class="acp-chip acp-more" title=${t('panel.more')}
-              @click=${() => this.goTo(row.more!)}>…</button>` : nothing}
-            ${!row.more && row.group?.custom ? this.renderCustom(row.group) : nothing}
-          </span>
-        </div>`;
-  })}
-        ${spec.motionSwitch ? html`
-          <label class="acp-switch">
-            <input type="checkbox" .checked=${state.motionSafe} ?disabled=${!editable}
-              @change=${(e: Event) => this.applyState('motionSafe', String((e.target as HTMLInputElement).checked))}>
-            ${t('panel.motionSafe')}
-          </label>
-          <small class="acp-hint">${t('panel.motionSafeHint')}</small>` : nothing}
-        ${spec.advanced ? html`<button type="button" class="acp-link acp-advanced"
-          @click=${() => this.goTo(spec.advanced!)}>${t('panel.advanced')} ›</button>` : nothing}
-      </div>
-    `;
+      <span class="acp-label">${t(row.title)}</span>
+      <span class="acp-chips">
+        ${chips}
+        ${row.group?.custom ? this.renderCustom(row.group) : nothing}
+      </span>
+    </div>`;
+  }
+
+  /**
+   * What a category has on, for its line: the options' names, typed values and the cascade step.
+   * Empty when nothing of the category is on — the line then shows a dash.
+   */
+  protected animationSummary(spec: IAnimationScreenSpec, literal: string, active: Set<string>, state: IAnimationState): string {
+    const parts: string[] = [];
+    for (const row of spec.rows) {
+      if (row.cascade) {
+        const cascade = readCascade(literal);
+        if (cascade.step !== null) parts.push(t('panel.cascadeSummary', { step: cascade.step }));
+        continue;
+      }
+      const groups = row.group ? [row.group] : (row.groups ?? []);
+      for (const group of groups) {
+        for (const option of group.options) if (active.has(option.id)) parts.push(t(option.label));
+        const typed = group.custom ? readAnimationCustom(literal, group.id) : null;
+        if (typed !== null && group.custom) parts.push(`${typed}${group.custom.unit}`);
+      }
+    }
+    if (spec.motionSwitch && state.motionSafe) parts.push(t('panel.motionSafeShort'));
+    return [...new Set(parts)].join(' · ');
+  }
+
+  /**
+   * Motion the catalog does not explain (`duration-700` with no option around it) — the "Outras"
+   * category, drawn only when there is some. Its rows are the Style tab's rows: neighbours and a ×.
+   */
+  protected renderOtherAnimations(side: IPickerSide, unknown: string[]) {
+    if (!unknown.length) return nothing;
+    const tokens = splitUtilities(side.literal).filter((token) => unknown.includes(token.raw));
+    const key = `anim:${sideId(side)}:other`;
+    const open = this.groupsOpen[key] ?? false;
+    const summary = tokens.map((token) => token.raw).join(' ');
+    return html`<div class="acp-group ${open ? 'acp-open' : ''}">
+      <button type="button" class="acp-group-head" aria-expanded=${open ? 'true' : 'false'} title=${summary}
+        @click=${() => { this.groupsOpen = { ...this.groupsOpen, [key]: !open }; }}>
+        <span class="acp-group-caret">${open ? '▾' : '▸'}</span>
+        <span class="acp-group-name">${t('anim.cat.other')}</span>
+        <span class="acp-group-sum">${summary}</span>
+        <span class="acp-group-count">${tokens.length}</span>
+      </button>
+      ${open ? html`<div class="acp-group-body">${tokens.map((token) => this.renderClassBlock(token, side))}</div>` : nothing}
+    </div>`;
   }
 
   protected optionChip(group: IAnimationGroup, option: IAnimationOption, active: Set<string>, state: IAnimationState, editable: boolean) {
@@ -1941,9 +2049,16 @@ export abstract class ClassPickerBase extends StateLitElement {
     return { channel: 'data-class', literal: inner.literal, editable: inner.editable, canRemoveLast: inner.canRemoveLast };
   }
 
-  /** The box the user SEES: the animations tab, copy and paste act on it — a molecule's inside. */
+  /**
+   * The part everything acts on: the tag of a plain element, or — on a molecule — the part chosen in the
+   * selector (its inside by default). The Animations tab, copy and paste follow it, like the Style tab.
+   */
   protected get mainSide(): IPickerSide {
-    return this.innerSide ?? this.tagSide;
+    const inner = this.innerSide;
+    if (!inner) return this.tagSide;
+    const part = this.editPart;
+    if (typeof part === 'number' && this.target?.slots[part]) return this.slotSide(part);
+    return part === 'tag' ? this.tagSide : inner;
   }
 
   protected get literal(): string {
@@ -1964,12 +2079,6 @@ export abstract class ClassPickerBase extends StateLitElement {
   protected availability(group: IAnimationGroup, option: IAnimationOption, isOn: boolean, state: IAnimationState) {
     const classes = option.classes.map((cls) => buildAnimationClass(cls, group.kind, state));
     return chipAvailability(isOn, classes.every((cls) => this.builtClasses.has(cls)), this.jitLive);
-  }
-
-  protected goTo(screen: AnimationScreen): void {
-    this.screen = screen;
-    this.customEditing = null;
-    this.preview(null);
   }
 
   protected applyState(key: AnimationStateKey, value: string): void {
@@ -2082,7 +2191,8 @@ export abstract class ClassPickerBase extends StateLitElement {
   /** The editor owns the element, so it owns the preview: the panel only says WHAT to show. */
   protected preview(optionId: string | null): void {
     if (optionId && !animationOption(optionId)) return;
-    this.emitPreview(optionId ? { option: optionId } : null);
+    const side = this.mainSide;
+    this.emitPreview(optionId ? { option: optionId, attribute: side.channel, slot: side.slot } : null);
   }
 
   /** The other kind of preview: a whole class attribute, which is what a paste produces. */

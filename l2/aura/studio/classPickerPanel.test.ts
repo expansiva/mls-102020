@@ -99,13 +99,13 @@ const CHANNEL_CALLS = [
   "side.channel === 'data-class'",
   // A molecule: ONE part at a time, chosen in the part selector (TASK-102020-picker-inspector).
   '${this.renderParts()}',
-  'this.renderSection(inner)',
-  'this.renderSection(this.tagSide)',
+  'part === \x27tag\x27 ? this.tagSide : inner',
+  'this.renderSection(side)',
   // What goes out names its attribute — and its slot (TASK-102020-picker-molecule-slots).
   'detail: { literal, what, attribute: side.channel, slot: side.slot }',
   '{ literal, attribute: side.channel, slot: side.slot }',
   // A slot through the same renderSection as the inside and the tag.
-  'this.renderSection(this.slotSide(part))',
+  '? this.slotSide(part)',
 ];
 
 test('both panels decide the vocabulary with the same core calls, and pass the channel to each', () => {
@@ -145,6 +145,29 @@ test('both chromes show undo/redo and put the other actions in the ⋯ menu', ()
   // Tabs: Style, Animation, Component, and Info as an icon.
   assert.ok(base.includes("this.tabButton('classes', 'panel.tabStyle')"));
   assert.ok(base.includes('acp-tab-icon'));
+});
+
+/**
+ * Phase 3 of TASK-102020-picker-inspector: the Animations tab keeps a tab of its own but is organised by
+ * CATEGORY, not by screens, and follows the part selector — as does its preview.
+ */
+test('the Animations tab is categories, not screens, and acts on the chosen part', () => {
+  const base = code('classPickerBase.ts');
+  assert.equal(base.includes('goTo('), false, 'no screen navigation left');
+  assert.equal(base.includes('this.screen'), false);
+  for (const id of ['entrance', 'continuous', 'hover', 'advanced']) {
+    assert.ok(base.includes(`{ id: '${id}', title: 'anim.cat.${id}', screen: '${id}' }`), id);
+  }
+  assert.ok(base.includes('ANIMATION_CATEGORIES.map('), 'the tab draws the categories');
+  assert.ok(base.includes('this.renderOtherAnimations(side, unknown)'), 'and motion the catalog does not know');
+  // One place for motion: the Style tab leaves it out.
+  assert.ok(base.includes("INSPECTOR_GROUPS.filter((group) => group !== 'animation')"));
+  assert.ok(base.includes('const owned = new Set(animationTokens(side.literal).owned);'));
+  // The preview names the part, and the editor previews there.
+  assert.ok(base.includes('{ option: optionId, attribute: side.channel, slot: side.slot }'));
+  const editor = readFileSync(path.join(HERE, 'studioEditor.ts'), 'utf8');
+  assert.ok(editor.includes('this.previewAnimation(detail.option ?? null, detail.attribute, detail.slot)'));
+  assert.ok(editor.includes('const literal = sideOf(state, channel, slot)?.literal'));
 });
 
 /**
