@@ -81,11 +81,12 @@ void test('everything OUTSIDE the method is untouched — hero, class declaratio
   assert.match(result.migrated, /render\(\): TemplateResult \{\n {4}return html`/);
 });
 
-void test('the two new imports are inserted right after the last existing import line, blank line before the class preserved', () => {
+void test('the two new imports are inserted right after the last existing import line, with an absolute index.defs specifier', () => {
+  // syMigrateIndexTs.ts: the index.defs specifier is absolute and a named import ends in .js.
   const result = syMigrateIndexTs(FIXTURE, SHARED_REF, DEFS_REF);
   const lines = result.migrated.split('\n');
   const lastMoleculeImport = lines.findIndex(l => l.includes("import '/_102040_/l2/molecules/groupfoo/ml-b'"));
-  assert.equal(lines[lastMoleculeImport + 1], "import { molecules, scenarios } from './index.defs';");
+  assert.equal(lines[lastMoleculeImport + 1], `import { molecules, scenarios } from '${DEFS_REF}';`);
   assert.equal(lines[lastMoleculeImport + 2], `import { renderCatalogReferenceTable } from '${SHARED_REF}';`);
   assert.equal(lines[lastMoleculeImport + 3], '');
   assert.equal(lines[lastMoleculeImport + 4], "@customElement('molecules--groupfoo--index-102040')");
@@ -101,12 +102,20 @@ void test('a nested template literal inside a ${} interpolation does not confuse
   assert.equal(openCount, closeCount, 'braces must stay balanced after the surgery');
 });
 
-void test('a file already importing from ./index.defs is left untouched', () => {
-  const migrated = FIXTURE.replace("import '/_102040_/l2/molecules/groupfoo/ml-b';", "import '/_102040_/l2/molecules/groupfoo/ml-b';\nimport { scenarios } from './index.defs';");
-  const result = syMigrateIndexTs(migrated, SHARED_REF, DEFS_REF);
-  assert.equal(result.changed, false);
-  assert.match(result.reason || '', /already imports/);
-  assert.equal(result.migrated, migrated);
+void test('a relative ./index.defs import is rewritten in place, and the canonical absolute import is left untouched', () => {
+  // syMigrateIndexTs.ts: a migrated page with the wrong specifier is rewritten; the method and the rest stay.
+  const relative = FIXTURE.replace("import '/_102040_/l2/molecules/groupfoo/ml-b';", "import '/_102040_/l2/molecules/groupfoo/ml-b';\nimport { scenarios } from './index.defs';");
+  const rewritten = syMigrateIndexTs(relative, SHARED_REF, DEFS_REF);
+  assert.equal(rewritten.changed, true);
+  assert.match(rewritten.migrated, new RegExp(`import \\{ scenarios \\} from '${DEFS_REF.replace(/[/.]/g, '\\$&')}';`));
+  assert.match(rewritten.migrated, /private renderHero\(\): TemplateResult/);
+  assert.match(rewritten.migrated, /interface Row/);
+  assert.equal((rewritten.migrated.match(/import \{ scenarios \}/g) || []).length, 1);
+
+  const absolute = relative.replace('./index.defs', DEFS_REF);
+  const untouched = syMigrateIndexTs(absolute, SHARED_REF, DEFS_REF);
+  assert.equal(untouched.changed, false);
+  assert.equal(untouched.migrated, absolute);
 });
 
 void test('a file with no renderReferenceTable() method is left untouched, with a reason', () => {
@@ -143,10 +152,15 @@ void test('the index.defs import is absolute, and a named import ends in .js', (
   assert.equal(/from '\.\//.test(migrated), false, 'no relative specifier may be emitted');
 });
 
-void test('a page migrated by the OLD relative-import build is still recognized as migrated', () => {
+void test('a page migrated by the old relative-import build is recognized and only the import is rewritten', () => {
+  // syMigrateIndexTs.ts: already migrated means do not migrate again and do not duplicate imports.
   const oldStyle = FIXTURE.replace("import { html, TemplateResult } from 'lit';", "import { html, TemplateResult } from 'lit';\nimport { molecules, scenarios } from './index.defs';");
   const result = syMigrateIndexTs(oldStyle, SHARED_REF, DEFS_REF);
-  assert.equal(result.changed, false);
+  assert.equal(result.changed, true);
+  assert.match(result.migrated, new RegExp(`import \\{ molecules, scenarios \\} from '${DEFS_REF.replace(/[/.]/g, '\\$&')}';`));
+  assert.equal((result.migrated.match(/import \{ molecules, scenarios \}/g) || []).length, 1);
+  assert.match(result.migrated, /interface Row/);
+  assert.equal((result.migrated.match(/renderCatalogReferenceTable/g) || []).length, 0);
 });
 
 // ⚠️ SELF-HEALING. Two earlier builds emitted specifiers that do not resolve in the Studio: a relative
