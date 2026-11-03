@@ -1016,39 +1016,6 @@ export class ServiceDraft102020 extends ServiceBase {
         return known[reason] ?? reason;
     }
 
-    private async _readPublishedConfig(project: number): Promise<string> {
-        const key = mls.stor.getKeyToFile({ project, level: 5, shortName: 'config', folder: '', extension: '.json' });
-        const file = mls.stor.files[key];
-        if (!file) {
-            console.error('[serviceDraft] l5/config.json is not in stor:', key);
-            throw new Error(this.msg.configMissing);
-        }
-        let driver: unknown;
-        try {
-            driver = await mls.stor.others.getDefaultDriver(project);
-        } catch (err) {
-            console.error('[serviceDraft] getDefaultDriver failed while reading published config:', err);
-            throw new Error(this.msg.configMissing);
-        }
-        const read = (driver as { getHistoryContent?: (file: mls.stor.IFileInfo, ref: string) => Promise<string | null> }).getHistoryContent;
-        if (typeof read !== 'function') {
-            console.error('[serviceDraft] getHistoryContent is missing');
-            throw new Error(this.msg.configMissing);
-        }
-        let content: string | null;
-        try {
-            content = await read.call(driver, file, 'main');
-        } catch (err) {
-            console.error('[serviceDraft] published l5/config.json failed:', err);
-            throw new Error(this.msg.configMissing);
-        }
-        if (typeof content !== 'string') {
-            console.error('[serviceDraft] published l5/config.json is not text');
-            throw new Error(this.msg.configMissing);
-        }
-        return content;
-    }
-
     private async _onModuleDiscard(moduleName: string): Promise<void> {
         const project = this._projectId;
         if (!project || !this._slug || !isVmDriver(this._driver)) return;

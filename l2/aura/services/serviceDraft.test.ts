@@ -328,10 +328,9 @@ test('discard module confirms the count, then restores through the shared functi
     assert.match(DRAFT, /noActiveDraft: 'Não há rascunho ativo.'/);
     assert.match(DRAFT, /noActiveDraft: 'No hay un borrador activo.'/);
     assert.doesNotMatch(handler, /location\.reload/);
-    const published = methodOf(DRAFT, 'private async _readPublishedConfig');
-    assert.match(published, /getHistoryContent/);
-    assert.match(published, /'main'/);
-    assert.match(published, /console\.error\(/);
+    // The published config is read in `draftModuleDiscard.ts`, by the sha of `main`; the panel keeps no copy.
+    assert.doesNotMatch(DRAFT, /_readPublishedConfig/);
+    assert.doesNotMatch(DRAFT, /getHistoryContent/);
     const reason = methodOf(DRAFT, 'private _draftReason');
     for (const code of [
         'draft.ref_invalid',
