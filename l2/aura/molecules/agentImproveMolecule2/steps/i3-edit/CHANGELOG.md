@@ -118,8 +118,7 @@ não ver o próprio conteúdo, e vazar para o que vem depois.
 
 Cinco rodadas do piloto provaram que **prosa não governa escolha de papel**. O mesmo sítio — a borda
 de foco do campo, `#3b82f6` — saiu de quatro jeitos diferentes, e nunca igual nas duas moléculas ao
-mesmo tempo; a cada rodada a prosa foi reforçada e a seguinte desobedeceu em outro lugar. Controle:
-`todo/resolvidos/202609/todo-gates-papel-e-neutralidade.md`.
+mesmo tempo; a cada rodada a prosa foi reforçada e a seguinte desobedeceu em outro lugar. The control record is that prose does not govern role choice, so the choice became a detector.
 
 E o aceite aprovava os dois defeitos: o run 4 mudou o valor e o `check-ds-tokens.mjs` saiu LIMPO
 (a consistência foi comprada mudando o valor); o run 5 tinha o papel errado e passou em tudo, porque
@@ -159,8 +158,7 @@ site the fallback the sheet ALREADY used for this token"* — instrução imposs
 todo papel do DS é novo na folha. Sem saída obedecível, a LLM unificava por conta própria, mudando
 **valor**.
 
-**A medição que motivou:** o piloto de 08/09 no `groupEnterMoney` (2 moléculas, 51 sítios,
-`todo/resolvidos/202609/todo-gate-fallback-migracao.md`). O agente acertou 46 dos 51 sítios — a mecânica
+**A medição que motivou:** o piloto de 08/09 no `groupEnterMoney` (2 moléculas, 51 sítios). A migration retry changed a focus-border value to silence the gate. O agente acertou 46 dos 51 sítios — a mecânica
 funciona. O gate reprovou a tentativa 1 das **três** runs, e as três tentativas 2 obedeceram à
 mensagem: **5 fallbacks alterados**, entre eles `--ml-outline-focus` `#3b82f6` virando
 `--border-default` `#e2e8f0`, que **apagou o destaque de foco de um campo** — a borda de foco passou
@@ -328,8 +326,7 @@ aprendizado #10 no seu limite, e a conclusão é que isto tem de virar detector.
 ⚠️ **O aceite aprovou os dois defeitos.** O run 4 mudou o valor e o
 `check-ds-tokens.mjs` saiu LIMPO, porque a consistência foi comprada mudando o
 valor. O run 5 tem o papel errado e passa em tudo, porque o valor está
-preservado. São dois furos distintos, e vão para dois gates distintos, em
-`todo/resolvidos/202609/todo-gates-papel-e-neutralidade.md`:
+preservado. São dois furos distintos, e vão para dois gates distintos, because a clean token check can still hide a renamed value or a wrong focus role:
 
 - **G1**, neutralidade do rename — o par cujo NOME mudou não pode mudar de valor.
   Validado: `before === after` nas 184 folhas dá 0; o defeito do run 4 injetado
