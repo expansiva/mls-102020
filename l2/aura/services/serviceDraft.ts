@@ -3,10 +3,10 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
-import { undoFile } from '/_102027_/l2/libStor.js';
 import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
 import { activeDraft, enterDraft, isVmDriver, postDraftEnter, requestModeChange, sendServiceWorkerMode } from '/_102033_/l2/cbe/studioDraft.js';
 import { loadProjectDefinitions } from '/_102033_/l2/cbe/initStudio.js';
+import { discardModuleInStudio } from '/_102020_/l2/aura/helpers/draftModuleDiscard.js';
 import {
     afterDraftSave,
     branchForSlug,
@@ -14,7 +14,6 @@ import {
     buildDraftTree,
     collectEditedFiles,
     discard,
-    discardModule,
     resetDraftDatabase,
     loadPanel,
     localEdits,
@@ -83,6 +82,7 @@ const message_en = {
     makeDefault: 'Project default',
     defaultSaved: 'Saved as the project default.',
     configMissing: 'The project config could not be read.',
+    noActiveDraft: 'There is no active draft.',
     noDiff: 'No differences.',
     localTitle: 'In your browser (not saved)',
     oneFile: '{count} file',
@@ -159,6 +159,7 @@ const messages: Record<string, MessageType> = {
         makeDefault: 'Padrão do projeto',
         defaultSaved: 'Gravado como padrão do projeto.',
         configMissing: 'Não foi possível ler o config do projeto.',
+        noActiveDraft: 'Não há rascunho ativo.',
         noDiff: 'Sem diferenças.',
         localTitle: 'No seu navegador (não salvo)',
         oneFile: '{count} arquivo',
@@ -232,6 +233,7 @@ const messages: Record<string, MessageType> = {
         makeDefault: 'Predeterminado del proyecto',
         defaultSaved: 'Guardado como predeterminado del proyecto.',
         configMissing: 'No se pudo leer la config del proyecto.',
+        noActiveDraft: 'No hay un borrador activo.',
         noDiff: 'Sin diferencias.',
         localTitle: 'En su navegador (no guardado)',
         oneFile: '{count} archivo',
@@ -1008,6 +1010,8 @@ export class ServiceDraft102020 extends ServiceBase {
             'draft.paths_required': this.msg.draftPathsRequired,
             'draft.not_owner': this.msg.draftNotOwner,
             'draft.bad_slug': this.msg.draftBadSlug,
+            'draft.no_active_draft': this.msg.noActiveDraft,
+            'draft.config_missing': this.msg.configMissing,
         };
         return known[reason] ?? reason;
     }
@@ -1055,15 +1059,7 @@ export class ServiceDraft102020 extends ServiceBase {
         this._note = '';
         this._phase = 'loading';
         try {
-            const current = await this._readConfigJson(project);
-            const published = await this._readPublishedConfig(project);
-            await discardModule({
-                fetchImpl,
-                saveL5File: (id, shortName, content, comment) => saveL5File(id, shortName, content, comment),
-                undoFile: (file) => undoFile(file as mls.stor.IFileInfo),
-                storFiles: mls.stor.files,
-                reloadLive: () => loadProjectDefinitions(project),
-            }, project, this._slug, moduleName, current, published);
+            await discardModuleInStudio(project, moduleName);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             console.error('[serviceDraft] discard module failed:', message);

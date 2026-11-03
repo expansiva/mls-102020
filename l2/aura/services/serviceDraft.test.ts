@@ -312,20 +312,21 @@ test('actions stay on top and the tree paints only open rows', () => {
     assert.match(DRAFT, /draft-actions/);
 });
 
-test('discard module confirms the count, then restores through the core and undoFile', () => {
+test('discard module confirms the count, then restores through the shared function', () => {
     const handler = methodOf(DRAFT, 'private async _onModuleDiscard');
     const confirmAt = handler.indexOf('confirm(');
-    const publishedAt = handler.indexOf('_readPublishedConfig(project)');
-    const callAt = handler.indexOf('await discardModule(');
-    assert.ok(confirmAt !== -1 && publishedAt > confirmAt && callAt > publishedAt, 'confirm, then the published config, then the restore');
+    const callAt = handler.indexOf('await discardModuleInStudio(');
+    assert.ok(confirmAt !== -1 && callAt > confirmAt, 'confirm, then the shared discard');
     assert.match(handler, /confirmDiscardModule/);
     assert.match(handler, /\{count\}/);
     assert.match(handler, /\{module\}/);
-    assert.match(handler, /undoFile\(file as mls\.stor\.IFileInfo\)/);
-    assert.match(handler, /loadProjectDefinitions\(project\)/);
+    assert.doesNotMatch(handler, /await discardModule\(/);
     assert.match(handler, /_draftReason\(message\)/);
     assert.match(handler, /_noteModuleDiscarded\(moduleName\)/);
     assert.match(DRAFT, /moduleDiscarded: 'Discarded module \{module\}.'/)
+    assert.match(DRAFT, /noActiveDraft: 'There is no active draft.'/);
+    assert.match(DRAFT, /noActiveDraft: 'Não há rascunho ativo.'/);
+    assert.match(DRAFT, /noActiveDraft: 'No hay un borrador activo.'/);
     assert.doesNotMatch(handler, /location\.reload/);
     const published = methodOf(DRAFT, 'private async _readPublishedConfig');
     assert.match(published, /getHistoryContent/);
@@ -341,6 +342,8 @@ test('discard module confirms the count, then restores through the core and undo
         'draft.paths_required',
         'draft.not_owner',
         'draft.bad_slug',
+        'draft.no_active_draft',
+        'draft.config_missing',
     ]) {
         assert.match(reason, new RegExp(code.replaceAll('.', '\\.')));
     }
