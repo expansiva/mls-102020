@@ -117,6 +117,10 @@ export interface IExecSuccess {
   /** Body of a `draftDiff` response (`status: 'diff'`). */
   text?: string;
   drafts?: IListedDraft[];
+  /** Name returned by `draftResetDatabase` when `status` is `reset`. */
+  database?: string;
+  /** Reason on a `draftResetDatabase` HTTP 500, which has no `code`. */
+  cause?: string;
 }
 
 export type ExecResult = IExecSuccess | IExecFailure;
@@ -252,6 +256,8 @@ export async function callExec(
   if (typeof parsed.msg === 'string') success.msg = parsed.msg;
   if (typeof parsed.text === 'string') success.text = parsed.text;
   if (Array.isArray(parsed.drafts)) success.drafts = parsed.drafts as IListedDraft[];
+  if (typeof parsed.database === 'string') success.database = parsed.database;
+  if (typeof parsed.cause === 'string') success.cause = parsed.cause;
   return success;
 }
 
@@ -407,6 +413,22 @@ export async function discard(
     }
   }
   effects.reload();
+}
+
+/** Drops the draft test database and recreates it from the seed. Sources stay. */
+export async function resetDraftDatabase(
+  fetchImpl: FetchImpl,
+  project: number,
+  slug: string,
+): Promise<{ database: string }> {
+  const result = await callExec(fetchImpl, 'draftResetDatabase', { project, draft: slug });
+  if (!result.ok) return fail(result.msg ?? result.code);
+  if (result.status !== 'reset') {
+    const reason = result.cause?.trim() ? result.cause : (result.status ?? 'draftResetDatabase failed');
+    return fail(reason);
+  }
+  if (!result.database) return fail('draftResetDatabase returned no database');
+  return { database: result.database };
 }
 
 /** One path segment. A slash or `..` would restore something outside the module. */

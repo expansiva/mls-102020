@@ -50,6 +50,39 @@ test('publish confirms the draft file count before the comment and shows the err
     assert.match(handler, /this\._error = err instanceof Error \? err\.message : String\(err\)/);
 });
 
+test('reset test database confirms before draftResetDatabase, and discard keeps the test data', () => {
+    const actions = methodOf(DRAFT, 'private _renderActions');
+    assert.match(actions, /this\.msg\.resetDatabase/);
+    assert.match(actions, /_onResetDatabase/);
+    assert.match(DRAFT, /resetDatabase: 'Reset test database'/);
+    assert.match(DRAFT, /resetDatabase: 'Reiniciar BD de teste'/);
+    assert.match(DRAFT, /resetDatabase: 'Reiniciar BD de prueba'/);
+    const handler = methodOf(DRAFT, 'private async _onResetDatabase');
+    const confirmAt = handler.indexOf('confirm(');
+    const callAt = handler.indexOf('await resetDraftDatabase(');
+    assert.ok(confirmAt !== -1 && callAt > confirmAt, 'draftResetDatabase sits behind confirm');
+    assert.match(handler, /confirmResetDatabase/);
+    assert.match(handler, /console\.error\(/);
+    assert.match(handler, /this\._error = this\._draftReason\(message\)/);
+    assert.match(handler, /_noteDatabaseReset\(database\)/);
+    const note = methodOf(DRAFT, 'private _noteDatabaseReset');
+    assert.match(note, /this\._phase === 'error'/);
+    assert.match(note, /databaseReset\.replace\('\{database\}', database\)/);
+    assert.match(DRAFT, /Delete the draft test data and recreate it from the seed\?/);
+    assert.match(DRAFT, /Apagar os dados de teste do rascunho e recriá-los com a semente\?/);
+    assert.match(DRAFT, /¿Borrar los datos de prueba del borrador y recrearlos con la semilla\?/);
+    const discardLines = [...DRAFT.matchAll(/confirmDiscard: '([^']*)'/g)].map((match) => match[1]);
+    assert.equal(discardLines.length, 3);
+    for (const line of discardLines) {
+        assert.match(line, /\{count\}/);
+        assert.doesNotMatch(line, /database|banco|\bBD\b/i);
+    }
+    assert.match(DRAFT, /source changes and keep the test data/);
+    assert.match(DRAFT, /alterações de fontes e manter os dados de teste/);
+    assert.match(DRAFT, /cambios de fuentes y mantener los datos de prueba/);
+    assert.doesNotMatch(DRAFT, /databaseDropped/);
+});
+
 test('discard confirms the draft file count and clears local copies the same way as undo', () => {
     const handler = methodOf(DRAFT, 'private async _onDiscard');
     const confirmAt = handler.indexOf('confirm(');

@@ -15,6 +15,7 @@ import {
     collectEditedFiles,
     discard,
     discardModule,
+    resetDraftDatabase,
     loadPanel,
     localEdits,
     modulePendingCount,
@@ -58,7 +59,10 @@ const message_en = {
     discardModule: 'Discard this module',
     askComment: 'Message',
     confirmPublish: 'Publish your {count} changes?',
-    confirmDiscard: 'Discard your {count} changes from your draft?',
+    confirmDiscard: 'Discard your {count} source changes and keep the test data?',
+    resetDatabase: 'Reset test database',
+    confirmResetDatabase: 'Delete the draft test data and recreate it from the seed?',
+    databaseReset: 'Test database reset: {database}.',
     promoting: 'Publishing the draft…',
     rebuilding: 'Rebuilding the release…',
     blocked: 'Not saved because of errors:',
@@ -131,7 +135,10 @@ const messages: Record<string, MessageType> = {
         discardModule: 'Descartar este módulo',
         askComment: 'Mensagem',
         confirmPublish: 'Publicar as suas {count} alterações?',
-        confirmDiscard: 'Descartar as suas {count} alterações do seu rascunho?',
+        confirmDiscard: 'Descartar as suas {count} alterações de fontes e manter os dados de teste?',
+        resetDatabase: 'Reiniciar BD de teste',
+        confirmResetDatabase: 'Apagar os dados de teste do rascunho e recriá-los com a semente?',
+        databaseReset: 'BD de teste reiniciado: {database}.',
         promoting: 'Publicando o rascunho…',
         rebuilding: 'Reconstruindo a release…',
         blocked: 'Não salvos por causa de erro:',
@@ -201,7 +208,10 @@ const messages: Record<string, MessageType> = {
         discardModule: 'Descartar este módulo',
         askComment: 'Mensaje',
         confirmPublish: '¿Publicar sus {count} cambios?',
-        confirmDiscard: '¿Descartar sus {count} cambios de su borrador?',
+        confirmDiscard: '¿Descartar sus {count} cambios de fuentes y mantener los datos de prueba?',
+        resetDatabase: 'Reiniciar BD de prueba',
+        confirmResetDatabase: '¿Borrar los datos de prueba del borrador y recrearlos con la semilla?',
+        databaseReset: 'BD de prueba reiniciado: {database}.',
         promoting: 'Publicando el borrador…',
         rebuilding: 'Reconstruyendo la release…',
         blocked: 'No se guardaron por errores:',
@@ -488,6 +498,7 @@ export class ServiceDraft102020 extends ServiceBase {
                 <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${save}</button>
                 <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
                 <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
+                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onResetDatabase(); }}>${this.msg.resetDatabase}</button>
             </div>
         `;
     }
@@ -1090,6 +1101,34 @@ export class ServiceDraft102020 extends ServiceBase {
             this._error = err instanceof Error ? err.message : String(err);
             this._phase = 'error';
         }
+    }
+
+    private async _onResetDatabase(): Promise<void> {
+        const project = this._projectId;
+        if (!project || !this._slug || !isVmDriver(this._driver)) return;
+        if (!confirm(this.msg.confirmResetDatabase)) return;
+        this._error = '';
+        this._note = '';
+        this._phase = 'loading';
+        let database = '';
+        try {
+            const reset = await resetDraftDatabase(fetchImpl, project, this._slug);
+            database = reset.database;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[serviceDraft] reset test database failed:', message);
+            this._error = this._draftReason(message);
+            this._phase = 'error';
+            return;
+        }
+        await this._load(true);
+        this._noteDatabaseReset(database);
+    }
+
+    /** `_load` clears the note. Put it back only when the refresh itself did not fail. */
+    private _noteDatabaseReset(database: string): void {
+        if (this._phase === 'error') return;
+        this._note = this.msg.databaseReset.replace('{database}', database);
     }
 
     private async _onSyncPublished(): Promise<void> {

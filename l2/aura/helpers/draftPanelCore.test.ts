@@ -9,6 +9,7 @@ import {
   COLLAB_DRAFT_SAVED,
   discard,
   discardModule,
+  resetDraftDatabase,
   loadPanel,
   modulePendingCount,
   localEdits,
@@ -210,6 +211,37 @@ test('discard reloads only after discardDraft succeeds', async () => {
     /BAD_DRAFT/,
   );
   assert.deepEqual(refused, []);
+});
+
+test('resetDraftDatabase calls draftResetDatabase and surfaces the cause', async () => {
+  const calls: string[] = [];
+  const reset = await resetDraftDatabase(async (_input, init) => {
+    calls.push('draftResetDatabase');
+    const body = JSON.parse(init.body) as { action: string; project: number; draft: string };
+    assert.equal(body.action, 'draftResetDatabase');
+    assert.equal(body.project, 102047);
+    assert.equal(body.draft, 'team-102047');
+    return jsonResponse({ statusCode: 200, status: 'reset', database: 'draft_db' });
+  }, 102047, 'team-102047');
+  assert.deepEqual(reset, { database: 'draft_db' });
+  assert.deepEqual(calls, ['draftResetDatabase']);
+
+  await assert.rejects(
+    () => resetDraftDatabase(
+      async () => jsonResponse({ statusCode: 500, cause: 'drop refused' }, 500),
+      102047,
+      'team-102047',
+    ),
+    (err: unknown) => err instanceof Error && err.message === 'drop refused',
+  );
+  await assert.rejects(
+    () => resetDraftDatabase(
+      async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+      102047,
+      'team-102047',
+    ),
+    (err: unknown) => err instanceof Error && err.message === 'draft.not_owner',
+  );
 });
 
 test('discard clears the project local copies and tempObjects before reload', async () => {
