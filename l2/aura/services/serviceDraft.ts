@@ -6,15 +6,21 @@ import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/
 import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
 import { activeDraft, enterDraft, isVmDriver, postDraftEnter, requestModeChange, sendServiceWorkerMode } from '/_102033_/l2/cbe/studioDraft.js';
 import { loadProjectDefinitions } from '/_102033_/l2/cbe/initStudio.js';
-import { readSourcesFromGitHub, writeSourcesFromGitHub } from '/_102033_/l2/cbe/studioSourcesOption.js';
+import { discardModuleInStudio } from '/_102020_/l2/aura/helpers/draftModuleDiscard.js';
 import {
     afterDraftSave,
     branchForSlug,
+    actionCounts,
+    buildDraftTree,
     collectEditedFiles,
     discard,
+    resetDraftDatabase,
     loadPanel,
     localEdits,
+    modulePendingCount,
     panelModel,
+    pendingFiles,
+    visibleTreeRows,
     publish,
     readPublished,
     saveDefaultDraft,
@@ -24,10 +30,11 @@ import {
     viewDiff,
     type FetchImpl,
     type IDraftWaitResult,
+    type IActionCounts,
     type IListedDraft,
-    type ILocalEdit,
     type IPanelModel,
     type IPublishedRecord,
+    type IVisibleTreeRow,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { listedOwner, subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
 
@@ -43,12 +50,18 @@ const message_en = {
     behind: 'Behind',
     touched: 'Touched files',
     noFiles: 'No touched files.',
-    save: 'Save to draft',
-    publish: 'Publish',
-    discard: 'Discard',
+    saveAll: 'Save all ({count})',
+    publishAll: 'Publish ({count})',
+    discardAll: 'Discard all ({count})',
+    markBrowser: 'in the browser',
+    markDraft: 'in the draft',
+    discardModule: 'Discard this module',
     askComment: 'Message',
     confirmPublish: 'Publish your {count} changes?',
-    confirmDiscard: 'Discard your {count} changes from your draft?',
+    confirmDiscard: 'Discard your {count} source changes and keep the test data?',
+    resetDatabase: 'Reset test database',
+    confirmResetDatabase: 'Delete the draft test data and recreate it from the seed?',
+    databaseReset: 'Test database reset: {database}.',
     promoting: 'Publishing the draft…',
     rebuilding: 'Rebuilding the release…',
     blocked: 'Not saved because of errors:',
@@ -69,6 +82,7 @@ const message_en = {
     makeDefault: 'Project default',
     defaultSaved: 'Saved as the project default.',
     configMissing: 'The project config could not be read.',
+    noActiveDraft: 'There is no active draft.',
     noDiff: 'No differences.',
     localTitle: 'In your browser (not saved)',
     oneFile: '{count} file',
@@ -76,6 +90,16 @@ const message_en = {
     withError: 'with error',
     undoLocal: 'Undo local',
     confirmUndo: 'Discard the local copy of {file}?',
+    confirmDiscardModule: 'Discard {count} changes in {module}?',
+    moduleDiscarded: 'Discarded module {module}.',
+    draftRefInvalid: 'The published version to restore is not valid.',
+    draftRefNotAncestor: 'That version is not an ancestor of this draft.',
+    draftPathInvalid: 'A module path is not valid.',
+    draftPathOutsideLayers: 'A module path is outside the project layers.',
+    draftPathLocal: 'A module path is local-only and cannot be restored.',
+    draftPathsRequired: 'The module has no paths to restore.',
+    draftNotOwner: 'This draft belongs to someone else.',
+    draftBadSlug: 'This draft address is not valid.',
     draftTitle: 'In draft {slug} (saved, not published)',
     publishedTitle: 'Published',
     release: 'Release',
@@ -85,10 +109,9 @@ const message_en = {
     autoSaveWaiting: 'Auto-save: on · no send yet · {pending} pending',
     autoSaveOff: 'Auto-save: off',
     autoSaveFailed: 'not saved: {reason}',
+    autoSaveAgent: 'Agent working: the send waits until the end',
     syncPublished: 'Bring in published changes',
     syncConflict: 'Conflicts with the published version in: {files}. Nothing was changed.',
-    sourcesFromGitHub: 'Fetch sources from GitHub',
-    sourcesNextLoad: 'Applies on the next load.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -104,12 +127,18 @@ const messages: Record<string, MessageType> = {
         behind: 'Atrás',
         touched: 'Arquivos tocados',
         noFiles: 'Nenhum arquivo tocado.',
-        save: 'Salvar no rascunho',
-        publish: 'Publicar',
-        discard: 'Descartar',
+        saveAll: 'Salvar tudo ({count})',
+        publishAll: 'Publicar ({count})',
+        discardAll: 'Descartar tudo ({count})',
+        markBrowser: 'no navegador',
+        markDraft: 'no rascunho',
+        discardModule: 'Descartar este módulo',
         askComment: 'Mensagem',
         confirmPublish: 'Publicar as suas {count} alterações?',
-        confirmDiscard: 'Descartar as suas {count} alterações do seu rascunho?',
+        confirmDiscard: 'Descartar as suas {count} alterações de fontes e manter os dados de teste?',
+        resetDatabase: 'Reiniciar BD de teste',
+        confirmResetDatabase: 'Apagar os dados de teste do rascunho e recriá-los com a semente?',
+        databaseReset: 'BD de teste reiniciado: {database}.',
         promoting: 'Publicando o rascunho…',
         rebuilding: 'Reconstruindo a release…',
         blocked: 'Não salvos por causa de erro:',
@@ -130,6 +159,7 @@ const messages: Record<string, MessageType> = {
         makeDefault: 'Padrão do projeto',
         defaultSaved: 'Gravado como padrão do projeto.',
         configMissing: 'Não foi possível ler o config do projeto.',
+        noActiveDraft: 'Não há rascunho ativo.',
         noDiff: 'Sem diferenças.',
         localTitle: 'No seu navegador (não salvo)',
         oneFile: '{count} arquivo',
@@ -137,6 +167,16 @@ const messages: Record<string, MessageType> = {
         withError: 'com erro',
         undoLocal: 'Desfazer local',
         confirmUndo: 'Descartar a cópia local de {file}?',
+        confirmDiscardModule: 'Descartar {count} alterações do módulo {module}?',
+        moduleDiscarded: 'Módulo {module} descartado.',
+        draftRefInvalid: 'A versão publicada para restaurar não é válida.',
+        draftRefNotAncestor: 'Essa versão não é ancestral deste rascunho.',
+        draftPathInvalid: 'Um caminho do módulo não é válido.',
+        draftPathOutsideLayers: 'Um caminho do módulo está fora das camadas do projeto.',
+        draftPathLocal: 'Um caminho do módulo é só local e não pode ser restaurado.',
+        draftPathsRequired: 'O módulo não tem caminhos para restaurar.',
+        draftNotOwner: 'Este rascunho é de outra pessoa.',
+        draftBadSlug: 'O endereço deste rascunho não é válido.',
         draftTitle: 'No rascunho {slug} (salvo, não publicado)',
         publishedTitle: 'Publicado',
         release: 'Release',
@@ -146,10 +186,9 @@ const messages: Record<string, MessageType> = {
         autoSaveWaiting: 'Auto-save: ligado · ainda sem envio · {pending} pendentes',
         autoSaveOff: 'Auto-save: desligado',
         autoSaveFailed: 'não salvo: {reason}',
+        autoSaveAgent: 'Agente trabalhando: o envio fica para o fim',
         syncPublished: 'Trazer o publicado',
         syncConflict: 'Conflito com o publicado em: {files}. Nada foi alterado.',
-        sourcesFromGitHub: 'Buscar fontes no GitHub',
-        sourcesNextLoad: 'Vale na próxima carga.',
     },
     es: {
         svcTitle: 'Borrador',
@@ -162,12 +201,18 @@ const messages: Record<string, MessageType> = {
         behind: 'Por detrás',
         touched: 'Archivos tocados',
         noFiles: 'Ningún archivo tocado.',
-        save: 'Guardar en el borrador',
-        publish: 'Publicar',
-        discard: 'Descartar',
+        saveAll: 'Guardar todo ({count})',
+        publishAll: 'Publicar ({count})',
+        discardAll: 'Descartar todo ({count})',
+        markBrowser: 'en el navegador',
+        markDraft: 'en el borrador',
+        discardModule: 'Descartar este módulo',
         askComment: 'Mensaje',
         confirmPublish: '¿Publicar sus {count} cambios?',
-        confirmDiscard: '¿Descartar sus {count} cambios de su borrador?',
+        confirmDiscard: '¿Descartar sus {count} cambios de fuentes y mantener los datos de prueba?',
+        resetDatabase: 'Reiniciar BD de prueba',
+        confirmResetDatabase: '¿Borrar los datos de prueba del borrador y recrearlos con la semilla?',
+        databaseReset: 'BD de prueba reiniciado: {database}.',
         promoting: 'Publicando el borrador…',
         rebuilding: 'Reconstruyendo la release…',
         blocked: 'No se guardaron por errores:',
@@ -188,6 +233,7 @@ const messages: Record<string, MessageType> = {
         makeDefault: 'Predeterminado del proyecto',
         defaultSaved: 'Guardado como predeterminado del proyecto.',
         configMissing: 'No se pudo leer la config del proyecto.',
+        noActiveDraft: 'No hay un borrador activo.',
         noDiff: 'Sin diferencias.',
         localTitle: 'En su navegador (no guardado)',
         oneFile: '{count} archivo',
@@ -195,6 +241,16 @@ const messages: Record<string, MessageType> = {
         withError: 'con error',
         undoLocal: 'Deshacer local',
         confirmUndo: '¿Descartar la copia local de {file}?',
+        confirmDiscardModule: '¿Descartar {count} cambios del módulo {module}?',
+        moduleDiscarded: 'Módulo {module} descartado.',
+        draftRefInvalid: 'La versión publicada para restaurar no es válida.',
+        draftRefNotAncestor: 'Esa versión no es antepasada de este borrador.',
+        draftPathInvalid: 'Una ruta del módulo no es válida.',
+        draftPathOutsideLayers: 'Una ruta del módulo está fuera de las capas del proyecto.',
+        draftPathLocal: 'Una ruta del módulo es solo local y no se puede restaurar.',
+        draftPathsRequired: 'El módulo no tiene rutas para restaurar.',
+        draftNotOwner: 'Este borrador es de otra persona.',
+        draftBadSlug: 'La dirección de este borrador no es válida.',
         draftTitle: 'En el borrador {slug} (guardado, no publicado)',
         publishedTitle: 'Publicado',
         release: 'Release',
@@ -204,10 +260,9 @@ const messages: Record<string, MessageType> = {
         autoSaveWaiting: 'Auto-save: activo · todavía sin envío · {pending} pendientes',
         autoSaveOff: 'Auto-save: apagado',
         autoSaveFailed: 'no guardado: {reason}',
+        autoSaveAgent: 'Agente trabajando: el envío queda para el final',
         syncPublished: 'Traer lo publicado',
         syncConflict: 'Conflicto con lo publicado en: {files}. No se cambió nada.',
-        sourcesFromGitHub: 'Buscar fuentes en GitHub',
-        sourcesNextLoad: 'Se aplica en la próxima carga.',
     },
 };
 /// **collab_i18n_end**
@@ -338,12 +393,11 @@ export class ServiceDraft102020 extends ServiceBase {
     private _pingTimer = 0;
     private _autoSaveTimer = 0;
     private _unsubAutoSave: (() => void) | undefined;
-    @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null };
-    @state() private _sourcesFromGitHub = false;
+    @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null, agentWorking: false };
+    @state() private _open = new Set<string>();
 
     connectedCallback(): void {
         super.connectedCallback();
-        this._sourcesFromGitHub = readSourcesFromGitHub();
         this._unsubAutoSave = subscribeAutoSave((state) => {
             this._autoSave = state;
             this._syncAutoSaveClock(state.on && state.lastSentAt !== null && !state.error);
@@ -361,7 +415,6 @@ export class ServiceDraft102020 extends ServiceBase {
 
     onServiceClick(visible: boolean, _reinit: boolean, _el: IToolbarContent | null): void {
         if (!visible) return;
-        this._sourcesFromGitHub = readSourcesFromGitHub();
         this.msg = messages[this.getMessageKey(messages)] || messages.en;
         this.menu.title = this.msg.svcTitle;
         this.menu.updateTitle?.();
@@ -388,8 +441,11 @@ export class ServiceDraft102020 extends ServiceBase {
         return template.replace('{count}', String(count));
     }
 
-    private _namesSuffix(names: string): string {
-        return names ? ` — ${names}` : '';
+    private _toggleNode(id: string): void {
+        const next = new Set(this._open);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        this._open = next;
     }
 
     private _renderPanel() {
@@ -405,17 +461,28 @@ export class ServiceDraft102020 extends ServiceBase {
             published: project ? readStoredPublished(project) : null,
             release: this._releaseId,
         });
+        const pending = pendingFiles(model.local.files, model.draft.files);
+        const rows = visibleTreeRows(buildDraftTree(pending), this._open);
+        const counts = actionCounts(model.local.files, model.draft.files);
+        const byPath = new Map<string, mls.stor.IFileInfo>();
+        const paired = Math.min(edited.length, local.length);
+        for (let index = 0; index < paired; index += 1) {
+            const edit = local[index];
+            const file = edited[index];
+            if (edit && file) byPath.set(edit.shortPath, file);
+        }
         const busy = this._phase === 'loading' || this._phase === 'publishing';
         return html`
             <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
-                ${this._renderSourcesOption()}
+                ${this._renderActions(counts, busy)}
                 ${this._phase === 'loading' ? html`<p class="px-4 py-4">${this.msg.loading}</p>` : nothing}
                 ${this._phase === 'publishing' ? html`<p class="px-4 py-4">${this._pingText()}</p>` : nothing}
                 ${this._phase === 'error' ? html`<p class="px-4 py-4 text-amber-700 dark:text-amber-300">${this._error}</p>` : nothing}
                 ${this._errorFiles.length
                     ? html`<div class="flex flex-col gap-0.5 px-4">${this._errorFiles.map((file) => html`<div>${file}</div>`)}</div>`
                     : nothing}
-                ${this._renderLocal(model, edited, busy)}
+                ${this._renderTree(rows, byPath, busy)}
+                ${this._renderLocal(model)}
                 ${this._renderDraft(model, busy)}
                 ${this._renderPublished(model)}
                 ${this._note ? html`<p class="px-4 py-4">${this._note}</p>` : nothing}
@@ -424,36 +491,61 @@ export class ServiceDraft102020 extends ServiceBase {
         `;
     }
 
-    private _renderSourcesOption() {
+    private _renderActions(counts: IActionCounts, busy: boolean) {
+        const save = this.msg.saveAll.replace('{count}', String(counts.save));
+        const publish = this.msg.publishAll.replace('{count}', String(counts.publish));
+        const discard = this.msg.discardAll.replace('{count}', String(counts.discard));
         return html`
-            <div class=${blockClass}>
-                <label class="flex items-center gap-3">
-                    <input
-                        type="checkbox"
-                        .checked=${this._sourcesFromGitHub}
-                        @change=${(event: Event) => { this._onSourcesFromGitHub(event); }}
-                    />
-                    <span>${this.msg.sourcesFromGitHub}</span>
-                    <span>${this.msg.sourcesNextLoad}</span>
-                </label>
+            <div class="draft-actions flex flex-wrap gap-3 px-4 py-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
+                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${save}</button>
+                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
+                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
+                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onResetDatabase(); }}>${this.msg.resetDatabase}</button>
             </div>
         `;
     }
 
-    private _onSourcesFromGitHub(event: Event): void {
-        const input = event.currentTarget;
-        if (!(input instanceof HTMLInputElement)) {
-            console.error('[serviceDraft] sources option change is not a checkbox');
-            return;
-        }
-        writeSourcesFromGitHub(input.checked);
-        this._sourcesFromGitHub = readSourcesFromGitHub();
+    private _renderTree(rows: readonly IVisibleTreeRow[], byPath: ReadonlyMap<string, mls.stor.IFileInfo>, busy: boolean) {
+        if (rows.length === 0) return nothing;
+        return html`
+            <div class="flex flex-col gap-0.5 px-4 py-3">
+                ${rows.map((row) => this._renderTreeRow(row, byPath.get(row.id), busy))}
+            </div>
+        `;
+    }
+
+    private _renderTreeRow(row: IVisibleTreeRow, file: mls.stor.IFileInfo | undefined, busy: boolean) {
+        const marks = [
+            this._countLabel(row.count),
+            row.inBrowser > 0 ? `${this.msg.markBrowser} ${row.inBrowser}` : '',
+            row.inDraft > 0 ? `${this.msg.markDraft} ${row.inDraft}` : '',
+            row.withError > 0 ? `${this.msg.withError} ${row.withError}` : '',
+        ].filter((part) => part !== '').join(' · ');
+        return html`
+            <div class="flex items-center gap-3" style="padding-left: ${row.depth * 12}px">
+                ${row.kind === 'file'
+                    ? html`<span>${row.name}</span>`
+                    : html`<button class="text-left" @click=${() => { this._toggleNode(row.id); }}>${this._open.has(row.id) ? '▾' : '▸'} ${row.name}</button>`}
+                <span>${marks}</span>
+                ${row.kind === 'module'
+                    ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onModuleDiscard(row.name); }}>${this.msg.discardModule}</button>`
+                    : nothing}
+                ${row.kind === 'file' && row.inBrowser
+                    ? html`<button
+                        class=${actionClass}
+                        ?disabled=${busy || !file}
+                        @click=${() => { if (file) void this._onUndoLocal(file, row.id); }}
+                    >${this.msg.undoLocal}</button>`
+                    : nothing}
+            </div>
+        `;
     }
 
     private _autoSaveLine(): string {
         const state = this._autoSave;
-        if (state.error) return this.msg.autoSaveFailed.replace('{reason}', state.error);
         if (!state.on) return this.msg.autoSaveOff;
+        if (state.agentWorking) return this.msg.autoSaveAgent;
+        if (state.error) return this.msg.autoSaveFailed.replace('{reason}', state.error);
         if (state.lastSentAt === null) {
             return this.msg.autoSaveWaiting.replace('{pending}', String(state.pending));
         }
@@ -472,46 +564,26 @@ export class ServiceDraft102020 extends ServiceBase {
         this._autoSaveTimer = window.setInterval(() => { this.requestUpdate(); }, 1000);
     }
 
-    private _renderLocal(model: IPanelModel, edited: mls.stor.IFileInfo[], busy: boolean) {
-        const files = model.local.files;
-        const heading = `${this.msg.localTitle}: ${this._countLabel(model.local.count)}${this._namesSuffix(files.map((file) => file.shortPath).join(', '))}`;
+    private _renderLocal(model: IPanelModel) {
+        const heading = `${this.msg.localTitle}: ${this._countLabel(model.local.count)}`;
         return html`
             <div class=${blockClass}>
                 <div class="font-semibold">${heading}</div>
                 <p>${this._autoSaveLine()}</p>
-                ${files.length === 0
+                ${model.local.count === 0
                     ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noLocal}</p>`
-                    : html`<div class="flex flex-col gap-0.5">
-                        ${files.map((file, index) => this._renderLocalFile(file, edited[index], busy))}
-                    </div>`}
+                    : nothing}
                 ${this._blocked.length
                     ? html`<p class="text-amber-700 dark:text-amber-300">${this.msg.blocked}</p>
                         <div class="flex flex-col gap-0.5">${this._blocked.map((file) => html`<div>${fileLabel(file)}</div>`)}</div>`
                     : nothing}
-                <div class="flex flex-wrap gap-3">
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${this.msg.save}</button>
-                </div>
-            </div>
-        `;
-    }
-
-    private _renderLocalFile(edit: ILocalEdit, file: mls.stor.IFileInfo | undefined, busy: boolean) {
-        return html`
-            <div class="flex items-center gap-3">
-                <span>${edit.shortPath}</span>
-                ${edit.hasError ? html`<span class="text-amber-700 dark:text-amber-300">${this.msg.withError}</span>` : nothing}
-                <button
-                    class=${actionClass}
-                    ?disabled=${busy || !file}
-                    @click=${() => { if (file) void this._onUndoLocal(file, edit.shortPath); }}
-                >${this.msg.undoLocal}</button>
             </div>
         `;
     }
 
     private _renderDraft(model: IPanelModel, busy: boolean) {
         const current = this._current;
-        const heading = `${this.msg.draftTitle.replace('{slug}', this._slug)}: ${this._countLabel(model.draft.count)}${this._namesSuffix(model.draft.files.join(', '))}`;
+        const heading = `${this.msg.draftTitle.replace('{slug}', this._slug)}: ${this._countLabel(model.draft.count)}`;
         return html`
             <div class=${blockClass}>
                 <div class="font-semibold">${heading}</div>
@@ -520,10 +592,8 @@ export class ServiceDraft102020 extends ServiceBase {
                 <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.behind}</span><span>${current ? current.behind : ''}</span></div>
                 ${model.draft.files.length === 0
                     ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noFiles}</p>`
-                    : html`<div class="flex flex-col gap-0.5">${model.draft.files.map((file) => html`<div>${file}</div>`)}</div>`}
+                    : nothing}
                 <div class="flex flex-wrap gap-3">
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${this.msg.publish}</button>
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${this.msg.discard}</button>
                     <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>
                     ${current && current.behind > 0
                         ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSyncPublished(); }}>${this.msg.syncPublished}</button>`
@@ -535,7 +605,7 @@ export class ServiceDraft102020 extends ServiceBase {
 
     private _renderPublished(model: IPanelModel) {
         const published = model.published;
-        const heading = `${this.msg.publishedTitle}: ${this._countLabel(published.count)}${this._namesSuffix(published.files.join(', '))}`;
+        const heading = `${this.msg.publishedTitle}: ${this._countLabel(published.count)}`;
         return html`
             <div class=${blockClass}>
                 <div class="font-semibold">${heading}</div>
@@ -921,6 +991,59 @@ export class ServiceDraft102020 extends ServiceBase {
         }
     }
 
+    private _moduleCount(moduleName: string): number {
+        const project = this._projectId;
+        if (!project) return 0;
+        const local = localEdits(mls.stor.files, project);
+        const draft = this._current ? this._current.files : [];
+        return modulePendingCount(pendingFiles(local, draft), moduleName);
+    }
+
+    /** Known `draft.*` reasons from the restore route. Anything else stays as the server sent it. */
+    private _draftReason(reason: string): string {
+        const known: Record<string, string> = {
+            'draft.ref_invalid': this.msg.draftRefInvalid,
+            'draft.ref_not_ancestor': this.msg.draftRefNotAncestor,
+            'draft.path_invalid': this.msg.draftPathInvalid,
+            'draft.path_outside_layers': this.msg.draftPathOutsideLayers,
+            'draft.path_local': this.msg.draftPathLocal,
+            'draft.paths_required': this.msg.draftPathsRequired,
+            'draft.not_owner': this.msg.draftNotOwner,
+            'draft.bad_slug': this.msg.draftBadSlug,
+            'draft.no_active_draft': this.msg.noActiveDraft,
+            'draft.config_missing': this.msg.configMissing,
+        };
+        return known[reason] ?? reason;
+    }
+
+    private async _onModuleDiscard(moduleName: string): Promise<void> {
+        const project = this._projectId;
+        if (!project || !this._slug || !isVmDriver(this._driver)) return;
+        const count = this._moduleCount(moduleName);
+        const question = this.msg.confirmDiscardModule.replace('{count}', String(count)).replace('{module}', moduleName);
+        if (!confirm(question)) return;
+        this._error = '';
+        this._note = '';
+        this._phase = 'loading';
+        try {
+            await discardModuleInStudio(project, moduleName);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[serviceDraft] discard module failed:', message);
+            this._error = this._draftReason(message);
+            this._phase = 'error';
+            return;
+        }
+        await this._load(true);
+        this._noteModuleDiscarded(moduleName);
+    }
+
+    /** `_load` clears the note. Put it back only when the refresh itself did not fail. */
+    private _noteModuleDiscarded(moduleName: string): void {
+        if (this._phase === 'error') return;
+        this._note = this.msg.moduleDiscarded.replace('{module}', moduleName);
+    }
+
     private async _onDiscard(): Promise<void> {
         const project = this._projectId;
         if (!project || !this._slug || !isVmDriver(this._driver)) return;
@@ -941,6 +1064,34 @@ export class ServiceDraft102020 extends ServiceBase {
             this._error = err instanceof Error ? err.message : String(err);
             this._phase = 'error';
         }
+    }
+
+    private async _onResetDatabase(): Promise<void> {
+        const project = this._projectId;
+        if (!project || !this._slug || !isVmDriver(this._driver)) return;
+        if (!confirm(this.msg.confirmResetDatabase)) return;
+        this._error = '';
+        this._note = '';
+        this._phase = 'loading';
+        let database = '';
+        try {
+            const reset = await resetDraftDatabase(fetchImpl, project, this._slug);
+            database = reset.database;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[serviceDraft] reset test database failed:', message);
+            this._error = this._draftReason(message);
+            this._phase = 'error';
+            return;
+        }
+        await this._load(true);
+        this._noteDatabaseReset(database);
+    }
+
+    /** `_load` clears the note. Put it back only when the refresh itself did not fail. */
+    private _noteDatabaseReset(database: string): void {
+        if (this._phase === 'error') return;
+        this._note = this.msg.databaseReset.replace('{database}', database);
     }
 
     private async _onSyncPublished(): Promise<void> {

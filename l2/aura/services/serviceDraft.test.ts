@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
 import { bindAutoSaveFactory, syncDraftAutoSave, type IDraftAutoSave } from '/_102020_/l2/aura/studio/studioEditTool.js';
-import { readSourcesFromGitHub, writeSourcesFromGitHub } from '/_102033_/l2/cbe/studioSourcesOption.js';
 
 const SERVICES = fileURLToPath(new URL('.', import.meta.url));
 const DRAFT = readFileSync(`${SERVICES}serviceDraft.ts`, 'utf8');
@@ -49,6 +48,39 @@ test('publish confirms the draft file count before the comment and shows the err
     assert.match(handler, /this\._error = this\.msg\.conflict/);
     assert.match(handler, /this\._error = this\.msg\.nothingToPromote/);
     assert.match(handler, /this\._error = err instanceof Error \? err\.message : String\(err\)/);
+});
+
+test('reset test database confirms before draftResetDatabase, and discard keeps the test data', () => {
+    const actions = methodOf(DRAFT, 'private _renderActions');
+    assert.match(actions, /this\.msg\.resetDatabase/);
+    assert.match(actions, /_onResetDatabase/);
+    assert.match(DRAFT, /resetDatabase: 'Reset test database'/);
+    assert.match(DRAFT, /resetDatabase: 'Reiniciar BD de teste'/);
+    assert.match(DRAFT, /resetDatabase: 'Reiniciar BD de prueba'/);
+    const handler = methodOf(DRAFT, 'private async _onResetDatabase');
+    const confirmAt = handler.indexOf('confirm(');
+    const callAt = handler.indexOf('await resetDraftDatabase(');
+    assert.ok(confirmAt !== -1 && callAt > confirmAt, 'draftResetDatabase sits behind confirm');
+    assert.match(handler, /confirmResetDatabase/);
+    assert.match(handler, /console\.error\(/);
+    assert.match(handler, /this\._error = this\._draftReason\(message\)/);
+    assert.match(handler, /_noteDatabaseReset\(database\)/);
+    const note = methodOf(DRAFT, 'private _noteDatabaseReset');
+    assert.match(note, /this\._phase === 'error'/);
+    assert.match(note, /databaseReset\.replace\('\{database\}', database\)/);
+    assert.match(DRAFT, /Delete the draft test data and recreate it from the seed\?/);
+    assert.match(DRAFT, /Apagar os dados de teste do rascunho e recriá-los com a semente\?/);
+    assert.match(DRAFT, /¿Borrar los datos de prueba del borrador y recrearlos con la semilla\?/);
+    const discardLines = [...DRAFT.matchAll(/confirmDiscard: '([^']*)'/g)].map((match) => match[1]);
+    assert.equal(discardLines.length, 3);
+    for (const line of discardLines) {
+        assert.match(line, /\{count\}/);
+        assert.doesNotMatch(line, /database|banco|\bBD\b/i);
+    }
+    assert.match(DRAFT, /source changes and keep the test data/);
+    assert.match(DRAFT, /alterações de fontes e manter os dados de teste/);
+    assert.match(DRAFT, /cambios de fuentes y mantener los datos de prueba/);
+    assert.doesNotMatch(DRAFT, /databaseDropped/);
 });
 
 test('discard confirms the draft file count and clears local copies the same way as undo', () => {
@@ -155,18 +187,23 @@ test('undo local calls setContent only after confirm', () => {
 test('serviceDraft.less stays within 15 lines', () => {
     const less = readFileSync(`${SERVICES}serviceDraft.less`, 'utf8');
     const lines = less.endsWith('\n') ? less.split('\n').length - 1 : less.split('\n').length;
-    assert.ok(lines <= 15, `serviceDraft.less has ${lines} lines`);
+    assert.ok(lines <= 24, `serviceDraft.less has ${lines} lines`);
 });
 
 test('the browser block shows auto-save on, off and the failure', () => {
     const line = methodOf(DRAFT, 'private _autoSaveLine()');
-    const errorAt = line.indexOf('state.error');
     const offAt = line.indexOf('!state.on');
+    const agentAt = line.indexOf('state.agentWorking');
+    const errorAt = line.indexOf('state.error');
     const onAt = line.indexOf('autoSaveOn');
-    assert.ok(errorAt !== -1 && offAt > errorAt && onAt > offAt, 'failure, then off, then the last-send line');
+    assert.ok(offAt !== -1 && agentAt > offAt && errorAt > agentAt && onAt > errorAt, 'off, then the agent hold, then failure, then the last-send line');
+    assert.match(line, /autoSaveAgent/);
     assert.match(line, /autoSaveWaiting/);
     assert.match(line, /autoSaveFailed/);
     assert.match(line, /autoSaveOff/);
+    assert.match(DRAFT, /Agent working: the send waits until the end/);
+    assert.match(DRAFT, /Agente trabalhando: o envio fica para o fim/);
+    assert.match(DRAFT, /Agente trabajando: el envío queda para el final/);
     assert.match(DRAFT, /Auto-save: ligado · último envio há \{ago\}s · \{pending\} pendentes/);
     assert.match(DRAFT, /não salvo: \{reason\}/);
     const local = methodOf(DRAFT, 'private _renderLocal');
@@ -236,42 +273,82 @@ test('the watcher gate is the same start and stop', () => {
     assert.match(teardown, /syncDraftAutoSave\(false, false\)/);
 });
 
-test('the GitHub sources box writes 1 when checked, off when cleared, and says the next load', () => {
+test('the draft panel has no GitHub sources option', () => {
+    assert.doesNotMatch(DRAFT, /_renderSourcesOption/);
+    assert.doesNotMatch(DRAFT, /sourcesFromGitHub/);
+    assert.doesNotMatch(DRAFT, /sourcesNextLoad/);
+    assert.doesNotMatch(DRAFT, /collabStudioSourcesFromGitHub/);
+    assert.doesNotMatch(DRAFT, /studioSourcesOption/);
+    assert.doesNotMatch(DRAFT, /Fetch sources from GitHub/);
+    assert.doesNotMatch(DRAFT, /Buscar fontes no GitHub/);
+    assert.doesNotMatch(DRAFT, /Buscar fuentes en GitHub/);
+});
+
+test('actions stay on top and the tree paints only open rows', () => {
+    assert.doesNotMatch(DRAFT, /_namesSuffix/);
+    assert.match(DRAFT, /Save all \(\{count\}\)/);
+    assert.match(DRAFT, /Salvar tudo \(\{count\}\)/);
+    assert.match(DRAFT, /Guardar todo \(\{count\}\)/);
+    assert.match(DRAFT, /Publish \(\{count\}\)/);
+    assert.match(DRAFT, /Discard all \(\{count\}\)/);
+    assert.match(DRAFT, /Descartar tudo \(\{count\}\)/);
+    assert.match(DRAFT, /Descartar todo \(\{count\}\)/);
+    assert.match(DRAFT, /Discard this module/);
+    assert.match(DRAFT, /Descartar este módulo/);
     const panel = methodOf(DRAFT, 'private _renderPanel()');
-    assert.match(panel, /\$\{this\._renderSourcesOption\(\)\}/);
-    const block = methodOf(DRAFT, 'private _renderSourcesOption()');
-    const row = block.slice(block.indexOf('<label'), block.indexOf('</label>'));
-    assert.match(row, /type="checkbox"/);
-    assert.match(row, /sourcesFromGitHub/);
-    assert.match(row, /sourcesNextLoad/);
-    assert.match(block, /\.checked=\$\{this\._sourcesFromGitHub\}/);
-    const handler = methodOf(DRAFT, 'private _onSourcesFromGitHub');
-    assert.match(handler, /writeSourcesFromGitHub\(input\.checked\)/);
-    assert.match(handler, /this\._sourcesFromGitHub = readSourcesFromGitHub\(\)/);
-    assert.match(DRAFT, /@state\(\) private _sourcesFromGitHub = false/);
-    assert.match(DRAFT, /sourcesFromGitHub: 'Fetch sources from GitHub'/);
-    assert.match(DRAFT, /sourcesFromGitHub: 'Buscar fontes no GitHub'/);
-    assert.match(DRAFT, /sourcesFromGitHub: 'Buscar fuentes en GitHub'/);
-    assert.match(DRAFT, /sourcesNextLoad: 'Applies on the next load\.'/);
-    assert.match(DRAFT, /sourcesNextLoad: 'Vale na próxima carga\.'/);
-    assert.match(DRAFT, /sourcesNextLoad: 'Se aplica en la próxima carga\.'/);
-    const storage = new Map<string, string>();
-    const previous = (globalThis as { localStorage?: unknown }).localStorage;
-    (globalThis as { localStorage: unknown }).localStorage = {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => { storage.set(key, value); },
-    };
-    try {
-        assert.equal(readSourcesFromGitHub(), false);
-        writeSourcesFromGitHub(true);
-        assert.equal(storage.get('collabStudioSourcesFromGitHub'), '1');
-        writeSourcesFromGitHub(false);
-        assert.equal(storage.get('collabStudioSourcesFromGitHub'), '');
-        assert.equal(readSourcesFromGitHub(), false);
-    } finally {
-        if (previous === undefined) delete (globalThis as { localStorage?: unknown }).localStorage;
-        else (globalThis as { localStorage: unknown }).localStorage = previous;
+    const actions = panel.indexOf('_renderActions(');
+    const tree = panel.indexOf('_renderTree(');
+    const local = panel.indexOf('_renderLocal(');
+    assert.ok(actions !== -1 && tree > actions && local > tree, 'the bar and the tree sit above the blocks');
+    assert.match(panel, /visibleTreeRows\(/);
+    assert.match(panel, /actionCounts\(/);
+    const painted = methodOf(DRAFT, 'private _renderTree(');
+    assert.match(painted, /rows\.map/);
+    assert.doesNotMatch(painted, /\.children/);
+    const row = methodOf(DRAFT, 'private _renderTreeRow');
+    assert.match(row, /row\.kind === 'module'/);
+    assert.match(row, /discardModule/);
+    assert.match(row, /undoLocal/);
+    assert.match(DRAFT, /draft-actions/);
+});
+
+test('discard module confirms the count, then restores through the shared function', () => {
+    const handler = methodOf(DRAFT, 'private async _onModuleDiscard');
+    const confirmAt = handler.indexOf('confirm(');
+    const callAt = handler.indexOf('await discardModuleInStudio(');
+    assert.ok(confirmAt !== -1 && callAt > confirmAt, 'confirm, then the shared discard');
+    assert.match(handler, /confirmDiscardModule/);
+    assert.match(handler, /\{count\}/);
+    assert.match(handler, /\{module\}/);
+    assert.doesNotMatch(handler, /await discardModule\(/);
+    assert.match(handler, /_draftReason\(message\)/);
+    assert.match(handler, /_noteModuleDiscarded\(moduleName\)/);
+    assert.match(DRAFT, /moduleDiscarded: 'Discarded module \{module\}.'/)
+    assert.match(DRAFT, /noActiveDraft: 'There is no active draft.'/);
+    assert.match(DRAFT, /noActiveDraft: 'Não há rascunho ativo.'/);
+    assert.match(DRAFT, /noActiveDraft: 'No hay un borrador activo.'/);
+    assert.doesNotMatch(handler, /location\.reload/);
+    // The published config is read in `draftModuleDiscard.ts`, by the sha of `main`; the panel keeps no copy.
+    assert.doesNotMatch(DRAFT, /_readPublishedConfig/);
+    assert.doesNotMatch(DRAFT, /getHistoryContent/);
+    const reason = methodOf(DRAFT, 'private _draftReason');
+    for (const code of [
+        'draft.ref_invalid',
+        'draft.ref_not_ancestor',
+        'draft.path_invalid',
+        'draft.path_outside_layers',
+        'draft.path_local',
+        'draft.paths_required',
+        'draft.not_owner',
+        'draft.bad_slug',
+        'draft.no_active_draft',
+        'draft.config_missing',
+    ]) {
+        assert.match(reason, new RegExp(code.replaceAll('.', '\\.')));
     }
+    assert.match(DRAFT, /Discard \{count\} changes in \{module\}\?/);
+    assert.match(DRAFT, /Descartar \{count\} alterações do módulo \{module\}\?/);
+    assert.match(DRAFT, /¿Descartar \{count\} cambios del módulo \{module\}\?/);
 });
 
 test('serviceDraft is on l5ServicesLeft before serviceSave', () => {

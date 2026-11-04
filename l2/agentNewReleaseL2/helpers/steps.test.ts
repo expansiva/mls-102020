@@ -22,6 +22,7 @@ import {
   changeEffortInfo,
   closeNotice,
   commandLines,
+  refusedPages,
   degreesOf,
   screenCostLines,
   stepsPhaseNote,
@@ -31,6 +32,7 @@ import {
   markedPageIds,
   marksDifferMessage,
   materializerOutcome,
+  refusedPages,
   NR_NOTHING_TO_APPLY,
   parseNrInvocation,
   poolEffortInfo,
@@ -393,6 +395,86 @@ test('close copies the materializer status and its message', () => {
   assert.deepEqual(materializerOutcome(nested), { status: 'failed', message: 'page id missing' });
 });
 
+const SNAPSHOT_SUMMARY = 'comandaRestaurante: 4 page(s) accepted [atendimento, fechamento, inicio, mesas], 1 refused [cardapio].';
+const SNAPSHOT_ERROR = 'error M4_INPUT_DEFS_FORMAT [cardapio] shared: — The shared defs do not follow the v2 grammar: D2_SHARED_V2_KEYS: forbidden field forms';
+
+function materializeTree(result: string, status: 'completed' | 'failed' = 'completed'): mls.msg.AIAgentStep {
+  return {
+    type: 'agent',
+    status,
+    interaction: { input: [], cost: 0, trace: ['pages written'], payload: null },
+    nextSteps: [{
+      type: 'agent',
+      status: 'completed',
+      interaction: { input: [], cost: 0, trace: [], payload: null },
+      nextSteps: [{
+        type: 'result',
+        status: 'completed',
+        interaction: null,
+        nextSteps: [],
+        stepId: 0,
+        stepTitle: 'input20',
+        result,
+      } as mls.msg.AIResultStep],
+    } as mls.msg.AIAgentStep],
+  } as mls.msg.AIAgentStep;
+}
+
+test('refused pages become refused: lines on the close text', async () => {
+  const runnerLine = /^(?:refused|failed):/;
+  const snapshot = materializeTree(`${SNAPSHOT_SUMMARY}\n${SNAPSHOT_ERROR}`);
+  assert.deepEqual(refusedPages(snapshot), [{ page: 'cardapio', code: 'D2_SHARED_V2_KEYS' }]);
+  assert.deepEqual(refusedPages(materializeTree('comandaRestaurante: 5 page(s) accepted [atendimento, fechamento, inicio, mesas, cardapio].')), []);
+  const two = materializeTree([
+    'mod: 0 page(s) accepted [], 2 refused [alpha, beta].',
+    'error M4_INPUT_DEFS_FORMAT [alpha] D2_SHARED_V2_KEYS: forbidden field forms',
+    'error M4_OTHER [beta] missing page',
+  ].join('\n'));
+  assert.deepEqual(refusedPages(two), [
+    { page: 'alpha', code: 'D2_SHARED_V2_KEYS' },
+    { page: 'beta', code: 'M4_OTHER' },
+  ]);
+  assert.deepEqual(refusedPages(undefined), []);
+
+  const refusedClose = closeNotice('pages written', ['none'], [], true, [], refusedPages(snapshot));
+  assert.equal(refusedClose.split('\n')[0], 'refused: cardapio: D2_SHARED_V2_KEYS');
+  assert.match(refusedClose.split('\n')[0], runnerLine);
+  assert.equal(refusedClose.split('\n')[1], 'pages written; deleted: none');
+
+  const agent = createAgent();
+  const deleted = ['l2/comandaRestaurante/web/shared/cardapio.ts'];
+  const [, close] = buildApplySteps(102047, 'comandaRestaurante', deleted);
+  close.stepId = 2;
+  const parent = { stepId: 1 } as mls.msg.AIAgentStep;
+  const materialize = {
+    ...snapshot,
+    stepId: 3,
+    planning: { planId: NR_MATERIALIZE_PLAN, dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+    agentName: NR_MATERIALIZE_AGENT,
+    prompt: '',
+    rags: [],
+    stepTitle: 'Materialize module',
+  } as mls.msg.AIAgentStep;
+  const context = {
+    message: { threadId: 'thread-refused', content: '@@agentNewReleaseL2 comandaRestaurante', orderAt: '1' },
+    task: { PK: 'task', iaCompressed: { nextSteps: [materialize, close] } },
+  } as mls.msg.ExecutionContext;
+  if (!agent.beforePromptStep) assert.fail('missing beforePromptStep');
+  const refusedUpdate = (await agent.beforePromptStep(agent, context, parent, close, 0))[0];
+  if (refusedUpdate?.type !== 'update-status') assert.fail('missing close update');
+  assert.equal(refusedUpdate.status, 'completed');
+  assert.equal(refusedUpdate.traceMsg?.split('\n')[0], 'refused: cardapio: D2_SHARED_V2_KEYS');
+  assert.match(refusedUpdate.traceMsg?.split('\n')[0] || '', runnerLine);
+  assert.match(refusedUpdate.traceMsg || '', /^refused: /);
+
+  materialize.nextSteps = [];
+  materialize.interaction = { input: [], cost: 0, trace: ['pages written'], payload: null };
+  const doneUpdate = (await agent.beforePromptStep(agent, context, parent, close, 0))[0];
+  if (doneUpdate?.type !== 'update-status') assert.fail('missing done close');
+  assert.match(doneUpdate.traceMsg || '', /^done: /);
+  assert.equal(doneUpdate.traceMsg, statusText(closeNotice('pages written', deleted, [], true), 'done'));
+});
+
 function r4Effort(pageId: string): unknown {
   const effort = JSON.parse(readFileSync(new URL('./fixtures/r4.json', import.meta.url), 'utf8')) as {
     perItem: Array<{ answers: Array<{ materialize: Array<{ id: string }> }> }>;
@@ -689,6 +771,89 @@ test('the close text lists each planned page cost before the commands', () => {
   const failed = closeNotice('pages written', deleted, [FIELD_COMMAND], false, lines);
   assert.equal(failed.includes(FIELD_COMMAND), false);
   assert.equal(failed.includes(lines[2]), true);
+});
+
+const CARDAPIO_REFUSAL = [
+  'comandaRestaurante: 4 page(s) accepted [atendimento, fechamento, inicio, mesas], 1 refused [cardapio].',
+  'error M4_INPUT_DEFS_FORMAT [cardapio] shared: — The shared defs do not follow the v2 grammar: D2_SHARED_V2_KEYS: forbidden field forms',
+].join('\n');
+
+test('a refused materializer page opens the close text with refused: and keeps accepted pages', async () => {
+  const nested = {
+    type: 'result',
+    stepId: 9,
+    status: 'completed',
+    result: CARDAPIO_REFUSAL,
+    nextSteps: [],
+  } as mls.msg.AIPayload;
+  const materialize = {
+    type: 'agent',
+    stepId: 3,
+    status: 'completed',
+    interaction: { input: [], cost: 0, trace: ['materializer finished'], payload: null },
+    nextSteps: [nested],
+    planning: { planId: NR_MATERIALIZE_PLAN, dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+    agentName: NR_MATERIALIZE_AGENT,
+    prompt: '',
+    rags: [],
+    stepTitle: 'Materialize module',
+  } as mls.msg.AIAgentStep;
+  assert.deepEqual(refusedPages(materialize), [{ page: 'cardapio', code: 'D2_SHARED_V2_KEYS' }]);
+  assert.deepEqual(refusedPages(undefined), []);
+  assert.deepEqual(refusedPages({
+    type: 'result',
+    stepId: 1,
+    status: 'completed',
+    result: 'mod: 4 page(s) accepted [alpha], 0 refused [].',
+    nextSteps: [],
+  } as mls.msg.AIPayload), []);
+
+  const two = [
+    'mod: 0 page(s) accepted [], 2 refused [alpha, beta].',
+    'error M4_ONE [alpha] note D2_ALPHA_CODE: x',
+    'error M4_TWO [beta] note D2_BETA_CODE: y',
+  ].join('\n');
+  const twoPages = refusedPages({
+    type: 'result', stepId: 2, status: 'completed', result: two, nextSteps: [],
+  } as mls.msg.AIPayload);
+  assert.deepEqual(twoPages, [
+    { page: 'alpha', code: 'D2_ALPHA_CODE' },
+    { page: 'beta', code: 'D2_BETA_CODE' },
+  ]);
+  assert.equal(closeNotice('pages written', [], [], true, [], twoPages).split('\n').slice(0, 2).join('\n'), 'refused: alpha: D2_ALPHA_CODE\nrefused: beta: D2_BETA_CODE');
+
+  const plain = refusedPages({
+    type: 'result',
+    stepId: 4,
+    status: 'completed',
+    result: 'mod: 1 refused [gamma].\nerror M4_INPUT_DEFS_FORMAT [gamma] shared: plain problem',
+    nextSteps: [],
+  } as mls.msg.AIPayload);
+  assert.deepEqual(plain, [{ page: 'gamma', code: 'M4_INPUT_DEFS_FORMAT' }]);
+
+  const deleted = ['l2/comandaRestaurante/web/shared/cardapio.defs.ts'];
+  const body = closeNotice('pages written', deleted, [], true, [], refusedPages(materialize));
+  assert.equal(body.split('\n')[0], 'refused: cardapio: D2_SHARED_V2_KEYS');
+  assert.match(body.split('\n')[0], /^(?:refused|failed):/u);
+  const prefixed = statusText(body, 'refused');
+  assert.equal(prefixed.split('\n')[0], 'refused: cardapio: D2_SHARED_V2_KEYS');
+  assert.match(prefixed, /^refused:/u);
+  assert.equal(statusText(closeNotice('pages written', deleted), 'done').startsWith('done:'), true);
+
+  const agent = createAgent();
+  const [, close] = buildApplySteps(102047, 'comandaRestaurante', deleted);
+  close.stepId = 2;
+  const context = {
+    message: { threadId: 'thread-refused', content: '@@agentNewReleaseL2 comandaRestaurante', orderAt: '1' },
+    task: { PK: 'task', iaCompressed: { nextSteps: [materialize, close] } },
+  } as mls.msg.ExecutionContext;
+  if (!agent.beforePromptStep) assert.fail('missing beforePromptStep');
+  const intents = await agent.beforePromptStep(agent, context, { stepId: 1 } as mls.msg.AIAgentStep, close, 0);
+  const update = intents[0];
+  if (update?.type !== 'update-status') assert.fail('missing close update');
+  assert.equal(update.status, 'completed');
+  assert.equal(update.traceMsg?.split('\n')[0], 'refused: cardapio: D2_SHARED_V2_KEYS');
+  assert.match(update.traceMsg?.split('\n')[0] || '', /^(?:refused|failed):/u);
 });
 
 function terminalStepIds(steps: readonly mls.msg.AIPayload[]): Set<number> {
