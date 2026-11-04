@@ -101,6 +101,34 @@ void test('rule changed cites only the pages whose routes list the id', () => {
   assert.deepEqual(conflict.materialize.map(unit => unit.id), ['consultas']);
 });
 
+void test('the journeys index artifact is an empty computed answer; any other artifact abends', () => {
+  const seen: unknown[][] = [];
+  const original = console.info;
+  console.info = (...args: unknown[]) => { seen.push(args); };
+  try {
+    const index = describeEffortFrom(input({
+      changeId: 'artifact:journeys/index.defs.ts', kind: 'artifact', op: 'changed', entity: '',
+    }), {});
+    assert.equal(index.status, 'computed');
+    assert.equal(index.abend, undefined);
+    assert.deepEqual(index.materialize, []);
+    assert.deepEqual(index.regenerateDefs, []);
+    assert.deepEqual(index.create, []);
+    assert.deepEqual(index.remove, []);
+    assert.equal(index.contract, 'keep');
+    assert.deepEqual(seen, [['artifact:journeys/index.defs.ts', 'journeys index follows its journey items']]);
+  } finally {
+    console.info = original;
+  }
+
+  const other = describeEffortFrom(input({
+    changeId: 'artifact:rules.defs.ts', kind: 'artifact', op: 'changed', entity: '',
+  }), contracts());
+  assert.equal(other.status, 'abend');
+  assert.equal(other.abend?.reason, 'v1 computes only rule changed; artifact changed is not handled');
+  assert.deepEqual(other.materialize, []);
+});
+
 void test('a rule no route cites, other kinds, and a module without contracts abend', () => {
   const pages = contracts();
   const missing = describeEffortFrom(input({

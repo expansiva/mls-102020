@@ -5,6 +5,8 @@ import { isTextOnlyChange, L4_TEXT_ATTRIBUTES, type EffortAgentRef, type EffortA
 
 const MASTER = { project: '102020', kind: 'l2', device: 'web' } as const;
 const NO_LANGUAGES = 'module has no declared languages';
+const JOURNEY_INDEX_PATH = 'journeys/index.defs.ts';
+const JOURNEY_INDEX_REASON = 'journeys index follows its journey items';
 
 export interface DescribeEffortSources {
   /** `l4/<module>/module.defs.ts` body. Absent is the same as a file with no languages. */
@@ -550,8 +552,12 @@ function entityAnswer(input: EffortInput, contracts: Record<string, string>, sha
   return answer(input, materialize, undefined, [], regenerateDefs);
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. An inbound change abends. A changed entity answers by attribute. Text-only on any other kind is an empty computed answer. */
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. The journeys index artifact is empty because each journey item already answers. An inbound change abends. A changed entity answers by attribute. Text-only on any other kind is an empty computed answer. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
+  if (input.item.kind === 'artifact' && input.item.changeId === `artifact:${JOURNEY_INDEX_PATH}`) {
+    console.info(input.item.changeId, JOURNEY_INDEX_REASON);
+    return answer(input, []);
+  }
   if (input.item.kind === 'inbound') return answer(input, [], 'inbound integration change is not handled yet');
   if (input.item.kind === 'grant') return grantAnswer(input, contracts, sources?.shared ?? {});
   if (input.item.kind === 'field' && isTextOnlyChange(input.item)) return textAnswer(input, contracts, sources);
