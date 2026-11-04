@@ -519,6 +519,46 @@ function resultOf(intents: mls.msg.AgentIntent[]): string {
   return String(step.step.result || '');
 }
 
+test('an L1-only effort closes done with nothing to apply', async () => {
+  const previous = mls.actualProject;
+  installRunStor(102047);
+  plantJson(changeEffortInfo('tarefas'), JSON.stringify(fixture('nothing')));
+  plantJson(runInfo('tarefas'), '{}\n');
+  try {
+    const agent = createAgent();
+    const intents = await agent.beforePromptImplicit(agent, {
+      message: { threadId: 'thread-l1', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    } as mls.msg.ExecutionContext, '@@agentNewReleaseL2 tarefas');
+    assert.equal(resultOf(intents), `done: ${NR_NOTHING_TO_APPLY}`);
+    const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
+    const planLine = log.phases.find(line => line.phase === 'plan');
+    assert.equal(planLine?.status, 'done');
+    assert.equal(planLine?.note, NR_NOTHING_TO_APPLY);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('a missing change effort still refuses', async () => {
+  const previous = mls.actualProject;
+  installRunStor(102047);
+  plantJson(runInfo('tarefas'), '{}\n');
+  try {
+    const agent = createAgent();
+    const intents = await agent.beforePromptImplicit(agent, {
+      message: { threadId: 'thread-miss', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    } as mls.msg.ExecutionContext, '@@agentNewReleaseL2 tarefas');
+    const text = resultOf(intents);
+    assert.match(text, /^refused: changeEffort\.json is missing at /);
+    const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
+    assert.equal(log.phases[0]?.phase, 'effort-read');
+    assert.equal(log.phases[0]?.status, 'refused');
+    assert.equal(text, `refused: ${log.phases[0]?.note}`);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
 test('the R4 regenerate path refuses when the pool marks are a wider set', async () => {
   const previous = mls.actualProject;
   const project = 102047;

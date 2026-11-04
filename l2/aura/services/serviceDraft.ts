@@ -11,7 +11,7 @@ import {
     afterDraftSave,
     branchForSlug,
     actionCounts,
-    buildDraftTree,
+    buildPanelTree,
     collectEditedFiles,
     discard,
     resetDraftDatabase,
@@ -19,6 +19,9 @@ import {
     localEdits,
     modulePendingCount,
     panelModel,
+    draftCountText,
+    draftNodeActions,
+    findDraftNode,
     pendingFiles,
     visibleTreeRows,
     publish,
@@ -30,13 +33,18 @@ import {
     viewDiff,
     type FetchImpl,
     type IDraftWaitResult,
+    type DraftNodeAction,
     type IActionCounts,
+    type IDraftTreeNode,
     type IListedDraft,
-    type IPanelModel,
+    type ILocalEdit,
+    type IPanelPersonInput,
+    type IPendingFile,
     type IPublishedRecord,
     type IVisibleTreeRow,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { listedOwner, subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
+import { lockedDraftWrite } from '/_102020_/l2/aura/studio/studioModuleLock.js';
 
 /// **collab_i18n_start**
 const message_en = {
@@ -55,7 +63,7 @@ const message_en = {
     discardAll: 'Discard all ({count})',
     markBrowser: 'in the browser',
     markDraft: 'in the draft',
-    discardModule: 'Discard this module',
+    discardModule: 'Discard this module ({count})',
     askComment: 'Message',
     confirmPublish: 'Publish your {count} changes?',
     confirmDiscard: 'Discard your {count} source changes and keep the test data?',
@@ -70,6 +78,9 @@ const message_en = {
     emptyComment: 'A message is required.',
     noProject: 'No project is open.',
     noReleaseHelper: 'The release watcher is not available.',
+    mine: 'Mine',
+    unownedDrafts: 'Drafts without owner',
+    team: 'Team',
     others: 'Other drafts',
     noOthers: 'No other drafts.',
     unknownPerson: 'Unknown person',
@@ -88,7 +99,7 @@ const message_en = {
     oneFile: '{count} file',
     manyFiles: '{count} files',
     withError: 'with error',
-    undoLocal: 'Undo local',
+    undoLocal: 'Undo',
     confirmUndo: 'Discard the local copy of {file}?',
     confirmDiscardModule: 'Discard {count} changes in {module}?',
     moduleDiscarded: 'Discarded module {module}.',
@@ -132,7 +143,7 @@ const messages: Record<string, MessageType> = {
         discardAll: 'Descartar tudo ({count})',
         markBrowser: 'no navegador',
         markDraft: 'no rascunho',
-        discardModule: 'Descartar este módulo',
+        discardModule: 'Descartar este módulo ({count})',
         askComment: 'Mensagem',
         confirmPublish: 'Publicar as suas {count} alterações?',
         confirmDiscard: 'Descartar as suas {count} alterações de fontes e manter os dados de teste?',
@@ -147,6 +158,9 @@ const messages: Record<string, MessageType> = {
         emptyComment: 'A mensagem é obrigatória.',
         noProject: 'Nenhum projeto aberto.',
         noReleaseHelper: 'O observador da release não está disponível.',
+        mine: 'Meu',
+        unownedDrafts: 'Rascunhos sem dono',
+        team: 'Time',
         others: 'Outros rascunhos',
         noOthers: 'Nenhum outro rascunho.',
         unknownPerson: 'Pessoa desconhecida',
@@ -165,7 +179,7 @@ const messages: Record<string, MessageType> = {
         oneFile: '{count} arquivo',
         manyFiles: '{count} arquivos',
         withError: 'com erro',
-        undoLocal: 'Desfazer local',
+        undoLocal: 'Desfazer',
         confirmUndo: 'Descartar a cópia local de {file}?',
         confirmDiscardModule: 'Descartar {count} alterações do módulo {module}?',
         moduleDiscarded: 'Módulo {module} descartado.',
@@ -206,7 +220,7 @@ const messages: Record<string, MessageType> = {
         discardAll: 'Descartar todo ({count})',
         markBrowser: 'en el navegador',
         markDraft: 'en el borrador',
-        discardModule: 'Descartar este módulo',
+        discardModule: 'Descartar este módulo ({count})',
         askComment: 'Mensaje',
         confirmPublish: '¿Publicar sus {count} cambios?',
         confirmDiscard: '¿Descartar sus {count} cambios de fuentes y mantener los datos de prueba?',
@@ -221,6 +235,9 @@ const messages: Record<string, MessageType> = {
         emptyComment: 'El mensaje es obligatorio.',
         noProject: 'No hay un proyecto abierto.',
         noReleaseHelper: 'El observador de la release no está disponible.',
+        mine: 'Mío',
+        unownedDrafts: 'Borradores sin dueño',
+        team: 'Equipo',
         others: 'Otros borradores',
         noOthers: 'Ningún otro borrador.',
         unknownPerson: 'Persona desconocida',
@@ -239,7 +256,7 @@ const messages: Record<string, MessageType> = {
         oneFile: '{count} archivo',
         manyFiles: '{count} archivos',
         withError: 'con error',
-        undoLocal: 'Deshacer local',
+        undoLocal: 'Deshacer',
         confirmUndo: '¿Descartar la copia local de {file}?',
         confirmDiscardModule: '¿Descartar {count} cambios del módulo {module}?',
         moduleDiscarded: 'Módulo {module} descartado.',
@@ -279,8 +296,11 @@ interface IDraftPing {
     release?: { id?: string } | null;
 }
 
-const blockClass = 'flex flex-col gap-3 px-4 py-4 border-b border-gray-200 dark:border-gray-800';
-const actionClass = 'text-[9px] font-semibold uppercase tracking-wider px-2 py-3 border border-gray-200 dark:border-gray-800 disabled:opacity-30';
+// Same strings as the Studio header buttons. Duplicated here so this panel does not add a shared module.
+const BUTTON = 'rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm cursor-pointer'
+  + ' hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed';
+const BUTTON_PRIMARY = 'rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white cursor-pointer'
+  + ' disabled:opacity-50 disabled:cursor-not-allowed';
 
 function publishedStorageKey(project: number): string {
     return `collab-draft-published-${project}`;
@@ -347,6 +367,50 @@ function fileLabel(file: mls.stor.IFileInfo): string {
     return `${file.folder}/${file.shortName}${file.extension}`;
 }
 
+const reportedFileErrors = new Set<string>();
+let reportedMissingEditor = false;
+
+function diagnosticText(messageText: unknown): string {
+    if (typeof messageText === 'string') return messageText.trim();
+    if (typeof messageText === 'object' && messageText !== null && 'messageText' in messageText) {
+        const inner = (messageText as { messageText?: unknown }).messageText;
+        return typeof inner === 'string' ? inner.trim() : '';
+    }
+    return '';
+}
+
+/** Compiler text of an open model. Empty when the file is not open or the editor has no message. */
+function fileErrorMessage(file: mls.stor.IFileInfo): string {
+    const getKeyModel = mls.editor?.getKeyModel;
+    const models = mls.editor?.models;
+    if (typeof getKeyModel !== 'function' || !models) {
+        if (!reportedMissingEditor) {
+            reportedMissingEditor = true;
+            console.error('[serviceDraft] mls.editor is missing; a file error has no message');
+        }
+        return '';
+    }
+    let key = '';
+    try {
+        key = getKeyModel(file.project, file.shortName, file.folder, file.level);
+    } catch (err) {
+        console.error('[serviceDraft] could not read the model key', file.shortName, err);
+        return '';
+    }
+    const slot = models[key];
+    if (!slot) return '';
+    const lines: string[] = [];
+    for (const model of [slot.ts, slot.test, slot.defs]) {
+        const errors = model?.compilerResults?.errors;
+        if (!errors) continue;
+        for (const item of errors) {
+            const text = diagnosticText(item.messageText);
+            if (text) lines.push(text);
+        }
+    }
+    return lines.join('\n');
+}
+
 @customElement('aura--services--service-draft-102020')
 export class ServiceDraft102020 extends ServiceBase {
 
@@ -394,7 +458,8 @@ export class ServiceDraft102020 extends ServiceBase {
     private _autoSaveTimer = 0;
     private _unsubAutoSave: (() => void) | undefined;
     @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null, agentWorking: false };
-    @state() private _open = new Set<string>();
+    @state() private _open = new Set<string>(['draft']);
+    @state() private _selected = '';
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -436,11 +501,6 @@ export class ServiceDraft102020 extends ServiceBase {
         return this._renderPanel();
     }
 
-    private _countLabel(count: number): string {
-        const template = count === 1 ? this.msg.oneFile : this.msg.manyFiles;
-        return template.replace('{count}', String(count));
-    }
-
     private _toggleNode(id: string): void {
         const next = new Set(this._open);
         if (next.has(id)) next.delete(id);
@@ -448,21 +508,36 @@ export class ServiceDraft102020 extends ServiceBase {
         this._open = next;
     }
 
+    private _selectNode(id: string): void {
+        this._selected = id;
+    }
+
+    private _withFileErrors(edited: readonly mls.stor.IFileInfo[], local: readonly ILocalEdit[]): ILocalEdit[] {
+        return local.map((edit, index) => {
+            const file = edited[index];
+            if (!file || !edit.hasError) return edit;
+            const error = fileErrorMessage(file);
+            return error ? { ...edit, error } : edit;
+        });
+    }
+
     private _renderPanel() {
         const project = this._projectId;
         const edited = project ? collectEditedFiles(mls.stor.files, project) : [];
-        const local = project ? localEdits(mls.stor.files, project) : [];
-        if (edited.length !== local.length) {
-            console.error('[serviceDraft] local list and localEdits diverged', edited.length, local.length);
+        const listed = project ? localEdits(mls.stor.files, project) : [];
+        if (edited.length !== listed.length) {
+            console.error('[serviceDraft] local list and localEdits diverged', edited.length, listed.length);
         }
+        const local = this._withFileErrors(edited, listed);
         const model = panelModel({
             local,
             draft: this._current ? this._current.files : null,
             published: project ? readStoredPublished(project) : null,
             release: this._releaseId,
         });
-        const pending = pendingFiles(model.local.files, model.draft.files);
-        const rows = visibleTreeRows(buildDraftTree(pending), this._open);
+        const mineFiles = pendingFiles(model.local.files, model.draft.files);
+        const tree = buildPanelTree(this.msg.svcTitle, this._panelPeople(mineFiles), this.msg.unownedDrafts);
+        const rows = visibleTreeRows([tree], this._open);
         const counts = actionCounts(model.local.files, model.draft.files);
         const byPath = new Map<string, mls.stor.IFileInfo>();
         const paired = Math.min(edited.length, local.length);
@@ -481,12 +556,15 @@ export class ServiceDraft102020 extends ServiceBase {
                 ${this._errorFiles.length
                     ? html`<div class="flex flex-col gap-0.5 px-4">${this._errorFiles.map((file) => html`<div>${file}</div>`)}</div>`
                     : nothing}
-                ${this._renderTree(rows, byPath, busy)}
-                ${this._renderLocal(model)}
-                ${this._renderDraft(model, busy)}
-                ${this._renderPublished(model)}
+                ${this._blocked.length
+                    ? html`<div class="flex flex-col gap-0.5 px-4 py-3">
+                        <p class="text-amber-700 dark:text-amber-300">${this.msg.blocked}</p>
+                        ${this._blocked.map((file) => html`<div>${fileLabel(file)}</div>`)}
+                    </div>`
+                    : nothing}
+                ${this._renderTree(rows)}
+                ${this._renderNodeBox(findDraftNode([tree], this._selected), busy, byPath)}
                 ${this._note ? html`<p class="px-4 py-4">${this._note}</p>` : nothing}
-                ${this._renderOthers(busy)}
             </div>
         `;
     }
@@ -497,46 +575,30 @@ export class ServiceDraft102020 extends ServiceBase {
         const discard = this.msg.discardAll.replace('{count}', String(counts.discard));
         return html`
             <div class="draft-actions flex flex-wrap gap-3 px-4 py-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
-                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${save}</button>
-                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
-                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
-                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onResetDatabase(); }}>${this.msg.resetDatabase}</button>
+                <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${save}</button>
+                <button class=${BUTTON_PRIMARY} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
+                <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
+                <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onResetDatabase(); }}>${this.msg.resetDatabase}</button>
             </div>
         `;
     }
 
-    private _renderTree(rows: readonly IVisibleTreeRow[], byPath: ReadonlyMap<string, mls.stor.IFileInfo>, busy: boolean) {
-        if (rows.length === 0) return nothing;
+    private _renderTree(rows: readonly IVisibleTreeRow[]) {
         return html`
-            <div class="flex flex-col gap-0.5 px-4 py-3">
-                ${rows.map((row) => this._renderTreeRow(row, byPath.get(row.id), busy))}
+            <div class="draft-tree px-4 py-3">
+                ${rows.map((row) => this._renderTreeRow(row))}
             </div>
         `;
     }
 
-    private _renderTreeRow(row: IVisibleTreeRow, file: mls.stor.IFileInfo | undefined, busy: boolean) {
-        const marks = [
-            this._countLabel(row.count),
-            row.inBrowser > 0 ? `${this.msg.markBrowser} ${row.inBrowser}` : '',
-            row.inDraft > 0 ? `${this.msg.markDraft} ${row.inDraft}` : '',
-            row.withError > 0 ? `${this.msg.withError} ${row.withError}` : '',
-        ].filter((part) => part !== '').join(' · ');
+    private _renderTreeRow(row: IVisibleTreeRow) {
+        const selected = this._selected === row.id ? 'bg-indigo-50 dark:bg-indigo-950' : '';
         return html`
-            <div class="flex items-center gap-3" style="padding-left: ${row.depth * 12}px">
-                ${row.kind === 'file'
-                    ? html`<span>${row.name}</span>`
-                    : html`<button class="text-left" @click=${() => { this._toggleNode(row.id); }}>${this._open.has(row.id) ? '▾' : '▸'} ${row.name}</button>`}
-                <span>${marks}</span>
-                ${row.kind === 'module'
-                    ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onModuleDiscard(row.name); }}>${this.msg.discardModule}</button>`
+            <div class="draft-tree-row ${selected}" style="padding-left: ${row.depth * 12}px">
+                ${row.expandable
+                    ? html`<button type="button" class="cursor-pointer" @click=${() => { this._toggleNode(row.id); }}>${this._open.has(row.id) ? '▾' : '▸'}</button>`
                     : nothing}
-                ${row.kind === 'file' && row.inBrowser
-                    ? html`<button
-                        class=${actionClass}
-                        ?disabled=${busy || !file}
-                        @click=${() => { if (file) void this._onUndoLocal(file, row.id); }}
-                    >${this.msg.undoLocal}</button>`
-                    : nothing}
+                <button type="button" class="text-left cursor-pointer" @click=${() => { this._selectNode(row.id); }}>${row.name} ${draftCountText(row)}</button>
             </div>
         `;
     }
@@ -564,68 +626,98 @@ export class ServiceDraft102020 extends ServiceBase {
         this._autoSaveTimer = window.setInterval(() => { this.requestUpdate(); }, 1000);
     }
 
-    private _renderLocal(model: IPanelModel) {
-        const heading = `${this.msg.localTitle}: ${this._countLabel(model.local.count)}`;
-        return html`
-            <div class=${blockClass}>
-                <div class="font-semibold">${heading}</div>
-                <p>${this._autoSaveLine()}</p>
-                ${model.local.count === 0
-                    ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noLocal}</p>`
-                    : nothing}
-                ${this._blocked.length
-                    ? html`<p class="text-amber-700 dark:text-amber-300">${this.msg.blocked}</p>
-                        <div class="flex flex-col gap-0.5">${this._blocked.map((file) => html`<div>${fileLabel(file)}</div>`)}</div>`
-                    : nothing}
-            </div>
-        `;
-    }
-
-    private _renderDraft(model: IPanelModel, busy: boolean) {
+    private _panelPeople(mineFiles: readonly IPendingFile[]): IPanelPersonInput[] {
         const current = this._current;
-        const heading = `${this.msg.draftTitle.replace('{slug}', this._slug)}: ${this._countLabel(model.draft.count)}`;
+        const mine: IPanelPersonInput = {
+            id: 'mine',
+            name: this.msg.mine,
+            mine: true,
+            branch: current?.branch ?? this._branch ?? '',
+            ahead: current ? current.ahead : 0,
+            behind: current ? current.behind : 0,
+            files: mineFiles,
+        };
+        const others = [...this._others].sort((a, b) => this._personName(a).localeCompare(this._personName(b)));
+        return [
+            mine,
+            ...others.map((item) => ({
+                id: item.branch,
+                name: this._personName(item),
+                mine: false,
+                branch: item.branch,
+                ahead: item.ahead,
+                behind: item.behind,
+                owner: listedOwner(item),
+                files: pendingFiles([], item.files ?? []),
+            })),
+        ];
+    }
+
+    /** Team drafts use the team label. Anyone else uses `listDrafts.owner`, never the slug. */
+    private _personName(item: IListedDraft): string {
+        if (item.branch.startsWith('team/')) return this.msg.team;
+        return this.draftPerson(item);
+    }
+
+    private _renderNodeBox(node: IDraftTreeNode | null, busy: boolean, byPath: ReadonlyMap<string, mls.stor.IFileInfo>) {
+        if (!node) return nothing;
+        const actions = draftNodeActions(node);
+        const info = node.kind === 'person' && node.showUnsaved;
+        const fileError = node.kind === 'file' && node.withError > 0;
+        if (actions.length === 0 && !info && !fileError) return nothing;
         return html`
-            <div class=${blockClass}>
-                <div class="font-semibold">${heading}</div>
-                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.branch}</span><span>${current?.branch ?? this._branch ?? ''}</span></div>
-                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.ahead}</span><span>${current ? current.ahead : ''}</span></div>
-                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.behind}</span><span>${current ? current.behind : ''}</span></div>
-                ${model.draft.files.length === 0
-                    ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noFiles}</p>`
+            <div class="draft-node-box px-4 py-3 border-t border-gray-200 dark:border-gray-800">
+                ${info ? html`
+                    <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.branch}</span><span>${node.branch}</span></div>
+                    <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.ahead}</span><span>${node.ahead}</span></div>
+                    <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.behind}</span><span>${node.behind}</span></div>
+                    <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.release}</span><span>${this._releaseId ?? ''}</span></div>
+                ` : nothing}
+                ${actions.length
+                    ? html`<div class="flex flex-wrap gap-3">${actions.map((action) => this._renderNodeAction(action, node, busy, byPath))}</div>`
                     : nothing}
-                <div class="flex flex-wrap gap-3">
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>
-                    ${current && current.behind > 0
-                        ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSyncPublished(); }}>${this.msg.syncPublished}</button>`
-                        : nothing}
-                </div>
+                ${fileError ? html`<p class="text-amber-700 dark:text-amber-300">${this._fileErrorLine(node)}</p>` : nothing}
+                ${node.kind === 'person' && !node.showUnsaved && this._diffBranch === node.branch && this._diffText !== null
+                    ? html`<pre class="diff">${this._diffText || this.msg.noDiff}</pre>`
+                    : nothing}
             </div>
         `;
     }
 
-    private _renderPublished(model: IPanelModel) {
-        const published = model.published;
-        const heading = `${this.msg.publishedTitle}: ${this._countLabel(published.count)}`;
-        return html`
-            <div class=${blockClass}>
-                <div class="font-semibold">${heading}</div>
-                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.release}</span><span>${published.release ?? ''}</span></div>
-                ${published.files.length === 0
-                    ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noPublished}</p>`
-                    : html`<div class="flex flex-col gap-0.5">${published.files.map((file) => html`<div>${file}</div>`)}</div>`}
-            </div>
-        `;
+    private _fileErrorLine(node: IDraftTreeNode): string {
+        if (node.error) return node.error;
+        if (!reportedFileErrors.has(node.path)) {
+            reportedFileErrors.add(node.path);
+            console.error('[serviceDraft] file has an error with no message', node.path || node.id);
+        }
+        return this.msg.withError;
     }
 
-    private _renderOthers(busy: boolean) {
-        return html`
-            <div class="others flex flex-col gap-3 px-4 py-4">
-                <div class="text-[9px] font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-200">${this.msg.others}</div>
-                ${this._others.length === 0
-                    ? html`<p class="no-files">${this.msg.noOthers}</p>`
-                    : this._others.map((item) => this._renderOther(item, busy))}
-            </div>
-        `;
+    private _renderNodeAction(action: DraftNodeAction, node: IDraftTreeNode, busy: boolean, byPath: ReadonlyMap<string, mls.stor.IFileInfo>) {
+        if (action === 'makeDefault') {
+            return html`<button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>`;
+        }
+        if (action === 'syncPublished') {
+            return html`<button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onSyncPublished(); }}>${this.msg.syncPublished}</button>`;
+        }
+        if (action === 'discardModule') {
+            const label = this.msg.discardModule.replace('{count}', String(node.count));
+            return html`<button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onModuleDiscard(node.name); }}>${label}</button>`;
+        }
+        if (action === 'undoFile') {
+            const file = byPath.get(node.path);
+            return html`<button class=${BUTTON} ?disabled=${busy || !file} @click=${() => { if (file) void this._onUndoLocal(file, node.path); }}>${this.msg.undoLocal}</button>`;
+        }
+        if (action === 'view') {
+            return html`<button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onView(node.branch); }}>${this.msg.view}</button>`;
+        }
+        const slug = slugForBranch(node.branch);
+        return html`<button
+            class=${BUTTON}
+            ?disabled=${busy || slug === null}
+            title=${slug === null ? this.msg.experimentDisabled : nothing}
+            @click=${() => { if (slug) void this._onExperiment(slug); }}
+        >${this.msg.experiment}</button>`;
     }
 
     /** Person from `listDrafts.owner`. Never the slug. */
@@ -637,34 +729,6 @@ export class ServiceDraft102020 extends ServiceBase {
         for (const item of items) {
             if (listedOwner(item) === null) console.warn('[serviceDraft] listDrafts owner is missing');
         }
-    }
-
-    private _renderOther(item: IListedDraft, busy: boolean) {
-        const slug = slugForBranch(item.branch);
-        const files = item.files ?? [];
-        return html`
-            <div class="other flex flex-col gap-3">
-                <div class="font-semibold">${this.draftPerson(item)}</div>
-                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.ahead}</span><span>${item.ahead}</span></div>
-                <div class="flex items-center gap-3"><span class="text-gray-400 dark:text-gray-600">${this.msg.behind}</span><span>${item.behind}</span></div>
-                <div class="font-semibold">${this.msg.touched}</div>
-                ${files.length
-                    ? html`<div class="flex flex-col gap-0.5">${files.map((file) => html`<div>${file}</div>`)}</div>`
-                    : html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noFiles}</p>`}
-                <div class="flex flex-wrap gap-3">
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onView(item.branch); }}>${this.msg.view}</button>
-                    <button
-                        class=${actionClass}
-                        ?disabled=${busy || slug === null}
-                        title=${slug === null ? this.msg.experimentDisabled : nothing}
-                        @click=${() => { if (slug) void this._onExperiment(slug); }}
-                    >${this.msg.experiment}</button>
-                </div>
-                ${this._diffBranch === item.branch && this._diffText !== null
-                    ? html`<pre class="diff">${this._diffText || this.msg.noDiff}</pre>`
-                    : nothing}
-            </div>
-        `;
     }
 
     private _pingText(): string {
@@ -782,9 +846,25 @@ export class ServiceDraft102020 extends ServiceBase {
             this._phase = 'error';
             return;
         }
+        const open: typeof files = [];
+        let refused: string | null = null;
+        for (const file of files) {
+            const message = lockedDraftWrite(file);
+            if (message) {
+                refused = message;
+                continue;
+            }
+            open.push(file);
+        }
+        if (open.length === 0) {
+            this._blocked = [];
+            this._error = refused ?? this.msg.noFiles;
+            this._phase = 'error';
+            return;
+        }
         try {
             const saved = await saveToDraft(
-                files,
+                open,
                 comment,
                 (clean, text) => mls.stor.setContents(clean, text),
                 (file) => afterDraftSave(file),
@@ -800,9 +880,19 @@ export class ServiceDraft102020 extends ServiceBase {
             return;
         }
         await this._load(true);
+        if (refused && this._phase !== 'error') {
+            this._error = refused;
+            this._phase = 'error';
+        }
     }
 
     private async _onUndoLocal(file: mls.stor.IFileInfo, shortPath: string): Promise<void> {
+        const refused = lockedDraftWrite(file);
+        if (refused) {
+            this._error = refused;
+            this._phase = 'error';
+            return;
+        }
         if (!confirm(this.msg.confirmUndo.replace('{file}', shortPath))) return;
         try {
             await mls.stor.localStor.setContent(file, { content: null });

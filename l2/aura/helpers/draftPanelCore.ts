@@ -24,6 +24,8 @@ export interface IListedDraft {
   date: string;
   message: string;
   files: string[];
+  /** Person email, `team`, or null when `owner.json` is missing. Absent on an older payload. */
+  owner?: string | null;
 }
 
 /** The stor fields this panel reads. Callers keep the rest of `IFileInfo` on the same object. */
@@ -43,6 +45,8 @@ export interface IPanelStorFile {
 export interface ILocalEdit {
   shortPath: string;
   hasError: boolean;
+  /** Compiler text when `hasError`. Absent when the editor has no message. */
+  error?: string;
 }
 
 /** What `publish` asks the caller to store after a merge. The key itself stays in the service. */
@@ -731,9 +735,11 @@ export interface IPendingFile {
   inBrowser: boolean;
   inDraft: boolean;
   hasError: boolean;
+  /** Compiler text for a browser file. Draft-only paths have none. */
+  error?: string;
 }
 
-export type DraftTreeKind = 'level' | 'module' | 'folder' | 'file';
+export type DraftTreeKind = 'root' | 'person' | 'group' | 'level' | 'module' | 'folder' | 'file';
 
 /** Level, then module, then folders, then the file. Counts cover every file under the node. */
 export interface IDraftTreeNode {
@@ -744,7 +750,29 @@ export interface IDraftTreeNode {
   inBrowser: number;
   inDraft: number;
   withError: number;
+  /** False on another person's subtree: the panel prints only the total. */
+  showUnsaved: boolean;
+  branch: string;
+  ahead: number;
+  behind: number;
+  /** Short path of a file node. Empty on every other kind. */
+  path: string;
+  /** Compiler text of a file node. Empty when there is none. */
+  error: string;
   children: IDraftTreeNode[];
+}
+
+/** One person under the draft root. `mine` is the open draft; the rest come from `listDrafts`. */
+export interface IPanelPersonInput {
+  id: string;
+  name: string;
+  mine: boolean;
+  branch: string;
+  ahead: number;
+  behind: number;
+  files: readonly IPendingFile[];
+  /** `listDrafts.owner`. Null has no owner. Omitted means the caller already named an owned person. */
+  owner?: string | null;
 }
 
 /** A row the panel may paint. Closed nodes contribute no children. */
@@ -757,7 +785,11 @@ export interface IVisibleTreeRow {
   inBrowser: number;
   inDraft: number;
   withError: number;
+  showUnsaved: boolean;
+  expandable: boolean;
 }
+
+export type DraftNodeAction = 'makeDefault' | 'syncPublished' | 'discardModule' | 'undoFile' | 'view' | 'experiment';
 
 export interface IActionCounts {
   save: number;
@@ -773,7 +805,7 @@ interface IMutableTreeNode {
   children: Map<string, IMutableTreeNode>;
 }
 
-function rememberPending(byPath: Map<string, IPendingFile>, path: string, fromDraft: boolean, hasError: boolean): void {
+function rememberPending(byPath: Map<string, IPendingFile>, path: string, fromDraft: boolean, hasError: boolean, error = ''): void {
   if (path.trim() === '') {
     console.error('[draftPanel] pending file has an empty path');
     return;
@@ -783,6 +815,7 @@ function rememberPending(byPath: Map<string, IPendingFile>, path: string, fromDr
     if (fromDraft) found.inDraft = true;
     else found.inBrowser = true;
     if (hasError) found.hasError = true;
+    if (error && !found.error) found.error = error;
     return;
   }
   const created: IPendingFile = {
@@ -791,13 +824,14 @@ function rememberPending(byPath: Map<string, IPendingFile>, path: string, fromDr
     inDraft: fromDraft,
     hasError,
   };
+  if (error) created.error = error;
   byPath.set(path, created);
 }
 
 /** Browser edits and draft paths, one entry per path. */
 export function pendingFiles(local: readonly ILocalEdit[], draftPaths: readonly string[]): IPendingFile[] {
   const byPath = new Map<string, IPendingFile>();
-  for (const file of local) rememberPending(byPath, file.shortPath, false, file.hasError);
+  for (const file of local) rememberPending(byPath, file.shortPath, false, file.hasError, file.error ?? '');
   for (const path of draftPaths) rememberPending(byPath, path, true, false);
   return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
@@ -827,7 +861,22 @@ function freezeNode(node: IMutableTreeNode): IDraftTreeNode {
   const children = [...node.children.values()]
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((child) => freezeNode(child));
-  return { id: node.id, name: node.name, kind: node.kind, ...tally(node.files), children };
+  const error = node.kind === 'file'
+    ? node.files.map((file) => file.error ?? '').filter((text) => text !== '').join('\n')
+    : '';
+  return {
+    id: node.id,
+    name: node.name,
+    kind: node.kind,
+    ...tally(node.files),
+    showUnsaved: true,
+    branch: '',
+    ahead: 0,
+    behind: 0,
+    path: node.kind === 'file' ? (node.files[0]?.path ?? '') : '',
+    error,
+    children,
+  };
 }
 
 function attachPending(root: IMutableTreeNode, file: IPendingFile): void {
@@ -880,12 +929,129 @@ export function visibleTreeRows(roots: readonly IDraftTreeNode[], open: Readonly
         inBrowser: node.inBrowser,
         inDraft: node.inDraft,
         withError: node.withError,
+        showUnsaved: node.showUnsaved,
+        expandable: node.children.length > 0,
       });
       if (open.has(node.id)) walk(node.children, depth + 1);
     }
   };
   walk(roots, 0);
   return rows;
+}
+
+function scopeTree(nodes: readonly IDraftTreeNode[], prefix: string, showUnsaved: boolean): IDraftTreeNode[] {
+  return nodes.map((node) => ({
+    ...node,
+    id: `${prefix}/${node.id}`,
+    showUnsaved,
+    children: scopeTree(node.children, prefix, showUnsaved),
+  }));
+}
+
+function personNode(person: IPanelPersonInput): IDraftTreeNode {
+  return {
+    id: person.id,
+    name: person.name,
+    kind: 'person',
+    ...tally(person.files),
+    showUnsaved: person.mine,
+    branch: person.branch,
+    ahead: person.ahead,
+    behind: person.behind,
+    path: '',
+    error: '',
+    children: scopeTree(buildDraftTree(person.files), person.id, person.mine),
+  };
+}
+
+function unownedGroup(name: string, people: readonly IPanelPersonInput[]): IDraftTreeNode {
+  return {
+    id: 'unowned',
+    name,
+    kind: 'group',
+    count: people.length,
+    inBrowser: 0,
+    inDraft: 0,
+    withError: 0,
+    showUnsaved: false,
+    branch: '',
+    ahead: 0,
+    behind: 0,
+    path: '',
+    error: '',
+    children: people.map((person) => personNode(person)),
+  };
+}
+
+/**
+ * `Draft` → people → the st45 tree. Mine keeps unsaved counts; another person does not.
+ * Another draft with no files is omitted. Drafts with files and no owner become one closed group.
+ */
+export function buildPanelTree(
+  rootName: string,
+  people: readonly IPanelPersonInput[],
+  unownedName: string,
+): IDraftTreeNode {
+  const kept: IPanelPersonInput[] = [];
+  const unowned: IPanelPersonInput[] = [];
+  for (const person of people) {
+    if (!person.mine && person.files.length === 0) continue;
+    if (!person.mine && person.owner === null) {
+      unowned.push(person);
+      continue;
+    }
+    kept.push(person);
+  }
+  if (unowned.length > 0 && unownedName.trim() === '') {
+    console.error('[draftPanel] unowned drafts have no group name');
+  }
+  const children = kept.map((person) => personNode(person));
+  if (unowned.length > 0) children.push(unownedGroup(unownedName, unowned));
+  const files = [...kept, ...unowned].flatMap((person) => person.files);
+  return {
+    id: 'draft',
+    name: rootName,
+    kind: 'root',
+    ...tally(files),
+    showUnsaved: true,
+    branch: '',
+    ahead: 0,
+    behind: 0,
+    path: '',
+    error: '',
+    children,
+  };
+}
+
+/**
+ * `(unsaved / total)` on mine, `(total)` on another person. Total is the number of distinct files:
+ * one saved and edited again counts once, not once per source.
+ */
+export function draftCountText(node: Pick<IDraftTreeNode, 'count' | 'inBrowser' | 'showUnsaved'>): string {
+  if (!node.showUnsaved) return `(${node.count})`;
+  return `(${node.inBrowser} / ${node.count})`;
+}
+
+export function findDraftNode(nodes: readonly IDraftTreeNode[], id: string): IDraftTreeNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const found = findDraftNode(node.children, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Actions of one selected node. The four top buttons are not repeated here. */
+export function draftNodeActions(node: IDraftTreeNode): DraftNodeAction[] {
+  if (node.kind === 'person' && node.showUnsaved) {
+    const actions: DraftNodeAction[] = ['makeDefault'];
+    if (node.behind > 0) actions.push('syncPublished');
+    return actions;
+  }
+  if (node.kind === 'person') return ['view', 'experiment'];
+  if (node.kind === 'module' && node.showUnsaved) return ['discardModule'];
+  if (node.kind === 'file' && node.showUnsaved && node.inBrowser > 0) return ['undoFile'];
+  return [];
 }
 
 /** Save counts browser files, publish counts draft paths, discard counts the union. */

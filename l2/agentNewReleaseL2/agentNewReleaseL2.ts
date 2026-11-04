@@ -35,6 +35,7 @@ import {
   screenCostLines,
   reviewDefsRun,
   statusIntents,
+  statusKind,
   statusText,
   stepsPhaseNote,
   writeReleaseSnapshot,
@@ -271,8 +272,9 @@ async function refuse(
   phase: NrRunPhase,
   message: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  await recordPhase(moduleName, phase, 'refused', message);
-  return statusMessage(agent, context, message, 'refused');
+  const kind = statusKind(message);
+  await recordPhase(moduleName, phase, kind, message);
+  return statusMessage(agent, context, message, kind);
 }
 
 function addStepIntent(

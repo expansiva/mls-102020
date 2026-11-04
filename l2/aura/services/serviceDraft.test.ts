@@ -101,6 +101,31 @@ test('save shows the blocked list that the core returns', () => {
     assert.match(handler, /this\._blocked = saved\.blocked/);
 });
 
+test('panel buttons use the Studio BUTTON classes', () => {
+    // The same tokens as the header editor's BUTTON / BUTTON_PRIMARY, plus the pointer cursor.
+    const header = readFileSync(fileURLToPath(new URL('../plugins/pluginHeaderEditor.ts', import.meta.url)), 'utf8');
+    const tokens = (source: string, name: string): string[] => {
+        const start = source.indexOf(`const ${name} = `);
+        assert.notEqual(start, -1, `${name} is declared`);
+        const end = source.indexOf(';\n', start);
+        return [...source.slice(start, end).matchAll(/'([^']*)'/g)].flatMap((m) => m[1].split(/\s+/)).filter(Boolean);
+    };
+    for (const name of ['BUTTON', 'BUTTON_PRIMARY']) {
+        const mine = tokens(DRAFT, name);
+        for (const token of tokens(header, name)) assert.ok(mine.includes(token), `${name} keeps ${token}`);
+        assert.ok(mine.includes('cursor-pointer'), `${name} has the pointer cursor`);
+        assert.ok(mine.includes('disabled:cursor-not-allowed'), `${name} shows a disabled cursor`);
+    }
+    assert.doesNotMatch(DRAFT, /actionClass/);
+    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON\}/g)].length, 9);
+    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON_PRIMARY\}/g)].length, 1);
+    const actions = methodOf(DRAFT, 'private _renderActions');
+    const primaryAt = actions.indexOf('class=${BUTTON_PRIMARY}');
+    const publishAt = actions.indexOf('_onPublish');
+    assert.ok(primaryAt !== -1 && publishAt > primaryAt, 'Publish is the primary button');
+    assert.doesNotMatch(actions.replace('class=${BUTTON_PRIMARY}', ''), /BUTTON_PRIMARY/);
+});
+
 test('en, pt and es declare the same keys', () => {
     const catalogs = DRAFT.split('const message_en')[1].split('/// **collab_i18n_end**')[0];
     const enBody = catalogs.split('const messages')[0];
@@ -112,12 +137,17 @@ test('en, pt and es declare the same keys', () => {
     }
 });
 
-test('other drafts show the person and the files, and bring is not a button', () => {
-    const render = methodOf(DRAFT, 'private _renderOther(');
-    assert.match(render, /draftPerson\(item\)/);
-    assert.match(render, /files\.map\(\(file\) => html`<div>\$\{file\}<\/div>`\)/);
-    assert.doesNotMatch(render, /\$\{item\.branch\}/);
-    assert.doesNotMatch(render, /msg\.bring/);
+test('other drafts show the person and view or try, and bring is not a button', () => {
+    const people = methodOf(DRAFT, 'private _panelPeople');
+    assert.match(people, /pendingFiles\(\[\], item\.files/);
+    assert.match(people, /this\._personName\(a\)\.localeCompare/);
+    const name = methodOf(DRAFT, 'private _personName');
+    assert.match(name, /branch\.startsWith\('team\/'\)/);
+    assert.match(name, /this\.msg\.team/);
+    assert.match(name, /draftPerson\(item\)/);
+    assert.doesNotMatch(DRAFT, /files\.map\(\(file\) => html`<div>\$\{file\}<\/div>`\)/);
+    assert.doesNotMatch(DRAFT, /\$\{item\.branch\}/);
+    assert.doesNotMatch(DRAFT, /msg\.bring/);
     assert.match(DRAFT, /unknownPerson: 'Unknown person'/);
     assert.match(DRAFT, /unknownPerson: 'Pessoa desconhecida'/);
     assert.match(DRAFT, /unknownPerson: 'Persona desconocida'/);
@@ -125,6 +155,9 @@ test('other drafts show the person and the files, and bring is not a button', ()
     assert.match(DRAFT, /slug === null \? this\.msg\.experimentDisabled/);
     assert.match(DRAFT, /!!ping\.promoting/);
     assert.doesNotMatch(DRAFT, /mergeDraft/);
+    const action = methodOf(DRAFT, 'private _renderNodeAction');
+    assert.match(action, /msg\.view/);
+    assert.match(action, /msg\.experiment/);
 });
 
 test('a successful experiment calls loadProjectDefinitions once, after the draft is active', () => {
@@ -206,8 +239,7 @@ test('the browser block shows auto-save on, off and the failure', () => {
     assert.match(DRAFT, /Agente trabajando: el envío queda para el final/);
     assert.match(DRAFT, /Auto-save: ligado · último envio há \{ago\}s · \{pending\} pendentes/);
     assert.match(DRAFT, /não salvo: \{reason\}/);
-    const local = methodOf(DRAFT, 'private _renderLocal');
-    assert.match(local, /_autoSaveLine\(\)/);
+    assert.match(DRAFT, /private _autoSaveLine\(\)/);
 });
 
 test('auto-save sends through saveToDraft, not setContents on its own', () => {
@@ -298,18 +330,45 @@ test('actions stay on top and the tree paints only open rows', () => {
     const panel = methodOf(DRAFT, 'private _renderPanel()');
     const actions = panel.indexOf('_renderActions(');
     const tree = panel.indexOf('_renderTree(');
-    const local = panel.indexOf('_renderLocal(');
-    assert.ok(actions !== -1 && tree > actions && local > tree, 'the bar and the tree sit above the blocks');
+    const box = panel.indexOf('_renderNodeBox(');
+    assert.ok(actions !== -1 && tree > actions && box > tree, 'the bar, the tree, then the box');
+    assert.doesNotMatch(panel, /_renderLocal\(/);
+    assert.doesNotMatch(panel, /_renderDraft\(/);
+    assert.doesNotMatch(panel, /_renderPublished\(/);
+    assert.doesNotMatch(panel, /_renderOthers\(/);
+    assert.match(panel, /buildPanelTree\(/);
     assert.match(panel, /visibleTreeRows\(/);
     assert.match(panel, /actionCounts\(/);
     const painted = methodOf(DRAFT, 'private _renderTree(');
     assert.match(painted, /rows\.map/);
     assert.doesNotMatch(painted, /\.children/);
     const row = methodOf(DRAFT, 'private _renderTreeRow');
-    assert.match(row, /row\.kind === 'module'/);
-    assert.match(row, /discardModule/);
-    assert.match(row, /undoLocal/);
+    assert.match(row, /draftCountText\(/);
+    assert.match(row, /_selectNode\(/);
+    assert.match(row, /_toggleNode\(/);
+    assert.doesNotMatch(row, /discardModule/);
+    assert.doesNotMatch(row, /undoLocal/);
+    const nodeBox = methodOf(DRAFT, 'private _renderNodeBox');
+    assert.match(nodeBox, /msg\.branch/);
+    assert.match(nodeBox, /msg\.release/);
+    assert.match(nodeBox, /draftNodeActions\(/);
+    assert.match(nodeBox, /_fileErrorLine\(/);
+    const nodeAction = methodOf(DRAFT, 'private _renderNodeAction');
+    assert.match(nodeAction, /makeDefault/);
+    assert.match(nodeAction, /syncPublished/);
+    assert.match(nodeAction, /discardModule/);
+    assert.match(nodeAction, /undoLocal/);
+    assert.match(nodeAction, /msg\.view/);
+    assert.match(nodeAction, /msg\.experiment/);
+    assert.match(DRAFT, /mine: 'Mine'/);
+    assert.match(DRAFT, /mine: 'Meu'/);
+    assert.match(DRAFT, /mine: 'Mío'/);
+    assert.match(DRAFT, /team: 'Team'/);
+    assert.match(DRAFT, /team: 'Time'/);
+    assert.match(DRAFT, /team: 'Equipo'/);
     assert.match(DRAFT, /draft-actions/);
+    assert.match(DRAFT, /draft-tree/);
+    assert.match(DRAFT, /draft-node-box/);
 });
 
 test('discard module confirms the count, then restores through the shared function', () => {

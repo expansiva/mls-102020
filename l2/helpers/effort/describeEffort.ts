@@ -5,6 +5,8 @@ import { isTextOnlyChange, L4_TEXT_ATTRIBUTES, type EffortAgentRef, type EffortA
 
 const MASTER = { project: '102020', kind: 'l2', device: 'web' } as const;
 const NO_LANGUAGES = 'module has no declared languages';
+const JOURNEY_INDEX_PATH = 'journeys/index.defs.ts';
+const JOURNEY_INDEX_REASON = 'journeys index follows its journey items';
 
 export interface DescribeEffortSources {
   /** `l4/<module>/module.defs.ts` body. Absent is the same as a file with no languages. */
@@ -423,15 +425,13 @@ function journeyAnswer(input: EffortInput, shared: Record<string, string>): Effo
   if (kind !== 'journey' && kind !== 'step') return undefined;
   const changeId = input.item.changeId;
   const op = input.item.op;
-  if (kind === 'journey' && op === 'added') return undefined;
+  if (kind === 'journey' && op === 'added') return modelDidNotRun(input);
   const prefix = kind === 'journey' ? 'journey:' : 'step:';
   const rest = changeId.startsWith(prefix) ? changeId.slice(prefix.length) : '';
   const slash = rest.indexOf('/');
   const journeyId = kind === 'journey' ? rest : rest.slice(0, slash);
   const stepId = kind === 'step' && slash > 0 ? rest.slice(slash + 1) : '';
-  if (!journeyId || (kind === 'step' && !stepId)) {
-    return answer(input, [], `v1 computes only rule changed; ${kind} ${op} is not handled`);
-  }
+  if (!journeyId || (kind === 'step' && !stepId)) return malformed(input);
   if (kind === 'journey' && op === 'changed' && textOnlyKeys(input.item)) return answer(input, []);
   const stepToken = `${journeyId}/${stepId}`;
   const journeyKnown = Object.values(shared).some(text => citesJourney(text, journeyId));
@@ -468,14 +468,38 @@ function pagesWritingTransition(contracts: Record<string, string>, entity: strin
   return pages;
 }
 
+/** Pages whose projection `entityId` is the entity, or whose route `writes` starts with `<entity>.`. */
+function pagesCitingEntity(contracts: Record<string, string>, entity: string): string[] {
+  if (!entity) return [];
+  const prefix = `${entity}.`;
+  const pages: string[] = [];
+  for (const pageId of Object.keys(contracts).sort()) {
+    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
+    const cites = parsed.projections.some(projection => projection.entityId === entity)
+      || parsed.routes.some(route => (route.writes ?? '').startsWith(prefix));
+    if (cites) pages.push(pageId);
+  }
+  return pages;
+}
+
+/** A removed entity regenerates page, contract and shared of each page that cites it, then materializes. */
+function entityRemovedAnswer(input: EffortInput, contracts: Record<string, string>): EffortAnswer {
+  const pages = pagesCitingEntity(contracts, input.item.entity);
+  const regenerateDefs: EffortUnitRef[] = [];
+  for (const pageId of pages) {
+    regenerateDefs.push(pageUnit(input.module, pageId));
+    regenerateDefs.push({ kind: 'contract', id: pageId, path: contractPath(input.module, pageId) });
+    regenerateDefs.push({ kind: 'shared', id: pageId, path: sharedPath(input.module, pageId) });
+  }
+  return answer(input, pages.map(pageId => pageUnit(input.module, pageId)), undefined, [], regenerateDefs, [], 'change');
+}
+
 /**
- * A new transition asks for a page choice. A removed one regenerates page, contract and shared of each writing page.
+ * A new transition asks the model for a page. A removed one regenerates page, contract and shared of each writing page.
  * A real change regenerates page and shared of those pages and keeps the contract.
  */
 function transitionAnswer(input: EffortInput, contracts: Record<string, string>): EffortAnswer {
-  if (input.item.op === 'added') {
-    return answer(input, [], 'a new transition needs a page choice; not handled yet');
-  }
+  if (input.item.op === 'added') return modelDidNotRun(input);
   const pages = pagesWritingTransition(contracts, input.item.entity, transitionIdOf(input));
   const withContract = input.item.op === 'removed';
   const regenerateDefs: EffortUnitRef[] = [];
@@ -508,22 +532,37 @@ function pushUnits(into: EffortUnitRef[], units: EffortUnitRef[]): void {
   }
 }
 
+/** Keys of an entity body that change a screen. The pages that cite the entity are materialized again. */
+const ENTITY_SCREEN_KEYS = new Set(['relationships', 'displayField', 'lifecycleStates', 'fieldsBase', 'writer']);
+
+/** Keys no screen reads. The answer stays empty and names the key. */
+const ENTITY_QUIET_KEYS = new Set(['initialData', 'uniqueKeys', 'storage', 'class']);
+
 /**
  * A changed entity answers by attribute. Text stays empty. Each rule id that leaves uses the removed-rule path.
  * Each capability id that enters or leaves regenerates page and shared where the id is cited as text, then materializes.
- * Any other differing key abends. Added or removed entities stay on the generic path.
+ * A relationship, display field, lifecycle, base fields or writer rematerializes the pages that cite the entity.
+ * Data no screen reads stays empty. Any other key is refused with that key.
  */
 function entityAnswer(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string>): EffortAnswer {
   const before = fieldRecord(input.item.before);
   const after = fieldRecord(input.item.after);
-  if (!before || !after) {
-    return answer(input, [], `v1 computes only rule changed; ${input.item.kind} ${input.item.op} is not handled`);
-  }
+  if (!before || !after) return malformed(input);
   const textKeys = new Set<string>(L4_TEXT_ATTRIBUTES);
+  let screen = false;
+  let quietKey = '';
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
     if (sameJson(before[key], after[key])) continue;
     if (textKeys.has(key) || key === 'rules' || key === 'capabilities') continue;
-    return answer(input, [], `entity ${input.item.entity} changed in ${key}; not handled yet`);
+    if (ENTITY_SCREEN_KEYS.has(key)) {
+      screen = true;
+      continue;
+    }
+    if (ENTITY_QUIET_KEYS.has(key)) {
+      if (!quietKey) quietKey = key;
+      continue;
+    }
+    return answer(input, [], `entity ${input.item.entity} changed in ${key}; Apply cannot plan it`);
   }
   const regenerateDefs: EffortUnitRef[] = [];
   const materialize: EffortUnitRef[] = [];
@@ -547,12 +586,50 @@ function entityAnswer(input: EffortInput, contracts: Record<string, string>, sha
     pushUnits(regenerateDefs, row.regenerateDefs);
     pushUnits(materialize, row.materialize);
   }
+  if (screen) {
+    for (const pageId of pagesCitingEntity(contracts, input.item.entity)) {
+      pushUnits(materialize, [pageUnit(input.module, pageId)]);
+    }
+  }
+  if (materialize.length === 0 && regenerateDefs.length === 0 && quietKey) {
+    return notedEmpty(input, `entity ${input.item.entity} changed in ${quietKey}; no screen reads it`);
+  }
   return answer(input, materialize, undefined, [], regenerateDefs);
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. An inbound change abends. A changed entity answers by attribute. Text-only on any other kind is an empty computed answer. */
+/** A new rule, journey or transition needs the model. Reaching here means it did not run. */
+function modelDidNotRun(input: EffortInput): EffortAnswer {
+  return answer(input, [], `a new ${input.item.kind} needs a page choice by the model; it did not run`);
+}
+
+/** Empty computed answer whose reason is logged for the review screen. */
+function notedEmpty(input: EffortInput, reason: string): EffortAnswer {
+  console.info(input.item.changeId, reason);
+  return answer(input, []);
+}
+
+/** The diff id does not match the kind. The refusal names the id. */
+function malformed(input: EffortInput): EffortAnswer {
+  return answer(input, [], `change id ${input.item.changeId} is malformed`);
+}
+
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. The journeys index artifact is empty because each journey item already answers. An inbound change is refused. A new entity or process is empty because screens follow journeys. A changed entity answers by attribute. Text-only on any other kind is an empty computed answer. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
-  if (input.item.kind === 'inbound') return answer(input, [], 'inbound integration change is not handled yet');
+  if (input.item.kind === 'artifact' && input.item.changeId === `artifact:${JOURNEY_INDEX_PATH}`) {
+    console.info(input.item.changeId, JOURNEY_INDEX_REASON);
+    return answer(input, []);
+  }
+  if (input.item.kind === 'artifact') {
+    const path = input.item.changeId.startsWith('artifact:') ? input.item.changeId.slice('artifact:'.length) : input.item.changeId;
+    return answer(input, [], `l4 file ${path} is not a known kind; Apply cannot plan it`);
+  }
+  if (input.item.kind === 'inbound') return answer(input, [], 'inbound integration is not supported by Apply yet');
+  if (input.item.kind === 'entity' && input.item.op === 'added') {
+    return notedEmpty(input, 'a new entity reaches the screens through its journeys');
+  }
+  if (input.item.kind === 'process' && input.item.op === 'added') {
+    return notedEmpty(input, 'a process reaches the screens through its journeys');
+  }
   if (input.item.kind === 'grant') return grantAnswer(input, contracts, sources?.shared ?? {});
   if (input.item.kind === 'field' && isTextOnlyChange(input.item)) return textAnswer(input, contracts, sources);
   const journey = journeyAnswer(input, sources?.shared ?? {});
@@ -563,6 +640,7 @@ export function describeEffortFrom(input: EffortInput, contracts: Record<string,
   if (input.item.kind === 'entity' && input.item.op === 'changed') {
     return entityAnswer(input, contracts, sources?.shared ?? {});
   }
+  if (input.item.kind === 'entity' && input.item.op === 'removed') return entityRemovedAnswer(input, contracts);
   if (input.item.kind === 'transition') return transitionAnswer(input, contracts);
   if (input.item.kind === 'process' || input.item.kind === 'task') {
     return removedAnswer(input, contracts, sources?.shared ?? {});
@@ -571,22 +649,22 @@ export function describeEffortFrom(input: EffortInput, contracts: Record<string,
   if (Object.keys(contracts).length === 0) return answer(input, [], `no generated L2 contracts for module ${input.module}`);
   const changedField = fieldClass(input.item);
   if (input.item.kind === 'field') {
-    if (!changedField) return answer(input, [], `v1 computes only rule changed; ${input.item.kind} ${input.item.op} is not handled`);
+    if (!changedField) return malformed(input);
     return fieldAnswer(input, contracts, changedField);
   }
+  if (input.item.kind === 'rule' && input.item.op === 'added') return modelDidNotRun(input);
   if (input.item.kind === 'rule' && input.item.op === 'removed') {
     return removedAnswer(input, contracts, sources?.shared ?? {});
   }
-  if (input.item.kind !== 'rule' || input.item.op !== 'changed') {
-    return answer(input, [], `v1 computes only rule changed; ${input.item.kind} ${input.item.op} is not handled`);
-  }
+  if (input.item.kind !== 'rule' || input.item.op !== 'changed') return malformed(input);
   const ruleId = ruleIdOf(input);
+  if (!ruleId) return malformed(input);
   const pages: string[] = [];
   for (const pageId of Object.keys(contracts).sort()) {
     const parsed = parseD2ContractV2(contracts[pageId] ?? '');
     if (parsed.routes.some(route => route.rules.includes(ruleId))) pages.push(pageId);
   }
-  if (pages.length === 0) return answer(input, [], `no route of any contract cites rule ${ruleId}`);
+  if (pages.length === 0) return notedEmpty(input, 'no route cites the rule; nothing to redo');
   return answer(input, pages.map(pageId => pageUnit(input.module, pageId)));
 }
 
@@ -712,13 +790,52 @@ function journeyPrompt(input: EffortInput, contracts: Record<string, string>, sh
   ].join('\n');
 }
 
-/** Pure. A new rule or a new journey asks the model to pick screens. Every other item needs no call. */
+/** `from` and `by` are a string or a list of strings (`TransitionSlice`). */
+function transitionSliceText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value.filter((item): item is string => typeof item === 'string').join(', ');
+}
+
+function transitionPhrase(input: EffortInput): string {
+  const after = fieldRecord(input.item.after);
+  const from = transitionSliceText(after?.from);
+  const to = typeof after?.to === 'string' ? after.to : '';
+  const by = transitionSliceText(after?.by);
+  return `${input.item.entity}.${transitionIdOf(input)}, ${from} → ${to}, by ${by}`;
+}
+
+function transitionPrompt(input: EffortInput, contracts: Record<string, string>, pageIds: string[]): string {
+  const pages = pageIds.map(pageId => {
+    const parsed = parseD2ContractV2(contracts[pageId] ?? '');
+    const routes = parsed.routes.map(route => `  - ${route.route} ${route.kind} writes: ${route.writes ?? ''} rules: ${route.rules.join(', ')}`);
+    return [`- ${pageId}`, ...routes].join('\n');
+  });
+  return [
+    `Transition ${transitionPhrase(input)}`,
+    '',
+    'Pages of the module. Each route lists its id, kind (qry or cmd), writes and rules:',
+    pages.join('\n'),
+    '',
+    'For an existing page, choose one:',
+    '- materialize: only rematerialize the screen. It rereads the transition. The screen def and the contract stay.',
+    '- newAction: the screen needs an action or data the contract does not have. The contract changes.',
+    'A new screen goes in create. Nothing to do is pages: [] and create: [].',
+  ].join('\n');
+}
+
+/** Pure. A new rule, a new journey or a new transition asks the model to pick screens. Every other item needs no call. */
 export function effortPromptFrom(input: EffortInput, contracts: Record<string, string>, shared: Record<string, string> = {}): EffortPromptRequest | null {
   const addedRule = input.item.kind === 'rule' && input.item.op === 'added';
   const addedJourney = input.item.kind === 'journey' && input.item.op === 'added';
-  if (!addedRule && !addedJourney) return null;
+  const addedTransition = input.item.kind === 'transition' && input.item.op === 'added';
+  if (!addedRule && !addedJourney && !addedTransition) return null;
   const pageIds = Object.keys(contracts).sort();
-  const prompt = addedRule ? rulePrompt(input, contracts, pageIds) : journeyPrompt(input, contracts, shared, pageIds);
+  const prompt = addedRule
+    ? rulePrompt(input, contracts, pageIds)
+    : addedJourney
+      ? journeyPrompt(input, contracts, shared, pageIds)
+      : transitionPrompt(input, contracts, pageIds);
   return { prompt, schema: promptSchema(pageIds) };
 }
 
@@ -832,9 +949,9 @@ async function moduleWebDefs(input: EffortInput): Promise<{ projectError?: strin
   return { contracts, shared };
 }
 
-/** A new rule or a new journey asks for a model call. Every other item returns null and does not read files. */
+/** A new rule, journey or transition asks for a model call. Every other item returns null and does not read files. */
 export async function effortPrompt(input: EffortInput): Promise<EffortPromptRequest | null> {
-  const asks = (input.item.kind === 'rule' || input.item.kind === 'journey') && input.item.op === 'added';
+  const asks = (input.item.kind === 'rule' || input.item.kind === 'journey' || input.item.kind === 'transition') && input.item.op === 'added';
   if (!asks) return null;
   const loaded = await moduleWebDefs(input);
   if (loaded.projectError) return null;

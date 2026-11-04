@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import { describeEffort, describeEffortFrom, effortPrompt, effortPromptFrom, finishEffortFrom } from '/_102020_/l2/helpers/effort/describeEffort.js';
-import type { EffortInput, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
+import { L4_DIFF_KINDS, L4_DIFF_OPS, type EffortInput, type L4DiffItem, type L4DiffKind, type L4DiffOp } from '/_102035_/l2/solution/poolPlan.js';
 
 const FIXTURE = new URL('./fixtures/agendaClinica/contracts/', import.meta.url);
 const GOLDEN = new URL('../../../../mls-102035/l2/solution/fixtures/changeEffort/agendaClinica-regra-anotacao/changeEffort.json', import.meta.url);
@@ -101,19 +101,48 @@ void test('rule changed cites only the pages whose routes list the id', () => {
   assert.deepEqual(conflict.materialize.map(unit => unit.id), ['consultas']);
 });
 
+void test('the journeys index artifact is an empty computed answer; any other artifact abends', () => {
+  const seen: unknown[][] = [];
+  const original = console.info;
+  console.info = (...args: unknown[]) => { seen.push(args); };
+  try {
+    const index = describeEffortFrom(input({
+      changeId: 'artifact:journeys/index.defs.ts', kind: 'artifact', op: 'changed', entity: '',
+    }), {});
+    assert.equal(index.status, 'computed');
+    assert.equal(index.abend, undefined);
+    assert.deepEqual(index.materialize, []);
+    assert.deepEqual(index.regenerateDefs, []);
+    assert.deepEqual(index.create, []);
+    assert.deepEqual(index.remove, []);
+    assert.equal(index.contract, 'keep');
+    assert.deepEqual(seen, [['artifact:journeys/index.defs.ts', 'journeys index follows its journey items']]);
+  } finally {
+    console.info = original;
+  }
+
+  const other = describeEffortFrom(input({
+    changeId: 'artifact:rules.defs.ts', kind: 'artifact', op: 'changed', entity: '',
+  }), contracts());
+  assert.equal(other.status, 'abend');
+  assert.equal(other.abend?.reason, 'l4 file rules.defs.ts is not a known kind; Apply cannot plan it');
+  assert.deepEqual(other.materialize, []);
+});
+
 void test('a rule no route cites, other kinds, and a module without contracts abend', () => {
   const pages = contracts();
   const missing = describeEffortFrom(input({
     changeId: 'rule:naoExiste', kind: 'rule', op: 'changed', entity: '',
   }), pages);
-  assert.equal(missing.status, 'abend');
-  assert.equal(missing.abend?.reason, 'no route of any contract cites rule naoExiste');
+  assert.equal(missing.status, 'computed');
+  assert.equal(missing.abend, undefined);
+  assert.deepEqual(missing.materialize, []);
 
   const field = describeEffortFrom(input({
     changeId: 'field:anotacao', kind: 'field', op: 'changed', entity: 'Consulta',
   }), pages);
   assert.equal(field.status, 'abend');
-  assert.equal(field.abend?.reason, 'v1 computes only rule changed; field changed is not handled');
+  assert.equal(field.abend?.reason, 'change id field:anotacao is malformed');
   assert.deepEqual(field.materialize, []);
 
   const empty = describeEffortFrom(input({
@@ -852,8 +881,13 @@ void test('process, task and transition classes cite pages or stay empty', () =>
 
   const addedTransition = describeEffortFrom(workflowItem('transition:nova', 'transition', 'added', 'Tarefa', undefined, { to: 'x' }), pages, sources);
   assert.equal(addedTransition.status, 'abend');
-  assert.equal(addedTransition.abend?.reason, 'a new transition needs a page choice; not handled yet');
-  assert.deepEqual(addedTransition.materialize, []);
+  assert.equal(addedTransition.abend?.reason, 'a new transition needs a page choice by the model; it did not run');
+  const addedTransitionPrompt = effortPromptFrom(workflowItem('transition:nova', 'transition', 'added', 'Tarefa', undefined, { from: ['aberta', 'pausada'], to: 'emAndamento', by: ['membro', 'gestor'] }), pages, sources.shared);
+  assert.ok(addedTransitionPrompt);
+  assert.equal(addedTransitionPrompt.prompt.includes('Tarefa.nova, aberta, pausada → emAndamento, by membro, gestor'), true);
+  const systemBy = effortPromptFrom(workflowItem('transition:nova', 'transition', 'added', 'Tarefa', undefined, { from: 'aberta', to: 'emAndamento', by: 'system' }), pages, sources.shared);
+  assert.ok(systemBy);
+  assert.equal(systemBy.prompt.includes('aberta → emAndamento, by system'), true);
 
   const field = describeEffortFrom(tarefasField({
     changeId: 'field:titulo', kind: 'field', op: 'changed', entity: 'Tarefa',
@@ -929,7 +963,7 @@ void test('a published event is empty unless a page cites it; an inbound change 
   }), pages, sources);
   for (const row of [inboundText, inboundAdded]) {
     assert.equal(row.status, 'abend');
-    assert.equal(row.abend?.reason, 'inbound integration change is not handled yet');
+    assert.equal(row.abend?.reason, 'inbound integration is not supported by Apply yet');
     assert.deepEqual(row.materialize, []);
   }
 
@@ -1008,13 +1042,14 @@ void test('a changed entity answers by attribute: a leaving rule cites its pages
     { entityId: 'Tarefa', initialData: { a: 1 } },
     { entityId: 'Tarefa', initialData: { a: 2 } },
   ), pages, sources);
-  assert.equal(other.status, 'abend');
-  assert.equal(other.abend?.reason, 'entity Tarefa changed in initialData; not handled yet');
+  assert.equal(other.status, 'computed');
+  assert.equal(other.abend, undefined);
   assert.deepEqual(other.materialize, []);
 
   const added = describeEffortFrom(entityItem({}, { title: 'Task' }, 'added'), pages, sources);
-  assert.equal(added.status, 'abend');
-  assert.equal(added.abend?.reason, 'v1 computes only rule changed; entity added is not handled');
+  assert.equal(added.status, 'computed');
+  assert.equal(added.abend, undefined);
+  assert.deepEqual(added.materialize, []);
 
   const capabilityId = 'tarefas.resumoDiario';
   const cited = describeEffortFrom(entityItem(
@@ -1059,6 +1094,202 @@ void test('a changed entity answers by attribute: a leaving rule cites its pages
   const workflow = describeEffortFrom(workflowItem('process:resumoDiarioTarefas', 'process', 'changed', '', { trigger: { schedule: '8h' } }, { trigger: { schedule: '9h' } }), pages, sources);
   assert.equal(workflow.status, 'computed');
   assert.deepEqual(workflow.materialize, []);
+});
+
+const WIDGET_ROW = `export interface WidgetRow {\n  id: string;\n}\n`;
+
+const WIDGET_CONTRACT = `/// <mls fileReference="_102047_/l2/tarefas/web/contracts/widget.defs.ts" enhancement="_blank"/>
+
+${WIDGET_ROW}
+export interface WidgetContracts {
+  'tarefas.widget.save': {
+    kind: 'cmd';
+    writes: 'Widget.archive';
+    input: {};
+    output: { item: WidgetRow };
+    rules: [];
+    access: { actors: []; grants: []; scope: 'organization' };
+  };
+}
+`;
+
+const FICHA_ENTITY = `/// <mls fileReference="_102047_/l2/tarefas/web/contracts/ficha.defs.ts" enhancement="_blank"/>
+
+${WIDGET_ROW}
+export interface FichaContracts {
+  'tarefas.ficha.load': {
+    kind: 'qry';
+    input: {};
+    output: { item: WidgetRow };
+    meta: { output: { item: { entity: 'Widget'; many: false } }; lists: {}; params: {} };
+    rules: [];
+    access: { actors: []; grants: []; scope: 'organization' };
+  };
+}
+`;
+
+void test('each effort gap is a treatment, an empty answer with a reason, or a refusal', () => {
+  const pages = { ficha: FICHA_ENTITY, widget: WIDGET_CONTRACT };
+  const base = { module: 'tarefas', base: { baseId: 'mls-102047', revisionId: '537525a4' } };
+
+  const reasons: string[] = [];
+  const original = console.info;
+  console.info = (...args: unknown[]) => { reasons.push(args.map(item => String(item)).join(' ')); };
+  let entityAdded: ReturnType<typeof describeEffortFrom> | undefined;
+  let processAdded: ReturnType<typeof describeEffortFrom> | undefined;
+  let quietRule: ReturnType<typeof describeEffortFrom> | undefined;
+  let quietData: ReturnType<typeof describeEffortFrom> | undefined;
+  try {
+    entityAdded = describeEffortFrom({
+      ...base,
+      item: { changeId: 'entity:Widget', kind: 'entity', op: 'added', entity: 'Widget', source: 'l4/tarefas/ontology/Widget.defs.ts', after: { title: 'Widget' } },
+    }, pages);
+    processAdded = describeEffortFrom({
+      ...base,
+      item: { changeId: 'process:avisar', kind: 'process', op: 'added', entity: '', source: 'l4/tarefas/workflows.defs.ts', after: { title: 'Avisar' } },
+    }, pages);
+    quietRule = describeEffortFrom(input({
+      changeId: 'rule:naoExiste', kind: 'rule', op: 'changed', entity: '',
+    }), contracts());
+    quietData = describeEffortFrom({
+      ...base,
+      item: {
+        changeId: 'entity:Widget', kind: 'entity', op: 'changed', entity: 'Widget', source: 'l4/tarefas/ontology/Widget.defs.ts',
+        before: { initialData: { a: 1 } }, after: { initialData: { a: 2 } },
+      },
+    }, pages);
+  } finally {
+    console.info = original;
+  }
+  for (const row of [entityAdded, processAdded, quietRule, quietData]) {
+    assert.equal(row?.status, 'computed');
+    assert.deepEqual(row?.materialize, []);
+  }
+  assert.ok(reasons.some(line => line.includes('a new entity reaches the screens through its journeys')));
+  assert.ok(reasons.some(line => line.includes('a process reaches the screens through its journeys')));
+  assert.ok(reasons.some(line => line.includes('no route cites the rule; nothing to redo')));
+  assert.ok(reasons.some(line => line.includes('entity Widget changed in initialData; no screen reads it')));
+
+  const removedEntity = describeEffortFrom({
+    ...base,
+    item: { changeId: 'entity:Widget', kind: 'entity', op: 'removed', entity: 'Widget', source: 'l4/tarefas/ontology/Widget.defs.ts', before: { title: 'Widget' } },
+  }, pages);
+  assert.equal(removedEntity.status, 'computed');
+  assert.equal(removedEntity.contract, 'change');
+  assert.deepEqual(removedEntity.materialize.map(unit => unit.id), ['ficha', 'widget']);
+  assert.deepEqual(removedEntity.regenerateDefs.map(unit => `${unit.kind}:${unit.id}`), [
+    'page:ficha', 'contract:ficha', 'shared:ficha',
+    'page:widget', 'contract:widget', 'shared:widget',
+  ]);
+
+  const related = describeEffortFrom({
+    ...base,
+    item: {
+      changeId: 'entity:Widget', kind: 'entity', op: 'changed', entity: 'Widget', source: 'l4/tarefas/ontology/Widget.defs.ts',
+      before: { relationships: [] }, after: { relationships: [{ to: 'Other' }] },
+    },
+  }, pages);
+  assert.equal(related.status, 'computed');
+  assert.equal(related.contract, 'keep');
+  assert.deepEqual(related.materialize.map(unit => unit.id), ['ficha', 'widget']);
+  assert.deepEqual(related.regenerateDefs, []);
+
+  const structural = describeEffortFrom({
+    ...base,
+    item: {
+      changeId: 'entity:Widget', kind: 'entity', op: 'changed', entity: 'Widget', source: 'l4/tarefas/ontology/Widget.defs.ts',
+      before: { schemaVersion: '1' }, after: { schemaVersion: '2' },
+    },
+  }, pages);
+  assert.equal(structural.status, 'abend');
+  assert.equal(structural.abend?.reason, 'entity Widget changed in schemaVersion; Apply cannot plan it');
+
+  const transitionItem: EffortInput = {
+    ...base,
+    item: {
+      changeId: 'transition:archive', kind: 'transition', op: 'added', entity: 'Widget', source: 'l4/tarefas/ontology/Widget.defs.ts',
+      after: { from: 'open', to: 'archived', by: 'member' },
+    },
+  };
+  const request = effortPromptFrom(transitionItem, pages);
+  assert.ok(request);
+  assert.equal(request.prompt.includes('Widget.archive'), true);
+  assert.equal(request.prompt.includes('open → archived'), true);
+  assert.equal(request.prompt.includes('by member'), true);
+  const finished = finishEffortFrom(transitionItem, pages, {
+    pages: [{ page: 'widget', change: 'newAction' }], create: [], reason: 'the archive action is new',
+  });
+  assert.equal(finished.status, 'computed');
+  assert.equal(finished.contract, 'change');
+  assert.deepEqual(finished.materialize.map(unit => unit.id), ['widget']);
+  assert.deepEqual(finished.regenerateDefs.map(unit => unit.kind), ['page', 'contract']);
+
+  const unknownFile = describeEffortFrom(input({
+    changeId: 'artifact:rules.defs.ts', kind: 'artifact', op: 'changed', entity: '',
+  }), contracts());
+  assert.equal(unknownFile.abend?.reason, 'l4 file rules.defs.ts is not a known kind; Apply cannot plan it');
+
+  const inbound = describeEffortFrom(input({
+    changeId: 'inbound:aviso', kind: 'inbound', op: 'added', entity: '',
+  }), contracts());
+  assert.equal(inbound.abend?.reason, 'inbound integration is not supported by Apply yet');
+
+  const noContracts = describeEffortFrom(input({
+    changeId: 'rule:anotacaoObrigatoriaNoAtendimento', kind: 'rule', op: 'changed', entity: '',
+  }), {});
+  assert.equal(noContracts.abend?.reason, 'no generated L2 contracts for module agendaClinica');
+
+  const badId = describeEffortFrom(input({
+    changeId: 'rule-sem-prefixo', kind: 'rule', op: 'changed', entity: '',
+  }), contracts());
+  assert.equal(badId.status, 'abend');
+  assert.equal(badId.abend?.reason.includes('rule-sem-prefixo'), true);
+});
+
+void test('every kind and op abends only as a known user refusal', () => {
+  const pages = contracts();
+  const allowed = [
+    'inbound integration is not supported by Apply yet',
+    'is not a known kind; Apply cannot plan it',
+    'no generated L2 contracts for module ',
+    'is malformed',
+    'Apply cannot plan it',
+    'needs a page choice by the model; it did not run',
+  ];
+  const changeIdOf = (kind: L4DiffKind): string => {
+    if (kind === 'entity') return 'entity:Paciente';
+    if (kind === 'field') return 'field:name';
+    if (kind === 'transition') return 'transition:registrarAtendimento';
+    if (kind === 'rule') return 'rule:naoExiste';
+    if (kind === 'grant') return 'grant:alguem';
+    if (kind === 'process') return 'process:avisar';
+    if (kind === 'task') return 'task:avisar.ligar';
+    if (kind === 'inbound') return 'inbound:aviso';
+    if (kind === 'outbound') return 'outbound:aviso';
+    if (kind === 'journey') return 'journey:criar';
+    if (kind === 'step') return 'step:criar/abrir';
+    return 'artifact:rules.defs.ts';
+  };
+  const entityOf = (kind: L4DiffKind): string => {
+    if (kind === 'entity' || kind === 'field') return 'Paciente';
+    if (kind === 'transition') return 'Consulta';
+    return '';
+  };
+  for (const kind of L4_DIFF_KINDS) {
+    for (const op of L4_DIFF_OPS) {
+      const before = kind === 'entity' ? { title: 'A' } : op === 'added' ? undefined : { type: 'string', title: 'A' };
+      const after = kind === 'entity' ? { title: 'B' } : op === 'removed' ? undefined : kind === 'field' && op === 'changed' ? { type: 'number', title: 'A' } : { type: 'number', title: 'B' };
+      const row = describeEffortFrom(input({
+        changeId: changeIdOf(kind), kind, op: op as L4DiffOp, entity: entityOf(kind), before, after,
+      }), pages);
+      if (row.status !== 'abend') {
+        assert.equal(row.abend, undefined, `${kind} ${op}`);
+        continue;
+      }
+      const reason = row.abend?.reason ?? '';
+      assert.ok(allowed.some(piece => reason.includes(piece)), `${kind} ${op}: ${reason}`);
+    }
+  }
 });
 
 void test('describeEffort imports only helpers and the solution types, and does not write or fetch', () => {

@@ -29,6 +29,7 @@ import {
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { resetAuraSeed, seedActiveHeader, seedAuraStateFromHost } from '/_102020_/l2/aura/studio/studioAuraSeed.js';
+import { installStudioModuleLock } from '/_102020_/l2/aura/studio/studioModuleLock.js';
 import {
   autosaveMessage,
   captureModelText,
@@ -692,6 +693,8 @@ function teardown(): void {
 }
 
 async function apply(state: IStudioEditHost | null): Promise<void> {
+  // Monaco may still be loading on the first publish; install retries until `onDidCreateEditor` exists.
+  installStudioModuleLock();
   if (!state) {
     teardown();
     return;
@@ -711,3 +714,5 @@ registerVisibleScreenSwap(async (ref) => {
   const { applyChangedOnMounted } = await import('/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js');
   await applyChangedOnMounted(ref);
 });
+
+installStudioModuleLock();
