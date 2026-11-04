@@ -448,3 +448,72 @@ function ordered(states: readonly IScenarioState[]): IScenarioState[] {
     || (rank[left.kind] - rank[right.kind])
     || states.indexOf(left) - states.indexOf(right));
 }
+
+// ─── The situations of the page, from its defs ───────────────────────────────
+
+/**
+ * One situation the Studio "States" tab can put the page into: a set of shared members written at once.
+ *
+ * WHY SITUATIONS AND NOT STATES: a page has a status and an error per request, and listing them all (40+ on a real
+ * page) asks the person to know the plumbing. What they want to see is the page loading, empty, failing to load, and
+ * each command succeeding or failing — the branches that are not on screen otherwise. Each is a combination of the
+ * per-request members, and the combination is decided here, once.
+ *
+ * WHY THE DEFS AND NOT THE SHARED: the shared defs (`web/shared/<page>.defs.ts`) say which requests run on open
+ * (`trigger: 'onLoad'`) and which are commands (`kind: 'cmd'`), and the shared40 gate makes every shared declare
+ * `pageStatus`, `scenary`, `<request>Status` and `<request>Error`. So nothing has to be generated or read out of
+ * the source, and every page already materialized works.
+ */
+export interface IPageSituation {
+  /** 'loading' | 'empty' | 'loadError' for the page; `<command>:success` | `<command>:error` for a command. */
+  id: string;
+  /** The command, or null for the page itself. */
+  command: string | null;
+  outcome: 'loading' | 'empty' | 'error' | 'success';
+  /** Shared member → value written while the situation is on. */
+  set: Record<string, unknown>;
+}
+
+interface IDefsRequest { kind?: unknown; trigger?: unknown }
+
+/** The requests of a shared defs `definition`, or {} when it has none. */
+function requestsOf(definition: unknown): Record<string, IDefsRequest> {
+  const requests = (definition as { requests?: unknown } | null)?.requests;
+  return requests && typeof requests === 'object' ? requests as Record<string, IDefsRequest> : {};
+}
+
+/**
+ * The situations of a page, from its shared defs. `sampleError` is what a simulated failure puts in `<request>Error`:
+ * a status `error` alone shows an empty message, because the templates print the error's text.
+ */
+export function situationsOfDefs(definition: unknown, sampleError: unknown): IPageSituation[] {
+  const requests = Object.entries(requestsOf(definition));
+  const onLoad = requests.filter(([, request]) => request.trigger === 'onLoad').map(([id]) => id);
+  const statuses = (value: string) => Object.fromEntries(onLoad.map((id) => [`${id}Status`, value]));
+  const situations: IPageSituation[] = [
+    { id: 'loading', command: null, outcome: 'loading', set: { pageStatus: 'loading', ...statuses('loading') } },
+    { id: 'empty', command: null, outcome: 'empty', set: { pageStatus: 'empty', ...statuses('success') } },
+    {
+      id: 'loadError', command: null, outcome: 'error',
+      set: { pageStatus: 'error', ...(onLoad.length ? { [`${onLoad[0]}Status`]: 'error', [`${onLoad[0]}Error`]: sampleError } : {}) },
+    },
+  ];
+  for (const [id, request] of requests) {
+    if (request.kind !== 'cmd') continue;
+    situations.push({ id: `${id}:success`, command: id, outcome: 'success', set: { [`${id}Status`]: 'success' } });
+    situations.push({ id: `${id}:error`, command: id, outcome: 'error', set: { [`${id}Status`]: 'error', [`${id}Error`]: sampleError } });
+  }
+  return situations;
+}
+
+/**
+ * The scenes a page declares: the `value` of each `<Scene>` of ml-scenary — the molecule's own contract, not a
+ * generator convention. Only the rendered page knows them.
+ */
+export function scenesOf(source: string): string[] {
+  const scenes: string[] = [];
+  for (const match of source.matchAll(/<Scene\b[^>]*?\svalue\s*=\s*(['"])([^'"\n]+)\1/gu)) {
+    if (!scenes.includes(match[2])) scenes.push(match[2]);
+  }
+  return scenes;
+}

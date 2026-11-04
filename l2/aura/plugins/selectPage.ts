@@ -729,11 +729,7 @@ export class PluginSelectPage extends StateLitElement {
             ${this._renderDsVersionPanel(page)}
             ${this._renderTabs()}
             ${this._renderTabPanel('visual', html`${this._renderEditPanel(page)}${this._renderClassPicker()}`)}
-            ${this._renderTabPanel('states', html`
-                <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5">
-                    <span class="text-xs text-gray-500 dark:text-gray-400">${this.msg.inDevelopment}</span>
-                </div>
-            `)}
+            ${this._renderTabPanel('states', this._renderPageStates())}
             ${this._renderTabPanel('page', html`${this._renderPageInfo(page)}${this._renderDeviceSwitch(page)}${this._renderThemeSwitch()}`)}
         `;
     }
@@ -1085,6 +1081,12 @@ export class PluginSelectPage extends StateLitElement {
     // Cancel: back to the request, kept so it can be refined.
     private _onCancelPlan(page: IPageEntry) {
         this._setEdit('_editPlan', page.name, undefined);
+    }
+
+    // The "States" tab: simulates the situations of the page on screen (pluginPageStates, loaded on first use).
+    private _renderPageStates() {
+        void import('/_102020_/l2/aura/plugins/pluginPageStates.js');
+        return html`<aura--plugins--page-states-102020></aura--plugins--page-states-102020>`;
     }
 
     // The class picker DOCKED here (pageClassPickerPanel) — a second take on the floating one, kept

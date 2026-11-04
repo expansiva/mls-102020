@@ -17,6 +17,8 @@ import {
   kindOfKey,
   pairingsOf,
   propertiesOf,
+  scenesOf,
+  situationsOfDefs,
   statesOfPage,
 } from '/_102020_/l2/aura/helpers/scenarioL2.js';
 
@@ -415,14 +417,58 @@ test('the reader is pure: no DOM, no stor, no network', () => {
   assert.equal(/^import\b/mu.test(code.replace(/^import type .*$/gmu, '')), false, 'the only import is a type');
 });
 
-test('no file of the l4 is read anywhere in this frontier any more', () => {
-  // Criterion 9: not the workspace, not `operations/`, not `ontology/`. The panel reads two files
-  // and both are the page's own.
-  const service = readFileSync(new URL('../services/serviceScenario.ts', import.meta.url), 'utf8');
-  for (const gone of ['/l4/', 'workspaces/', 'operations/', 'ontology/', 'parseWorkspace', 'vocabulary']) {
-    assert.equal(service.includes(gone), false, `${gone} belongs to the reading that was dropped`);
+// ── The situations of the page, from its shared defs (the Studio "States" tab) ─────────────
+//
+// 102052/tarefas/listas_tarefas (2026-11-04): one query on open and two commands. The tab offers the page loading,
+// empty and failing to load, and each command succeeding or failing — never the 12 members one by one.
+
+const DEFS = {
+  entry: { params: { texto: { type: 'string' } } },
+  requests: {
+    qryListasTarefas: { kind: 'qry', trigger: 'onLoad', returns: ['listas'] },
+    qryBuscar: { kind: 'qry', trigger: 'buscar', returns: ['itens'] },
+    cmdCriarLista: { kind: 'cmd', trigger: 'criarLista', returns: ['lista'] },
+    cmdSalvarLista: { kind: 'cmd', trigger: 'salvarLista', returns: ['lista'] },
+  },
+  states: {},
+};
+const SAMPLE = { code: 'studio.simulated', message: 'x' };
+
+test('the page situations write pageStatus with the statuses of the requests that run on open', () => {
+  const situations = situationsOfDefs(DEFS, SAMPLE);
+  const page = situations.filter((item) => item.command === null);
+  assert.deepEqual(page.map((item) => item.id), ['loading', 'empty', 'loadError']);
+  assert.deepEqual(page[0].set, { pageStatus: 'loading', qryListasTarefasStatus: 'loading' });
+  assert.deepEqual(page[1].set, { pageStatus: 'empty', qryListasTarefasStatus: 'success' });
+  assert.deepEqual(page[2].set, { pageStatus: 'error', qryListasTarefasStatus: 'error', qryListasTarefasError: SAMPLE });
+});
+
+test('every command gets success and error; a query that does not run on open gets nothing', () => {
+  const situations = situationsOfDefs(DEFS, SAMPLE).filter((item) => item.command !== null);
+  assert.deepEqual(situations.map((item) => item.id), ['cmdCriarLista:success', 'cmdCriarLista:error', 'cmdSalvarLista:success', 'cmdSalvarLista:error']);
+  assert.deepEqual(situations[1].set, { cmdCriarListaStatus: 'error', cmdCriarListaError: SAMPLE });
+  assert.deepEqual(situations[2].set, { cmdSalvarListaStatus: 'success' });
+  assert.equal(JSON.stringify(situationsOfDefs(DEFS, SAMPLE)).includes('qryBuscar'), false);
+});
+
+test('defs without requests still offer the page situations, on pageStatus alone', () => {
+  for (const definition of [undefined, null, {}, { requests: 'x' }]) {
+    const situations = situationsOfDefs(definition, SAMPLE);
+    assert.deepEqual(situations.map((item) => item.id), ['loading', 'empty', 'loadError']);
+    assert.deepEqual(situations[2].set, { pageStatus: 'error' });
   }
-  assert.match(service, /web\/shared\/\$\{page\.shortName\}\.ts/u, 'the shared class');
-  assert.match(service, /l2\/\$\{page\.folder\}\/\$\{page\.shortName\}\.ts/u, 'and the rendered variation');
-  assert.match(service, /statesOfPage\(shared \?\? '', rendered \?\? ''\)/u);
+});
+
+const PAGE_WITH_SCENES = [
+  '<molecules--ml-scenary-102020 mode="scenary" .value=${this.scenary}>',
+  '  <Scene value="vazio" title=${this.msg.pageTitle}><div>…</div></Scene>',
+  "  <Scene value='detalhe' title=${this.msg.taskDetails} nav=\"back\" backTo=\"vazio\">${this.renderDetail()}</Scene>",
+  '  <Scene title=${this.msg.createTask} value="nova">${this.renderForm(true)}</Scene>',
+  '  <Scene value="vazio"></Scene>',
+  '</molecules--ml-scenary-102020>',
+].join('\n');
+
+test('the scenes come from the <Scene value> of the rendered page, in either quote and attribute order, once each', () => {
+  assert.deepEqual(scenesOf(PAGE_WITH_SCENES), ['vazio', 'detalhe', 'nova']);
+  assert.deepEqual(scenesOf(''), []);
 });

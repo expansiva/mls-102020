@@ -10,7 +10,7 @@ import test from 'node:test';
 import { groupByAction, type IScenarioState } from '/_102020_/l2/aura/helpers/scenarioCore.js';
 import { statesOfPage } from '/_102020_/l2/aura/helpers/scenarioL2.js';
 
-const SERVICE = readFileSync(new URL('../services/serviceScenario.ts', import.meta.url), 'utf8');
+const TAB = readFileSync(new URL('../plugins/pluginPageStates.ts', import.meta.url), 'utf8');
 
 /**
  * A real page, trimmed: `mls-102050/l2/controleChamados/web/shared/ticketHub.ts`, two actions so the
@@ -75,84 +75,45 @@ test('an action that appeared twice stays two blocks instead of merging', () => 
   assert.deepEqual(groupByAction(twice).map((block) => block.bffId), ['cmd', 'qry', 'cmd']);
 });
 
-test('the panel offers the closed domains and counts the rest', () => {
-  // D-017: the list IS "what can be simulated". Of the 7 states of this page 3 have a domain
-  // (the scene, and the two action statuses) and 4 do not.
+test('only the closed domains are editable', () => {
+  // D-017: of the 7 states of this page 3 have a domain (the scene, and the two action statuses) and 4 do not.
   assert.deepEqual(states.filter((item) => item.editable).map((item) => item.name),
     ['uiScenary', 'qryListTicketState', 'qryListTicketSortBy', 'cmdCreateTicketState']);
   assert.equal(states.filter((item) => !item.editable).length, 3);
-
-  assert.match(SERVICE, /states\.filter\(\(item\) => !item\.editable\)\.length/u, 'the hidden ones are counted');
-  assert.match(SERVICE, /groupByAction\(states\.filter\(\(item\) => item\.editable\)\)/u, 'and only the rest is listed');
-  assert.match(SERVICE, /\$\{this\._hidden\} \$\{this\.msg\.hidden\}/u, 'and the count is on screen');
 });
+
+// ── Guards on the Studio "States" tab (plugins/pluginPageStates), which replaced the Scenario service ─────────────
 
 test('restoring puts back what the APP had, not the previous simulation', () => {
   // The original is captured once. Overwriting it on the second change would make "restore" put back
   // the first simulated value — which no one ever asked for.
-  const apply = SERVICE.slice(SERVICE.indexOf('private _apply('));
-  const body = apply.slice(0, apply.indexOf('\n  }'));
-  assert.match(body, /existing \? existing\.original : getState\(state\.key\)/u);
+  const write = TAB.slice(TAB.indexOf('private _write('));
+  const body = write.slice(0, write.indexOf('\n  }'));
+  assert.match(body, /existing \? existing\.original : getState\(key\)/u);
 });
 
-test('the simulation is announced outside the panel', () => {
-  // Two message <p>s look identical: editing the error branch believing it is the success one is the
-  // mistake this makes easy, and the picker is where the user is looking when they make it.
-  assert.match(SERVICE, /setState\('aura\.scenario\.simulated', \[\.\.\.this\._simulated\.keys\(\)\]\)/u);
-
-  const panel = readFileSync(new URL('../studio/classPickerPanel.ts', import.meta.url), 'utf8');
-  assert.match(panel, /subscribe\(ClassPickerPanel\.SCENARIO_KEY, this\)/u, 'the picker listens');
-  assert.match(panel, /unsubscribe\(ClassPickerPanel\.SCENARIO_KEY, this\)/u, 'and stops listening');
-  assert.match(panel, /renderScenarioBadge/u);
-});
-
-test('what the panel publishes is plain data', () => {
+test('what the tab publishes is plain data: the simulated keys', () => {
   // Same discipline as `aura.edit`: `setState` keeps every value it is handed in a 10.000-entry log,
   // so anything live parked there is pinned for the session.
-  const keys = ['ui.page.action.cmd.status', 'ui.page.input.cmd.field'];
-  assert.deepEqual(JSON.parse(JSON.stringify(keys)), keys);
-  assert.match(SERVICE, /setState\('aura\.scenario\.simulated', \[\.\.\.this\._simulated\.keys\(\)\]\)/u);
+  assert.match(TAB, /setState\('aura\.scenario\.simulated', \[\.\.\.this\._simulated\.keys\(\)\]\)/u);
 });
 
-test('the panel reads the page, and it reads BOTH of its files', () => {
-  // D-016. The shared class carries the properties, their types and the comments; a variation can
-  // name keys the shared one does not. One of the two is half an inventory.
-  assert.match(SERVICE, /web\/shared\/\$\{page\.shortName\}\.ts/u);
-  assert.match(SERVICE, /l2\/\$\{page\.folder\}\/\$\{page\.shortName\}\.ts/u);
-  assert.match(SERVICE, /Promise\.all\(/u, 'and they are read together');
-  // A load that lost the race must not write: the inventory of one page on the screen of another is
-  // a wrong list with no way for the user to tell.
-  const load = SERVICE.slice(SERVICE.indexOf('private async _load('), SERVICE.indexOf('// ─── Simulating'));
+test('the tab reads the page own files, and a load that lost the race does not write', () => {
+  assert.match(TAB, /web\/shared\/\$\{page\.shortName\}\.defs\.js/u, 'the shared defs');
+  assert.match(TAB, /l2\/\$\{page\.folder\}\/\$\{page\.shortName\}\.ts/u, 'and the rendered variation, for the scenes');
+  const load = TAB.slice(TAB.indexOf('private async _load('), TAB.indexOf('// ─── Simulating'));
   assert.ok((load.match(/token !== this\._loadToken/gu) ?? []).length >= 1, 'the await is fenced');
-});
-
-test('the phrase about the l4 workspace is gone from all three languages', () => {
-  // Criterion 10. 12 of the 58 pages used to get it and then an empty panel; there is no page the
-  // reader cannot reach any more, so the sentence would now only ever be wrong.
-  for (const gone of ['workspace', 'noWorkspace', 'needsFixture', 'noWriter']) {
-    assert.equal(SERVICE.includes(gone), false, `"${gone}" outlived what it described`);
-  }
-  // And the footnote that replaces it exists in en, pt and es.
-  for (const key of ['hidden', 'noStates']) {
-    assert.equal((SERVICE.match(new RegExp(`\\b${key}:`, 'gu')) ?? []).length, 3, `${key} in en, pt and es`);
+  for (const gone of ['/l4/', 'workspaces/', 'operations/', 'ontology/']) {
+    assert.equal(TAB.includes(gone), false, `${gone} is not the page's`);
   }
 });
 
-test('every species has a word, in all three languages', () => {
-  // The line is composed at runtime from `ScenarioKind`, so an id the catalog never heard of renders
-  // as nothing at all. The compiler holds the map total; this holds the three languages.
-  const CORE = readFileSync(new URL('scenarioCore.ts', import.meta.url), 'utf8');
-  const kinds = [...CORE.matchAll(/^\s*\|\s*'(\w+)'/gmu)].map((match) => match[1]);
-  assert.deepEqual(kinds.sort(), ['actionError', 'actionStatus', 'commandOutput', 'input', 'other',
-    'pageStatus', 'queryResult', 'scene']);
-  for (const kind of kinds) {
-    assert.match(SERVICE, new RegExp(`${kind}: '(\\w+)'`, 'u'), `${kind} has a role word`);
-  }
-  for (const role of ['rolePageStatus', 'roleStatus', 'roleError', 'roleInput', 'roleResult',
-    'roleOutput', 'roleScene', 'roleOther']) {
-    assert.equal((SERVICE.match(new RegExp(`\\b${role}:`, 'gu')) ?? []).length, 3,
-      `${role} in en, pt and es`);
-    assert.match(SERVICE, new RegExp(`: '${role}'`, 'u'), `${role} is reachable from a species`);
+test('every message of the tab exists in the three languages', () => {
+  const i18n = TAB.slice(TAB.indexOf('/// **collab_i18n_start**'), TAB.indexOf('/// **collab_i18n_end**'));
+  const keys = [...i18n.slice(0, i18n.indexOf('};')).matchAll(/^\s{2}(\w+):/gmu)].map((match) => match[1]);
+  assert.ok(keys.length > 10);
+  for (const key of keys) {
+    assert.equal((i18n.match(new RegExp(`^\\s+${key}:`, 'gmu')) ?? []).length, 3, `${key} in en, pt and es`);
   }
 });
 
