@@ -244,11 +244,22 @@ export interface IPickerSlot {
   depth: number;
   /** The slot's own text, cut short ("Paciente") — what tells `TableHead 2` from `TableHead 3`. */
   hint: string;
+  /**
+   * The ways it can move among its same-name siblings — only when its group declares it in `slotOrder`
+   * and the editor's planner already said yes. Empty = no arrows.
+   */
+  moves: ('up' | 'down')[];
   literal: string;
   editable: boolean;
   refusal?: IMessageRef;
   warning?: IMessageRef;
   canRemoveLast: boolean;
+}
+
+/** What the panel asks the editor to move: one slot, by position in IPickerTarget.slots. */
+export interface IPickerSlotMove {
+  slot: number;
+  direction: 'up' | 'down';
 }
 
 /** What the editor knows about the selection and the panel needs to render it. */
@@ -1168,6 +1179,41 @@ export abstract class ClassPickerBase extends StateLitElement {
   }
 
   /**
+   * Asks the editor to move a slot, and keeps the selector on it: when the slot that moved is the one
+   * being edited, the part follows it to the position it will have in the new list.
+   *
+   * The list is the slots in document order with their depth, so the new position is computed here:
+   * moving up takes the previous sibling's place; moving down lands after the next sibling's subtree.
+   */
+  protected moveSlot(index: number, direction: 'up' | 'down'): void {
+    const slots = this.target?.slots ?? [];
+    const slot = slots[index];
+    if (!slot) return;
+    const span = (at: number): number => {
+      let end = at + 1;
+      while (end < slots.length && slots[end].depth > slots[at].depth) end += 1;
+      return end - at;
+    };
+    let other = -1;
+    if (direction === 'up') {
+      for (let at = index - 1; at >= 0 && slots[at].depth >= slot.depth; at -= 1) {
+        if (slots[at].depth === slot.depth) {
+          if (slots[at].name === slot.name) other = at;
+          break;
+        }
+      }
+    } else {
+      const at = index + span(index);
+      if (at < slots.length && slots[at].depth === slot.depth && slots[at].name === slot.name) other = at;
+    }
+    if (other >= 0 && this.editPart === index) {
+      this.editPart = direction === 'up' ? other : index + span(other);
+    }
+    const detail: IPickerSlotMove = { slot: index, direction };
+    this.dispatchEvent(new CustomEvent('picker-slot-move', { detail, bubbles: true, composed: true }));
+  }
+
+  /**
    * The molecule's slots as the page nests them, with repeated siblings folded (`TableHead ×5`).
    *
    * A slot that only holds other slots (`TableHeader`, `TableRow`) is still a choice — it has a
@@ -1185,9 +1231,18 @@ export abstract class ClassPickerBase extends StateLitElement {
       const pad = (extra: number): string => `padding-left:${10 + (slot.depth + extra) * 12}px`;
       const node = (index: number, label: string, kind: string, indent = 0) => {
         const item = slots[index];
-        return html`<button type="button" class="acp-slot-node ${this.editPart === index ? 'acp-active' : ''} ${kind}"
+        const button = html`<button type="button" class="acp-slot-node ${this.editPart === index ? 'acp-active' : ''} ${kind}"
           style=${pad(indent)} title=${item.literal || t('panel.slotNoClasses')} @click=${() => choose(index)}
           >${label}<span class="acp-slot-hint">${item.literal}</span></button>`;
+        if (!item.moves?.length) return button;
+        const arrow = (direction: 'up' | 'down') => {
+          if (!item.moves.includes(direction)) return html`<span class="acp-slot-move-gap"></span>`;
+          const label = t(direction === 'up' ? 'panel.slotMoveUp' : 'panel.slotMoveDown');
+          const icon = direction === 'up' ? 'fa-arrow-up' : 'fa-arrow-down';
+          return html`<button type="button" class="acp-slot-move" title=${label} aria-label=${label}
+            @click=${() => this.moveSlot(index, direction)}><i class="fa-solid ${icon}"></i></button>`;
+        };
+        return html`<div class="acp-slot-row">${button}<span class="acp-slot-moves">${arrow('up')}${arrow('down')}</span></div>`;
       };
       if (end === at) {
         rows.push(node(at, slot.hint ? `${slot.name} · ${slot.hint}` : slot.name, container ? 'acp-slot-structure' : ''));

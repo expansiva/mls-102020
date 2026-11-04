@@ -432,6 +432,13 @@ const message_pt = {
     + ' parece não estar fechada',
   'reason.moveNoTarget': 'não há vizinho desse lado',
   'reason.moveStale': 'a fonte mudou desde essa movimentação',
+  'reason.slotMoveDynamic': 'esta lista vem dos dados ou de uma condição — a ordem se muda no código',
+  'reason.slotMovePairCount': 'uma linha não tem um item para cada posição — mover desalinharia o conteúdo',
+  'reason.slotMoveOverlap': 'as partes deste movimento se sobrepõem no código',
+  'panel.slotMoveUp': 'mover para cima',
+  'panel.slotMoveDown': 'mover para baixo',
+  'status.slotMoved': '{slot} movido',
+  'status.slotMovedPaired': '{slot} movido, junto com {count} item(ns) em par',
   // ── Duplicating and removing (TASK-102020-duplicate-remove) ──────────────
   'reason.sliceMountedRoot': 'este bloco é montado por uma chamada no código (${this.renderX()}) —'
     + ' duplicar ou remover ele é mexer na chamada, e isso ainda não dá para fazer daqui',
@@ -1125,6 +1132,13 @@ const message_en: typeof message_pt = {
     + ' look closed',
   'reason.moveNoTarget': 'there is no neighbour on that side',
   'reason.moveStale': 'the source changed since that move',
+  'reason.slotMoveDynamic': 'this list comes from the data or a condition — its order is changed in the code',
+  'reason.slotMovePairCount': 'a row does not have one item per position — moving would misalign the content',
+  'reason.slotMoveOverlap': 'the parts of this move overlap in the code',
+  'panel.slotMoveUp': 'move up',
+  'panel.slotMoveDown': 'move down',
+  'status.slotMoved': '{slot} moved',
+  'status.slotMovedPaired': '{slot} moved, along with {count} paired item(s)',
   'reason.sliceMountedRoot': 'this block is mounted by a call in the code (${this.renderX()}) —'
     + ' duplicating or removing it means touching the call, which cannot be done from here yet',
   'reason.sliceNoTarget': 'I could not identify this element in the code of this screen',

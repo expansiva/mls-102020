@@ -135,11 +135,18 @@ aura--studio--class-picker-102020 {
   .acp-part-sub { display: block; font-size: 10px; color: #64748b; }
   // The slot tree under the selector, as the page nests the slots.
   .acp-slot-tree { margin: 0 10px 6px; padding: 4px 0; border: 1px solid rgba(245,247,250,0.12); border-radius: 6px; }
-  .acp-slot-node { display: flex; gap: 6px; align-items: baseline; width: 100%; padding-top: 2px; padding-bottom: 2px; padding-right: 10px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; color: #e2e8f0; }
+  .acp-slot-node { display: flex; gap: 6px; align-items: baseline; width: 100%; white-space: nowrap; overflow: hidden; padding-top: 2px; padding-bottom: 2px; padding-right: 10px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; color: #e2e8f0; }
   .acp-slot-node:hover { background: rgba(245,247,250,0.06); }
   .acp-slot-node.acp-active { background: rgba(66,135,245,0.18); color: #9cc3ff; }
   .acp-slot-group, .acp-slot-structure { color: #94a3b8; }
   .acp-slot-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #64748b; font-size: 11px; }
+  .acp-slot-row { display: flex; align-items: center; }
+  .acp-slot-row .acp-slot-node { flex: 1; min-width: 0; }
+  .acp-slot-moves { display: flex; gap: 2px; padding-right: 6px; opacity: 0; }
+  .acp-slot-row:hover .acp-slot-moves, .acp-slot-row:focus-within .acp-slot-moves { opacity: 1; }
+  .acp-slot-move { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #94a3b8; font-size: 10px; cursor: pointer; }
+  .acp-slot-move:hover { background: rgba(245,247,250,0.1); color: #e2e8f0; }
+  .acp-slot-move-gap { width: 18px; }
   .acp-note.acp-warning { background: rgba(245,166,35,0.14); color: #ffd8a1; }
   .acp-note.acp-refusal { background: rgba(229,57,53,0.16); color: #ffc9c7; }
 

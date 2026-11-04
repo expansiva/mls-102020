@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/skills/groupLocatePosition/configuration.ts" enhancement="_blank"/>
 
-import type { IMoleculeConfigProp } from '/_102020_/l2/aura/molecules/shared/configuration.js';
+import type { IMoleculeConfigProp, IMoleculeSlotOrder } from '/_102020_/l2/aura/molecules/shared/configuration.js';
 
 export const group = 'groupLocatePosition';
 
@@ -13,4 +13,10 @@ export const group = 'groupLocatePosition';
 export const configuration: readonly IMoleculeConfigProp[] = [
   { property: 'showMap', attribute: 'show-map', type: 'boolean', default: false },
   { property: 'allowGeolocation', attribute: 'allow-geolocation', type: 'boolean', default: false },
+] as const;
+
+// Slot order: the suggestions are shown in the order written. Those that
+// come from data (inside a `.map()`) are never moved — their order is the data's.
+export const slotOrder: readonly IMoleculeSlotOrder[] = [
+  { slot: 'Item' },
 ] as const;

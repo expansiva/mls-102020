@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/skills/groupViewTable/configuration.ts" enhancement="_blank"/>
 
-import type { IMoleculeConfigProp } from '/_102020_/l2/aura/molecules/shared/configuration.js';
+import type { IMoleculeConfigProp, IMoleculeSlotOrder } from '/_102020_/l2/aura/molecules/shared/configuration.js';
 
 export const group = 'groupViewTable';
 
@@ -28,4 +28,11 @@ export const configuration: readonly IMoleculeConfigProp[] = [
       'groupviewtable--ml-side-detail-table',
     ],
   },
+] as const;
+
+// Slot order. Every table of the group reads the cells of a row BY POSITION against the headers
+// (`cells[columnIndex]`) — the `key` of a `TableHead` only sorts the data. Moving a column therefore
+// moves the header AND the cell at the same position in every row.
+export const slotOrder: readonly IMoleculeSlotOrder[] = [
+  { slot: 'TableHead', pairs: [{ slot: 'TableCell', within: 'TableRow' }] },
 ] as const;

@@ -5,6 +5,7 @@ import test from 'node:test';
 import { scanTemplateTree } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import {
   MOVE_MOUNTED_ROOT,
+  MOVE_NO_TARGET,
   MOVE_NOT_SIBLING,
   MOVE_SAME_NODE,
   MOVE_STALE,
@@ -13,8 +14,11 @@ import {
   SLICE_NO_TARGET,
   SLICE_STALE,
   SLICE_UNCLOSED,
+  SLOT_MOVE_DYNAMIC,
+  SLOT_MOVE_PAIR_COUNT,
   applyInsert,
   applyMove,
+  applyMoves,
   applyRemove,
   duplicatedIds,
   planDuplicate,
@@ -22,7 +26,9 @@ import {
   planRemove,
   planRemoveSlice,
   planRestore,
+  planPartsReverse,
   planReverse,
+  planSlotMove,
   siblingsOf,
 } from '/_102020_/l2/aura/studio/studioMoveEdit.js';
 
@@ -559,4 +565,146 @@ test('the slice operations need no sibling — that is why they reach more than 
   assert.ok(resolve.includes('resolveStructuralAnchor('), 'resolved by position in the tree');
   assert.equal(resolve.includes('domSibling'), false, 'and never by asking for a neighbour');
   assert.equal(resolve.includes('resolveAnchor('), false, 'never by counting a literal');
+});
+
+// ── Reordering a molecule's slots, with what is paired to them ───────────────────────────────────
+
+/** A table in the shape the generator emits (102047 agendaClinica/profissionais): static headers, one body row in a `.map()`. */
+const TABLE = [
+  'render() { return html`<groupviewtable--ml-data-table>',
+  '<TableHeader><TableRow>',
+  '<TableHead key="name">${this.msg.name}</TableHead>',
+  '<TableHead key="type">${this.msg.type}</TableHead>',
+  '<TableHead key="status">${this.msg.status}</TableHead>',
+  '</TableRow></TableHeader>',
+  '<TableBody>${this.items.map((item) => html`',
+  '<TableRow>',
+  '<TableCell>${item.name}</TableCell>',
+  '<TableCell>${item.type}</TableCell>',
+  '<TableCell>${item.status}</TableCell>',
+  '</TableRow>`)}</TableBody>',
+  '<TableFooter><TableRow><TableCell>a</TableCell><TableCell>b</TableCell><TableCell>c</TableCell></TableRow></TableFooter>',
+  '</groupviewtable--ml-data-table>`; }',
+].join('\n');
+
+const TABLE_RULE = { pairs: [{ slot: 'TableCell', within: 'TableRow' }] };
+
+/** The node of the n-th (0-based) element with this tag. */
+function nth(tree: ReturnType<typeof scanTemplateTree>, tag: string, n: number): number {
+  const found = tree.elements.flatMap((element, i) => (element.tag === tag.toLowerCase() ? [i] : []));
+  return found[n];
+}
+
+/** The text of every element with this tag, in source order — what the order on screen will be. */
+function texts(source: string, tag: string): string[] {
+  return [...source.matchAll(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, 'gu'))].map((m) => m[1]);
+}
+
+test('moving a header moves the cell at the same position in every row, in one write', () => {
+  const tree = scanTemplateTree(TABLE);
+  const plan = planSlotMove(TABLE, tree, nth(tree, 'TableHead', 1), 'up', TABLE_RULE);
+  assert.ok(plan.ok, JSON.stringify(plan));
+  assert.equal(plan.paired, 2, 'the body row and the footer row');
+
+  const result = applyMoves(TABLE, plan.moves);
+  assert.ok(result.ok);
+  assert.deepEqual(texts(result.source, 'TableHead'), ['${this.msg.type}', '${this.msg.name}', '${this.msg.status}']);
+  assert.deepEqual(texts(result.source, 'TableCell'), ['${item.type}', '${item.name}', '${item.status}', 'b', 'a', 'c']);
+  assert.equal(result.source.length, TABLE.length);
+});
+
+test('the undo of a paired move restores the file byte for byte, and the redo moves it again', () => {
+  const tree = scanTemplateTree(TABLE);
+  const plan = planSlotMove(TABLE, tree, nth(tree, 'TableHead', 1), 'down', TABLE_RULE);
+  assert.ok(plan.ok);
+  const forward = applyMoves(TABLE, plan.moves);
+  assert.ok(forward.ok);
+
+  const back = planPartsReverse(forward.source, forward.parts, true);
+  assert.ok(back.ok);
+  const undone = applyMoves(forward.source, back.plans);
+  assert.ok(undone.ok);
+  assert.equal(undone.source, TABLE);
+
+  const again = planPartsReverse(undone.source, forward.parts, false);
+  assert.ok(again.ok);
+  const redone = applyMoves(undone.source, again.plans);
+  assert.ok(redone.ok);
+  assert.equal(redone.source, forward.source);
+});
+
+test('a stale part refuses the whole undo', () => {
+  const tree = scanTemplateTree(TABLE);
+  const plan = planSlotMove(TABLE, tree, nth(tree, 'TableHead', 0), 'down', TABLE_RULE);
+  assert.ok(plan.ok);
+  const forward = applyMoves(TABLE, plan.moves);
+  assert.ok(forward.ok);
+  // Someone rewrote a moved footer cell after the move.
+  const edited = forward.source.replace('<TableCell>a</TableCell>', '<TableCell>A</TableCell>');
+  const back = planPartsReverse(edited, forward.parts, true);
+  assert.equal(back.ok, false);
+  if (!back.ok) assert.equal(back.reason, MOVE_STALE);
+});
+
+test('a row with a different number of cells refuses the move — never half a column', () => {
+  const source = TABLE.replace('<TableCell>c</TableCell>', '');
+  const tree = scanTemplateTree(source);
+  const plan = planSlotMove(source, tree, nth(tree, 'TableHead', 1), 'up', TABLE_RULE);
+  assert.deepEqual(plan, { ok: false, reason: SLOT_MOVE_PAIR_COUNT });
+});
+
+test('a cell under a condition refuses the move', () => {
+  const source = TABLE.replace(
+    '<TableCell>${item.type}</TableCell>',
+    '${item.ok ? html`<TableCell>${item.type}</TableCell>` : html`<TableCell>-</TableCell>`}',
+  );
+  const tree = scanTemplateTree(source);
+  const plan = planSlotMove(source, tree, nth(tree, 'TableHead', 0), 'down', TABLE_RULE);
+  assert.deepEqual(plan, { ok: false, reason: SLOT_MOVE_DYNAMIC });
+});
+
+test('a slot repeated by the data never moves, even declared', () => {
+  const source = [
+    'render() { return html`<groupnavigatesection--ml-tabs>',
+    '${this.tabs.map((tab) => html`<Tab>${tab.label}</Tab>`)}',
+    '<Tab>Fixa</Tab>',
+    '</groupnavigatesection--ml-tabs>`; }',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  assert.deepEqual(planSlotMove(source, tree, nth(tree, 'Tab', 1), 'up', {}), { ok: false, reason: SLOT_MOVE_DYNAMIC });
+});
+
+test('a slot without pairs moves alone; the ends have no neighbour', () => {
+  const source = [
+    'render() { return html`<groupnavigatesection--ml-tabs>',
+    '<Tab>Um</Tab><Tab>Dois</Tab><Tab>Tres</Tab>',
+    '</groupnavigatesection--ml-tabs>`; }',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  assert.deepEqual(planSlotMove(source, tree, nth(tree, 'Tab', 0), 'up', {}), { ok: false, reason: MOVE_NO_TARGET });
+  assert.deepEqual(planSlotMove(source, tree, nth(tree, 'Tab', 2), 'down', {}), { ok: false, reason: MOVE_NO_TARGET });
+
+  const plan = planSlotMove(source, tree, nth(tree, 'Tab', 2), 'up', {});
+  assert.ok(plan.ok);
+  assert.equal(plan.paired, 0);
+  const result = applyMoves(source, plan.moves);
+  assert.ok(result.ok);
+  assert.deepEqual(texts(result.source, 'Tab'), ['Um', 'Tres', 'Dois']);
+});
+
+test('the pairs are looked for in the same molecule only', () => {
+  const second = [
+    'renderOther() { return html`<groupviewtable--ml-other>',
+    '<TableHeader><TableRow><TableHead>x</TableHead><TableHead>y</TableHead></TableRow></TableHeader>',
+    '<TableBody><TableRow><TableCell>1</TableCell><TableCell>2</TableCell></TableRow></TableBody>',
+    '</groupviewtable--ml-other>`; }',
+  ].join('\n');
+  const source = `${TABLE}\n${second}`;
+  const tree = scanTemplateTree(source);
+  const plan = planSlotMove(source, tree, nth(tree, 'TableHead', 1), 'up', TABLE_RULE);
+  assert.ok(plan.ok);
+  assert.equal(plan.paired, 2, 'the second table is not touched');
+  const result = applyMoves(source, plan.moves);
+  assert.ok(result.ok);
+  assert.equal(result.source.slice(TABLE.length), source.slice(TABLE.length));
 });

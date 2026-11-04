@@ -36,6 +36,7 @@ export type {
   IPickerProps,
   IPickerSide,
   IPickerSlot,
+  IPickerSlotMove,
   IPickerTarget,
   IPickerText,
   IPickerTextEdit,

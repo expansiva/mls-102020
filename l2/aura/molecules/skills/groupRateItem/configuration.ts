@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/skills/groupRateItem/configuration.ts" enhancement="_blank"/>
 
-import type { IMoleculeConfigProp } from '/_102020_/l2/aura/molecules/shared/configuration.js';
+import type { IMoleculeConfigProp, IMoleculeSlotOrder } from '/_102020_/l2/aura/molecules/shared/configuration.js';
 
 export const group = 'groupRateItem';
 
@@ -13,4 +13,9 @@ export const configuration: readonly IMoleculeConfigProp[] = [
   { property: 'min', type: 'number', default: 0, defaults: { 'grouprateitem--ml-csat-rating': 1 } },
   { property: 'max', type: 'number', default: 5 },
   { property: 'step', type: 'number', default: 1, min: 0 },
+] as const;
+
+// Slot order: the rating options are shown in the order written.
+export const slotOrder: readonly IMoleculeSlotOrder[] = [
+  { slot: 'Item' },
 ] as const;

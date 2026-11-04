@@ -51,6 +51,7 @@ import {
   type IPickerPropEdit,
   type IPickerProps,
   type IPickerTarget,
+  type IPickerSlotMove,
   type IPickerTextEdit,
 } from '/_102020_/l2/aura/studio/classPickerPanel.js';
 import {
@@ -69,7 +70,10 @@ import {
 import {
   configurationFor,
   loadGroupConfiguration,
+  loadGroupSlotOrder,
+  slotOrderFor,
   type IMoleculeConfigProp,
+  type IMoleculeSlotOrder,
 } from '/_102020_/l2/aura/molecules/shared/configuration.js';
 import { getClassPickerMode, onDockedClassPickerChange, type IClassPickerSink } from '/_102020_/l2/aura/studio/classPickerDock.js';
 import {
@@ -133,14 +137,18 @@ import {
   SLICE_NO_TARGET,
   applyInsert,
   applyMove,
+  applyMoves,
   applyRemove,
   duplicatedIds,
   planDuplicate,
   planMove,
+  planPartsReverse,
   planRemove,
   planRemoveSlice,
   planRestore,
   planReverse,
+  planSlotMove,
+  type IMovedPart,
   type IMovePlan,
 } from '/_102020_/l2/aura/studio/studioMoveEdit.js';
 import {
@@ -303,13 +311,21 @@ function slotTagsOf(el: Element): Set<string> | null {
 }
 
 /**
- * A slot's own text, cut short, for the panel's tree. Only a slot with no slot inside it: a
- * `<TableRow>` would read as all of its cells glued together.
+ * What tells a slot from its same-name siblings in the panel's tree, cut short.
+ *
+ * A naming attribute first: a `<Tab title="…">` is named by its `title`, and its text is the tab's
+ * CONTENT — two tabs with the same paragraph would read the same. Otherwise the slot's own text (a
+ * `<TableHead>`'s is its column title), only for a slot with no slot inside it: a `<TableRow>` would
+ * read as all of its cells glued together.
  */
 function slotHint(el: HTMLElement, tags: Set<string>): string {
+  const cut = (text: string): string => (text.length > 24 ? `${text.slice(0, 24)}…` : text);
+  for (const attribute of ['title', 'label']) {
+    const named = (el.getAttribute(attribute) ?? '').replace(/\s+/gu, ' ').trim();
+    if (named) return cut(named);
+  }
   if (Array.from(el.children).some((child) => tags.has(child.tagName))) return '';
-  const text = (el.textContent ?? '').replace(/\s+/gu, ' ').trim();
-  return text.length > 24 ? `${text.slice(0, 24)}…` : text;
+  return cut((el.textContent ?? '').replace(/\s+/gu, ' ').trim());
 }
 
 function anchorPathOf(anchor: ClassAnchor | null): IDomPathStep[] | null {
@@ -478,6 +494,22 @@ type EditStep =
     to: { start: number; end: number };
     what: string;
     el: WeakRef<HTMLElement>;
+  }
+  | {
+    /**
+     * A molecule's slot moved among its same-name siblings, with the slots paired to it by position
+     * (the cells of a column). Several splices in ONE step: undoing the header and leaving the cells
+     * would be the misaligned table the move refused to write.
+     */
+    kind: 'slotMove';
+    file: IStudioEditTarget;
+    /** Every part, each with its text — the revalidation, as for a single move. */
+    parts: IMovedPart[];
+    /** The way the forward move went, and the slot's pairs — to replay the screen. */
+    direction: 'up' | 'down';
+    order: IMoleculeSlotOrder;
+    what: string;
+    el: WeakRef<HTMLElement>;
   };
 
 /**
@@ -579,6 +611,8 @@ interface ISlotSide extends IChannelSide {
   depth: number;
   /** The slot's own text, cut short — what tells two slots of the same name apart in the tree. */
   hint: string;
+  /** Its entry in the group's `slotOrder` — null when the group does not let it be reordered. */
+  order: IMoleculeSlotOrder | null;
 }
 
 interface IClassPanelState {
@@ -1992,6 +2026,7 @@ export class StudioEditor {
     method('picker-redo', this.onPickerRedo);
     method('picker-move-up', this.onPickerMoveUp);
     method('picker-move-down', this.onPickerMoveDown);
+    method('picker-slot-move', this.onPickerSlotMove as EventListener);
     method('picker-duplicate', this.onPickerDuplicate);
     method('picker-remove', this.onPickerRemove);
     method('picker-text', this.onPickerText as EventListener);
@@ -2069,6 +2104,11 @@ export class StudioEditor {
 
   private onPickerMoveDown = (): void => {
     void this.moveSelected('down');
+  };
+
+  /** An arrow of the slot tree: one slot one place, with its pairs. */
+  private onPickerSlotMove = (e: CustomEvent<IPickerSlotMove>): void => {
+    void this.moveSlot(e.detail.slot, e.detail.direction);
   };
 
   /** A text attribute was edited in the panel: same writer as the text between tags. */
@@ -2384,6 +2424,10 @@ export class StudioEditor {
 
     const declared = slotTagsOf(molecule);
     const names = (molecule as unknown as { slotTags?: string[] }).slotTags ?? [];
+    // Which slots may be reordered is the group's decision, read from its `configuration.ts`.
+    const tag = molecule.tagName.toLowerCase();
+    const group = declared ? await moleculeGroupOf(tag) : null;
+    const order = group ? slotOrderFor(tag, await loadGroupSlotOrder(group)) : [];
     const seen = new Set<string>();
     const counts = new Map<string, number>();
     const sides: ISlotSide[] = [];
@@ -2393,6 +2437,7 @@ export class StudioEditor {
       const side: ISlotSide = {
         el, name, index: 0, depth: this.slotDepth(el, molecule), hint: slotHint(el, declared),
         literal: el.getAttribute('data-class') ?? '', file: null, anchor: null,
+        order: order.find((entry) => entry.slot.toUpperCase() === el.tagName) ?? null,
       };
       const key = await this.resolveDataClassAnchor(el, side.literal, side, treeOf);
       if (key) {
@@ -2806,6 +2851,7 @@ export class StudioEditor {
     // real planners answer before the user reaches for one.
     const moves = this.moveOptions(state.el);
     const slice = this.sliceOptions(state.el);
+    const slotMoves = this.slotMoveOptions(state);
 
     // Read once per session: the built sheet is a static file and does not change while the app runs.
     if (!this.builtClasses) this.builtClasses = builtCssClassNames();
@@ -2828,8 +2874,9 @@ export class StudioEditor {
         : undefined,
       // The molecule's slots, as data: the "Slots" section. The position in this array is the handle
       // the panel sends back.
-      slots: state.slots.map((slot) => ({
+      slots: state.slots.map((slot, at) => ({
         name: slot.name,
+        moves: slotMoves[at] ?? [],
         index: slot.index,
         repeated: state.slots.filter((other) => other.name === slot.name).length > 1,
         depth: slot.depth,
@@ -3718,6 +3765,175 @@ export class StudioEditor {
     return true;
   }
 
+  // --- Reordering a molecule's slots, with the slots paired to them ---
+
+  /**
+   * Which ways each slot of the selection can move, by position in `state.slots`.
+   *
+   * Only slots the group declared in its `slotOrder`, and answered by the real planner before the
+   * gesture — the element move's discipline: an arrow that shows is an arrow that writes.
+   */
+  private slotMoveOptions(state: IClassPanelState): ('up' | 'down')[][] {
+    const trees = new Map<IStudioEditTarget, ITemplateTree>();
+    return state.slots.map((slot) => {
+      if (!slot.order) return [];
+      return (['up', 'down'] as const).filter((direction) => this.resolveSlotMove(slot, direction, trees).ok);
+    });
+  }
+
+  /** The slot move, fully resolved: which file, and every splice it needs (the slot's and its pairs'). */
+  private resolveSlotMove(
+    slot: ISlotSide,
+    direction: 'up' | 'down',
+    trees: Map<IStudioEditTarget, ITemplateTree> = new Map(),
+  ): (
+    { ok: true; file: IStudioEditTarget; plans: IMovePlan[]; paired: number }
+    | { ok: false; reason: IMessageRef }
+  ) {
+    if (!slot.order) return { ok: false, reason: MOVE_NO_TARGET };
+    const path = this.domPathOf(slot.el);
+    if (!path.length) return { ok: false, reason: NOT_LOCATED };
+
+    for (const candidate of this.candidates ?? (this.target ? [this.target] : [])) {
+      const source = candidate.model.model.getValue();
+      let tree = trees.get(candidate);
+      if (!tree) {
+        tree = scanTemplateTree(source);
+        trees.set(candidate, tree);
+      }
+      const resolved = resolveStructuralAnchor(tree, path);
+      if (!resolved.ok) continue;
+      // A slot inside a `.map()` or a condition is refused by the planner, on the source.
+      const plan = planSlotMove(source, tree, tree.elements.indexOf(resolved.element), direction, slot.order);
+      if (!plan.ok) return { ok: false, reason: plan.reason };
+      return { ok: true, file: candidate, plans: plan.moves, paired: plan.paired };
+    }
+    return { ok: false, reason: NOT_LOCATED };
+  }
+
+  /** Moves one slot of the selected molecule one place, with its pairs — from the panel's slot tree. */
+  public async moveSlot(index: number, direction: 'up' | 'down'): Promise<void> {
+    if (this.mode === 'off') return;
+    const state = this.classPanel;
+    const slot = state?.slots[index];
+    if (!state || !slot?.el.isConnected || !slot.order) {
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    const resolved = this.resolveSlotMove(slot, direction);
+    if (!resolved.ok) {
+      this.setStatus(tr(resolved.reason));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      const label = slot.hint ? `${slot.name} · ${slot.hint}` : slot.name;
+      const what = resolved.paired
+        ? t('status.slotMovedPaired', { slot: label, count: resolved.paired })
+        : t('status.slotMoved', { slot: label });
+      await this.writeSlotMove({
+        file: resolved.file,
+        plans: resolved.plans,
+        el: slot.el,
+        direction,
+        order: slot.order,
+        what,
+        record: true,
+      });
+    } finally {
+      this.applying = false;
+    }
+
+    await this.showClassPanel(state.el);
+  }
+
+  /**
+   * The ONE place a slot move is written — for the arrows and for the undo.
+   *
+   * The screen follows the source: the slot and each paired slot are moved in the DOM the way their
+   * slices went, and the molecule redraws on its own (it observes its slots). Every rendered row is
+   * mirrored, not only the first — a `TableRow` inside a `.map()` is one slice in the source and many
+   * rows on screen.
+   */
+  private async writeSlotMove(write: {
+    file: IStudioEditTarget;
+    plans: IMovePlan[];
+    el: HTMLElement | null;
+    direction: 'up' | 'down';
+    order: IMoleculeSlotOrder;
+    what: string;
+    record: boolean;
+  }): Promise<boolean> {
+    const { file, what } = write;
+    const result = applyMoves(file.model.model.getValue(), write.plans);
+    if (!result.ok) {
+      this.setStatus(tr(result.reason));
+      return false;
+    }
+
+    const el = write.el?.isConnected ? write.el : null;
+    if (el) this.mirrorSlotMove(el, write.direction, write.order);
+
+    await this.commitSource(file, result.source, what);
+    if (el) this.drawSelection();
+    else this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
+
+    if (write.record && write.el) {
+      this.history.push({
+        kind: 'slotMove',
+        file,
+        parts: result.parts,
+        direction: write.direction,
+        order: write.order,
+        what,
+        el: new WeakRef(write.el),
+      });
+    }
+    return true;
+  }
+
+  /** The same move on screen: the slot among its same-name siblings, and each pair in every holder. */
+  private mirrorSlotMove(el: HTMLElement, direction: 'up' | 'down', order: IMoleculeSlotOrder): void {
+    const parent = el.parentElement;
+    if (!parent) return;
+    const swap = (list: Element[], from: number): void => {
+      const to = from + (direction === 'up' ? -1 : 1);
+      const node = list[from];
+      const other = list[to];
+      if (!node || !other || !node.parentElement) return;
+      node.parentElement.insertBefore(node, direction === 'up' ? other : other.nextSibling);
+    };
+
+    const siblings = Array.from(parent.children).filter((child) => child.tagName === el.tagName);
+    const from = siblings.indexOf(el);
+    if (from < 0) return;
+    swap(siblings, from);
+
+    let molecule: HTMLElement | null = parent;
+    while (molecule && !slotTagsOf(molecule)) molecule = molecule.parentElement;
+    if (!molecule) return;
+    const owner = molecule;
+    for (const pair of order.pairs ?? []) {
+      const holders = Array.from(owner.getElementsByTagName(pair.within))
+        // Not a nested molecule's own rows: the nearest molecule above the holder has to be this one.
+        .filter((holder) => {
+          let up = holder.parentElement;
+          while (up && up !== owner && !slotTagsOf(up)) up = up.parentElement;
+          return up === owner;
+        });
+      for (const holder of holders) {
+        const cells = Array.from(holder.children).filter((child) => child.tagName === pair.slot.toUpperCase());
+        if (cells.length === siblings.length) swap(cells, from);
+      }
+    }
+  }
+
   // --- Duplicating and removing (TASK-102020-duplicate-remove) ---
 
   /**
@@ -4449,6 +4665,22 @@ export class StudioEditor {
         : planReverse(source, landed, step.slice, step.to.start);
       if (!back.ok) return false;
       return this.writeMove({ file, plan: back, el: step.el.deref() ?? null, what, record: false });
+    }
+
+    if (step.kind === 'slotMove') {
+      // Every part revalidated on its text, all or none — the same all-or-nothing as the forward move.
+      const back = planPartsReverse(step.file.model.model.getValue(), step.parts, undoing);
+      if (!back.ok) return false;
+      const reversed = step.direction === 'up' ? 'down' : 'up';
+      return this.writeSlotMove({
+        file: step.file,
+        plans: back.plans,
+        el: step.el.deref() ?? null,
+        direction: undoing ? reversed : step.direction,
+        order: step.order,
+        what,
+        record: false,
+      });
     }
 
     const from = undoing ? step.after : step.before;

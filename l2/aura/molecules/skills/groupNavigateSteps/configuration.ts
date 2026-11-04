@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/skills/groupNavigateSteps/configuration.ts" enhancement="_blank"/>
 
-import type { IMoleculeConfigProp } from '/_102020_/l2/aura/molecules/shared/configuration.js';
+import type { IMoleculeConfigProp, IMoleculeSlotOrder } from '/_102020_/l2/aura/molecules/shared/configuration.js';
 
 export const group = 'groupNavigateSteps';
 
@@ -9,4 +9,10 @@ export const group = 'groupNavigateSteps';
 // - `linear`: decides whether steps must be completed in order — in (design-time UX decision).
 export const configuration: readonly IMoleculeConfigProp[] = [
   { property: 'linear', type: 'boolean', default: true },
+] as const;
+
+// Slot order: the steps are shown in the order written. No pair — a
+// step's content lives inside its own `Step`.
+export const slotOrder: readonly IMoleculeSlotOrder[] = [
+  { slot: 'Step' },
 ] as const;

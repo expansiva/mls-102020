@@ -169,11 +169,18 @@ aura--studio--page-class-picker-102020 {
   .acp-part-sub { display: block; font-size: 10px; color: var(--pcp-faint); }
   // The slot tree under the selector, as the page nests the slots.
   .acp-slot-tree { margin: 0 10px 6px; padding: 4px 0; border: 1px solid var(--pcp-border); border-radius: 6px; }
-  .acp-slot-node { display: flex; gap: 6px; align-items: baseline; width: 100%; padding-top: 2px; padding-bottom: 2px; padding-right: 10px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; color: var(--pcp-text); }
+  .acp-slot-node { display: flex; gap: 6px; align-items: baseline; width: 100%; white-space: nowrap; overflow: hidden; padding-top: 2px; padding-bottom: 2px; padding-right: 10px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; color: var(--pcp-text); }
   .acp-slot-node:hover { background: var(--pcp-accent-faint); }
   .acp-slot-node.acp-active { background: var(--pcp-accent-soft); color: var(--pcp-strong); }
   .acp-slot-group, .acp-slot-structure { color: var(--pcp-muted); }
   .acp-slot-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pcp-faint); font-size: 11px; }
+  .acp-slot-row { display: flex; align-items: center; }
+  .acp-slot-row .acp-slot-node { flex: 1; min-width: 0; }
+  .acp-slot-moves { display: flex; gap: 2px; padding-right: 6px; opacity: 0; }
+  .acp-slot-row:hover .acp-slot-moves, .acp-slot-row:focus-within .acp-slot-moves { opacity: 1; }
+  .acp-slot-move { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--pcp-faint); font-size: 10px; cursor: pointer; }
+  .acp-slot-move:hover { background: var(--pcp-accent-faint); color: var(--pcp-text); }
+  .acp-slot-move-gap { width: 18px; }
   .acp-note.acp-warning { background: var(--pcp-warn-bg); color: var(--pcp-warn-text); }
   .acp-note.acp-refusal { background: var(--pcp-err-bg); color: var(--pcp-err-text); }
 

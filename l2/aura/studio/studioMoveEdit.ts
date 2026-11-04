@@ -389,3 +389,186 @@ export function duplicatedIds(slice: string): string[] {
   for (const match of slice.matchAll(/(?<![\w.?@:-])id\s*=\s*"([^"$]+)"/gu)) found.add(match[1]);
   return [...found];
 }
+
+// ── Reordering a molecule's slots, with what is paired to them ───────────────────────────────────
+//
+// A slot whose order the molecule shows (a column, a tab, a step) is moved like any sibling — but some
+// slots are matched BY POSITION to slots elsewhere: a table reads the cells of each row against its
+// headers (`cells[columnIndex]`), so `TableHead` 2 and the 2nd `TableCell` of every `TableRow` are one
+// column. Which slots move and which are paired is declared per group (`slotOrder` in the group's
+// `configuration.ts`); this only executes it.
+//
+// ONE WRITE OR NONE. Every part is planned against the same source before anything is written: a row
+// whose cell count differs, a cell under a condition, a slot repeated by the data — any of them refuses
+// the whole move. A header moved without its cells is a table that is wrong in silence.
+//
+// WHY THE PARTS CAN BE PLANNED TOGETHER. A move only permutes the bytes inside the span it touches
+// (`[min(start, insertAt), max(end, insertAt))`) and keeps the length of the source. Parts in disjoint
+// spans therefore never shift each other's offsets, so all of them are planned on the original source
+// and applied one by one — and their undo works the same way.
+
+export const SLOT_MOVE_DYNAMIC: IMessageRef = { id: 'reason.slotMoveDynamic' };
+export const SLOT_MOVE_PAIR_COUNT: IMessageRef = { id: 'reason.slotMovePairCount' };
+export const SLOT_MOVE_OVERLAP: IMessageRef = { id: 'reason.slotMoveOverlap' };
+
+/** The pairs of a declared slot, as the group's `slotOrder` spells them. */
+export interface ISlotMoveRule {
+  pairs?: readonly { slot: string; within: string }[];
+}
+
+export interface ISlotMovePlan {
+  ok: true;
+  /** The slot's own move first, then one per paired slot moved with it. */
+  moves: IMovePlan[];
+  /** How many paired slots move along (the cells of a column) — for the status line. */
+  paired: number;
+}
+
+export type SlotMovePlan = ISlotMovePlan | { ok: false; reason: IMessageRef };
+
+/** One applied part: the text that moved, where it was, and where it landed — the undo's address. */
+export interface IMovedPart {
+  slice: string;
+  from: number;
+  to: { start: number; end: number };
+}
+
+export type MovesResult =
+  | { ok: true; source: string; parts: IMovedPart[] }
+  | { ok: false; reason: IMessageRef };
+
+/** The span a move rewrites: nothing outside it changes, offsets included. */
+function spanOf(plan: IMovePlan): { start: number; end: number } {
+  return {
+    start: Math.min(plan.slice.start, plan.insertAt),
+    end: Math.max(plan.slice.end, plan.insertAt),
+  };
+}
+
+function disjoint(plans: readonly IMovePlan[]): boolean {
+  const spans = plans.map(spanOf).sort((a, b) => a.start - b.start);
+  return spans.every((span, i) => i === 0 || spans[i - 1].end <= span.start);
+}
+
+/**
+ * Whether a slot is written once per position in the source — not repeated by the data (a `.map()`)
+ * nor chosen by a condition (a ternary).
+ *
+ * Its innermost `${...}` has to be its parent's: a `TableCell` inside the `${rows.map(…)}` that holds
+ * its `TableRow` is static RELATIVE TO THE ROW (moving it moves the column for every row), while a
+ * `TableCell` under its own `${cond ? … : …}` is a position that may not exist.
+ */
+function staticIn(tree: ITemplateTree, index: number, parent: number): boolean {
+  const element = tree.elements[index];
+  const holder = tree.elements[parent];
+  return Boolean(element && holder) && element.expression === holder.expression;
+}
+
+/** The molecule a slot belongs to in the source: the nearest ancestor whose tag is a custom element. */
+function moleculeOf(tree: ITemplateTree, index: number): number {
+  for (let at = tree.elements[index]?.parent ?? -1; at >= 0; at = tree.elements[at].parent) {
+    if (tree.elements[at].tag.includes('-')) return at;
+  }
+  return -1;
+}
+
+/** The children of `parent` with this tag, in source order. */
+function childrenTagged(tree: ITemplateTree, parent: number, tag: string): number[] {
+  const out: number[] = [];
+  for (const [i, element] of tree.elements.entries()) {
+    if (element.parent === parent && element.tag === tag) out.push(i);
+  }
+  return out;
+}
+
+/**
+ * Moves a slot one place among its same-name siblings, and its paired slots with it.
+ *
+ * `moved` is the slot's node in `tree`; `rule` is its `slotOrder` entry. The answer is every splice the
+ * move needs, or the one reason none of them can happen.
+ */
+export function planSlotMove(
+  source: string,
+  tree: ITemplateTree,
+  moved: number,
+  direction: 'up' | 'down',
+  rule: ISlotMoveRule,
+): SlotMovePlan {
+  const element = tree.elements[moved];
+  if (!element) return { ok: false, reason: MOVE_NO_TARGET };
+  if (isMountedRoot(tree, moved) || element.parent < 0) return { ok: false, reason: MOVE_MOUNTED_ROOT };
+
+  const siblings = childrenTagged(tree, element.parent, element.tag);
+  // Every sibling, not only the two that swap: the pairs are matched by position, and a position that
+  // comes from the data or a condition makes every index after it a guess.
+  if (!siblings.every((index) => staticIn(tree, index, element.parent))) {
+    return { ok: false, reason: SLOT_MOVE_DYNAMIC };
+  }
+  const from = siblings.indexOf(moved);
+  const to = from + (direction === 'up' ? -1 : 1);
+  if (from < 0 || to < 0 || to >= siblings.length) return { ok: false, reason: MOVE_NO_TARGET };
+
+  const side = direction === 'up' ? 'before' : 'after';
+  const own = planMove(source, tree, moved, siblings[to], side);
+  if (!own.ok) return own;
+  const moves: IMovePlan[] = [own];
+
+  const molecule = moleculeOf(tree, moved);
+  for (const pair of rule.pairs ?? []) {
+    const slot = pair.slot.toLowerCase();
+    const within = pair.within.toLowerCase();
+    for (const [holder, candidate] of tree.elements.entries()) {
+      if (candidate.tag !== within || moleculeOf(tree, holder) !== molecule) continue;
+      const cells = childrenTagged(tree, holder, slot);
+      // A holder with none of them is another kind of row (the header's own `TableRow`).
+      if (!cells.length) continue;
+      if (!cells.every((cell) => staticIn(tree, cell, holder))) return { ok: false, reason: SLOT_MOVE_DYNAMIC };
+      if (cells.length !== siblings.length) return { ok: false, reason: SLOT_MOVE_PAIR_COUNT };
+      const plan = planMove(source, tree, cells[from], cells[to], side);
+      if (!plan.ok) return plan;
+      moves.push(plan);
+    }
+  }
+
+  if (!disjoint(moves)) return { ok: false, reason: SLOT_MOVE_OVERLAP };
+  return { ok: true, moves, paired: moves.length - 1 };
+}
+
+/**
+ * Applies moves planned on the SAME source, all or none.
+ *
+ * Each part is applied on the result of the previous one with its original offsets, which holds because
+ * the spans are disjoint and a move keeps the length (see above). Checked again here: the plans may come
+ * from an undo, rebuilt from a history step.
+ */
+export function applyMoves(source: string, plans: readonly IMovePlan[]): MovesResult {
+  if (!plans.length) return { ok: false, reason: MOVE_NO_TARGET };
+  if (!disjoint(plans)) return { ok: false, reason: SLOT_MOVE_OVERLAP };
+  let current = source;
+  const parts: IMovedPart[] = [];
+  for (const plan of plans) {
+    const result = applyMove(current, plan);
+    if (!result.ok) return result;
+    parts.push({ slice: current.slice(plan.slice.start, plan.slice.end), from: plan.slice.start, to: result.moved });
+    current = result.source;
+  }
+  return { ok: true, source: current, parts };
+}
+
+/**
+ * The plans that put every part back — or, `undoing: false`, that move them again (redo).
+ *
+ * Each part is revalidated on its TEXT, like `planReverse`; one stale part refuses the whole step.
+ */
+export function planPartsReverse(source: string, parts: readonly IMovedPart[], undoing: boolean): (
+  { ok: true; plans: IMovePlan[] } | { ok: false; reason: IMessageRef }
+) {
+  const plans: IMovePlan[] = [];
+  for (const part of parts) {
+    const landed = undoing ? part.to : { start: part.from, end: part.from + part.slice.length };
+    const back = planReverse(source, landed, part.slice, undoing ? part.from : part.to.start);
+    if (!back.ok) return back;
+    plans.push(back);
+  }
+  return { ok: true, plans };
+}

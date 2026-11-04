@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { IMoleculeConfigProp } from '/_102020_/l2/aura/molecules/shared/configuration.js';
+import type { IMoleculeConfigProp, IMoleculeSlotOrder } from '/_102020_/l2/aura/molecules/shared/configuration.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = join(HERE, '..', 'skills');
@@ -415,4 +415,66 @@ test("groupTriggerAction: 'data-variant' is enum with 'only' for ml-button-stand
   assert.ok(Array.isArray(prop!.values) && prop!.values.length > 0, 'values must be set');
   assert.ok(Array.isArray(prop!.only) && prop!.only.length > 0, 'only must be set');
   assert.ok(prop!.only!.some((t) => t.includes('ml-button-standard')), 'only must include ml-button-standard');
+});
+
+// ─── slot order ──────────────────────────────────────────────────────────────
+
+/** The `export const slotOrder = [...]` literal of a group, evaluated; null when there is none. */
+function loadGroupSlotOrder(group: string): readonly IMoleculeSlotOrder[] | null {
+  const path = join(SKILLS_DIR, group, 'configuration.ts');
+  if (!existsSync(path)) return null;
+  const text = readFileSync(path, 'utf8');
+  const header = /export const slotOrder:\s*readonly\s+IMoleculeSlotOrder\[\]\s*=\s*\[/u.exec(text);
+  if (!header) return null;
+  const start = header.index + header[0].length - 1;
+  let depth = 0;
+  let end = start;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '[') depth++;
+    else if (text[i] === ']') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  // eslint-disable-next-line no-new-func
+  return new Function(`return ${text.slice(start, end + 1)}`)() as readonly IMoleculeSlotOrder[];
+}
+
+/** Every molecule of the group (tag → its `slotTags`), read from the 102040 sources, comments stripped. */
+function groupSlotTags(group: string): Map<string, string[]> {
+  const folder = join(MOLECULES_ROOT, group.toLowerCase());
+  const tags = new Map<string, string[]>();
+  if (!existsSync(folder)) return tags;
+  for (const file of readdirSync(folder)) {
+    if (!/^ml-.*\.ts$/u.test(file) || file.endsWith('.test.ts') || file.endsWith('.defs.ts')) continue;
+    const text = readFileSync(join(folder, file), 'utf8');
+    const list = /slotTags[^=]*=\s*\[([\s\S]*?)\]/u.exec(text)?.[1];
+    if (!list) continue;
+    const names = [...list.replace(/\/\/[^\n]*/gu, '').matchAll(/['"]([A-Za-z]+)['"]/gu)].map((m) => m[1]);
+    tags.set(tagOf(group, file.replace(/\.ts$/u, '')), names);
+  }
+  return tags;
+}
+
+test('every slot named in a slotOrder is a slot of every molecule it applies to', () => {
+  const problems: string[] = [];
+  let declared = 0;
+  for (const group of GROUPS) {
+    const order = loadGroupSlotOrder(group);
+    if (!order) continue;
+    const molecules = groupSlotTags(group);
+    for (const entry of order) {
+      declared += 1;
+      for (const tag of entry.only ?? []) {
+        if (!molecules.has(tag)) problems.push(`${group}: only names ${tag}, which is not a molecule of the group`);
+      }
+      const applies = [...molecules.keys()].filter((tag) => !entry.only || entry.only.includes(tag));
+      const names = [entry.slot, ...(entry.pairs ?? []).flatMap((pair) => [pair.slot, pair.within])];
+      for (const tag of applies) {
+        const slots = molecules.get(tag) ?? [];
+        for (const name of names) {
+          if (!slots.includes(name)) problems.push(`${group}: ${tag} has no slot ${name}`);
+        }
+      }
+    }
+  }
+  assert.ok(declared > 0, 'the scan found the declarations');
+  assert.deepEqual(problems, []);
 });

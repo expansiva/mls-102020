@@ -69,3 +69,42 @@ export function configurationFor(
 export function defaultFor(prop: IMoleculeConfigProp, tag: string): IMoleculeConfigProp['default'] {
   return prop.defaults && tag in prop.defaults ? prop.defaults[tag] : prop.default;
 }
+
+// ─── Slot order ──────────────────────────────────────────────────────────────
+//
+// Which slots of a group can be REORDERED in the Studio, and which ones move together. Declared here,
+// per group, because it is a design decision of the molecule the Studio cannot guess: a table pairs its
+// header with the cell at the same position in every row (`TableHead` 2 is the column of the 2nd
+// `TableCell`), so moving only the header would swap the title and leave the content behind.
+//
+// Opt-in: a slot that is not listed is never offered a move. A group without `slotOrder` has none.
+
+export interface IMoleculeSlotOrder {
+  /** A slot whose order among its same-name siblings is what the molecule shows (a column, a tab, a step). */
+  slot: string;
+  /**
+   * Slots matched to it BY POSITION, moved with it: the one at the same index among its same-name
+   * siblings inside each `within` element (each `TableRow` that holds `TableCell`s).
+   */
+  pairs?: readonly { slot: string; within: string }[];
+  /** Only these tags of the group. Absent = all tags. */
+  only?: readonly string[];
+}
+
+/**
+ * The slot order of a group, loaded on demand from its `configuration.ts` (`export const slotOrder`).
+ * A group without the file or without the export answers an empty list — no error, no throw.
+ */
+export async function loadGroupSlotOrder(group: string): Promise<readonly IMoleculeSlotOrder[]> {
+  try {
+    const mod = await import(`/_102020_/l2/aura/molecules/skills/${group}/configuration.js`);
+    return Array.isArray(mod.slotOrder) ? mod.slotOrder : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The entries a given molecule tag reads: the ones with no `only`, and the ones that name it. */
+export function slotOrderFor(tag: string, list: readonly IMoleculeSlotOrder[]): readonly IMoleculeSlotOrder[] {
+  return list.filter((entry) => !entry.only || entry.only.includes(tag));
+}
