@@ -256,7 +256,7 @@ export type NrRunPhase = 'effort-read' | 'plan' | 'marks' | 'snapshot' | 'steps'
 
 export interface NrRunPhaseLine {
   phase: NrRunPhase;
-  status: 'ok' | 'refused' | 'failed';
+  status: 'ok' | 'done' | 'refused' | 'failed';
   note: string;
   bffPages?: string[];
   sharedPages?: string[];
