@@ -4,8 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { providerEdgeCases } from '/_102035_/l2/solution/testing/providerEdgeCases.js';
-import { buildD2BffDesign, type D2BffIssue } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
-import { bffSchemaFor, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
+import { bffSchemaFor, d2BffApproved, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 
 // Strict mode does not enforce `pattern`: the leaf type, the update state and the organism read can come in any text.
 // The same context as the d2_155 test in run.test.ts (the `inicio` page of the `inicioOriginNull` answer).
@@ -43,22 +42,24 @@ function contextOf(answer: Answer): D2BffContext {
   } as unknown as D2BffContext;
 }
 
-void test('bff55: a value outside the pattern is refused by the parser, naming the field, or the failing cases are listed in the todo', { todo: 'bindings.updates[].state and bindings.organisms[].reads empty (outside the pattern) pass buildD2BffDesign without an issue; checkD2Bff may catch them later (not measured)' }, () => {
+void test('bff55: a value outside the pattern is refused by the parser, naming the field', () => {
   const answer = JSON.parse(readFileSync(new URL('./fixtures/inicioOriginNull.json', import.meta.url), 'utf8')) as Answer;
-  const schema = bffSchemaFor(contextOf(answer));
+  const context = contextOf(answer);
+  const schema = bffSchemaFor(context);
   const cases = providerEdgeCases(schema, answer);
   assert.ok(cases.some(item => item.rule === 'pattern'), 'the schema has pattern cases');
   const leaks: string[] = [];
   for (const item of cases) {
     const label = `${item.path} ${item.rule} ${item.variant}`;
-    const issues: D2BffIssue[] = [];
+    const field = item.path.replace(/\[\d+\]/g, '').split('.').at(-1) ?? item.path;
     try {
-      buildD2BffDesign(item.value, issues);
+      d2BffApproved(context, item.value);
     } catch (error) {
       assert.ok(error instanceof Error && error.message.length > 10, `${label}: the refusal says why`);
+      if (item.rule === 'pattern') assert.ok(error instanceof Error && error.message.includes(field), `${label}: the issue names the field`);
       continue;
     }
-    if (item.rule === 'pattern' && !issues.length) leaks.push(label);
+    if (item.rule === 'pattern') leaks.push(label);
   }
   assert.deepEqual(leaks, [], 'values outside the pattern that the parser accepted without an issue');
 });
