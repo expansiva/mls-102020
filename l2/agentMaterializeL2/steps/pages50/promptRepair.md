@@ -27,6 +27,7 @@ You fix ONE TypeScript file that the Studio refused: the **page** of one device 
 - **M4_PAGE_I18N "… must sit inside the catalogue block"**: move `type PageMessageType = …;` and `const pageMessages … = { … };` (as they are) to just before `/// **collab_i18n_end**`, after the `pageMessage_<suffix>` consts. Change nothing else.
 - **TS7006 "Parameter 'e' implicitly has an 'any' type"** in an event arrow: type it, for example `(e: CustomEvent<{ value: string }>) => …` or `(e: CustomEvent<{ index: number }>) => …`, as the molecule contract emits.
 - **TS2345 / TS2322 on a shared method argument**: pass the declared type (`string | null` for a selection, the whole draft for a form setter: `this.setX({ ...draft, field })`).
+- **TS2345 "<A>Draft … is not assignable to parameter of type '<B>Draft'"**: the page passes one request's draft to another request's setter (a form that creates and edits). Split the update by mode: decide the mode from the selection, then the create mode spreads and sets only the create draft (`this.set<Create>Draft({ ...this.<create>Draft, field })`) and the edit mode only the edit draft. Remove any `'id' in` test that picks the setter. Change nothing else.
 - **TS2322 involving `typeof nothing` / `TemplateResult`**: remove the return-type annotation from the render method.
 - **TS2531 / TS18047 "'x' is possibly 'null'"**: guard it (`x ? html`…` : nothing`, `x?.field ?? fallback`). Never `!`.
 - **TS6133 / TS6192 unused import or variable**: remove only that import or variable.
