@@ -163,6 +163,7 @@ export class ServiceBehavior102020 extends ServiceBase {
     @state() private _loading = true;
 
     private _loadToken = 0;
+    private readonly _preferredModules = new Map<number, string>();
 
     private get _project(): number {
         return this._projects[this._projectValue - 1] ?? 0;
@@ -231,7 +232,7 @@ export class ServiceBehavior102020 extends ServiceBase {
             : this._projects[0] ?? 0;
         this._projectValue = Math.max(1, this._projects.indexOf(preferredProject) + 1);
         if (!this._projectEligible) this._selectedKnob = 'project';
-        await this._loadModules(actualModule, token);
+        await this._loadModules(this._preferredModules.get(this._project) ?? actualModule, token);
         if (token !== this._loadToken) return;
         this._loading = false;
         this._updateMenuTitle();
@@ -244,6 +245,8 @@ export class ServiceBehavior102020 extends ServiceBase {
         this._modules = modules;
         const preferredIndex = this._modules.findIndex(module => module.name === preferredModule);
         this._moduleValue = preferredIndex >= 0 ? preferredIndex + 1 : 1;
+        if (this._module) this._preferredModules.set(this._project, this._module.name);
+        else this._preferredModules.delete(this._project);
         await this._loadVersions(token, preferredVersion);
     }
 
@@ -271,9 +274,10 @@ export class ServiceBehavior102020 extends ServiceBase {
         this._selectedKnob = key;
         if (key === 'project' && value !== this._projectValue) {
             this._projectValue = value;
-            await this._loadModules();
+            await this._loadModules(this._preferredModules.get(this._project));
         } else if (key === 'module' && value !== this._moduleValue) {
             this._moduleValue = value;
+            if (this._module) this._preferredModules.set(this._project, this._module.name);
             this._versionValue = 1;
             await this._loadVersions(++this._loadToken);
         } else if (key === 'version') {
