@@ -101,6 +101,31 @@ test('save shows the blocked list that the core returns', () => {
     assert.match(handler, /this\._blocked = saved\.blocked/);
 });
 
+test('panel buttons use the Studio BUTTON classes', () => {
+    // The same tokens as the header editor's BUTTON / BUTTON_PRIMARY, plus the pointer cursor.
+    const header = readFileSync(fileURLToPath(new URL('../plugins/pluginHeaderEditor.ts', import.meta.url)), 'utf8');
+    const tokens = (source: string, name: string): string[] => {
+        const start = source.indexOf(`const ${name} = `);
+        assert.notEqual(start, -1, `${name} is declared`);
+        const end = source.indexOf(';\n', start);
+        return [...source.slice(start, end).matchAll(/'([^']*)'/g)].flatMap((m) => m[1].split(/\s+/)).filter(Boolean);
+    };
+    for (const name of ['BUTTON', 'BUTTON_PRIMARY']) {
+        const mine = tokens(DRAFT, name);
+        for (const token of tokens(header, name)) assert.ok(mine.includes(token), `${name} keeps ${token}`);
+        assert.ok(mine.includes('cursor-pointer'), `${name} has the pointer cursor`);
+        assert.ok(mine.includes('disabled:cursor-not-allowed'), `${name} shows a disabled cursor`);
+    }
+    assert.doesNotMatch(DRAFT, /actionClass/);
+    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON\}/g)].length, 9);
+    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON_PRIMARY\}/g)].length, 1);
+    const actions = methodOf(DRAFT, 'private _renderActions');
+    const primaryAt = actions.indexOf('class=${BUTTON_PRIMARY}');
+    const publishAt = actions.indexOf('_onPublish');
+    assert.ok(primaryAt !== -1 && publishAt > primaryAt, 'Publish is the primary button');
+    assert.doesNotMatch(actions.replace('class=${BUTTON_PRIMARY}', ''), /BUTTON_PRIMARY/);
+});
+
 test('en, pt and es declare the same keys', () => {
     const catalogs = DRAFT.split('const message_en')[1].split('/// **collab_i18n_end**')[0];
     const enBody = catalogs.split('const messages')[0];

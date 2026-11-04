@@ -280,7 +280,11 @@ interface IDraftPing {
 }
 
 const blockClass = 'flex flex-col gap-3 px-4 py-4 border-b border-gray-200 dark:border-gray-800';
-const actionClass = 'text-[9px] font-semibold uppercase tracking-wider px-2 py-3 border border-gray-200 dark:border-gray-800 disabled:opacity-30';
+// Same strings as the Studio header buttons. Duplicated here so this panel does not add a shared module.
+const BUTTON = 'rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm cursor-pointer'
+  + ' hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed';
+const BUTTON_PRIMARY = 'rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white cursor-pointer'
+  + ' disabled:opacity-50 disabled:cursor-not-allowed';
 
 function publishedStorageKey(project: number): string {
     return `collab-draft-published-${project}`;
@@ -497,10 +501,10 @@ export class ServiceDraft102020 extends ServiceBase {
         const discard = this.msg.discardAll.replace('{count}', String(counts.discard));
         return html`
             <div class="draft-actions flex flex-wrap gap-3 px-4 py-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
-                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${save}</button>
-                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
-                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
-                <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onResetDatabase(); }}>${this.msg.resetDatabase}</button>
+                <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${save}</button>
+                <button class=${BUTTON_PRIMARY} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
+                <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
+                <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onResetDatabase(); }}>${this.msg.resetDatabase}</button>
             </div>
         `;
     }
@@ -528,11 +532,11 @@ export class ServiceDraft102020 extends ServiceBase {
                     : html`<button class="text-left" @click=${() => { this._toggleNode(row.id); }}>${this._open.has(row.id) ? '▾' : '▸'} ${row.name}</button>`}
                 <span>${marks}</span>
                 ${row.kind === 'module'
-                    ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onModuleDiscard(row.name); }}>${this.msg.discardModule}</button>`
+                    ? html`<button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onModuleDiscard(row.name); }}>${this.msg.discardModule}</button>`
                     : nothing}
                 ${row.kind === 'file' && row.inBrowser
                     ? html`<button
-                        class=${actionClass}
+                        class=${BUTTON}
                         ?disabled=${busy || !file}
                         @click=${() => { if (file) void this._onUndoLocal(file, row.id); }}
                     >${this.msg.undoLocal}</button>`
@@ -594,9 +598,9 @@ export class ServiceDraft102020 extends ServiceBase {
                     ? html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noFiles}</p>`
                     : nothing}
                 <div class="flex flex-wrap gap-3">
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>
+                    <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>
                     ${current && current.behind > 0
-                        ? html`<button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onSyncPublished(); }}>${this.msg.syncPublished}</button>`
+                        ? html`<button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onSyncPublished(); }}>${this.msg.syncPublished}</button>`
                         : nothing}
                 </div>
             </div>
@@ -652,9 +656,9 @@ export class ServiceDraft102020 extends ServiceBase {
                     ? html`<div class="flex flex-col gap-0.5">${files.map((file) => html`<div>${file}</div>`)}</div>`
                     : html`<p class="text-gray-400 dark:text-gray-600">${this.msg.noFiles}</p>`}
                 <div class="flex flex-wrap gap-3">
-                    <button class=${actionClass} ?disabled=${busy} @click=${() => { void this._onView(item.branch); }}>${this.msg.view}</button>
+                    <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onView(item.branch); }}>${this.msg.view}</button>
                     <button
-                        class=${actionClass}
+                        class=${BUTTON}
                         ?disabled=${busy || slug === null}
                         title=${slug === null ? this.msg.experimentDisabled : nothing}
                         @click=${() => { if (slug) void this._onExperiment(slug); }}
