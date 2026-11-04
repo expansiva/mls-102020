@@ -69,7 +69,20 @@ does not class (e.g. readonly).
 ## 5. Layout belongs to the render, appearance to you
 
 - The markup uses global Tailwind utilities for layout (\`px-*\`, \`gap-*\`, \`inline-flex\`).
-  They keep working — never redefine layout in this sheet.
+  They keep working — never redefine layout in this sheet. The ONE layout declaration this sheet
+  owns is the tag's \`display\` (next item).
+- **The tag ALWAYS gets a \`display\`.** A custom-element tag is \`inline\` by default, and an inline
+  tag ignores the vertical margin a page puts on it (\`class="mt-4"\` has no effect). Write it as a
+  plain rule of its own at TOP level, whose selector is the tag ALONE — never inside the portal
+  selector list of §3 (it would also hit the panel and beat utilities like \`hidden\` there), and
+  never inside an \`@layer\`:
+  - \`inline-flex\` when the ROOT element the render emits is sized to its content — a button, a
+    button group, a split button, an icon/kebab trigger, a pagination bar, a progress indicator or
+    spinner;
+  - \`block\` for everything else — a root that fills the line (\`w-full\`, \`flex-col\`), a field with
+    a label, a card, a list, a table.
+  Decide by the ROOT, not by an inner part: a toggle whose switch is \`inline-flex\` but sits inside a
+  \`w-full\` field with label and helper is \`block\`.
 - **Never override the render's positioning.** If the render places an element with
   \`absolute\`/\`fixed\` (a floating value indicator, stop marks/ticks, a drag thumb), do NOT set
   \`position\` or \`overflow\` on that class: forcing \`position: relative\` drops it into normal

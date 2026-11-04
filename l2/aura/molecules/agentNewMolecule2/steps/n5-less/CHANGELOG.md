@@ -1,5 +1,17 @@
 # n5-less — CHANGELOG
 
+## 2026-11-03 — `tag_display`: a tag tem de declarar `display` num bloco próprio
+
+Etapa D3 de `todo/display-na-tag-das-moleculas`. A tag é `inline` por padrão e ignora a margem
+vertical que a página põe nela; desde 03/11 as 155 moléculas do `mls-102040` declaram `display`
+na tag. O `prompt.md` (Structure) mostra o bloco `{{tag}} { display: … }` separado do bloco com o
+portal, e a skill `lessAuthoring` §5 ensina a escolha (`inline-flex` para raiz do tamanho do
+conteúdo, `block` nos demais). O gate ganhou `tag_display`: reprova a folha sem `display` num bloco
+de nível de cima cujo seletor é só a tag — `display` dentro da lista `tag, div[data-widget=…]`
+não conta, porque ali atinge também o painel do portal e vence `hidden` (§4.1 do controle). O
+valor não é conferido: depende da raiz do render, e é a skill que decide. Detector compartilhado:
+`tagDisplay` em `shared/moleculeInspect.ts` (o c4-less e o i3-edit usam o mesmo).
+
 ## 2026-09-08 — `geometry_alias`: token cunhado que renomeia um conceito já compartilhado
 
 Medido no run de 04/09 (o mesmo em que o `fallback_divergence` pegou a divergência real): o

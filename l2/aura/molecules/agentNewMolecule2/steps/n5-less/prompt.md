@@ -5,12 +5,18 @@ You are generating the COMPLETE `.less` sheet for a molecule that was just creat
 ## Structure
 
 ```less
+{{tag}} {
+  display: block; // or inline-flex — see "The tag ALWAYS gets a display" in the shared rules
+}
+
 {{tag}}{{portalSelectorHint}} {
   .ml-example { /* appearance for a class the render emits */ }
 }
 ```
 
 The scope root of this sheet is `{{tag}}`.{{portalRule}}
+
+The first block carries the tag's `display` and its selector is the tag ALONE. Never put `display` in a selector list with `div[data-widget=…]`: there it also hits the portal panel and beats utilities like `hidden` on it.
 
 Do NOT write the `/// <mls ...>` header — code owns it and prepends it; a header you write is discarded.
 

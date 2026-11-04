@@ -395,6 +395,7 @@ async function afterPromptStep(
   const gate = runImEditGate({
     files: written,
     currentProject: ctx.target.project,
+    tag: ctx.target.tag,
     parentReference: ctx.inheritance.parentReference,
     parentSource: await readParentSourceFor(ctx, choice),
     // The route and the group's declared vocabulary: only route A may move the public surface, and

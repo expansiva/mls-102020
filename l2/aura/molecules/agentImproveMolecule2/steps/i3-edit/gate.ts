@@ -21,7 +21,7 @@ import {
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { deadShellMembers, offendingForeignWrite } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { diffSurface, groupVocabulary, readSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
-import { divergentTokenFallbacks, geometryAliasTokens, normalizeTokenValue, tokenFallbacks } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
+import { divergentTokenFallbacks, geometryAliasTokens, normalizeTokenValue, tagDisplay, tokenFallbacks } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 import { GEOMETRY_REGISTRY } from '/_102020_/l2/aura/molecules/skills/moleculeGeometry.js';
 import { LIBRARY_FALLBACKS } from '/_102020_/l2/aura/molecules/skills/libraryFallbacks.js';
 import { mlsHeaderOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
@@ -46,6 +46,8 @@ export interface ImEditedFile {
 export interface ImEditGateInputs {
   files: ImEditedFile[];
   currentProject: number;
+  /** The molecule's tag — the scope root of its `.less`, whose own `display` rule must survive. */
+  tag: string;
   /** On a shell: the parent, which must never be written. Null when the molecule is not a shell. */
   parentReference: string | null;
   /**
@@ -512,6 +514,19 @@ export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
       // Same delta rule, same reason: a molecule that already coined an alias of a shared geometry
       // concept is not this run's fault, but an alias the edit ITSELF introduces is.
       for (const error of introducedGeometryAlias(file)) errors.push(error);
+
+      // The tag's own `display` (2026-11-03, todo/display-na-tag-das-moleculas): without it the tag
+      // is `inline` and the page's vertical margins die. Delta rule again — only a sheet that HAD it
+      // can lose it. Changing the value is an edit like any other; removing the rule, or folding it
+      // into the portal list (where it also hits the panel), is not.
+      if (!file.created && tagDisplay(file.before, inputs.tag) && !tagDisplay(file.after, inputs.tag)) {
+        errors.push(
+          issue(
+            'tag_display_removed',
+            `the edit removed the tag's own display — keep '${inputs.tag} { display: ${tagDisplay(file.before, inputs.tag)}; }' as a top-level block whose selector is the tag ALONE`,
+          ),
+        );
+      }
     }
   }
 

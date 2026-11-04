@@ -74,3 +74,15 @@ Depois de escrever a folha, o step agora:
 
 Ambos os erros (`less_compile`, `ts_republish`) entram na lista de `issues` existente — mesma
 convenção per-item já documentada acima, nada novo em blocking/non-blocking.
+
+## 2026-11-03 — `less_no_tag_display` (não bloqueante)
+
+Etapa D3 de `todo/display-na-tag-das-moleculas`. A cópia é verbatim, então preserva o
+`tag { display: … }` sempre que a origem o tem — o renomear troca todas as ocorrências da tag,
+inclusive o bloco próprio que as moléculas portal ganharam antes da lista com o portal (testes
+novos no `gate.test.ts`). Quando a origem NÃO tem a regra, a cópia não escolhe entre `block` e
+`inline-flex` sozinha: sai igual e o gate registra `less_no_tag_display`, informativo como o
+`less_no_rules`. Medido em 03/11: 14 das 84 folhas temáticas do 102054/102055 estão nesse caso.
+Três testes antigos (pseudo na raiz e os dois do T5) passaram a esperar só esse aviso: as fixtures
+deles têm uma única raiz sem `display` de propósito, e acrescentar o bloco da tag tiraria do T5 o
+seletor composto que ele testa.

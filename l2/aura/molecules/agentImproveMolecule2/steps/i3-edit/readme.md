@@ -65,6 +65,7 @@ Retry 1 with the gate errors; a 2nd failure fails the step, molecule untouched.
 | `dead_member` | on a shell: the edit declared or assigned a member the parent does not have and nobody reads |
 | `definition_changed` | on routes B and C: the edit adds a public slot/property/event the GROUP contract does not declare — that is route A, through the checkpoint |
 | `definition_removed` | on routes B and C: the edit removes one. Removal is never a repair |
+| `tag_display_removed` | the `.less` had the tag's own `display` rule and the edit removed it (or folded it into the portal list) |
 | `compile` | an error the edit added |
 
 ## The group contracts are the authority on the surface
