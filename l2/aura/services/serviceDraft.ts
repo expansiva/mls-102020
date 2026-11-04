@@ -44,6 +44,7 @@ import {
     type IVisibleTreeRow,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { listedOwner, subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
+import { lockedDraftWrite } from '/_102020_/l2/aura/studio/studioModuleLock.js';
 
 /// **collab_i18n_start**
 const message_en = {
@@ -845,9 +846,25 @@ export class ServiceDraft102020 extends ServiceBase {
             this._phase = 'error';
             return;
         }
+        const open: typeof files = [];
+        let refused: string | null = null;
+        for (const file of files) {
+            const message = lockedDraftWrite(file);
+            if (message) {
+                refused = message;
+                continue;
+            }
+            open.push(file);
+        }
+        if (open.length === 0) {
+            this._blocked = [];
+            this._error = refused ?? this.msg.noFiles;
+            this._phase = 'error';
+            return;
+        }
         try {
             const saved = await saveToDraft(
-                files,
+                open,
                 comment,
                 (clean, text) => mls.stor.setContents(clean, text),
                 (file) => afterDraftSave(file),
@@ -863,9 +880,19 @@ export class ServiceDraft102020 extends ServiceBase {
             return;
         }
         await this._load(true);
+        if (refused && this._phase !== 'error') {
+            this._error = refused;
+            this._phase = 'error';
+        }
     }
 
     private async _onUndoLocal(file: mls.stor.IFileInfo, shortPath: string): Promise<void> {
+        const refused = lockedDraftWrite(file);
+        if (refused) {
+            this._error = refused;
+            this._phase = 'error';
+            return;
+        }
         if (!confirm(this.msg.confirmUndo.replace('{file}', shortPath))) return;
         try {
             await mls.stor.localStor.setContent(file, { content: null });

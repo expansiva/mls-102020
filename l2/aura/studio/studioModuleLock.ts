@@ -38,6 +38,7 @@ const watched: IWatchedEditor[] = [];
 let listening = false;
 let monacoHooked = false;
 let waitingForMonaco = false;
+let listenedOn: EventTarget | null = null;
 
 /** Layer path (`l2/<module>/…`) of a locked module in that project. The project prefix is ignored here. */
 export function isModuleLocked(project: number, path: string): boolean {
@@ -71,6 +72,79 @@ export function installStudioModuleLock(): void {
 
 export function lockMessage(): string {
   return t('lock.applyInProgress');
+}
+
+/** The model write level 3 uses. `setValue` is here so a test can see that a lock does not use it. */
+export interface ILevel3ModelWrite {
+  getFullModelRange(): unknown;
+  pushEditOperations(
+    beforeCursorState: readonly unknown[] | null,
+    editOperations: readonly { range: unknown; text: string }[],
+    cursorStateComputer: () => null,
+  ): unknown;
+  setValue?(value: string): void;
+}
+
+/** `l2/<folder>/file.ts`. The lock matches `l2/<module>/` inside this path. */
+export function level3LayerPath(level: number, folder: string, shortName: string, extension: string): string {
+  const clean = folder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const ext = extension.startsWith('.') ? extension : `.${extension}`;
+  return `l${level}/${clean ? `${clean}/` : ''}${shortName}${ext}`;
+}
+
+/** The i18n line when Apply holds this file. Null when the write may proceed. */
+export function level3WriteRefusal(project: number, layerPath: string): string | null {
+  if (!isModuleLocked(project, layerPath)) return null;
+  const message = lockMessage();
+  console.error('[TextEdit] Apply in progress; the source was not written', layerPath);
+  return message;
+}
+
+/**
+ * Writes the new source, or refuses while Apply holds the module.
+ * The free path is `pushEditOperations` on the model (the same write as before). It does not call `setValue`.
+ */
+export function writeLevel3SourceIfOpen(
+  project: number,
+  layerPath: string,
+  model: ILevel3ModelWrite,
+  newSource: string,
+): string | null {
+  const refused = level3WriteRefusal(project, layerPath);
+  if (refused) return refused;
+  model.pushEditOperations(
+    [],
+    [{ range: model.getFullModelRange(), text: newSource }],
+    () => null,
+  );
+  return null;
+}
+
+/** A stor file the panel can undo or save. The layer path is what the module lock matches. */
+export interface IDraftLockFile {
+  project: number;
+  level?: number;
+  folder?: string;
+  shortName?: string;
+  extension?: string;
+}
+
+/** The i18n line when Apply holds this file. Null when the panel may undo or save it. */
+export function lockedDraftWrite(file: IDraftLockFile): string | null {
+  if (
+    file.level === undefined
+    || file.folder === undefined
+    || file.shortName === undefined
+    || file.extension === undefined
+  ) {
+    console.error('[serviceDraft] file has no layer path; the lock was not checked', file.shortName);
+    return null;
+  }
+  const layerPath = level3LayerPath(file.level, file.folder, file.shortName, file.extension);
+  if (!isModuleLocked(file.project, layerPath)) return null;
+  const message = lockMessage();
+  console.error('[serviceDraft] Apply in progress; the file was not written', layerPath);
+  return message;
 }
 
 function pathLocksModule(path: string, moduleName: string): boolean {
@@ -131,10 +205,15 @@ function browserWindow(): (Window & { monacoReady?: Promise<void> }) | null {
 }
 
 function ensureEventListener(): void {
-  if (listening) return;
   const target = browserWindow();
   if (!target) return;
+  // A second call can see another window. Follow that one, or the event is heard by a window that is gone.
+  if (listening && listenedOn === target) return;
+  if (listenedOn && listenedOn !== target) {
+    listenedOn.removeEventListener(NEW_RELEASE_IMPLEMENTATION_STATE_EVENT, onImplementationState);
+  }
   target.addEventListener(NEW_RELEASE_IMPLEMENTATION_STATE_EVENT, onImplementationState);
+  listenedOn = target;
   listening = true;
 }
 

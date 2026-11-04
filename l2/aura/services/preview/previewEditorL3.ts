@@ -4,6 +4,12 @@ import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { customElement } from 'lit/decorators.js';
 import { setState, initState, getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { findTextOriginByOccurrence, findTextOriginByKey, applyTextEdit, dynamicEditNotice, type TextOrigin } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
+import { level3LayerPath, level3WriteRefusal, writeLevel3SourceIfOpen } from '/_102020_/l2/aura/studio/studioModuleLock.js';
+
+interface ILevel3WriteTarget {
+  project: number;
+  layerPath: string;
+}
 
 @customElement('aura--services--preview--preview-editor-l3-102020')
 class PreviewEditorL3 extends StateLitElement {
@@ -495,6 +501,8 @@ class PreviewEditorL3 extends StateLitElement {
 
     const source = tsModel.model.getValue();
     const lang = getState('preview.language') || 'en';
+    let activeTarget = this.pageWriteTarget();
+    if (!activeTarget) console.error('[TextEdit] page file has no layer path; the lock was not checked');
 
     console.log('[TextEdit] applyTextEditToSource', { oldText, newText, lang, occurrenceIndex, i18nKey });
 
@@ -508,14 +516,15 @@ class PreviewEditorL3 extends StateLitElement {
     let activeSource = source;
 
     if (origin.type === 'dynamic') {
-      const sharedModel = await this.getSharedTsModel();
-      if (sharedModel) {
-        const sharedSource = sharedModel.model.getValue();
+      const shared = await this.getSharedTsModel();
+      if (shared) {
+        const sharedSource = shared.model.model.getValue();
         const sharedOrigin = resolve(sharedSource);
         if (sharedOrigin.type !== 'dynamic') {
           origin = sharedOrigin;
-          activeModel = sharedModel;
+          activeModel = shared.model;
           activeSource = sharedSource;
+          activeTarget = shared.target;
         }
       }
     }
@@ -548,15 +557,34 @@ class PreviewEditorL3 extends StateLitElement {
       return;
     }
 
+    const target = activeTarget ?? { project: 0, layerPath: '' };
+    const refused = level3WriteRefusal(target.project, target.layerPath);
+    if (refused) {
+      if (restoredNode) restoredNode.textContent = oldText;
+      if (editTarget) {
+        editTarget.classList.add('l3-edit-error');
+        setTimeout(() => editTarget.classList.remove('l3-edit-error'), 650);
+      }
+      this.showDynamicReason(refused);
+      return;
+    }
+
     setState('preview.pausePreview', true);
-    activeModel.model.pushEditOperations(
-      [],
-      [{
-        range: activeModel.model.getFullModelRange(),
-        text: result.newSource,
-      }],
-      () => null,
-    );
+    const written = writeLevel3SourceIfOpen(target.project, target.layerPath, activeModel.model, result.newSource);
+    if (written) {
+      if (restoredNode) restoredNode.textContent = oldText;
+      this.showDynamicReason(written);
+    }
+  }
+
+  /** Page `.ts` the level-3 edit writes, as a layer path the module lock understands. */
+  private pageWriteTarget(): ILevel3WriteTarget | null {
+    const service = getState('preview.service') as { isL3?: boolean; level?: number; actualFiles?: { ts?: { project?: unknown; folder?: unknown; shortName?: unknown } } } | null;
+    const ts = service?.actualFiles?.ts;
+    if (!ts || typeof ts.project !== 'number' || typeof ts.folder !== 'string' || typeof ts.shortName !== 'string') return null;
+    const level = service?.isL3 ? 2 : service?.level;
+    if (typeof level !== 'number') return null;
+    return { project: ts.project, layerPath: level3LayerPath(level, ts.folder, ts.shortName, '.ts') };
   }
 
   private showDynamicReason(message: string): void {
@@ -572,7 +600,7 @@ class PreviewEditorL3 extends StateLitElement {
     note.dataset.timer = String(window.setTimeout(() => note.remove(), 4000));
   }
 
-  private async getSharedTsModel(): Promise<any | null> {
+  private async getSharedTsModel(): Promise<{ model: any; target: ILevel3WriteTarget } | null> {
     try {
       const service = getState('preview.service') as any;
       if (!service?.actualFiles?.ts) return null;
@@ -606,7 +634,12 @@ class PreviewEditorL3 extends StateLitElement {
       const storFile = mlsAny.stor.files[storKey];
       if (!storFile) return null;
 
-      return await (storFile as any).getOrCreateModel();
+      const model = await (storFile as any).getOrCreateModel();
+      if (!model) return null;
+      return {
+        model,
+        target: { project, layerPath: level3LayerPath(level, sharedFolder, shortName, '.ts') },
+      };
     } catch (e) {
       return null;
     }
