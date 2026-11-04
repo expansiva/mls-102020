@@ -7,15 +7,7 @@
 // bypass Monaco's readOnly are a separate step.
 
 import { NEW_RELEASE_IMPLEMENTATION_STATE_EVENT } from '/_102035_/l2/newRelease/helpers/context.js';
-import { getRuntimeLanguage } from '/_102033_/l2/shared/languageRuntime.js';
-
-const MESSAGES = {
-  en: 'Apply in progress: wait or cancel it in Review.',
-  pt: 'Aplicar em andamento: espere ou cancele na Revisão.',
-  es: 'Aplicación en curso: espere o cancele en Revisión.',
-} as const;
-
-const LANGUAGES = ['en', 'pt', 'es'] as const;
+import { t } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 /** File reference `_100111_/l2/folder/file.ts` — project, then the layer path Monaco models use. */
 const PROJECT_FILE = /(?:^|\/)_(\d+)_\/(.*)$/;
@@ -78,9 +70,7 @@ export function installStudioModuleLock(): void {
 }
 
 export function lockMessage(): string {
-  const requested = typeof document === 'undefined' ? 'en' : (document.documentElement?.lang || 'en');
-  const language = getRuntimeLanguage(LANGUAGES, requested) ?? 'en';
-  return MESSAGES[language as keyof typeof MESSAGES] ?? MESSAGES.en;
+  return t('lock.applyInProgress');
 }
 
 function pathLocksModule(path: string, moduleName: string): boolean {

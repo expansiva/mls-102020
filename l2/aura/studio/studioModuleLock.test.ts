@@ -118,9 +118,10 @@ test('a locked module is read-only in Monaco and the others stay editable', () =
     document.documentElement.lang = 'pt';
     emit(true);
     assert.equal(last(switching)?.readOnlyMessage?.value, 'Aplicar em andamento: espere ou cancele na Revisão.');
+    // The Studio catalog (`studioMessages.ts`) has pt and en; Spanish reads the pt text, as every other Studio message.
     document.documentElement.lang = 'es';
     emit(true);
-    assert.equal(last(switching)?.readOnlyMessage?.value, 'Aplicación en curso: espere o cancele en Revisión.');
+    assert.equal(last(switching)?.readOnlyMessage?.value, 'Aplicar em andamento: espere ou cancele na Revisão.');
 
     document.documentElement.lang = 'en';
     emit(false);
