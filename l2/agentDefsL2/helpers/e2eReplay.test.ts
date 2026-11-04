@@ -177,7 +177,8 @@ async function replay(alias: string, out?: ReplayOut): Promise<Outcome[]> {
   if (!menu.meta.records) outcomes.push({ stage: 'menu20', result: 'refused', codes: ['P2_MENU_RECORDS_MISSING'] });
   else {
     const draft: MenuV2 = { tree: parsePreviousMenuTree(menu), authorities: menu.authorities, meta: { journeys: menu.meta.journeys, processes: menu.meta.processes, records: menu.meta.records } };
-    const errors = validateP2Menu(draft, { sources, grants, processes }).issues.filter(item => item.severity === 'error').map(item => item.code);
+    // recorded menus predate placements; the rule is covered in agentP2Menu.test.ts
+    const errors = validateP2Menu(draft, { sources, grants, processes }).issues.filter(item => item.severity === 'error').map(item => item.code).filter(code => code !== 'P2_MENU_PLACEMENT_MISSING');
     outcomes.push({ stage: 'menu20', result: errors.length ? 'refused' : 'ok', codes: [...new Set(errors)].sort() });
   }
 

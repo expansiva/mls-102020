@@ -445,16 +445,20 @@ export function commandLines(prompt: string): string[] {
   return stringList(parsed.commands);
 }
 
-/** Close text: the materializer message, the deleted files, one cost line per planned page, then one line per command when it completed. */
+/** Close text: refused pages first, then the materializer message, the deleted files, one cost line per planned page, then one line per command when it completed. */
 export function closeNotice(
   materializerMessage: string,
   deleted: readonly string[],
   commands: readonly string[] = [],
   completed = true,
   costLines: readonly string[] = [],
+  refused: readonly { page: string; code: string }[] = [],
 ): string {
   const listed = deleted.length ? deleted.join(', ') : 'none';
-  const parts = [`${materializerMessage}; deleted: ${listed}`];
+  const parts = [
+    ...refused.map(item => `refused: ${item.page}: ${item.code}`),
+    `${materializerMessage}; deleted: ${listed}`,
+  ];
   if (costLines.length > 0) parts.push(costLines.join('\n'));
   if (completed && commands.length > 0) parts.push(commands.join('\n'));
   return parts.join('\n');
@@ -574,6 +578,58 @@ function namedOutcome(step: mls.msg.AIPayload | undefined, label: string): { sta
   const resultText = nested && nested.type === 'result' ? String(nested.result || '').trim() : '';
   const message = traces[traces.length - 1] || resultText || `${label} ${step.status}`;
   return { status: step.status === 'completed' ? 'completed' : 'failed', message };
+}
+
+function payloadLines(step: mls.msg.AIPayload): string[] {
+  const lines: string[] = [];
+  const visit = (item: mls.msg.AIPayload): void => {
+    for (const line of item.interaction?.trace ?? []) {
+      for (const part of line.split('\n')) {
+        const trimmed = part.trim();
+        if (trimmed) lines.push(trimmed);
+      }
+    }
+    if (item.type === 'result') {
+      for (const line of String(item.result || '').split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed) lines.push(trimmed);
+      }
+    }
+    for (const child of item.nextSteps || []) visit(child);
+  };
+  visit(step);
+  return lines;
+}
+
+const REFUSED_PAGES = /\d+\s+refused\s+\[([^\]]*)\]\./u;
+const ERROR_PAGE = /^error\s+(\S+)\s+\[([^\]]+)\](.*)$/u;
+const D2_CODE = /D2_[A-Z0-9_]+/u;
+
+/** Pages the materializer refused, with the first D2_ code on that error line, else the error token. */
+export function refusedPages(materialize: mls.msg.AIPayload | undefined): Array<{ page: string; code: string }> {
+  if (!materialize) return [];
+  const lines = payloadLines(materialize);
+  const pages: string[] = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    const match = line.match(REFUSED_PAGES);
+    if (!match) continue;
+    for (const page of match[1].split(',').map(item => item.trim()).filter(Boolean)) {
+      if (seen.has(page)) continue;
+      seen.add(page);
+      pages.push(page);
+    }
+  }
+  return pages.map(page => {
+    const errorLine = lines.find(line => {
+      const match = line.match(ERROR_PAGE);
+      return match ? match[2].trim() === page : false;
+    });
+    const match = errorLine?.match(ERROR_PAGE);
+    if (!match) return { page, code: '' };
+    const d2 = `${match[1]}${match[3]}`.match(D2_CODE);
+    return { page, code: d2 ? d2[0] : match[1] };
+  });
 }
 
 export function materializerOutcome(step: mls.msg.AIPayload | undefined): { status: 'completed' | 'failed'; message: string } {

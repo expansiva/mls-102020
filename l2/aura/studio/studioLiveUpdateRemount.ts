@@ -41,6 +41,7 @@ import { t } from '/_102020_/l2/aura/studio/studioMessages.js';
 import {
   captureDefines,
   isElementSwapArmed,
+  markRebuiltByStudio,
   swapElementImpl,
 } from '/_102033_/l2/shared/elementSwapRegistry.js';
 
@@ -102,6 +103,8 @@ async function freshModuleUrl(target: IStudioEditTarget): Promise<IFreshModuleUr
  * that are `undefined` are skipped so the new constructor's own default survives.
  */
 export function carryOver(from: HTMLElement, to: HTMLElement, impl: CustomElementConstructor): void {
+  // Before replaceWith: connectedCallback of `to` runs on insert and must already see the mark.
+  markRebuiltByStudio(to);
   for (const attribute of Array.from(from.attributes)) {
     to.setAttribute(attribute.name, attribute.value);
   }

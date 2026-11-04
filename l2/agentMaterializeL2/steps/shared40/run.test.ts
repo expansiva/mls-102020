@@ -144,6 +144,9 @@ test('approval writes the source, compiles it, writes the declaration and a rece
   assert.deepEqual(port.compiled, ['102047/l2/controleEstoque/web/shared/produtos.ts']);
   assert.equal(port.files.get('102047/l2/controleEstoque/web/shared/produtosDts.txt'), DECLARATION);
   assert.equal(await reusableM4Shared(identity, 'produtos', port), true);
+  const written = port.files.get('102047/l2/controleEstoque/web/shared/produtos.ts') ?? '';
+  assert.match(written, /import \{ wasRebuiltByStudio \} from '\/_102033_\/l2\/shared\/elementSwapRegistry\.js';/u);
+  assert.match(written, /if \(!wasRebuiltByStudio\(this\)\) this\.resetVisit\(\);/u);
 
   port.files.set('102047/l2/controleEstoque/web/shared/produtos.ts', `${reference}// edited by hand\n`);
   assert.equal(await reusableM4Shared(identity, 'produtos', port), true, 'a file that exists is kept');

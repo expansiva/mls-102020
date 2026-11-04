@@ -37,7 +37,8 @@ test('interpret tool schema is provider-clean', () => {
 test('every prompt.md of the agent declares its modelType on the first line', () => {
   for (const file of ['steps/interpret/prompt.md', 'steps/ask/prompt.md', 'steps/answer/prompt.md', 'steps/answer/envelope.md', 'steps/answer/manual.md']) {
     const firstLine = readFileSync(path.join(AGENT_ROOT, file), 'utf8').split('\n')[0];
-    assert.match(firstLine, /^<!-- modelType: (classifier|general|reasoning|code|design|translate) -->$/, file);
+    // agent is an accepted alias (Wagner, 03/11/2026)
+    assert.match(firstLine, /^<!-- modelType: (classifier|general|reasoning|code|design|translate|agent) -->$/, file);
   }
 });
 

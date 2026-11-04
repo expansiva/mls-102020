@@ -29,8 +29,10 @@ import {
   buildP2MenuTool,
   withP2MenuEnums,
   collectRecordsKept,
+  dropUnknownMenuIcons,
   menuActionCounts,
   menuCandidates,
+  menuIconDropWarnings,
   normalizeMenuV2,
   parseP2Grants,
   parseP2Processes,
@@ -43,7 +45,8 @@ import {
   type P2L4Sources,
 } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 import type { P2ConfigNavigationItem } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
-import type { MenuPageNode, MenuStampedNode, PoolMenuFile } from '/_102035_/l2/solution/poolPlan.js';
+import type { MenuPageNode, MenuPlacement, MenuStampedNode, PoolMenuFile } from '/_102035_/l2/solution/poolPlan.js';
+import { MENU_PLACEMENTS } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
@@ -165,7 +168,75 @@ function loadAccessOntology(root: string): {
 }
 
 function loadDraft(): unknown {
-  return JSON.parse(readFileSync(DRAFT_PATH, 'utf8'));
+  const raw = JSON.parse(readFileSync(DRAFT_PATH, 'utf8')) as { meta: Record<string, unknown> };
+  raw.meta.placements = mensalidadesPlacements();
+  stampEmptyPageIcons(raw);
+  return raw;
+}
+
+/** Fixture answers predate placements and page icons. The model response still has to carry both keys. */
+function readMenuResponse(file: string): unknown {
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as { meta: Record<string, unknown> };
+  if (!Object.prototype.hasOwnProperty.call(raw.meta, 'placements')) raw.meta.placements = [];
+  stampEmptyPageIcons(raw);
+  return raw;
+}
+
+function stampEmptyPageIcons(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(stampEmptyPageIcons);
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  const node = value as Record<string, unknown>;
+  if (node.kind === 'page' && !Object.prototype.hasOwnProperty.call(node, 'icon')) node.icon = '';
+  if (node.children) stampEmptyPageIcons(node.children);
+  if (node.tree) stampEmptyPageIcons(node.tree);
+}
+
+function pagesForActor(draft: MenuV2, actorRef: string): string[] {
+  const byId = new Map<string, MenuV2['tree'][number]>();
+  const index = (nodes: readonly MenuV2['tree'][number][]) => {
+    for (const node of nodes) {
+      byId.set(node.id, node);
+      if (node.kind === 'hub' || node.kind === 'group') index(node.children);
+    }
+  };
+  index(draft.tree);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const collect = (node: MenuV2['tree'][number]) => {
+    if (node.kind === 'page') {
+      if (!seen.has(node.id)) {
+        seen.add(node.id);
+        out.push(node.id);
+      }
+      return;
+    }
+    node.children.forEach(collect);
+  };
+  for (const id of draft.authorities[`actor:${actorRef}`] || []) {
+    const node = byId.get(id);
+    if (node) collect(node);
+  }
+  return out;
+}
+
+/** Keeps gate fixtures green: one structural place per journey, with no UX preference. */
+function coverPlacements(draft: MenuV2, journeys: readonly { journeyId: string; actorRef: string }[]): void {
+  draft.meta.placements = journeys.filter(journey => journey.journeyId).map(journey => {
+    const visible = pagesForActor(draft, journey.actorRef);
+    const mapped = draft.meta.journeys[journey.journeyId] || [];
+    const pageId = mapped.find(id => visible.includes(id)) || visible[0];
+    if (!pageId) throw new Error(`no page for ${journey.journeyId} × ${journey.actorRef}`);
+    return {
+      journeyId: journey.journeyId,
+      actorRef: journey.actorRef,
+      placement: 'screenAction',
+      pageId,
+      reason: 'Fixture cover.',
+    };
+  });
 }
 
 function draftFromGeneratedMenu(raw: unknown): MenuV2 {
@@ -502,6 +573,7 @@ void test('normalizeMenuV2 accepts the tool array form of authorities and journe
         { processId: 'lembrarGeracaoMensalidades', pages: ['painel', 'mensalidades_mes'] },
       ],
       records: [],
+      placements: mensalidadesPlacements(),
     },
   });
   assert.deepEqual(arrayForm, objectForm);
@@ -917,10 +989,11 @@ void test('v2.1 fixtures of the three modules pass the gate with no warnings', (
   const compras = loadModuleSources(COMPRAS_FIXTURE);
   const cases = [
     { name: 'mensalidadesAcademia', loaded: mens, draft: normalizeMenuV2(loadDraft()) },
-    { name: 'hiringPipeline', loaded: hiring, draft: normalizeMenuV2(JSON.parse(readFileSync(HIRING_DRAFT_PATH, 'utf8'))) },
-    { name: 'compras', loaded: compras, draft: normalizeMenuV2(JSON.parse(readFileSync(COMPRAS_DRAFT_PATH, 'utf8'))) },
+    { name: 'hiringPipeline', loaded: hiring, draft: normalizeMenuV2(readMenuResponse(HIRING_DRAFT_PATH)) },
+    { name: 'compras', loaded: compras, draft: normalizeMenuV2(readMenuResponse(COMPRAS_DRAFT_PATH)) },
   ];
   for (const item of cases) {
+    coverPlacements(item.draft, item.loaded.sources.journeys);
     const gate = validateP2Menu(item.draft, item.loaded);
     assert.equal(gate.ok, true, `${item.name}: ${gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n')}`);
     assert.deepEqual(
@@ -933,7 +1006,8 @@ void test('v2.1 fixtures of the three modules pass the gate with no warnings', (
 
 void test('gate warns when closeFilledPosition has no timeline and is silent when it has one', () => {
   const hiring = loadModuleSources(HIRING_FIXTURE);
-  const withTimeline = normalizeMenuV2(JSON.parse(readFileSync(HIRING_DRAFT_PATH, 'utf8')));
+  const withTimeline = normalizeMenuV2(readMenuResponse(HIRING_DRAFT_PATH));
+  coverPlacements(withTimeline, hiring.sources.journeys);
   const without = structuredClone(withTimeline);
   const strip = (node: typeof without.tree[number]) => {
     if (node.kind === 'page') {
@@ -975,7 +1049,8 @@ void test('gate warns when an alert has no alerts organism and is silent when it
 
 void test('gate warns when a human task has no inbox and errors on an unknown process id', () => {
   const compras = loadModuleSources(COMPRAS_FIXTURE);
-  const withInbox = normalizeMenuV2(JSON.parse(readFileSync(COMPRAS_DRAFT_PATH, 'utf8')));
+  const withInbox = normalizeMenuV2(readMenuResponse(COMPRAS_DRAFT_PATH));
+  coverPlacements(withInbox, compras.sources.journeys);
   const without = structuredClone(withInbox);
   const strip = (node: typeof without.tree[number]) => {
     if (node.kind === 'page') {
@@ -1075,4 +1150,199 @@ void test('gate on the 12 p2_16 menus has no entity codes; unknown journey is st
     );
   }
   assert.deepEqual(remaining, []);
+});
+
+function mensalidadesPlacements(kindForMatricular: MenuPlacement['placement'] = 'screenAction'): MenuPlacement[] {
+  return [
+    { journeyId: 'matricularAluno', actorRef: 'recepcao', placement: kindForMatricular, pageId: 'matricula_aluno', reason: 'Age sobre a matrícula que a tela já mostra.' },
+    { journeyId: 'registrarPagamentoMensalidade', actorRef: 'recepcao', placement: 'listWithAdd', pageId: 'mensalidades_aluno', reason: 'A lista de mensalidades é a coleção que a recepção administra.' },
+    { journeyId: 'gerarMensalidadesDoMes', actorRef: 'gerencia', placement: 'menuItem', pageId: 'mensalidades_mes', reason: 'Começa a geração do mês, que não é uma linha de uma lista da gerência.' },
+    { journeyId: 'acompanharIndicadoresAcademia', actorRef: 'gerencia', placement: 'screenAction', pageId: 'painel', reason: 'Lê o que o painel já mostra.' },
+    { journeyId: 'cancelarPropriaMatricula', actorRef: 'aluno', placement: 'screenAction', pageId: 'matricula_aluno', reason: 'Cancela a matrícula que a tela do aluno já mostra.' },
+  ];
+}
+
+void test('d2_160 placements: schema, parser, gate and menu.json', () => {
+  const schema = loadSchema() as {
+    $defs: {
+      meta: { required: string[] };
+      placement: {
+        additionalProperties: boolean;
+        required: string[];
+        properties: {
+          journeyId: { pattern: string };
+          actorRef: { pattern: string };
+          placement: { enum: string[] };
+          pageId: { pattern: string };
+          reason: { minLength: number };
+        };
+      };
+    };
+  };
+  assert.ok(schema.$defs.meta.required.includes('placements'));
+  assert.equal(schema.$defs.placement.additionalProperties, false);
+  assert.deepEqual(schema.$defs.placement.required, ['journeyId', 'actorRef', 'placement', 'pageId', 'reason']);
+  assert.deepEqual(schema.$defs.placement.properties.placement.enum, [...MENU_PLACEMENTS]);
+  assert.equal(schema.$defs.placement.properties.reason.minLength, 1);
+  assert.equal(schema.$defs.placement.properties.journeyId.pattern, schema.$defs.placement.properties.actorRef.pattern);
+  const pagePattern = new RegExp(schema.$defs.placement.properties.pageId.pattern);
+  const idPattern = new RegExp(schema.$defs.placement.properties.journeyId.pattern);
+
+  const loaded = loadSources();
+  const raw = loadDraft() as { meta: Record<string, unknown> };
+  const withPlacements = {
+    ...raw,
+    meta: { ...raw.meta, placements: mensalidadesPlacements() },
+  };
+  for (const row of mensalidadesPlacements()) {
+    assert.match(row.journeyId, idPattern);
+    assert.match(row.actorRef, idPattern);
+    assert.match(row.pageId, pagePattern);
+    assert.ok(row.reason.length >= 1);
+  }
+  const draft = normalizeMenuV2(withPlacements);
+  assert.equal(draft.meta.placements?.length, 5);
+  const gate = validateP2Menu(draft, loaded);
+  assert.equal(gate.ok, true, gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  const file = buildP2MenuFile({ moduleName: MODULE, userLanguage: 'pt-BR', draft });
+  assert.deepEqual(file.meta.placements, draft.meta.placements);
+
+  const bare = JSON.parse(readFileSync(DRAFT_PATH, 'utf8')) as { meta: Record<string, unknown> };
+  delete bare.meta.placements;
+  assert.throws(() => normalizeMenuV2(bare), /\$\.meta: missing field 'placements'/);
+  const legacy: PoolMenuFile = {
+    schemaVersion: file.schemaVersion,
+    moduleName: file.moduleName,
+    userLanguage: file.userLanguage,
+    device: file.device,
+    tree: file.tree,
+    authorities: file.authorities,
+    meta: {
+      journeys: file.meta.journeys,
+      processes: file.meta.processes,
+      records: file.meta.records,
+      removed: file.meta.removed,
+    },
+  };
+  assert.equal(legacy.meta.placements, undefined);
+
+  const missing = structuredClone(draft);
+  missing.meta.placements = draft.meta.placements!.slice(1);
+  assert.ok(validateP2Menu(missing, loaded).issues.some(issue => issue.code === 'P2_MENU_PLACEMENT_MISSING'));
+
+  const hidden = structuredClone(draft);
+  hidden.meta.placements = draft.meta.placements!.map(row => (
+    row.journeyId === 'cancelarPropriaMatricula' ? { ...row, pageId: 'painel' } : row
+  ));
+  assert.ok(validateP2Menu(hidden, loaded).issues.some(issue => issue.code === 'P2_MENU_PLACEMENT_ACTOR_CANNOT_SEE'));
+
+  const duplicate = structuredClone(draft);
+  duplicate.meta.placements = [...draft.meta.placements!, draft.meta.placements![0]];
+  assert.ok(validateP2Menu(duplicate, loaded).issues.some(issue => issue.code === 'P2_MENU_PLACEMENT_DUPLICATE'));
+
+  const unknownJourney = structuredClone(draft);
+  unknownJourney.meta.placements = draft.meta.placements!.map((row, index) => index === 0 ? { ...row, journeyId: 'jornadaFantasma' } : row);
+  assert.ok(validateP2Menu(unknownJourney, loaded).issues.some(issue => issue.code === 'P2_MENU_PLACEMENT_JOURNEY_UNKNOWN'));
+
+  const unknownActor = structuredClone(draft);
+  unknownActor.meta.placements = draft.meta.placements!.map((row, index) => index === 0 ? { ...row, actorRef: 'visitante' } : row);
+  assert.ok(validateP2Menu(unknownActor, loaded).issues.some(issue => issue.code === 'P2_MENU_PLACEMENT_ACTOR_UNKNOWN'));
+
+  const unknownPage = structuredClone(draft);
+  unknownPage.meta.placements = draft.meta.placements!.map((row, index) => index === 0 ? { ...row, pageId: 'pagina_ausente' } : row);
+  assert.ok(validateP2Menu(unknownPage, loaded).issues.some(issue => issue.code === 'P2_MENU_PLACEMENT_PAGE_UNKNOWN'));
+
+  const notPage = structuredClone(draft);
+  notPage.meta.placements = draft.meta.placements!.map((row, index) => index === 0 ? { ...row, pageId: 'aluno' } : row);
+  assert.ok(validateP2Menu(notPage, loaded).issues.some(issue => issue.code === 'P2_MENU_PLACEMENT_NOT_PAGE'));
+
+  const emptyReason = structuredClone(draft);
+  emptyReason.meta.placements = draft.meta.placements!.map((row, index) => index === 0 ? { ...row, reason: ' ' } : row);
+  assert.ok(validateP2Menu(emptyReason, loaded).issues.some(issue => issue.code === 'P2_MENU_PLACEMENT_REASON_EMPTY'));
+
+  for (const placement of MENU_PLACEMENTS) {
+    const varied = structuredClone(draft);
+    varied.meta.placements = mensalidadesPlacements(placement);
+    const variedGate = validateP2Menu(varied, loaded);
+    assert.equal(variedGate.ok, true, `${placement}: ${variedGate.issues.map(issue => issue.code).join(',')}`);
+  }
+
+  assert.throws(
+    () => normalizeMenuV2({ ...raw, meta: { ...raw.meta, placements: [{ ...mensalidadesPlacements()[0], placement: 'banner' }] } }),
+    /must be screenAction, menuItem, listWithAdd/,
+  );
+
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.equal(prompt.includes('Actions are not nodes'), false);
+  const sourcePrompt = 'criar mensalidadesAcademia em português. academia com alunos e planos.';
+  const human = buildP2MenuHumanPrompt({
+    menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes, sourcePrompt },
+  });
+  assert.ok(human.indexOf('## Module') >= 0 && human.indexOf('## Module') < human.indexOf('## Actors'));
+  assert.ok(human.includes(sourcePrompt));
+});
+
+void test('d2_161 page icon is optional on disk and checked against Lucide after the model answer', async () => {
+  const schema = loadSchema() as { $defs: { pageNode: { required: string[] } } };
+  assert.ok(schema.$defs.pageNode.required.includes('icon'));
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /`icon` is a Lucide icon name that represents the screen, or `""` when none fits/);
+  assert.equal(prompt.includes('list-checks'), false);
+
+  const bare = JSON.parse(readFileSync(DRAFT_PATH, 'utf8')) as { meta: Record<string, unknown>; tree: unknown[] };
+  bare.meta.placements = mensalidadesPlacements();
+  assert.throws(() => normalizeMenuV2(bare), /missing field 'icon'/);
+
+  const blank = normalizeMenuV2(loadDraft());
+  assert.equal(firstPage(blank).icon, '');
+  const blankDrop = dropUnknownMenuIcons(blank);
+  assert.deepEqual(blankDrop.dropped, []);
+  const blankFile = buildP2MenuFile({ moduleName: MODULE, userLanguage: 'pt-BR', draft: blankDrop.draft });
+  assert.equal(JSON.stringify(blankFile).includes('"icon"'), false);
+  const legacy: PoolMenuFile = blankFile;
+  const pagesHaveIcon = (nodes: readonly { kind: string; icon?: string; children?: readonly { kind: string; icon?: string; children?: never[] }[] }[]): boolean => (
+    nodes.some(node => node.kind === 'page' ? node.icon !== undefined : pagesHaveIcon(node.children || []))
+  );
+  assert.equal(pagesHaveIcon(parsePreviousMenuTree(legacy)), false);
+
+  const named = structuredClone(loadDraft()) as { tree: Array<{ children: Array<Record<string, unknown>> }> };
+  named.tree[0].children[0].icon = 'list-checks';
+  const kept = dropUnknownMenuIcons(normalizeMenuV2(named));
+  assert.deepEqual(kept.dropped, []);
+  const namedFile = buildP2MenuFile({ moduleName: MODULE, userLanguage: 'pt-BR', draft: kept.draft });
+  const written = namedFile.tree[0];
+  assert.equal(written.kind, 'hub');
+  const writtenPage = written.kind === 'hub' ? written.children[0] : undefined;
+  assert.equal(writtenPage?.kind, 'page');
+  assert.equal(writtenPage?.kind === 'page' ? writtenPage.icon : '', 'list-checks');
+
+  const unknown = structuredClone(loadDraft()) as { tree: Array<{ children: Array<Record<string, unknown>> }> };
+  unknown.tree[0].children[0].icon = 'not-a-real-icon';
+  const parsed = normalizeMenuV2(unknown);
+  const before = structuredClone(parsed);
+  const dropped = dropUnknownMenuIcons(parsed);
+  assert.deepEqual(dropped.dropped, [{ pageId: firstPage(before).id, icon: 'not-a-real-icon' }]);
+  assert.deepEqual(menuIconDropWarnings(dropped.dropped), [`icon dropped: ${firstPage(before).id} not-a-real-icon`]);
+  const restored = structuredClone(dropped.draft);
+  const restoredPage = firstPage(restored);
+  restoredPage.icon = 'not-a-real-icon';
+  assert.deepEqual(restored, before);
+  const droppedFile = buildP2MenuFile({ moduleName: MODULE, userLanguage: 'pt-BR', draft: dropped.draft });
+  assert.equal(JSON.stringify(droppedFile).includes('"icon"'), false);
+
+  const host = installHost();
+  seedAgentFiles(host);
+  seedL4(host);
+  seedPipeline(host);
+  seed(host, {
+    folder: `${MODULE}/pool/l2`,
+    shortName: '20260918201156_mensalidadesAcademia-20260918201156_1',
+    extension: '.json',
+    content: readFileSync(path.join(HERE, '../entry10/fixtures/pool-l2-20260918201156.json'), 'utf8'),
+  });
+  const step = menuStep();
+  const payload = { type: 'flexible', result: unknown };
+  await afterP2MenuPromptStep(agentMeta(), contextWith(step, payload), step, step, 1);
+  const approved = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { warnings: string[] };
+  assert.deepEqual(approved.warnings, [`icon dropped: ${firstPage(before).id} not-a-real-icon`]);
 });

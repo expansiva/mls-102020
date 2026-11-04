@@ -40,7 +40,7 @@ export interface M4FinalizeSources {
   userLanguage: string;
 }
 
-export interface M4NavigationItem { id: string; label: string; href: string; description: string; actors: string[]; landing?: true }
+export interface M4NavigationItem { id: string; label: string; href: string; description: string; actors: string[]; icon?: string; landing?: true }
 export interface M4FinalizeResult {
   entry: Record<string, unknown>;
   /** The top-level keys whose value changed (empty: nothing to write). */
@@ -52,7 +52,7 @@ export interface M4FinalizeResult {
   navigationKept: number;
 }
 
-interface MenuNode { id?: unknown; kind?: unknown; label?: unknown; children?: unknown }
+interface MenuNode { id?: unknown; kind?: unknown; label?: unknown; icon?: unknown; children?: unknown }
 
 const str = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const nodes = (value: unknown): MenuNode[] => (Array.isArray(value) ? value.filter((item): item is MenuNode => Boolean(item) && typeof item === 'object') : []);
@@ -71,8 +71,8 @@ export function m4FirstSentence(text: string): string {
 }
 
 /** The pages of the menu tree in reading order (hubs flattened), and the pages under each hub. */
-export function m4MenuPages(menu: unknown): { order: Array<{ pageId: string; label: string }>; hubs: Map<string, string[]> } {
-  const order: Array<{ pageId: string; label: string }> = [];
+export function m4MenuPages(menu: unknown): { order: Array<{ pageId: string; label: string; icon?: string }>; hubs: Map<string, string[]> } {
+  const order: Array<{ pageId: string; label: string; icon?: string }> = [];
   const hubs = new Map<string, string[]>();
   const walk = (list: MenuNode[], ancestors: string[]) => {
     for (const node of list) {
@@ -80,7 +80,8 @@ export function m4MenuPages(menu: unknown): { order: Array<{ pageId: string; lab
       if (!id) continue;
       const children = nodes(node.children);
       if (str(node.kind) === 'page') {
-        order.push({ pageId: id, label: str(node.label) || m4HumanizeId(id) });
+        const icon = str(node.icon);
+        order.push({ pageId: id, label: str(node.label) || m4HumanizeId(id), ...(icon ? { icon } : {}) });
         for (const hub of ancestors) hubs.set(hub, [...(hubs.get(hub) ?? []), id]);
       }
       if (children.length) walk(children, str(node.kind) === 'page' ? ancestors : [...ancestors, id]);
@@ -132,14 +133,14 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
     const frontend = current?.frontend && typeof current.frontend === 'object' ? current.frontend as Record<string, unknown> : {};
     return Array.isArray(frontend.pages) ? frontend.pages as Array<Record<string, unknown>> : [];
   })();
-  const planned = [
+  const planned: Array<{ pageId: string; label: string; icon?: string }> = [
     ...order.filter(item => approved.has(item.pageId)),
     ...sources.pages.filter(page => !order.some(item => item.pageId === page.pageId)).map(page => ({ pageId: page.pageId, label: m4HumanizeId(page.pageId) })),
   ];
-  const composeApproved = (pageId: string, label: string): M4NavigationItem => {
+  const composeApproved = (pageId: string, label: string, icon?: string): M4NavigationItem => {
     const page = approved.get(pageId)!;
     const actors = menuActors.get(pageId) ?? [...page.sharedActors];
-    return { id: pageId, label, href: `${basePath}/${pageId}`, description: m4FirstSentence(page.intent), actors };
+    return { id: pageId, label, href: `${basePath}/${pageId}`, description: m4FirstSentence(page.intent), actors, ...(icon ? { icon } : {}) };
   };
   const frontendPage = (item: M4NavigationItem) => ({
     pageId: item.id,
@@ -160,7 +161,7 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
   if (current) {
     const keptNav = currentNav.map(item => structuredClone(item));
     const keptIds = new Set(keptNav.flatMap(item => (item && typeof item.id === 'string' ? [item.id] : [])));
-    const addedNav = planned.filter(item => !keptIds.has(item.pageId)).map(item => composeApproved(item.pageId, item.label));
+    const addedNav = planned.filter(item => !keptIds.has(item.pageId)).map(item => composeApproved(item.pageId, item.label, item.icon));
     navigation = [...keptNav, ...addedNav];
     navigationAdded = addedNav.map(item => item.id);
     navigationKept = keptNav.length;
@@ -190,7 +191,7 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
       have.add(item.id);
     }
   } else {
-    navigation = planned.map(({ pageId, label }) => composeApproved(pageId, label));
+    navigation = planned.map(({ pageId, label, icon }) => composeApproved(pageId, label, icon));
     // The landing of an actor is the first page of ITS authorities list in menu.json (the planner's order for that actor);
     // an actor the menu does not list lands on its first page in menu order. tarefas (16/10/2026): by menu order alone the
     // gestor would land on meus_avisos, which sits in the membro hub before "Painel da equipe".

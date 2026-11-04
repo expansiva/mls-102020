@@ -58,12 +58,14 @@
         "id",
         "kind",
         "label",
-        "organisms"
+        "organisms",
+        "icon"
       ],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" },
         "kind": { "type": "string", "enum": ["page"] },
         "label": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string" },
         "organisms": {
           "type": "array",
           "items": { "$ref": "#/$defs/organism" }
@@ -127,7 +129,8 @@
       "required": [
         "journeys",
         "processes",
-        "records"
+        "records",
+        "placements"
       ],
       "properties": {
         "journeys": {
@@ -141,7 +144,29 @@
         "records": {
           "type": "array",
           "items": { "$ref": "#/$defs/recordPages" }
+        },
+        "placements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/placement" }
         }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "journeyId",
+        "actorRef",
+        "placement",
+        "pageId",
+        "reason"
+      ],
+      "properties": {
+        "journeyId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "actorRef": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "placement": { "type": "string", "enum": ["screenAction", "menuItem", "listWithAdd"] },
+        "pageId": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" },
+        "reason": { "type": "string", "minLength": 1 }
       }
     },
     "journeyPages": {

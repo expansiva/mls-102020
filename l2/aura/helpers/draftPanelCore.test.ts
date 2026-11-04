@@ -6,11 +6,19 @@ import {
   branchForSlug,
   callExec,
   collectEditedFiles,
+  COLLAB_DRAFT_SAVED,
   discard,
+  discardModule,
+  resetDraftDatabase,
   loadPanel,
+  modulePendingCount,
   localEdits,
+  actionCounts,
+  buildDraftTree,
   panelModel,
+  pendingFiles,
   publish,
+  visibleTreeRows,
   readPublished,
   saveDefaultDraft,
   saveToDraft,
@@ -19,6 +27,7 @@ import {
   syncWithPublished,
   viewDiff,
   type FetchImpl,
+  type ICollabDraftSavedDetail,
   type IDraftWaitResult,
   type IListedDraft,
   type IPanelStorFile,
@@ -171,6 +180,10 @@ test('callExec turns a network failure and a non-JSON body into an error', async
   await assert.rejects(() => callExec(notJson, 'ping', {}), /Unexpected token/);
 });
 
+function fileKey(file: IPanelStorFile): string {
+  return `File_${file.project}_${file.level ?? 0}_${file.shortName ?? ''}_${file.extension ?? ''}`;
+}
+
 test('discard reloads only after discardDraft succeeds', async () => {
   const calls: string[] = [];
   await discard({
@@ -182,6 +195,8 @@ test('discard reloads only after discardDraft succeeds', async () => {
       return jsonResponse({ statusCode: 200, status: 'discarded' });
     },
     reload: () => { calls.push('reload'); },
+    storFiles: {},
+    clearLocal: async () => { calls.push('clear'); },
   }, 102047, 'team-102047');
   assert.deepEqual(calls, ['discardDraft', 'reload']);
 
@@ -190,10 +205,104 @@ test('discard reloads only after discardDraft succeeds', async () => {
     () => discard({
       fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'BAD_DRAFT' }, 400),
       reload: () => { refused.push('reload'); },
+      storFiles: {},
+      clearLocal: async () => { refused.push('clear'); },
     }, 102047, 'nope'),
     /BAD_DRAFT/,
   );
   assert.deepEqual(refused, []);
+});
+
+test('resetDraftDatabase calls draftResetDatabase and surfaces the cause', async () => {
+  const calls: string[] = [];
+  const reset = await resetDraftDatabase(async (_input, init) => {
+    calls.push('draftResetDatabase');
+    const body = JSON.parse(init.body) as { action: string; project: number; draft: string };
+    assert.equal(body.action, 'draftResetDatabase');
+    assert.equal(body.project, 102047);
+    assert.equal(body.draft, 'team-102047');
+    return jsonResponse({ statusCode: 200, status: 'reset', database: 'draft_db' });
+  }, 102047, 'team-102047');
+  assert.deepEqual(reset, { database: 'draft_db' });
+  assert.deepEqual(calls, ['draftResetDatabase']);
+
+  await assert.rejects(
+    () => resetDraftDatabase(
+      async () => jsonResponse({ statusCode: 500, cause: 'drop refused' }, 500),
+      102047,
+      'team-102047',
+    ),
+    (err: unknown) => err instanceof Error && err.message === 'drop refused',
+  );
+  await assert.rejects(
+    () => resetDraftDatabase(
+      async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+      102047,
+      'team-102047',
+    ),
+    (err: unknown) => err instanceof Error && err.message === 'draft.not_owner',
+  );
+});
+
+test('discard clears the project local copies and tempObjects before reload', async () => {
+  const projectFile: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'a', level: 2, folder: '', extension: '.ts',
+  };
+  const deleted: IPanelStorFile = {
+    project: 102047, status: 'deleted', shortName: 'b', level: 2, folder: '', extension: '.ts',
+  };
+  const other: IPanelStorFile = {
+    project: 102099, inLocalStorage: true, shortName: 'd', level: 2, folder: '', extension: '.ts',
+  };
+  const storFiles = { a: projectFile, b: deleted, d: other };
+  const tempObjects: Record<string, string> = {
+    [fileKey(projectFile)]: 'local-a',
+    [fileKey(deleted)]: 'local-b',
+    [fileKey(other)]: 'local-d',
+  };
+  const calls: string[] = [];
+  await discard({
+    fetchImpl: async () => {
+      calls.push('discardDraft');
+      return jsonResponse({ statusCode: 200, status: 'discarded' });
+    },
+    reload: () => { calls.push('reload'); },
+    storFiles,
+    clearLocal: async (file) => {
+      calls.push(`clear:${file.shortName}`);
+      file.inLocalStorage = false;
+      file.status = 'nochange';
+      delete tempObjects[fileKey(file)];
+    },
+  }, 102047, 'team-102047');
+  assert.deepEqual(calls, ['discardDraft', 'clear:a', 'clear:b', 'reload']);
+  assert.equal(projectFile.inLocalStorage, false);
+  assert.equal(deleted.inLocalStorage, false);
+  assert.equal(other.inLocalStorage, true);
+  assert.deepEqual(Object.keys(tempObjects), [fileKey(other)]);
+});
+
+test('discard logs a failed local clear with the file and still reloads', async () => {
+  const dirty: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'a', level: 2, folder: 'aura', extension: '.ts',
+  };
+  const calls: string[] = [];
+  const logs: string[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => { logs.push(args.map(String).join(' ')); };
+  try {
+    await discard({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'discarded' }),
+      reload: () => { calls.push('reload'); },
+      storFiles: { a: dirty },
+      clearLocal: async () => { throw new Error('idb down'); },
+    }, 102047, 'team-102047');
+  } finally {
+    console.error = orig;
+  }
+  assert.deepEqual(calls, ['reload']);
+  assert.ok(logs.some((line) => line.includes('l2/aura/a.ts') && line.includes('idb down')));
+  assert.equal(dirty.inLocalStorage, true);
 });
 
 test('syncWithPublished reloads on merged and rejects DRAFT_CONFLICT with the files', async () => {
@@ -397,6 +506,53 @@ test('saveToDraft restores inLocalStorage when setContents throws and does not c
   );
   assert.equal(file.inLocalStorage, true);
   assert.equal(cleared, 0);
+});
+
+test('saveToDraft dispatches collabDraftSaved once with the sent paths', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const target = new EventTarget();
+  host.window = target;
+  const events: ICollabDraftSavedDetail[] = [];
+  const listener = (event: Event): void => {
+    events.push((event as CustomEvent<ICollabDraftSavedDetail>).detail);
+  };
+  target.addEventListener(COLLAB_DRAFT_SAVED, listener);
+  try {
+    const config: IPanelStorFile = {
+      project: 102047,
+      inLocalStorage: true,
+      level: 5,
+      folder: '',
+      shortName: 'config',
+      extension: '.json',
+    };
+    await saveToDraft([config], 'save config', async () => [{ result: true }], async () => {});
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0], { project: 102047, paths: ['l5/config.json'] });
+
+    const page: IPanelStorFile = {
+      project: 102047,
+      inLocalStorage: true,
+      level: 2,
+      folder: '',
+      shortName: 'page',
+      extension: '.ts',
+    };
+    await saveToDraft([page], 'save page', async () => [{ result: true }], async () => {});
+    assert.equal(events.length, 2);
+    assert.deepEqual(events[1], { project: 102047, paths: ['l2/page.ts'] });
+
+    await assert.rejects(
+      () => saveToDraft([config], 'refused', async () => [{ result: false }], async () => {}),
+      /setContents refused the draft save/,
+    );
+    assert.equal(events.length, 2);
+  } finally {
+    target.removeEventListener(COLLAB_DRAFT_SAVED, listener);
+    if (previous) host.window = previous;
+    else delete host.window;
+  }
 });
 
 test('localEdits is empty, one file, or many, and a deletion counts', () => {
@@ -691,4 +847,203 @@ test('storeCapturedDraftText writes the captured string and reports a failed wri
     console.error = previousError;
     host.mls.stor.localStor = previous;
   }
+});
+
+function moduleConfig(ordersNav: string, extraModule: boolean): string {
+  const modules: unknown[] = [
+    {
+      moduleId: 'orders',
+      navigation: [{ id: 'orders', label: ordersNav }],
+      shellMode: 'spa',
+    },
+    {
+      moduleId: 'billing',
+      navigation: [{ id: 'billing', label: 'Billing' }],
+    },
+  ];
+  if (!extraModule) modules.splice(1, 1);
+  return JSON.stringify({
+    studio: { defaultDraft: 'team-102047' },
+    projects: {
+      '102047': {
+        root: '../mls-102047',
+        modules,
+        persistenceModules: [{ moduleId: 'orders', tableDefsDir: './keep' }],
+      },
+      '102099': { modules: [{ moduleId: 'other', navigation: [{ id: 'other' }] }] },
+    },
+  });
+}
+
+test('discardModule sends the four paths, swaps only that module block, and undoes its local copies', async () => {
+  const current = moduleConfig('Draft orders', true);
+  const published = moduleConfig('Published orders', true);
+  const publishedParsed = JSON.parse(published) as {
+    projects: { '102047': { modules: { moduleId: string; navigation: { label: string }[] }[] } };
+  };
+  publishedParsed.projects['102047'].modules[0]?.navigation.push({ id: 'extra', label: 'Published extra' });
+  const publishedJson = JSON.stringify(publishedParsed);
+
+  const oldNew: IPanelStorFile = {
+    project: 102047, status: 'new', shortName: 'agent', level: 1, folder: 'orders_old', extension: '.ts',
+  };
+  const localChanged: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'page', level: 2, folder: 'orders/pipeline', extension: '.ts',
+  };
+  const otherModule: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'bill', level: 2, folder: 'billing', extension: '.ts',
+  };
+  const clean: IPanelStorFile = {
+    project: 102047, status: 'nochange', shortName: 'kept', level: 2, folder: 'orders', extension: '.ts',
+  };
+  const storFiles: Record<string, IPanelStorFile> = {
+    old: oldNew,
+    local: localChanged,
+    other: otherModule,
+    clean,
+  };
+  const calls: string[] = [];
+  let saved = '';
+  await discardModule({
+    fetchImpl: async (_input, init) => {
+      calls.push('restore');
+      const body = JSON.parse(init.body) as { action: string; project: number; draft: string; ref: string; paths: string[] };
+      assert.equal(body.action, 'draftRestorePaths');
+      assert.equal(body.project, 102047);
+      assert.equal(body.draft, 'team-102047');
+      assert.equal(body.ref, 'main');
+      assert.deepEqual(body.paths, ['l1/orders', 'l1/orders_old', 'l2/orders', 'l4/orders']);
+      return jsonResponse({ statusCode: 200, status: 'restored', paths: body.paths, head: 'abc' });
+    },
+    saveL5File: async (project, shortName, content, comment) => {
+      calls.push('save');
+      assert.equal(project, 102047);
+      assert.equal(shortName, 'config');
+      assert.equal(comment, 'discard module orders');
+      saved = content;
+      return true;
+    },
+    undoFile: async (file) => {
+      calls.push(`undo:${file.level}/${file.folder}/${file.shortName}`);
+      if (file.status === 'new') delete storFiles.old;
+      file.inLocalStorage = false;
+      file.status = 'nochange';
+    },
+    storFiles,
+    reloadLive: async () => { calls.push('reload'); },
+  }, 102047, 'team-102047', 'orders', current, publishedJson);
+
+  assert.deepEqual(calls, [
+    'restore',
+    'save',
+    'undo:1/orders_old/agent',
+    'undo:2/orders/pipeline/page',
+    'reload',
+  ]);
+  assert.equal(storFiles.old, undefined);
+  assert.equal(otherModule.inLocalStorage, true);
+  assert.equal(clean.status, 'nochange');
+  const written = JSON.parse(saved) as {
+    studio: { defaultDraft: string };
+    projects: Record<string, {
+      root?: string;
+      persistenceModules?: { moduleId: string }[];
+      modules: { moduleId: string; navigation: unknown; shellMode?: string }[];
+    }>;
+  };
+  const project = written.projects['102047'];
+  assert.ok(project);
+  assert.equal(written.studio.defaultDraft, 'team-102047');
+  assert.equal(project.root, '../mls-102047');
+  assert.deepEqual(project.persistenceModules, [{ moduleId: 'orders', tableDefsDir: './keep' }]);
+  assert.deepEqual(project.modules[0], {
+    moduleId: 'orders',
+    navigation: [{ id: 'orders', label: 'Published orders' }, { id: 'extra', label: 'Published extra' }],
+    shellMode: 'spa',
+  });
+  assert.deepEqual(project.modules[1], {
+    moduleId: 'billing',
+    navigation: [{ id: 'billing', label: 'Billing' }],
+  });
+  assert.deepEqual(written.projects['102099'], JSON.parse(current).projects['102099']);
+  assert.equal(modulePendingCount([
+    { path: 'l2/orders/pipeline/a.ts', inBrowser: true, inDraft: false, hasError: false },
+    { path: 'l1/orders_old/agent.ts', inBrowser: true, inDraft: true, hasError: false },
+    { path: 'l2/billing/bill.ts', inBrowser: false, inDraft: true, hasError: false },
+    { path: 'l2/ordersExtra/no.ts', inBrowser: true, inDraft: false, hasError: false },
+  ], 'orders'), 2);
+});
+
+test('discardModule shows the server reason and does not touch config or local copies', async () => {
+  const calls: string[] = [];
+  await assert.rejects(
+    () => discardModule({
+      fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+      saveL5File: async () => { calls.push('save'); return true; },
+      undoFile: async () => { calls.push('undo'); },
+      storFiles: {
+        a: { project: 102047, status: 'new', shortName: 'agent', level: 1, folder: 'orders_old', extension: '.ts' },
+      },
+      reloadLive: async () => { calls.push('reload'); },
+    }, 102047, 'user-ada_example_com', 'orders', moduleConfig('Draft', true), moduleConfig('Published', true)),
+    /draft\.not_owner/,
+  );
+  assert.deepEqual(calls, []);
+});
+
+test('1016 pipeline files open closed, one level line, and only the children of an open node', () => {
+  const files = Array.from({ length: 1016 }, (_, index) => ({
+    shortPath: `l2/comandaRestaurante/pipeline/agentDefsL2/file${index}.ts`,
+    hasError: false,
+  }));
+  const pending = pendingFiles(files, []);
+  const tree = buildDraftTree(pending);
+  assert.equal(tree.length, 1);
+  assert.equal(tree[0].name, 'l2');
+  assert.equal(tree[0].kind, 'level');
+  assert.equal(tree[0].count, 1016);
+  assert.equal(tree[0].inBrowser, 1016);
+  assert.equal(tree[0].children[0].kind, 'module');
+  assert.equal(tree[0].children[0].name, 'comandaRestaurante');
+
+  const closed = visibleTreeRows(tree, new Set());
+  assert.equal(closed.length, 1);
+  assert.equal(closed[0].name, 'l2');
+  assert.equal(closed.filter((row) => row.kind === 'file').length, 0);
+
+  const opened = visibleTreeRows(tree, new Set(['l2']));
+  assert.deepEqual(opened.map((row) => row.name), ['l2', 'comandaRestaurante']);
+
+  const moduleOpen = visibleTreeRows(tree, new Set(['l2', 'l2/comandaRestaurante']));
+  assert.deepEqual(moduleOpen.map((row) => row.name), ['l2', 'comandaRestaurante', 'pipeline']);
+  assert.equal(moduleOpen.filter((row) => row.kind === 'file').length, 0);
+
+  const folderOpen = visibleTreeRows(tree, new Set([
+    'l2',
+    'l2/comandaRestaurante',
+    'l2/comandaRestaurante/pipeline',
+    'l2/comandaRestaurante/pipeline/agentDefsL2',
+  ]));
+  assert.equal(folderOpen.filter((row) => row.kind === 'file').length, 1016);
+
+  assert.deepEqual(actionCounts(files, []), { save: 1016, publish: 0, discard: 1016 });
+
+  const twoLevels = buildDraftTree(pendingFiles(
+    [{ shortPath: 'l2/comandaRestaurante/pipeline/a.ts', hasError: true }],
+    ['l4/outro/b.ts', 'l2/comandaRestaurante/pipeline/a.ts'],
+  ));
+  const levelLines = visibleTreeRows(twoLevels, new Set());
+  assert.deepEqual(levelLines.map((row) => row.name), ['l2', 'l4']);
+  assert.equal(levelLines[0].withError, 1);
+  assert.equal(levelLines[0].inBrowser, 1);
+  assert.equal(levelLines[0].inDraft, 1);
+  assert.equal(levelLines[1].inDraft, 1);
+  assert.equal(levelLines[1].inBrowser, 0);
+  assert.deepEqual(
+    actionCounts(
+      [{ shortPath: 'l2/comandaRestaurante/pipeline/a.ts', hasError: true }],
+      ['l4/outro/b.ts', 'l2/comandaRestaurante/pipeline/a.ts'],
+    ),
+    { save: 1, publish: 2, discard: 2 },
+  );
 });

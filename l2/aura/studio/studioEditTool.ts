@@ -22,8 +22,10 @@ import {
   afterDraftSave,
   dropCapturedDraftText,
   holdCapturedDraftText,
+  loadPanel,
   saveToDraft,
   storeCapturedDraftText,
+  type FetchImpl,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { resetAuraSeed, seedActiveHeader, seedAuraStateFromHost } from '/_102020_/l2/aura/studio/studioAuraSeed.js';
@@ -37,6 +39,130 @@ import {
 import type { StudioEditor } from '/_102020_/l2/aura/studio/studioEditor.js';
 import type { StudioLiveUpdateWatcher } from '/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js';
 import { t } from '/_102020_/l2/aura/studio/studioMessages.js';
+
+const fetchImpl: FetchImpl = (input, init) => fetch(input, init);
+
+/** One other person's draft, as `listDrafts` reported it. `owner` is never a slug. */
+export interface IOtherDraftTouch {
+  owner: string | null;
+  files: readonly string[];
+}
+
+/** `listDrafts.owner` when it is a non-empty string. A missing owner stays null — never the slug. */
+export function listedOwner(item: object): string | null {
+  if (!('owner' in item)) return null;
+  const raw = (item as { owner?: unknown }).owner;
+  if (typeof raw !== 'string') return null;
+  const name = raw.trim();
+  return name === '' ? null : name;
+}
+
+export function touchesFromDrafts(drafts: readonly object[]): IOtherDraftTouch[] {
+  return drafts.map((item) => {
+    const owner = listedOwner(item);
+    if (owner === null) console.warn('[studio] listDrafts owner is missing');
+    const rawFiles = 'files' in item ? (item as { files?: unknown }).files : undefined;
+    const files = Array.isArray(rawFiles)
+      ? rawFiles.filter((file): file is string => typeof file === 'string')
+      : [];
+    return { owner, files };
+  });
+}
+
+function draftFilePath(file: {
+  level?: number;
+  folder?: string;
+  shortName?: string;
+  extension?: string;
+}): string {
+  const name = file.shortName ?? '';
+  const folder = file.folder ?? '';
+  const extension = file.extension ?? '';
+  if (file.level === undefined && folder === '' && extension === '') return name;
+  const levelPart = file.level === undefined ? '' : `l${file.level}/`;
+  const folderPart = folder === '' ? '' : `${folder}/`;
+  return `${levelPart}${folderPart}${name}${extension}`;
+}
+
+function alsoChangingText(person: string | null): string {
+  return person ? t('edit.alsoChanging', { person }) : t('edit.alsoChangingUnknown');
+}
+
+/**
+ * First edit of a file that another draft already lists.
+ * Later edits of the same file return null. Does not read the network.
+ */
+export function sharedEditWarning(
+  file: { level?: number; folder?: string; shortName?: string; extension?: string },
+  others: readonly IOtherDraftTouch[],
+  warned: Set<string>,
+): string | null {
+  const path = draftFilePath(file);
+  if (path === '' || warned.has(path)) return null;
+  const names: string[] = [];
+  let listed = false;
+  for (const other of others) {
+    if (!other.files.includes(path)) continue;
+    listed = true;
+    if (other.owner && !names.includes(other.owner)) names.push(other.owner);
+  }
+  if (!listed) return null;
+  warned.add(path);
+  if (names.length === 0) {
+    console.warn('[studio] shared file has no owner', path);
+    return alsoChangingText(null);
+  }
+  return alsoChangingText(names.join(', '));
+}
+
+/** Warns once when the file is in another draft, then always hands the edit on. */
+export function noteSharedFile(
+  file: mls.stor.IFileInfo,
+  others: readonly IOtherDraftTouch[],
+  warned: Set<string>,
+  show: (text: string) => void,
+  send: (file: mls.stor.IFileInfo) => void,
+): void {
+  const text = sharedEditWarning(file, others, warned);
+  if (text) show(text);
+  send(file);
+}
+
+/** Other-draft list for this Studio session: which files were already re-read, and which were warned. */
+export interface ISharedEditSession {
+  refreshed: Set<string>;
+  others: readonly IOtherDraftTouch[];
+  warned: Set<string>;
+}
+
+/**
+ * First change of each file in the session re-reads the other-draft list, then warns.
+ * Later changes of that file do not query. A throw is logged here; `null` means the caller already logged the failed read. Either way the edit is sent and no warning is shown.
+ */
+export async function deliverSharedEdit(
+  file: mls.stor.IFileInfo,
+  session: ISharedEditSession,
+  refresh: () => Promise<readonly IOtherDraftTouch[] | null>,
+  show: (text: string) => void,
+  send: (file: mls.stor.IFileInfo) => void,
+): Promise<void> {
+  const path = draftFilePath(file);
+  if (path !== '' && !session.refreshed.has(path)) {
+    session.refreshed.add(path);
+    let next: readonly IOtherDraftTouch[] | null = null;
+    try {
+      next = await refresh();
+    } catch (err) {
+      console.error('[studio] listDrafts for shared files failed', err);
+    }
+    if (next === null) {
+      send(file);
+      return;
+    }
+    session.others = next;
+  }
+  noteSharedFile(file, session.others, session.warned, show, send);
+}
 
 const AUTO_SAVE_MS = 3000;
 
@@ -52,12 +178,14 @@ export interface IAutoSavePanelState {
   lastSentAt: number | null;
   pending: number;
   error: string | null;
+  /** An agent chain is open. The send waits until `running` returns to 0. */
+  agentWorking: boolean;
 }
 
 let createAutoSave: () => IDraftAutoSave = () => new DraftAutoSave();
 let autoSave: IDraftAutoSave | undefined;
 
-let panelState: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null };
+let panelState: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null, agentWorking: false };
 const panelListeners = new Set<(state: IAutoSavePanelState) => void>();
 
 function publishPanel(next: IAutoSavePanelState): void {
@@ -185,10 +313,10 @@ export async function sendAutoSaveBatch(
   for (const file of toSend) {
     if (file.status === 'deleted' || file.hasError) continue;
     const text = captured.get(file);
-    if (text === undefined) {
-      console.error('[studio] auto-save captured no text to record', file.shortName);
-      continue;
-    }
+    // No open model (a file an agent wrote, a new file nobody opened): it was sent from its local
+    // record, and with no model there is no later text to compare, so there is no CRC to keep.
+    // Not an error: an agent chain writes hundreds of these, and each one used to log one.
+    if (text === undefined) continue;
     // Last-send CRC only. `originalCRC` stays the published baseline.
     recordSentContent(file, text);
     if (pendingFiles([file], project).length === 1) onStillPending(file);
@@ -219,12 +347,34 @@ function storFileFrom(ref: {
   return file ?? undefined;
 }
 
+/** `collabAgentChain` detail. `null` when the event is not that shape; the cause is logged. */
+function agentChainRunning(ev: Event): number | null {
+  if (!(ev instanceof CustomEvent)) {
+    console.error('[studio] collabAgentChain is not a CustomEvent');
+    return null;
+  }
+  const running = (ev.detail as { running?: unknown } | null)?.running;
+  if (typeof running !== 'number' || !Number.isFinite(running) || running < 0) {
+    console.error('[studio] collabAgentChain has no running count', ev.detail);
+    return null;
+  }
+  return running;
+}
+
 class DraftAutoSave implements IDraftAutoSave {
   private listening = false;
+  private chainListening = false;
+  /** Open agent chains. Above 0, notifies stay pending and nothing is sent. */
+  private agentRunning = 0;
+  private readonly sharedEdits: ISharedEditSession = {
+    refreshed: new Set<string>(),
+    others: [],
+    warned: new Set<string>(),
+  };
   private readonly saver = createAutoSaver<mls.stor.IFileInfo>({
     debounceMs: AUTO_SAVE_MS,
     now: () => Date.now(),
-    hasDraft: () => this.listening && studioDraftOn(),
+    hasDraft: () => this.listening && studioDraftOn() && this.agentRunning === 0,
     onError: (reason) => {
       const project = siteProject();
       publishPanel({
@@ -232,6 +382,7 @@ class DraftAutoSave implements IDraftAutoSave {
         lastSentAt: panelState.lastSentAt,
         pending: project === null ? panelState.pending : pendingNow(project).length,
         error: reason instanceof Error ? reason.message : String(reason),
+        agentWorking: this.agentRunning > 0,
       });
     },
     send: async (files) => {
@@ -248,6 +399,7 @@ class DraftAutoSave implements IDraftAutoSave {
         lastSentAt: Date.now(),
         pending: pendingNow(project).length,
         error: null,
+        agentWorking: this.agentRunning > 0,
       });
     },
   });
@@ -259,6 +411,7 @@ class DraftAutoSave implements IDraftAutoSave {
     mls.events.addListener(3, 'FileAction', this.onFileAction);
     mls.events.addListener(2, 'styleChanged' as mls.events.TypeEvent, this.onStyleChanged);
     this.listening = true;
+    this.listenForAgentChain();
     const project = siteProject();
     const pending = project === null ? [] : pendingNow(project);
     publishPanel({
@@ -266,9 +419,29 @@ class DraftAutoSave implements IDraftAutoSave {
       lastSentAt: panelState.lastSentAt,
       pending: pending.length,
       error: panelState.error,
+      agentWorking: this.agentRunning > 0,
     });
     // Files already dirty when Studio (or the active draft) comes on never fire a new event.
     for (const file of pending) this.saver.notify(file);
+    void this.refreshOthers();
+  }
+
+  /** List of other drafts. On enter, when a file opens, and on the first edit of each file — not on later edits of that file. */
+  private async refreshOthers(): Promise<readonly IOtherDraftTouch[] | null> {
+    const project = siteProject();
+    const slug = activeDraft();
+    if (project === null || typeof slug !== 'string' || slug.length === 0) {
+      console.warn('[studio] shared-file list has no project or draft');
+      return null;
+    }
+    try {
+      const panel = await loadPanel(fetchImpl, project, slug);
+      this.sharedEdits.others = touchesFromDrafts(panel.others);
+      return this.sharedEdits.others;
+    } catch (err) {
+      console.error('[studio] listDrafts for shared files failed', err);
+      return null;
+    }
   }
 
   public stop(): void {
@@ -276,12 +449,84 @@ class DraftAutoSave implements IDraftAutoSave {
     mls.events.removeEventListener([1, 2, 3], ['FileAction'], this.onFileAction);
     mls.events.removeEventListener([2], ['styleChanged' as mls.events.TypeEvent], this.onStyleChanged);
     this.listening = false;
+    this.stopListeningForAgentChain();
     publishPanel({
       on: false,
       lastSentAt: panelState.lastSentAt,
       pending: panelState.pending,
       error: panelState.error,
+      agentWorking: this.agentRunning > 0,
     });
+  }
+
+  private listenForAgentChain(): void {
+    const target = (globalThis as { window?: EventTarget }).window;
+    if (!target || typeof target.addEventListener !== 'function') {
+      console.error('[studio] collabAgentChain: window.addEventListener is missing');
+      return;
+    }
+    target.addEventListener('collabAgentChain', this.onAgentChain);
+    this.chainListening = true;
+  }
+
+  private stopListeningForAgentChain(): void {
+    if (!this.chainListening) return;
+    const target = (globalThis as { window?: EventTarget }).window;
+    if (!target || typeof target.removeEventListener !== 'function') {
+      console.error('[studio] collabAgentChain: window.removeEventListener is missing');
+      return;
+    }
+    target.removeEventListener('collabAgentChain', this.onAgentChain);
+    this.chainListening = false;
+  }
+
+  private readonly onAgentChain = (ev: Event): void => {
+    const running = agentChainRunning(ev);
+    if (running === null) return;
+    const was = this.agentRunning;
+    this.agentRunning = running;
+    if (running > 0) {
+      this.holdForAgent();
+      return;
+    }
+    if (was > 0) this.releaseAfterAgent();
+  };
+
+  /** Chain is open. File notices still update the pending count; the saver does not send. */
+  private holdForAgent(): void {
+    const project = siteProject();
+    publishPanel({
+      on: this.listening,
+      lastSentAt: panelState.lastSentAt,
+      pending: project === null ? panelState.pending : pendingNow(project).length,
+      error: panelState.error,
+      agentWorking: true,
+    });
+  }
+
+  /** Chain closed (success, error, or cancel). One notify of everything still pending. */
+  private releaseAfterAgent(): void {
+    const project = siteProject();
+    if (project === null) {
+      console.error('[studio] auto-save has no site project');
+      publishPanel({
+        on: this.listening,
+        lastSentAt: panelState.lastSentAt,
+        pending: panelState.pending,
+        error: panelState.error,
+        agentWorking: false,
+      });
+      return;
+    }
+    const pending = pendingNow(project);
+    publishPanel({
+      on: this.listening,
+      lastSentAt: panelState.lastSentAt,
+      pending: pending.length,
+      error: panelState.error,
+      agentWorking: false,
+    });
+    for (const file of pending) this.saver.notify(file);
   }
 
   private readonly onFileAction = (ev: mls.events.IEvent): void => {
@@ -293,8 +538,12 @@ class DraftAutoSave implements IDraftAutoSave {
       console.error('[studio] auto-save FileAction is not JSON', err);
       return;
     }
+    if (fileAction.action === 'open') {
+      void this.refreshOthers();
+      return;
+    }
     if (fileAction.action !== 'editorChanged' && fileAction.action !== 'statusOrErrorChanged') return;
-    this.note(storFileFrom(fileAction));
+    this.deliver(storFileFrom(fileAction));
   };
 
   private readonly onStyleChanged = (ev: mls.events.IEvent): void => {
@@ -307,8 +556,19 @@ class DraftAutoSave implements IDraftAutoSave {
       return;
     }
     if (!parsed?.storFile) return;
-    this.note(storFileFrom({ ...parsed.storFile, extension: '.less' }));
+    this.deliver(storFileFrom({ ...parsed.storFile, extension: '.less' }));
   };
+
+  private deliver(file: mls.stor.IFileInfo | undefined): void {
+    if (!file) return;
+    void deliverSharedEdit(
+      file,
+      this.sharedEdits,
+      () => this.refreshOthers(),
+      showSharedNotice,
+      (item) => this.note(item),
+    );
+  }
 
   private note(file: mls.stor.IFileInfo | undefined): void {
     if (!file) return;
@@ -322,12 +582,18 @@ class DraftAutoSave implements IDraftAutoSave {
       lastSentAt: panelState.lastSentAt,
       pending: pendingNow(project).length,
       error: panelState.error,
+      agentWorking: this.agentRunning > 0,
     });
     if (pendingFiles([file], project).length === 1) this.saver.notify(file);
   }
 }
 
 let editor: StudioEditor | undefined;
+
+function showSharedNotice(text: string): void {
+  console.warn('[studio]', text);
+  editor?.showStatus(text, true);
+}
 let watcher: StudioLiveUpdateWatcher | undefined;
 let armed = false;
 /** Guard against re-entrancy: loading the editor is async and the slot can publish again meanwhile. */

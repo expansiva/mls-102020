@@ -28,16 +28,23 @@ Tool arguments:
 - `meta.journeys`: array of `{ journeyId, pages }` — every l4 journey, pages where it happens (empty pages = a visible hole)
 - `meta.processes`: array of `{ processId, pages }` — every l4 process, pages where the person sees its cause or effect (empty pages = a visible hole)
 - `meta.records`: array of `{ entityId, pages }` — for each record of `recordsKept` that a page maintains outside journeys, the pages that maintain it. Every page with a `form` and no journey appears under the entity it keeps; a page lists only records an actor of that page has a grant for. A grant that only consults a record does not make the page maintain it. Empty array when no page maintains a record outside journeys
+- `meta.placements`: array of `{ journeyId, actorRef, placement, pageId, reason }` — one row for every journey × actor pair. `placement` is `screenAction`, `menuItem` or `listWithAdd`. `pageId` is a page that actor already sees. `reason` is one sentence in `userLanguage`.
 
 Do not emit `schemaVersion`, `moduleName`, `userLanguage`, `device` or `action`. Code fills those.
+
+## Where each journey goes
+
+For each journey × actor, pick one place. The signals are the ones already in the human prompt: the module `sourcePrompt`, each grant's `dataScope`, and that journey's actor, step kinds and entities.
+
+- `screenAction`: the journey acts on what the screen already shows.
+- `menuItem`: the journey starts something new that does not belong to a list of that actor. It becomes its own menu item, pointing at a screen that already exists.
+- `listWithAdd`: the main object is a collection that actor administers. The list has the "+".
 
 ## Node kinds
 
 - `hub`: the person picks a record of `context` (an l4 entity) before acting — the "Project". Has `text` and `children`. When the grant is anchored on the person themselves, the hub opens with that record already selected; say so in `text`.
-- `page`: a screen. No `text`. Has `organisms[]`.
+- `page`: a screen. No `text`. Has `organisms[]`. `icon` is a Lucide icon name that represents the screen, or `""` when none fits. Do not invent a name; an unknown name is dropped by the code.
 - `group`: a folder with no context. Use only when there are many leaves.
-
-Actions are not nodes. They live in an `actions` organism.
 
 Ids are `snake_case`. Suffix an actor only when the same thing exists for different actors outside a hub.
 

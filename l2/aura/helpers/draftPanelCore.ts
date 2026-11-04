@@ -1,9 +1,10 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/draftPanelCore.ts" enhancement="_blank" />
-// Pure decisions for the Studio draft panel. No Lit, and no read of window or document.
-// fetch, the release wait, reload, setContents, saveL5File, and the stor
-// snapshot all come in as arguments. `listLocalFiles` is the caller's injection — its return
-// value is `storFiles` here. `afterDraftSave` is the one default that calls `mls`, the same
-// cleanup as serviceSave.afterUpdate; tests pass their own deps.
+// Pure decisions for the Studio draft panel. No Lit. fetch, the release wait, reload,
+// setContents, saveL5File, and the stor snapshot all come in as arguments.
+// `listLocalFiles` is the caller's injection — its return value is `storFiles` here.
+// `afterDraftSave` is the one default that calls `mls`, the same cleanup as
+// serviceSave.afterUpdate; tests pass their own deps. A successful `saveToDraft`
+// dispatches `collabDraftSaved` on `window` (the shell listens; the cm does not).
 //
 // Branch slugs mirror the server (cbeDraft.parseDraftSlug). The first `_` of a user slug is `@`
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
@@ -54,6 +55,25 @@ export interface ISetContentsResult {
   result: boolean;
 }
 
+/** Window event after a successful draft send. The shell listens; there is no import either way. */
+export const COLLAB_DRAFT_SAVED = 'collabDraftSaved';
+
+export interface ICollabDraftSavedDetail {
+  project: number;
+  paths: string[];
+}
+
+function dispatchDraftSaved(project: number, paths: string[]): void {
+  const target = (globalThis as { window?: EventTarget }).window;
+  if (!target || typeof target.dispatchEvent !== 'function') return;
+  const detail: ICollabDraftSavedDetail = { project, paths };
+  try {
+    target.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, { detail }));
+  } catch (err) {
+    console.error('[draftPanel] collabDraftSaved was not dispatched:', err);
+  }
+}
+
 export interface IFetchResponse {
   status: number;
   json: () => Promise<unknown>;
@@ -83,6 +103,8 @@ export interface IExecFailure {
   code: string;
   statusCode: number;
   files?: string[];
+  /** Server reason, such as `draft.not_owner`. The panel translates the known ones. */
+  msg?: string;
 }
 
 export interface IExecSuccess {
@@ -95,6 +117,10 @@ export interface IExecSuccess {
   /** Body of a `draftDiff` response (`status: 'diff'`). */
   text?: string;
   drafts?: IListedDraft[];
+  /** Name returned by `draftResetDatabase` when `status` is `reset`. */
+  database?: string;
+  /** Reason on a `draftResetDatabase` HTTP 500, which has no `code`. */
+  cause?: string;
 }
 
 export type ExecResult = IExecSuccess | IExecFailure;
@@ -112,9 +138,14 @@ export interface IPublishEffects {
   rememberPublished?: (record: IPublishedRecord) => void;
 }
 
-export interface IDiscardEffects {
+export interface IReloadEffects {
   fetchImpl: FetchImpl;
   reload: () => void;
+}
+
+export interface IDiscardEffects extends IReloadEffects {
+  storFiles: Readonly<Record<string, IPanelStorFile | null | undefined>>;
+  clearLocal: (file: IPanelStorFile) => Promise<void>;
 }
 
 /** Same signature as `saveL5File` in mls-102033. Injected so this file does not import mls. */
@@ -214,6 +245,7 @@ export async function callExec(
     const failure: IExecFailure = { ok: false, code: parsed.code, statusCode };
     const files = stringList(parsed.files);
     if (files !== undefined) failure.files = files;
+    if (typeof parsed.msg === 'string') failure.msg = parsed.msg;
     return failure;
   }
 
@@ -224,6 +256,8 @@ export async function callExec(
   if (typeof parsed.msg === 'string') success.msg = parsed.msg;
   if (typeof parsed.text === 'string') success.text = parsed.text;
   if (Array.isArray(parsed.drafts)) success.drafts = parsed.drafts as IListedDraft[];
+  if (typeof parsed.database === 'string') success.database = parsed.database;
+  if (typeof parsed.cause === 'string') success.cause = parsed.cause;
   return success;
 }
 
@@ -370,12 +404,239 @@ export async function discard(
     const message = err instanceof Error ? err.message : String(err);
     console.error('[draftPanel]', `forgetStaleDraftL2: ${message}`);
   }
+  for (const file of collectEditedFiles(effects.storFiles, project)) {
+    try {
+      await effects.clearLocal(file);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[draftPanel]', `clearLocal ${shortPathOf(file)}: ${message}`);
+    }
+  }
   effects.reload();
+}
+
+/** Drops the draft test database and recreates it from the seed. Sources stay. */
+export async function resetDraftDatabase(
+  fetchImpl: FetchImpl,
+  project: number,
+  slug: string,
+): Promise<{ database: string }> {
+  const result = await callExec(fetchImpl, 'draftResetDatabase', { project, draft: slug });
+  if (!result.ok) return fail(result.msg ?? result.code);
+  if (result.status !== 'reset') {
+    const reason = result.cause?.trim() ? result.cause : (result.status ?? 'draftResetDatabase failed');
+    return fail(reason);
+  }
+  if (!result.database) return fail('draftResetDatabase returned no database');
+  return { database: result.database };
+}
+
+/** One path segment. A slash or `..` would restore something outside the module. */
+const MODULE_SEGMENT = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * Directories the draft restore puts back to `main`.
+ * The route rejects a trailing slash (`draft.path_invalid`), so these have none.
+ */
+export function moduleRestorePaths(moduleName: string): string[] {
+  return [
+    `l1/${moduleName}`,
+    `l1/${moduleName}_old`,
+    `l2/${moduleName}`,
+    `l4/${moduleName}`,
+  ];
+}
+
+/** A file of the module, including the `_old` directory. A longer name (`ordersExtra`) does not match. */
+export function pathInModule(filePath: string, moduleName: string): boolean {
+  if (!MODULE_SEGMENT.test(moduleName)) return false;
+  return moduleRestorePaths(moduleName).some((prefix) => filePath === prefix || filePath.startsWith(`${prefix}/`));
+}
+
+/** Pending files of one module, across l1, l1 `_old`, l2 and l4. */
+export function modulePendingCount(files: readonly IPendingFile[], moduleName: string): number {
+  let count = 0;
+  for (const file of files) {
+    if (pathInModule(file.path, moduleName)) count += 1;
+  }
+  return count;
+}
+
+export interface IDiscardModuleEffects {
+  fetchImpl: FetchImpl;
+  saveL5File: SaveL5File;
+  /** Same undo as one file: `undoFile` in the stor lib, which drops a `new` file. */
+  undoFile: (file: IPanelStorFile) => Promise<void>;
+  storFiles: Readonly<Record<string, IPanelStorFile | null | undefined>>;
+  /** Reread the project and swap the visible screen. */
+  reloadLive: () => Promise<void>;
+}
+
+function parseConfigObject(text: string, which: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return fail(`l5/config.json (${which}) is not JSON: ${message}`);
+  }
+  if (!isRecord(parsed)) return fail(`l5/config.json (${which}) is not an object`);
+  return parsed;
+}
+
+function projectNode(config: Record<string, unknown>, project: number, required: boolean): Record<string, unknown> | null {
+  const projects = config.projects;
+  if (projects === undefined && !required) return null;
+  if (!isRecord(projects)) return fail('l5/config.json projects is not an object');
+  const node = projects[String(project)];
+  if (node === undefined) {
+    if (!required) return null;
+    return fail(`l5/config.json has no project ${project}`);
+  }
+  if (!isRecord(node)) return fail(`l5/config.json project ${project} is not an object`);
+  return node;
+}
+
+function moduleList(node: Record<string, unknown>): unknown[] {
+  const modules = node.modules;
+  if (modules === undefined) return [];
+  if (!Array.isArray(modules)) return fail('l5/config.json modules is not an array');
+  return modules;
+}
+
+function moduleIdOf(block: unknown): string | null {
+  if (!isRecord(block)) return null;
+  return typeof block.moduleId === 'string' ? block.moduleId : null;
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/** Replaces one module object. Its `navigation` travels inside the object. Other modules stay. */
+function swapModule(currentModules: readonly unknown[], publishedModules: readonly unknown[], moduleName: string): unknown[] {
+  const published = publishedModules.find((block) => moduleIdOf(block) === moduleName);
+  const next: unknown[] = [];
+  let placed = false;
+  for (const block of currentModules) {
+    if (moduleIdOf(block) !== moduleName) {
+      next.push(block);
+      continue;
+    }
+    if (!placed && published !== undefined) {
+      next.push(cloneJson(published));
+      placed = true;
+    }
+  }
+  if (!placed && published !== undefined) {
+    const index = publishedModules.findIndex((block) => moduleIdOf(block) === moduleName);
+    const at = index < 0 ? next.length : Math.min(index, next.length);
+    next.splice(at, 0, cloneJson(published));
+  }
+  return next;
+}
+
+/**
+ * The current `l5/config.json` with only this module's block taken from the published text.
+ * `changed` is false when that block already matches, so the caller does not rewrite the file.
+ */
+export function replaceModuleBlock(
+  currentJson: string,
+  publishedJson: string,
+  project: number,
+  moduleName: string,
+): { content: string; changed: boolean } {
+  if (!MODULE_SEGMENT.test(moduleName)) return fail(`module name is invalid: ${moduleName}`);
+  const current = parseConfigObject(currentJson, 'current');
+  const published = parseConfigObject(publishedJson, 'published');
+  const currentProject = projectNode(current, project, true);
+  if (!currentProject) return fail(`l5/config.json has no project ${project}`);
+  const publishedProject = projectNode(published, project, false);
+  const currentModules = moduleList(currentProject);
+  const publishedModules = publishedProject ? moduleList(publishedProject) : [];
+  const next = swapModule(currentModules, publishedModules, moduleName);
+  if (JSON.stringify(next) === JSON.stringify(currentModules)) {
+    return { content: currentJson, changed: false };
+  }
+  currentProject.modules = next;
+  return { content: JSON.stringify(current), changed: true };
+}
+
+function isModuleLocalCopy(file: IPanelStorFile): boolean {
+  if (file.inLocalStorage) return true;
+  return file.status === 'new' || file.status === 'changed' || file.status === 'deleted' || file.status === 'renamed';
+}
+
+function moduleLocalFiles(
+  storFiles: Readonly<Record<string, IPanelStorFile | null | undefined>>,
+  project: number,
+  moduleName: string,
+): IPanelStorFile[] {
+  const found: IPanelStorFile[] = [];
+  for (const file of Object.values(storFiles)) {
+    if (!file || file.project !== project) continue;
+    if (!pathInModule(shortPathOf(file), moduleName)) continue;
+    if (!isModuleLocalCopy(file)) continue;
+    found.push(file);
+  }
+  found.sort((a, b) => shortPathOf(a).localeCompare(shortPathOf(b)));
+  return found;
+}
+
+/**
+ * Puts one module back to the published sources.
+ * The server restores the four directories. `l5/config.json` keeps every other block.
+ * Local copies of those paths, including a `new` file under `_old`, go through `undoFile`.
+ */
+export async function discardModule(
+  effects: IDiscardModuleEffects,
+  project: number,
+  slug: string,
+  moduleName: string,
+  currentJson: string,
+  publishedJson: string,
+): Promise<void> {
+  if (!MODULE_SEGMENT.test(moduleName)) return fail(`module name is invalid: ${moduleName}`);
+  const paths = moduleRestorePaths(moduleName);
+  const result = await callExec(effects.fetchImpl, 'draftRestorePaths', {
+    project,
+    draft: slug,
+    ref: 'main',
+    paths,
+  });
+  if (!result.ok) return fail(result.msg ?? result.code);
+  if (result.status !== 'restored' && result.status !== 'unchanged') {
+    return fail(result.status ?? 'draftRestorePaths failed');
+  }
+  const replaced = replaceModuleBlock(currentJson, publishedJson, project, moduleName);
+  if (replaced.changed) {
+    const saved = await effects.saveL5File(project, 'config', replaced.content, `discard module ${moduleName}`);
+    if (!saved) return fail('saveL5File refused l5/config.json');
+  }
+  const failures: string[] = [];
+  for (const file of moduleLocalFiles(effects.storFiles, project, moduleName)) {
+    try {
+      await effects.undoFile(file);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const label = shortPathOf(file);
+      console.error('[draftPanel]', `undoFile ${label}: ${message}`);
+      failures.push(`${label}: ${message}`);
+    }
+  }
+  if (failures.length > 0) return fail(failures.join('; '));
+  try {
+    await effects.reloadLive();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[draftPanel]', `reloadLive: ${message}`);
+    return fail(message);
+  }
 }
 
 /** `DRAFT_CONFLICT: <files>` — the panel turns this into `syncConflict`. */
 export async function syncWithPublished(
-  effects: IDiscardEffects,
+  effects: IReloadEffects,
   project: number,
   slug: string,
 ): Promise<void> {
@@ -464,6 +725,179 @@ export function panelModel(input: IPanelModelInput): IPanelModel {
   };
 }
 
+/** One pending path. The same path can sit in the browser and in the draft. */
+export interface IPendingFile {
+  path: string;
+  inBrowser: boolean;
+  inDraft: boolean;
+  hasError: boolean;
+}
+
+export type DraftTreeKind = 'level' | 'module' | 'folder' | 'file';
+
+/** Level, then module, then folders, then the file. Counts cover every file under the node. */
+export interface IDraftTreeNode {
+  id: string;
+  name: string;
+  kind: DraftTreeKind;
+  count: number;
+  inBrowser: number;
+  inDraft: number;
+  withError: number;
+  children: IDraftTreeNode[];
+}
+
+/** A row the panel may paint. Closed nodes contribute no children. */
+export interface IVisibleTreeRow {
+  id: string;
+  name: string;
+  kind: DraftTreeKind;
+  depth: number;
+  count: number;
+  inBrowser: number;
+  inDraft: number;
+  withError: number;
+}
+
+export interface IActionCounts {
+  save: number;
+  publish: number;
+  discard: number;
+}
+
+interface IMutableTreeNode {
+  id: string;
+  name: string;
+  kind: DraftTreeKind;
+  files: IPendingFile[];
+  children: Map<string, IMutableTreeNode>;
+}
+
+function rememberPending(byPath: Map<string, IPendingFile>, path: string, fromDraft: boolean, hasError: boolean): void {
+  if (path.trim() === '') {
+    console.error('[draftPanel] pending file has an empty path');
+    return;
+  }
+  const found = byPath.get(path);
+  if (found) {
+    if (fromDraft) found.inDraft = true;
+    else found.inBrowser = true;
+    if (hasError) found.hasError = true;
+    return;
+  }
+  const created: IPendingFile = {
+    path,
+    inBrowser: !fromDraft,
+    inDraft: fromDraft,
+    hasError,
+  };
+  byPath.set(path, created);
+}
+
+/** Browser edits and draft paths, one entry per path. */
+export function pendingFiles(local: readonly ILocalEdit[], draftPaths: readonly string[]): IPendingFile[] {
+  const byPath = new Map<string, IPendingFile>();
+  for (const file of local) rememberPending(byPath, file.shortPath, false, file.hasError);
+  for (const path of draftPaths) rememberPending(byPath, path, true, false);
+  return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function childOf(parent: IMutableTreeNode, name: string, kind: DraftTreeKind): IMutableTreeNode {
+  const found = parent.children.get(name);
+  if (found) return found;
+  const id = parent.id === '' ? name : `${parent.id}/${name}`;
+  const created: IMutableTreeNode = { id, name, kind, files: [], children: new Map() };
+  parent.children.set(name, created);
+  return created;
+}
+
+function tally(files: readonly IPendingFile[]): Pick<IDraftTreeNode, 'count' | 'inBrowser' | 'inDraft' | 'withError'> {
+  let inBrowser = 0;
+  let inDraft = 0;
+  let withError = 0;
+  for (const file of files) {
+    if (file.inBrowser) inBrowser += 1;
+    if (file.inDraft) inDraft += 1;
+    if (file.hasError) withError += 1;
+  }
+  return { count: files.length, inBrowser, inDraft, withError };
+}
+
+function freezeNode(node: IMutableTreeNode): IDraftTreeNode {
+  const children = [...node.children.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((child) => freezeNode(child));
+  return { id: node.id, name: node.name, kind: node.kind, ...tally(node.files), children };
+}
+
+function attachPending(root: IMutableTreeNode, file: IPendingFile): void {
+  const parts = file.path.split('/').filter((part) => part !== '');
+  if (parts.length === 0) return;
+  if (parts.length === 1) {
+    const leaf = childOf(root, parts[0], 'file');
+    leaf.files.push(file);
+    return;
+  }
+  const level = childOf(root, parts[0], 'level');
+  level.files.push(file);
+  if (parts.length === 2) {
+    const leaf = childOf(level, parts[1], 'file');
+    leaf.files.push(file);
+    return;
+  }
+  const moduleNode = childOf(level, parts[1], 'module');
+  moduleNode.files.push(file);
+  let parent = moduleNode;
+  for (let index = 2; index < parts.length - 1; index += 1) {
+    const folder = childOf(parent, parts[index], 'folder');
+    folder.files.push(file);
+    parent = folder;
+  }
+  const leaf = childOf(parent, parts[parts.length - 1], 'file');
+  leaf.files.push(file);
+}
+
+/** `lN` → module → folders → file. A path with no folder under the level is a file of that level. */
+export function buildDraftTree(files: readonly IPendingFile[]): IDraftTreeNode[] {
+  const root: IMutableTreeNode = { id: '', name: '', kind: 'folder', files: [], children: new Map() };
+  for (const file of files) attachPending(root, file);
+  return [...root.children.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((node) => freezeNode(node));
+}
+
+/** Rows for the open set. A closed node does not add its children. */
+export function visibleTreeRows(roots: readonly IDraftTreeNode[], open: ReadonlySet<string>): IVisibleTreeRow[] {
+  const rows: IVisibleTreeRow[] = [];
+  const walk = (nodes: readonly IDraftTreeNode[], depth: number): void => {
+    for (const node of nodes) {
+      rows.push({
+        id: node.id,
+        name: node.name,
+        kind: node.kind,
+        depth,
+        count: node.count,
+        inBrowser: node.inBrowser,
+        inDraft: node.inDraft,
+        withError: node.withError,
+      });
+      if (open.has(node.id)) walk(node.children, depth + 1);
+    }
+  };
+  walk(roots, 0);
+  return rows;
+}
+
+/** Save counts browser files, publish counts draft paths, discard counts the union. */
+export function actionCounts(local: readonly ILocalEdit[], draftPaths: readonly string[] | null): IActionCounts {
+  const draft = draftPaths ?? [];
+  return {
+    save: local.length,
+    publish: draft.length,
+    discard: pendingFiles(local, draft).length,
+  };
+}
+
 /**
  * Files with `hasError` stay out of the write unless they are deletions (the server must see
  * the delete). `setContents` is called only with the clean files, and only when there is one.
@@ -502,6 +936,8 @@ export async function saveToDraft<T extends IPanelStorFile>(
     return fail('setContents refused the draft save');
   }
   for (const file of clean) await clearLocal(file);
+  const first = clean[0];
+  if (first) dispatchDraftSaved(first.project, clean.map((file) => shortPathOf(file)));
   return { blocked };
 }
 

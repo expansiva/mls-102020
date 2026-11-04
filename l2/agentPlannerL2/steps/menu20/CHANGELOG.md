@@ -1,5 +1,13 @@
 # menu20
 
+## 2026-11-01 (d2_161)
+
+- Each page answer carries `icon`: a Lucide name, or `""` when none fits. A name outside the catalog is replaced with `""` and recorded as `icon dropped: <pageId> <name>`. No extra model call and no icon list in the prompt. `menu.json` omits an empty icon. `MENU_SCHEMA_VERSION` is unchanged.
+
+## 2026-11-01 (d2_160)
+
+- `meta.placements`: one `screenAction` | `menuItem` | `listWithAdd` per journey × actor, with a reason. Structural gate only. The human prompt includes `## Module` with `sourcePrompt`.
+
 ## 2026-09-21 (p2_26)
 
 - Home organisms only from the beyond-journeys block; `P2ActorMustSeeTask` carries `entityRef`.

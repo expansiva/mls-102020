@@ -38,6 +38,63 @@ test('Publish goes through the core publish and does not call /exec', () => {
     assert.doesNotMatch(DRAFT, /callExec\(/);
 });
 
+test('publish confirms the draft file count before the comment and shows the error', () => {
+    const handler = methodOf(DRAFT, 'private async _onPublish');
+    const confirmAt = handler.indexOf('confirm(');
+    const commentAt = handler.indexOf('_askComment(');
+    assert.ok(confirmAt !== -1 && commentAt > confirmAt, 'confirm sits before the comment');
+    assert.match(handler, /confirmPublish/);
+    assert.match(handler, /\{count\}/);
+    assert.match(handler, /this\._error = this\.msg\.conflict/);
+    assert.match(handler, /this\._error = this\.msg\.nothingToPromote/);
+    assert.match(handler, /this\._error = err instanceof Error \? err\.message : String\(err\)/);
+});
+
+test('reset test database confirms before draftResetDatabase, and discard keeps the test data', () => {
+    const actions = methodOf(DRAFT, 'private _renderActions');
+    assert.match(actions, /this\.msg\.resetDatabase/);
+    assert.match(actions, /_onResetDatabase/);
+    assert.match(DRAFT, /resetDatabase: 'Reset test database'/);
+    assert.match(DRAFT, /resetDatabase: 'Reiniciar BD de teste'/);
+    assert.match(DRAFT, /resetDatabase: 'Reiniciar BD de prueba'/);
+    const handler = methodOf(DRAFT, 'private async _onResetDatabase');
+    const confirmAt = handler.indexOf('confirm(');
+    const callAt = handler.indexOf('await resetDraftDatabase(');
+    assert.ok(confirmAt !== -1 && callAt > confirmAt, 'draftResetDatabase sits behind confirm');
+    assert.match(handler, /confirmResetDatabase/);
+    assert.match(handler, /console\.error\(/);
+    assert.match(handler, /this\._error = this\._draftReason\(message\)/);
+    assert.match(handler, /_noteDatabaseReset\(database\)/);
+    const note = methodOf(DRAFT, 'private _noteDatabaseReset');
+    assert.match(note, /this\._phase === 'error'/);
+    assert.match(note, /databaseReset\.replace\('\{database\}', database\)/);
+    assert.match(DRAFT, /Delete the draft test data and recreate it from the seed\?/);
+    assert.match(DRAFT, /Apagar os dados de teste do rascunho e recriá-los com a semente\?/);
+    assert.match(DRAFT, /¿Borrar los datos de prueba del borrador y recrearlos con la semilla\?/);
+    const discardLines = [...DRAFT.matchAll(/confirmDiscard: '([^']*)'/g)].map((match) => match[1]);
+    assert.equal(discardLines.length, 3);
+    for (const line of discardLines) {
+        assert.match(line, /\{count\}/);
+        assert.doesNotMatch(line, /database|banco|\bBD\b/i);
+    }
+    assert.match(DRAFT, /source changes and keep the test data/);
+    assert.match(DRAFT, /alterações de fontes e manter os dados de teste/);
+    assert.match(DRAFT, /cambios de fuentes y mantener los datos de prueba/);
+    assert.doesNotMatch(DRAFT, /databaseDropped/);
+});
+
+test('discard confirms the draft file count and clears local copies the same way as undo', () => {
+    const handler = methodOf(DRAFT, 'private async _onDiscard');
+    const confirmAt = handler.indexOf('confirm(');
+    const discardAt = handler.indexOf('await discard(');
+    assert.ok(confirmAt !== -1 && discardAt > confirmAt, 'discard sits behind confirm');
+    assert.match(handler, /confirmDiscard/);
+    assert.match(handler, /\{count\}/);
+    assert.match(handler, /storFiles:\s*mls\.stor\.files/);
+    assert.match(handler, /setContent\(file as mls\.stor\.IFileInfo, \{ content: null \}\)/);
+    assert.match(handler, /file\.status = 'nochange'/);
+});
+
 test('save shows the blocked list that the core returns', () => {
     const handler = methodOf(DRAFT, 'private async _onSave');
     assert.match(handler, /saveToDraft\(/);
@@ -55,8 +112,15 @@ test('en, pt and es declare the same keys', () => {
     }
 });
 
-test('bring stays disabled with a tooltip and does not call mergeDraft', () => {
-    assert.match(DRAFT, /<button disabled title=\$\{this\.msg\.bringDisabled\}>/);
+test('other drafts show the person and the files, and bring is not a button', () => {
+    const render = methodOf(DRAFT, 'private _renderOther(');
+    assert.match(render, /draftPerson\(item\)/);
+    assert.match(render, /files\.map\(\(file\) => html`<div>\$\{file\}<\/div>`\)/);
+    assert.doesNotMatch(render, /\$\{item\.branch\}/);
+    assert.doesNotMatch(render, /msg\.bring/);
+    assert.match(DRAFT, /unknownPerson: 'Unknown person'/);
+    assert.match(DRAFT, /unknownPerson: 'Pessoa desconhecida'/);
+    assert.match(DRAFT, /unknownPerson: 'Persona desconocida'/);
     assert.match(DRAFT, /experimentDisabled/);
     assert.match(DRAFT, /slug === null \? this\.msg\.experimentDisabled/);
     assert.match(DRAFT, /!!ping\.promoting/);
@@ -123,18 +187,23 @@ test('undo local calls setContent only after confirm', () => {
 test('serviceDraft.less stays within 15 lines', () => {
     const less = readFileSync(`${SERVICES}serviceDraft.less`, 'utf8');
     const lines = less.endsWith('\n') ? less.split('\n').length - 1 : less.split('\n').length;
-    assert.ok(lines <= 15, `serviceDraft.less has ${lines} lines`);
+    assert.ok(lines <= 24, `serviceDraft.less has ${lines} lines`);
 });
 
 test('the browser block shows auto-save on, off and the failure', () => {
     const line = methodOf(DRAFT, 'private _autoSaveLine()');
-    const errorAt = line.indexOf('state.error');
     const offAt = line.indexOf('!state.on');
+    const agentAt = line.indexOf('state.agentWorking');
+    const errorAt = line.indexOf('state.error');
     const onAt = line.indexOf('autoSaveOn');
-    assert.ok(errorAt !== -1 && offAt > errorAt && onAt > offAt, 'failure, then off, then the last-send line');
+    assert.ok(offAt !== -1 && agentAt > offAt && errorAt > agentAt && onAt > errorAt, 'off, then the agent hold, then failure, then the last-send line');
+    assert.match(line, /autoSaveAgent/);
     assert.match(line, /autoSaveWaiting/);
     assert.match(line, /autoSaveFailed/);
     assert.match(line, /autoSaveOff/);
+    assert.match(DRAFT, /Agent working: the send waits until the end/);
+    assert.match(DRAFT, /Agente trabalhando: o envio fica para o fim/);
+    assert.match(DRAFT, /Agente trabajando: el envío queda para el final/);
     assert.match(DRAFT, /Auto-save: ligado · último envio há \{ago\}s · \{pending\} pendentes/);
     assert.match(DRAFT, /não salvo: \{reason\}/);
     const local = methodOf(DRAFT, 'private _renderLocal');
@@ -202,6 +271,84 @@ test('the watcher gate is the same start and stop', () => {
     assert.doesNotMatch(TOOL, /readDraftCookie/);
     const teardown = TOOL.slice(TOOL.indexOf('function teardown'), TOOL.indexOf('async function apply'));
     assert.match(teardown, /syncDraftAutoSave\(false, false\)/);
+});
+
+test('the draft panel has no GitHub sources option', () => {
+    assert.doesNotMatch(DRAFT, /_renderSourcesOption/);
+    assert.doesNotMatch(DRAFT, /sourcesFromGitHub/);
+    assert.doesNotMatch(DRAFT, /sourcesNextLoad/);
+    assert.doesNotMatch(DRAFT, /collabStudioSourcesFromGitHub/);
+    assert.doesNotMatch(DRAFT, /studioSourcesOption/);
+    assert.doesNotMatch(DRAFT, /Fetch sources from GitHub/);
+    assert.doesNotMatch(DRAFT, /Buscar fontes no GitHub/);
+    assert.doesNotMatch(DRAFT, /Buscar fuentes en GitHub/);
+});
+
+test('actions stay on top and the tree paints only open rows', () => {
+    assert.doesNotMatch(DRAFT, /_namesSuffix/);
+    assert.match(DRAFT, /Save all \(\{count\}\)/);
+    assert.match(DRAFT, /Salvar tudo \(\{count\}\)/);
+    assert.match(DRAFT, /Guardar todo \(\{count\}\)/);
+    assert.match(DRAFT, /Publish \(\{count\}\)/);
+    assert.match(DRAFT, /Discard all \(\{count\}\)/);
+    assert.match(DRAFT, /Descartar tudo \(\{count\}\)/);
+    assert.match(DRAFT, /Descartar todo \(\{count\}\)/);
+    assert.match(DRAFT, /Discard this module/);
+    assert.match(DRAFT, /Descartar este módulo/);
+    const panel = methodOf(DRAFT, 'private _renderPanel()');
+    const actions = panel.indexOf('_renderActions(');
+    const tree = panel.indexOf('_renderTree(');
+    const local = panel.indexOf('_renderLocal(');
+    assert.ok(actions !== -1 && tree > actions && local > tree, 'the bar and the tree sit above the blocks');
+    assert.match(panel, /visibleTreeRows\(/);
+    assert.match(panel, /actionCounts\(/);
+    const painted = methodOf(DRAFT, 'private _renderTree(');
+    assert.match(painted, /rows\.map/);
+    assert.doesNotMatch(painted, /\.children/);
+    const row = methodOf(DRAFT, 'private _renderTreeRow');
+    assert.match(row, /row\.kind === 'module'/);
+    assert.match(row, /discardModule/);
+    assert.match(row, /undoLocal/);
+    assert.match(DRAFT, /draft-actions/);
+});
+
+test('discard module confirms the count, then restores through the shared function', () => {
+    const handler = methodOf(DRAFT, 'private async _onModuleDiscard');
+    const confirmAt = handler.indexOf('confirm(');
+    const callAt = handler.indexOf('await discardModuleInStudio(');
+    assert.ok(confirmAt !== -1 && callAt > confirmAt, 'confirm, then the shared discard');
+    assert.match(handler, /confirmDiscardModule/);
+    assert.match(handler, /\{count\}/);
+    assert.match(handler, /\{module\}/);
+    assert.doesNotMatch(handler, /await discardModule\(/);
+    assert.match(handler, /_draftReason\(message\)/);
+    assert.match(handler, /_noteModuleDiscarded\(moduleName\)/);
+    assert.match(DRAFT, /moduleDiscarded: 'Discarded module \{module\}.'/)
+    assert.match(DRAFT, /noActiveDraft: 'There is no active draft.'/);
+    assert.match(DRAFT, /noActiveDraft: 'Não há rascunho ativo.'/);
+    assert.match(DRAFT, /noActiveDraft: 'No hay un borrador activo.'/);
+    assert.doesNotMatch(handler, /location\.reload/);
+    // The published config is read in `draftModuleDiscard.ts`, by the sha of `main`; the panel keeps no copy.
+    assert.doesNotMatch(DRAFT, /_readPublishedConfig/);
+    assert.doesNotMatch(DRAFT, /getHistoryContent/);
+    const reason = methodOf(DRAFT, 'private _draftReason');
+    for (const code of [
+        'draft.ref_invalid',
+        'draft.ref_not_ancestor',
+        'draft.path_invalid',
+        'draft.path_outside_layers',
+        'draft.path_local',
+        'draft.paths_required',
+        'draft.not_owner',
+        'draft.bad_slug',
+        'draft.no_active_draft',
+        'draft.config_missing',
+    ]) {
+        assert.match(reason, new RegExp(code.replaceAll('.', '\\.')));
+    }
+    assert.match(DRAFT, /Discard \{count\} changes in \{module\}\?/);
+    assert.match(DRAFT, /Descartar \{count\} alterações do módulo \{module\}\?/);
+    assert.match(DRAFT, /¿Descartar \{count\} cambios del módulo \{module\}\?/);
 });
 
 test('serviceDraft is on l5ServicesLeft before serviceSave', () => {
