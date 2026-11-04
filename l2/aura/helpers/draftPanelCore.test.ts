@@ -15,6 +15,10 @@ import {
   localEdits,
   actionCounts,
   buildDraftTree,
+  buildPanelTree,
+  draftCountText,
+  draftNodeActions,
+  findDraftNode,
   panelModel,
   pendingFiles,
   publish,
@@ -1046,4 +1050,84 @@ test('1016 pipeline files open closed, one level line, and only the children of 
     ),
     { save: 1, publish: 2, discard: 2 },
   );
+});
+
+test('1016 in the browser and 234 in the draft: Meu (1016 / 1250), l1 (238 / 472), actions on the selected node', () => {
+  const browser = [
+    ...Array.from({ length: 238 }, (_, index) => ({ shortPath: `l1/orders/b${index}.ts`, hasError: false })),
+    ...Array.from({ length: 778 }, (_, index) => ({ shortPath: `l2/orders/b${index}.ts`, hasError: false })),
+  ];
+  const draft = Array.from({ length: 234 }, (_, index) => `l1/orders/d${index}.ts`);
+  const mineFiles = pendingFiles(browser, draft);
+  const otherFiles = pendingFiles([], ['l4/menu/a.ts', 'l4/menu/b.ts']);
+  const tree = buildPanelTree('Rascunho', [
+    {
+      id: 'mine',
+      name: 'Meu',
+      mine: true,
+      branch: 'user/ada@example.com',
+      ahead: 4,
+      behind: 2,
+      files: mineFiles,
+    },
+    {
+      id: 'user/santiago@example.com',
+      name: 'Santiago',
+      mine: false,
+      branch: 'user/santiago@example.com',
+      ahead: 1,
+      behind: 0,
+      files: otherFiles,
+    },
+  ]);
+
+  const closed = visibleTreeRows([tree], new Set(['draft']));
+  assert.deepEqual(closed.map((row) => row.name), ['Rascunho', 'Meu', 'Santiago']);
+  const meu = closed.find((row) => row.name === 'Meu');
+  assert.ok(meu);
+  assert.equal(draftCountText(meu), '(1016 / 1250)');
+  const santiago = closed.find((row) => row.name === 'Santiago');
+  assert.ok(santiago);
+  assert.equal(draftCountText(santiago), '(2)');
+  assert.equal(santiago.showUnsaved, false);
+
+  const opened = visibleTreeRows([tree], new Set(['draft', 'mine']));
+  const l1 = opened.find((row) => row.name === 'l1');
+  assert.ok(l1);
+  assert.equal(draftCountText(l1), '(238 / 472)');
+  assert.equal(opened.some((row) => row.name === 'orders'), false);
+
+  const mine = findDraftNode([tree], 'mine');
+  assert.ok(mine);
+  assert.equal(mine.branch, 'user/ada@example.com');
+  assert.deepEqual(draftNodeActions(mine), ['makeDefault', 'syncPublished']);
+
+  const moduleNode = findDraftNode([tree], 'mine/l1/orders');
+  assert.ok(moduleNode);
+  assert.equal(moduleNode.kind, 'module');
+  assert.deepEqual(draftNodeActions(moduleNode), ['discardModule']);
+
+  const other = findDraftNode([tree], 'user/santiago@example.com');
+  assert.ok(other);
+  assert.deepEqual(draftNodeActions(other), ['view', 'experiment']);
+  assert.equal(draftCountText(other), '(2)');
+});
+
+test('draftCountText counts a file edited after a save once in the total', () => {
+  const tree = buildPanelTree('Draft', [{
+    id: 'mine',
+    name: 'Mine',
+    mine: true,
+    branch: 'user/ada',
+    ahead: 0,
+    behind: 0,
+    files: [
+      { path: 'l2/orders/a.ts', inBrowser: true, inDraft: true, hasError: false },
+      { path: 'l2/orders/b.ts', inBrowser: true, inDraft: false, hasError: false },
+      { path: 'l2/orders/c.ts', inBrowser: false, inDraft: true, hasError: false },
+    ],
+  }]);
+  const mine = findDraftNode([tree], 'mine');
+  assert.ok(mine);
+  assert.equal(draftCountText(mine), '(2 / 3)');
 });
