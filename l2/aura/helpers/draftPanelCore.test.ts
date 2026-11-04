@@ -34,7 +34,9 @@ import {
   type ICollabDraftSavedDetail,
   type IDraftWaitResult,
   type IListedDraft,
+  type IPanelPersonInput,
   type IPanelStorFile,
+  type IPendingFile,
   type IPublishEffects,
   type ListLocalFiles,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
@@ -1077,9 +1079,10 @@ test('1016 in the browser and 234 in the draft: Meu (1016 / 1250), l1 (238 / 472
       branch: 'user/santiago@example.com',
       ahead: 1,
       behind: 0,
+      owner: 'santiago@example.com',
       files: otherFiles,
     },
-  ]);
+  ], 'Rascunhos sem dono');
 
   const closed = visibleTreeRows([tree], new Set(['draft']));
   assert.deepEqual(closed.map((row) => row.name), ['Rascunho', 'Meu', 'Santiago']);
@@ -1113,6 +1116,92 @@ test('1016 in the browser and 234 in the draft: Meu (1016 / 1250), l1 (238 / 472
   assert.equal(draftCountText(other), '(2)');
 });
 
+function pendingPaths(prefix: string, count: number): IPendingFile[] {
+  return pendingFiles([], Array.from({ length: count }, (_, index) => `${prefix}/f${index}.ts`));
+}
+
+function personInput(
+  id: string,
+  name: string,
+  owner: string | null,
+  files: IPendingFile[],
+): IPanelPersonInput {
+  return { id, name, mine: false, branch: id, ahead: 0, behind: 0, owner, files };
+}
+
+test('empty other drafts hide, and drafts without an owner become one closed group', () => {
+  const mine: IPanelPersonInput = {
+    id: 'mine',
+    name: 'Meu',
+    mine: true,
+    branch: 'user/me',
+    ahead: 0,
+    behind: 0,
+    owner: 'me@example.com',
+    files: [],
+  };
+  const tree = buildPanelTree('Rascunho', [
+    mine,
+    personInput('user/membro', 'membro.102047@runtime.test', 'membro.102047@runtime.test', []),
+    personInput('user/old-a', 'Pessoa desconhecida', null, []),
+    personInput('user/old-b', 'Pessoa desconhecida', null, []),
+    personInput('user/old-c', 'Pessoa desconhecida', null, pendingPaths('l2/c', 139)),
+    personInput('user/old-d', 'Pessoa desconhecida', null, pendingPaths('l2/d', 139)),
+    personInput('user/old-e', 'Pessoa desconhecida', null, pendingPaths('l2/e', 139)),
+    personInput('team/102047', 'Time', 'team', []),
+  ], 'Rascunhos sem dono');
+
+  const closed = visibleTreeRows([tree], new Set(['draft']));
+  const below = closed.filter((row) => row.depth === 1);
+  assert.deepEqual(
+    below.map((row) => `${row.name} ${draftCountText(row)}`),
+    ['Meu (0 / 0)', 'Rascunhos sem dono (3)'],
+  );
+  assert.equal(below[1].expandable, true);
+
+  const group = findDraftNode([tree], 'unowned');
+  assert.ok(group);
+  assert.equal(group.kind, 'group');
+  assert.deepEqual(draftNodeActions(group), []);
+  assert.deepEqual(group.children.map((child) => child.name), [
+    'Pessoa desconhecida',
+    'Pessoa desconhecida',
+    'Pessoa desconhecida',
+  ]);
+  assert.deepEqual(group.children.map((child) => draftCountText(child)), ['(139)', '(139)', '(139)']);
+  for (const child of group.children) {
+    assert.deepEqual(draftNodeActions(child), ['view', 'experiment']);
+  }
+
+  const opened = visibleTreeRows([tree], new Set(['draft', 'unowned']));
+  assert.equal(opened.filter((row) => row.depth === 2).length, 3);
+});
+
+test('a person with an owner shows the email, and a team with changes stays', () => {
+  const tree = buildPanelTree('Rascunho', [
+    {
+      id: 'mine',
+      name: 'Meu',
+      mine: true,
+      branch: 'user/me',
+      ahead: 0,
+      behind: 0,
+      files: [],
+    },
+    personInput('user/membro', 'membro.102047@runtime.test', 'membro.102047@runtime.test', pendingPaths('l2/m', 2)),
+    personInput('team/102047', 'Time', 'team', pendingPaths('l2/t', 1)),
+  ], 'Rascunhos sem dono');
+  const closed = visibleTreeRows([tree], new Set(['draft']));
+  assert.deepEqual(
+    closed.filter((row) => row.depth === 1).map((row) => row.name),
+    ['Meu', 'membro.102047@runtime.test', 'Time'],
+  );
+  const email = findDraftNode([tree], 'user/membro');
+  assert.ok(email);
+  assert.deepEqual(draftNodeActions(email), ['view', 'experiment']);
+  assert.equal(findDraftNode([tree], 'unowned'), null);
+});
+
 test('draftCountText counts a file edited after a save once in the total', () => {
   const tree = buildPanelTree('Draft', [{
     id: 'mine',
@@ -1126,7 +1215,7 @@ test('draftCountText counts a file edited after a save once in the total', () =>
       { path: 'l2/orders/b.ts', inBrowser: true, inDraft: false, hasError: false },
       { path: 'l2/orders/c.ts', inBrowser: false, inDraft: true, hasError: false },
     ],
-  }]);
+  }], 'Drafts without owner');
   const mine = findDraftNode([tree], 'mine');
   assert.ok(mine);
   assert.equal(draftCountText(mine), '(2 / 3)');

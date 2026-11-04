@@ -78,6 +78,7 @@ const message_en = {
     noProject: 'No project is open.',
     noReleaseHelper: 'The release watcher is not available.',
     mine: 'Mine',
+    unownedDrafts: 'Drafts without owner',
     team: 'Team',
     others: 'Other drafts',
     noOthers: 'No other drafts.',
@@ -157,6 +158,7 @@ const messages: Record<string, MessageType> = {
         noProject: 'Nenhum projeto aberto.',
         noReleaseHelper: 'O observador da release não está disponível.',
         mine: 'Meu',
+        unownedDrafts: 'Rascunhos sem dono',
         team: 'Time',
         others: 'Outros rascunhos',
         noOthers: 'Nenhum outro rascunho.',
@@ -233,6 +235,7 @@ const messages: Record<string, MessageType> = {
         noProject: 'No hay un proyecto abierto.',
         noReleaseHelper: 'El observador de la release no está disponible.',
         mine: 'Mío',
+        unownedDrafts: 'Borradores sin dueño',
         team: 'Equipo',
         others: 'Otros borradores',
         noOthers: 'Ningún otro borrador.',
@@ -532,7 +535,7 @@ export class ServiceDraft102020 extends ServiceBase {
             release: this._releaseId,
         });
         const mineFiles = pendingFiles(model.local.files, model.draft.files);
-        const tree = buildPanelTree(this.msg.svcTitle, this._panelPeople(mineFiles));
+        const tree = buildPanelTree(this.msg.svcTitle, this._panelPeople(mineFiles), this.msg.unownedDrafts);
         const rows = visibleTreeRows([tree], this._open);
         const counts = actionCounts(model.local.files, model.draft.files);
         const byPath = new Map<string, mls.stor.IFileInfo>();
@@ -643,6 +646,7 @@ export class ServiceDraft102020 extends ServiceBase {
                 branch: item.branch,
                 ahead: item.ahead,
                 behind: item.behind,
+                owner: listedOwner(item),
                 files: pendingFiles([], item.files ?? []),
             })),
         ];

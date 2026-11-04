@@ -24,6 +24,8 @@ export interface IListedDraft {
   date: string;
   message: string;
   files: string[];
+  /** Person email, `team`, or null when `owner.json` is missing. Absent on an older payload. */
+  owner?: string | null;
 }
 
 /** The stor fields this panel reads. Callers keep the rest of `IFileInfo` on the same object. */
@@ -737,7 +739,7 @@ export interface IPendingFile {
   error?: string;
 }
 
-export type DraftTreeKind = 'root' | 'person' | 'level' | 'module' | 'folder' | 'file';
+export type DraftTreeKind = 'root' | 'person' | 'group' | 'level' | 'module' | 'folder' | 'file';
 
 /** Level, then module, then folders, then the file. Counts cover every file under the node. */
 export interface IDraftTreeNode {
@@ -769,6 +771,8 @@ export interface IPanelPersonInput {
   ahead: number;
   behind: number;
   files: readonly IPendingFile[];
+  /** `listDrafts.owner`. Null has no owner. Omitted means the caller already named an owned person. */
+  owner?: string | null;
 }
 
 /** A row the panel may paint. Closed nodes contribute no children. */
@@ -960,9 +964,50 @@ function personNode(person: IPanelPersonInput): IDraftTreeNode {
   };
 }
 
-/** `Draft` → people → the st45 tree. Mine keeps unsaved counts; another person does not. */
-export function buildPanelTree(rootName: string, people: readonly IPanelPersonInput[]): IDraftTreeNode {
-  const files = people.flatMap((person) => person.files);
+function unownedGroup(name: string, people: readonly IPanelPersonInput[]): IDraftTreeNode {
+  return {
+    id: 'unowned',
+    name,
+    kind: 'group',
+    count: people.length,
+    inBrowser: 0,
+    inDraft: 0,
+    withError: 0,
+    showUnsaved: false,
+    branch: '',
+    ahead: 0,
+    behind: 0,
+    path: '',
+    error: '',
+    children: people.map((person) => personNode(person)),
+  };
+}
+
+/**
+ * `Draft` → people → the st45 tree. Mine keeps unsaved counts; another person does not.
+ * Another draft with no files is omitted. Drafts with files and no owner become one closed group.
+ */
+export function buildPanelTree(
+  rootName: string,
+  people: readonly IPanelPersonInput[],
+  unownedName: string,
+): IDraftTreeNode {
+  const kept: IPanelPersonInput[] = [];
+  const unowned: IPanelPersonInput[] = [];
+  for (const person of people) {
+    if (!person.mine && person.files.length === 0) continue;
+    if (!person.mine && person.owner === null) {
+      unowned.push(person);
+      continue;
+    }
+    kept.push(person);
+  }
+  if (unowned.length > 0 && unownedName.trim() === '') {
+    console.error('[draftPanel] unowned drafts have no group name');
+  }
+  const children = kept.map((person) => personNode(person));
+  if (unowned.length > 0) children.push(unownedGroup(unownedName, unowned));
+  const files = [...kept, ...unowned].flatMap((person) => person.files);
   return {
     id: 'draft',
     name: rootName,
@@ -974,7 +1019,7 @@ export function buildPanelTree(rootName: string, people: readonly IPanelPersonIn
     behind: 0,
     path: '',
     error: '',
-    children: people.map((person) => personNode(person)),
+    children,
   };
 }
 
