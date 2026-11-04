@@ -13,7 +13,7 @@ skill the Variant's `v3-less` uses, so a rule fixed once applies to both paths.
 | motion stance | not required | **required** (`transition: none` counts) |
 | gate codes | `color_literal`, `token_consumption` | `tokens`, `motion` |
 
-Both modes share: one correct header, balanced braces, tag scope, the portal rule, the class-inventory
+Both modes share: one correct header, balanced braces, tag scope, the tag's own `display` block, the portal rule, the class-inventory
 subset check, no redefined Tailwind layout utility, no override of render-owned positioning, no Shadow
 DOM selector, no universal selector.
 

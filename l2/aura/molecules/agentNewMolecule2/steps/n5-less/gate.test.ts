@@ -61,6 +61,7 @@ const HEADER = '/// <mls fileReference="_102053_/l2/molecules/groupviewmetric/ml
 const NEUTRAL = `${HEADER}
 
 groupviewmetric--ml-kpi-card {
+  display: block;
 
   .ml-surface-bg {
     background: var(--ml-surface, #ffffff);
@@ -83,6 +84,7 @@ groupviewmetric--ml-kpi-card {
 const THEMED = `${HEADER}
 
 groupviewmetric--ml-kpi-card {
+  display: block;
   --ml-surface: rgba(255, 255, 255, 0.08);
   --ml-on-surface: #f8fafc;
 
@@ -148,6 +150,7 @@ test('in a THEMED sheet a colour literal is the theme\'s VALUE, not a defect', (
   const brutalist = `${HEADER}
 
 groupviewmetric--ml-kpi-card {
+  display: block;
   --ml-border-width: 3px;
   --ml-surface: #ffffff;
 
@@ -240,12 +243,42 @@ test('portal rules are required when the render declares a portal, and banned ot
   const portalRender = RENDER.replace('render()', "protected portalWidgetName = 'groupviewmetric--ml-kpi-card';\n  render()");
   assert.ok(runNm2LessGate(NEUTRAL, PLAN, ctx(), { renderTs: portalRender }).some(issue => issue.code === 'portal_scope'));
 
+  // Shaped after the real portal sheets (groupenterdate/ml-date-picker.less): the tag's display in a
+  // block of its own, then the list with the portal.
   const withPortal = NEUTRAL.replace(
-    'groupviewmetric--ml-kpi-card {',
-    'groupviewmetric--ml-kpi-card,\ndiv[data-widget="groupviewmetric--ml-kpi-card"] {',
+    'groupviewmetric--ml-kpi-card {\n  display: block;\n',
+    'groupviewmetric--ml-kpi-card {\n  display: block;\n}\n\ngroupviewmetric--ml-kpi-card,\ndiv[data-widget="groupviewmetric--ml-kpi-card"] {\n',
   );
   assert.deepEqual(runNm2LessGate(withPortal, PLAN, ctx(), { renderTs: portalRender }), []);
   assert.ok(gate(withPortal).some(issue => issue.code === 'portal_extra'));
+});
+
+// ---- tag_display (2026-11-03): the tag is `inline` by default and ignores vertical margins ----
+// Every molecule of mls-102040 declares it since 2026-11-03 (todo/display-na-tag-das-moleculas).
+
+test('a sheet whose tag has no display is rejected', () => {
+  const noDisplay = NEUTRAL.replace('  display: block;\n', '');
+  assert.deepEqual(gate(noDisplay).map(issue => issue.code), ['tag_display']);
+});
+
+test('inline-flex is accepted — the value is the skill\'s call (content-sized root), not the gate\'s', () => {
+  assert.deepEqual(gate(NEUTRAL.replace('display: block;', 'display: inline-flex;')), []);
+});
+
+test('display only inside the portal list is rejected — there it also hits the panel and beats `hidden`', () => {
+  const portalRender = RENDER.replace('render()', "protected portalWidgetName = 'groupviewmetric--ml-kpi-card';\n  render()");
+  const inList = NEUTRAL.replace(
+    'groupviewmetric--ml-kpi-card {',
+    'groupviewmetric--ml-kpi-card,\ndiv[data-widget="groupviewmetric--ml-kpi-card"] {',
+  );
+  assert.deepEqual(runNm2LessGate(inList, PLAN, ctx(), { renderTs: portalRender }).map(issue => issue.code), ['tag_display']);
+});
+
+test('display on an inner class does not count as the tag\'s', () => {
+  const inner = NEUTRAL
+    .replace('  display: block;\n', '')
+    .replace('background: var(--ml-surface, #ffffff);', 'background: var(--ml-surface, #ffffff);\n    display: block;');
+  assert.ok(gate(inner).some(issue => issue.code === 'tag_display'));
 });
 
 // ---- A4, first Studio run 2026-07-30: `&.classe` no nivel 1 ancora no HOST. ----

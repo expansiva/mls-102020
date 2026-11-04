@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import type { CopyItem } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
 import { renderCopiedLess } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cTemplates.js';
 import { C_LESS_NON_BLOCKING, runLessGate } from '/_102020_/l2/aura/molecules/agentCopyMolecule/steps/c4-less/gate.js';
+import { tagDisplay } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 
 const DEST = 102053;
 
@@ -97,11 +98,14 @@ test('seletor raiz com pseudo/classe ainda conta como escopo certo', () => {
   const target = item();
   const withPseudo = renderCopiedLess(target, ORIGIN_LESS, DEST)
     .replace('groupshowprogress--ml-indeterminate-spinner {', 'groupshowprogress--ml-indeterminate-spinner:hover {');
-  assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: withPseudo, sourceIsShellSheet: true }), []);
+  // The only block is now `tag:hover`, so the tag has no display of its own — the notice, never less_scope.
+  assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: withPseudo, sourceIsShellSheet: true }).map(issue => issue.code), ['less_no_tag_display']);
 });
 
 // Regressão do T5 (Studio, 2026-08-20): a folha de uma molécula PORTAL tem seletor raiz composto
-// (`tag, div[data-widget="tag"]`) e era rejeitada pelo gate, mesmo estando correta.
+// (`tag, div[data-widget="tag"]`) e era rejeitada pelo gate, mesmo estando correta. A fixture fica
+// SEM o bloco próprio da tag de propósito: com ele, a tag sozinha satisfaria o escopo e o seletor
+// composto deixaria de ser testado — por isso o único código esperado é o aviso less_no_tag_display.
 const PORTAL_LESS = `/// <mls fileReference="_102040_/l2/molecules/groupenterdatetime/ml-datetime-picker.less" enhancement="_102020_/l2/enhancementStyleAura"/>
 
 groupenterdatetime--ml-datetime-picker,
@@ -137,13 +141,13 @@ function portalItem(rename: string | null = null): CopyItem {
 test('molécula portal: folha com seletor raiz composto passa (regressão T5)', () => {
   const target = portalItem();
   const written = renderCopiedLess(target, PORTAL_LESS, DEST);
-  assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true }), []);
+  assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true }).map(issue => issue.code), ['less_no_tag_display']);
 });
 
 test('molécula portal renomeada: as DUAS formas do escopo são re-escopadas', () => {
   const target = portalItem('ml-datetime-picker-app');
   const written = renderCopiedLess(target, PORTAL_LESS, DEST);
-  assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true }), []);
+  assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true }).map(issue => issue.code), ['less_no_tag_display']);
   assert.match(written, /div\[data-widget="groupenterdatetime--ml-datetime-picker-app"\]/);
 });
 
@@ -161,6 +165,34 @@ test('folha só com header: informativa, não bloqueia, e o escopo não é checa
   assert.equal(issues[0].code, 'less_no_rules');
   assert.ok(C_LESS_NON_BLOCKING.includes(issues[0].code), 'less_no_rules tem de ser não-bloqueante');
   assert.ok(!issues.some(issue => issue.code === 'less_scope'), 'sem regras não há escopo a conferir');
+});
+
+// ---- display na tag (2026-11-03): a cópia preserva a regra, e avisa quando a origem não tem ----
+
+const PORTAL_LESS_WITH_DISPLAY = PORTAL_LESS.replace(
+  'groupenterdatetime--ml-datetime-picker,\n',
+  'groupenterdatetime--ml-datetime-picker {\n  display: block;\n}\n\ngroupenterdatetime--ml-datetime-picker,\n',
+);
+
+test('a cópia preserva o display da tag no caminho padrão', () => {
+  const target = item();
+  const written = renderCopiedLess(target, ORIGIN_LESS, DEST);
+  assert.equal(tagDisplay(written, 'groupshowprogress--ml-indeterminate-spinner'), 'block');
+});
+
+test('molécula portal renomeada: o bloco próprio da tag é re-escopado com o display', () => {
+  const target = portalItem('ml-datetime-picker-app');
+  const written = renderCopiedLess(target, PORTAL_LESS_WITH_DISPLAY, DEST);
+  assert.equal(tagDisplay(written, 'groupenterdatetime--ml-datetime-picker-app'), 'block');
+  assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true }), []);
+});
+
+test('origem sem display na tag: só avisa, não bloqueia, e a folha sai igual', () => {
+  const target = item();
+  const written = renderCopiedLess(target, ORIGIN_LESS.replace('  display: block;\n', ''), DEST);
+  const issues = runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true });
+  assert.deepEqual(issues.map(issue => issue.code), ['less_no_tag_display']);
+  assert.ok(C_LESS_NON_BLOCKING.includes('less_no_tag_display'), 'less_no_tag_display tem de ser não-bloqueante');
 });
 
 test('folha só com header numa casca: nem less_scope nem less_from_parent atrapalham', () => {

@@ -204,7 +204,9 @@ test('a whitespace-only find/content pair is a no-op, and an all-no-op attempt f
   const result = applyEdits(files({ ts: { present: true, source: COLAPSADO } }), [
     edit({ artifact: 'ts', find: 'this.nodeIdCounter = 0;', content: '  this.nodeIdCounter = 0;  ' }),
   ]);
-  assert.match(result.errors[0], /every edit applied but the content is unchanged/);
+  // Since 2026-09-10 a no-op is skipped (holdout), not refused; alone in the batch it still fails.
+  assert.ok(result.applied.some(line => /no-op skipped/.test(line)));
+  assert.match(result.errors[0], /unchanged/);
 });
 
 // ---- 2026-08-13: indentation is the FILE's, not the model's ----

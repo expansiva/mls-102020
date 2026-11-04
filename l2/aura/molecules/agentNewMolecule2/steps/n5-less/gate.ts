@@ -36,6 +36,7 @@ import {
   geometryAliasTokens,
   hasUniversalSelector,
   setsPositionOrOverflow,
+  tagDisplay,
 } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 import { GEOMETRY_REGISTRY } from '/_102020_/l2/aura/molecules/skills/moleculeGeometry.js';
 
@@ -77,6 +78,17 @@ export function runNm2LessGate(
 
   if (!content.includes(plan.tag)) {
     issues.push({ code: 'scope', message: `the sheet must be scoped under the molecule tag '${plan.tag}'` });
+  }
+
+  // A custom-element tag is `inline` by default and ignores the vertical margin a page puts on it —
+  // what broke the spacing of the generated pages of mls-102047. Since 2026-11-03 every molecule of
+  // mls-102040 declares it (todo/display-na-tag-das-moleculas). The block must be the tag's ALONE:
+  // in the portal list the same declaration also hits the panel and beats `hidden` on it.
+  if (!tagDisplay(content, plan.tag)) {
+    issues.push({
+      code: 'tag_display',
+      message: `the tag has no 'display': add '${plan.tag} { display: block; }' (or 'inline-flex' when the render's root is sized to its content) as a top-level block whose selector is the tag ALONE — never inside a list with div[data-widget=…]`,
+    });
   }
 
   // The portal panel is rendered into document.body, OUTSIDE the tag, so its rules need a TOP-LEVEL

@@ -28,6 +28,7 @@ function inputs(over: Partial<ImEditGateInputs> = {}): ImEditGateInputs {
   return {
     files: [file()],
     currentProject: 102054,
+    tag: 'collab-x',
     parentReference: null,
     parentSource: '',
     route: 'B',
@@ -164,6 +165,37 @@ test('the registry token itself is never flagged as an alias', () => {
   const before = 'collab-x {\n  .ml-row { color: black; }\n}';
   const after = 'collab-x {\n  .ml-row { color: black; }\n  .ml-spinner { width: var(--ml-spinner-size, 16px); }\n}';
   const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, true);
+});
+
+// ---- tag_display_removed (2026-11-03): the tag's own display must survive the edit ----
+// Every molecule of mls-102040 declares it since 2026-11-03 (todo/display-na-tag-das-moleculas).
+
+const WITH_DISPLAY = 'collab-x {\n  display: block;\n\n  .ml-row { color: black; }\n}';
+
+test('an edit that REMOVES the tag display is refused', () => {
+  const after = WITH_DISPLAY.replace('  display: block;\n\n', '');
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before: WITH_DISPLAY, after })] }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^tag_display_removed: /.test(e)));
+});
+
+test('folding the tag display into the portal list is refused too — there it also hits the panel', () => {
+  const before = `collab-x {\n  display: block;\n}\n\ncollab-x,\ndiv[data-widget="collab-x"] {\n  .ml-row { color: black; }\n}`;
+  const after = `collab-x,\ndiv[data-widget="collab-x"] {\n  display: block;\n  .ml-row { color: black; }\n}`;
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.ok(result.errors.some(e => /^tag_display_removed: /.test(e)));
+});
+
+test('CHANGING the tag display value is an ordinary edit', () => {
+  const after = WITH_DISPLAY.replace('display: block;', 'display: inline-flex;');
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before: WITH_DISPLAY, after })] }));
+  assert.equal(result.ok, true);
+});
+
+test('THE DELTA RULE: a sheet that never had the tag display does not block an unrelated fix', () => {
+  const before = 'collab-x {\n  .ml-row { color: black; }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after: before.replace('black', 'red') })] }));
   assert.equal(result.ok, true);
 });
 

@@ -131,6 +131,52 @@ export function setsPositionOrOverflow(less: string, cls: string): boolean {
   return false;
 }
 
+// The `display` the sheet gives the molecule TAG, or null. Only a TOP-LEVEL block whose selector is
+// the tag ALONE counts, and only a declaration at that block's own level:
+// - inside the portal list `tag, div[data-widget="tag"] { … }` the same declaration also hits the
+//   portal div, at a specificity (0,1,1) that beats utilities like `hidden` on it;
+// - `display` on an inner class is layout of that element, not of the tag.
+// Every molecule of mls-102040 carries this rule since 2026-11-03 (todo/display-na-tag-das-moleculas):
+// without it the tag is `inline` and ignores the vertical margin a page puts on it.
+export function tagDisplay(less: string, tag: string): string | null {
+  const source = scrubComments(less);
+  let depth = 0;
+  let selector = '';
+  for (let i = 0; i < source.length; i++) {
+    const character = source[i];
+    if (character === '{') {
+      if (depth === 0 && selector.trim() === tag) {
+        const own = blockOwnLevel(balancedBlockBody(source, i));
+        const match = own.match(/(?:^|[;\s])display\s*:\s*([^;]+)/);
+        if (match) return match[1].trim();
+      }
+      depth++;
+      selector = '';
+    } else if (character === '}') {
+      depth--;
+      selector = '';
+    } else if (depth === 0) {
+      selector = character === ';' ? '' : selector + character;
+    }
+  }
+  return null;
+}
+
+// The text of a block body with every nested block dropped (each one leaves a `;` behind, so a
+// declaration never runs into the next one).
+function blockOwnLevel(body: string): string {
+  let depth = 0;
+  let out = '';
+  for (const character of body) {
+    if (character === '{') depth++;
+    else if (character === '}') {
+      depth--;
+      out += ';';
+    } else if (depth === 0) out += character;
+  }
+  return out;
+}
+
 // Body between the brace at `open` and its matching close.
 export function balancedBlockBody(source: string, open: number): string {
   let depth = 0;

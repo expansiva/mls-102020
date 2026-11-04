@@ -1,5 +1,23 @@
 # CHANGELOG — i3-edit
 
+## 2026-11-04 — teste esquecido da mudança de 10/09 (no-op pulado)
+
+`applyEdits.test.ts` › "find e content iguais a menos de espaçamento é erro, não substituição
+vazia" falhava desde o commit `0af6a5aa` (10/09): continuava esperando a recusa antiga (`/identical/`),
+enquanto o no-op passou a ser PULADO (entrada "2026-09-10 (2)" abaixo) e o vizinho "a batch of ONLY
+no-ops still fails" já tinha sido atualizado para `/unchanged/`. O código estava certo; só o teste
+mudou: agora confere o `no-op skipped` em `applied` e a falha `unchanged` do lote só com no-op.
+A intenção dele é a mesma — diferença só de espaçamento não vira substituição aplicada.
+
+## 2026-11-03 — `tag_display_removed`: a edição não apaga o `display` da tag
+
+Etapa D3 de `todo/display-na-tag-das-moleculas`. Desde 03/11 as 155 moléculas do `mls-102040`
+declaram `display` num bloco próprio da tag; sem ele a tag volta a `inline` e as margens verticais
+da página morrem. Regra de delta, como o resto do gate: só falha a folha que TINHA a regra e a
+perdeu — removida, ou dobrada para dentro da lista do portal (onde atinge também o painel). Trocar
+o valor é edição comum. O `ImEditGateInputs` ganhou `tag` (`ctx.target.tag`), e o `prompt.md` diz
+no item `.less` que a regra fica. Detector: `tagDisplay` em `shared/moleculeInspect.ts`.
+
 ## 2026-09-10 (3) — o que 4 grupos migrados dizem sobre a divergência
 
 `groupviewcard`, `groupselectmany`, `groupenterdateinterval` e `groupentertime`: **17 moléculas,

@@ -17,7 +17,7 @@ Return **targeted edits**, not rewritten files. Each edit quotes the exact text 
 ## What belongs in which file
 
 - **`.ts`** — behaviour, structure, the classes the render emits. It carries **no appearance**: no colour, no hardcoded Tailwind colour utility (`bg-black`, `text-white`), no `style="color:…"`. Inline `style` is for geometry only (width, height, transform).
-- **`.less`** — the appearance. Everything visual lives here, scoped under the element selector. This project has **no Shadow DOM**: `static styles = css\`…\`` is silently ignored, so it never appears in a `.ts`.
+- **`.less`** — the appearance. Everything visual lives here, scoped under the element selector. This project has **no Shadow DOM**: `static styles = css\`…\`` is silently ignored, so it never appears in a `.ts`. The tag's own `display` rule (`{{tag}} { display: …; }`, a block whose selector is the tag alone) **stays**: without it the tag is `inline` and the page's vertical margins have no effect. Change its value only when the request is about it, and never fold it into the portal list with `div[data-widget=…]`.
 - **`.defs.ts`** — the contract. Edit it only for wording; anything that changes what the contract *promises* is not this route — **unless** the section "The definition change a HUMAN confirmed" appears below, which is route A and is exactly that change, already decided.
 - Do not touch the playground (`.html`) or the group index: later steps own them.
 

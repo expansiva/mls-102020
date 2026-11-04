@@ -10,10 +10,16 @@
 // copying a sheet with no rules, and there is no root selector to check — so the scope check is
 // SKIPPED and an informational `less_no_rules` is emitted for the trace. Failing there is what
 // aborted a 12-molecule group copy in the Studio on 2026-08-20.
+//
+// A sheet whose TAG has no `display` (2026-11-03) is informational too, for the same reason: the copy
+// is verbatim, so it keeps the rule whenever the origin has it (cTemplates.test proves it, rename
+// included). When the origin lacks it, the copy cannot pick between `block` and `inline-flex` on
+// its own — it reports `less_no_tag_display` and copies the sheet as it is.
 
 import type { CopyItem } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
 import { copyShortName, copyTag } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
 import { containsTag, extractLessRootSelectors, isTagScopedSelector } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cTemplates.js';
+import { tagDisplay } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 
 export interface CGateIssue {
   code: string;
@@ -21,7 +27,7 @@ export interface CGateIssue {
 }
 
 // Codes the step must NOT treat as blocking (same convention as c3's `defs_missing`).
-export const C_LESS_NON_BLOCKING = ['less_no_rules'];
+export const C_LESS_NON_BLOCKING = ['less_no_rules', 'less_no_tag_display'];
 
 export interface CLessGateInputs {
   item: CopyItem;
@@ -59,6 +65,12 @@ export function runLessGate(inputs: CLessGateInputs): CGateIssue[] {
     issues.push({
       code: 'less_scope',
       message: `${ref}: o seletor raiz do .less não é a tag da cópia ('${tag}') — encontrados: ${roots.slice(0, 3).join(', ') || '(nenhum)'}`,
+    });
+  }
+  if (!tagDisplay(writtenLess, tag)) {
+    issues.push({
+      code: 'less_no_tag_display',
+      message: `${ref}: a tag da cópia ('${tag}') não tem 'display' num bloco próprio — a origem não tinha; sem ele a tag fica inline e ignora margem vertical`,
     });
   }
   if (item.rename && containsTag(writtenLess, item.origin.tag)) {

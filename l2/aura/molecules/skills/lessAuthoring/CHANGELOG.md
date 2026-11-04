@@ -48,3 +48,13 @@ Other calibration numbers from the same measurement, used by the `n5-less` gate:
 | base sheets with a colour literal OUTSIDE `var(--ml-…, fallback)` | 10 / 147, almost all the same hardcoded red focus ring — a genuine defect, so the gate rejects it |
 | base sheets with a universal selector | 1 / 147 — the ban stands (T3) |
 | base sheets with `:host` | 0 / 147 — the ban stands (T20) |
+
+## 2026-11-03 — §5: a tag sempre recebe `display` (etapa D3 de `todo/display-na-tag-das-moleculas`)
+
+A tag de elemento customizado é `inline` e ignora margem vertical — o que estragava o espaçamento
+das páginas geradas do `mls-102047`. Desde 03/11 as 155 moléculas do `mls-102040` declaram
+`display` na tag (145 `block`, 8 `inline-flex`, 2 `flex`); sem a regra aqui, a próxima molécula
+gerada nasceria sem ela. A §5 agora diz: regra própria no nível de cima, seletor só a tag, nunca na
+lista do portal (§3) nem em `@layer` (D5); `inline-flex` quando a raiz do render é do tamanho do
+conteúdo (botão, indicador), `block` nos demais, decidido pela RAIZ (o toggle é `block`).
+Chega também ao `v3-less` do Variant, que consome esta skill; o gate dele não mudou.
