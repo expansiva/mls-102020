@@ -14,6 +14,8 @@ import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
 import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { readGenomeUxBaseChoice } from '/_102020_/l2/aura/agentGenomeUx/genomeUxIo.js';
+import type { StudioTheme } from '/_102033_/l2/cbe/studioTheme.js';
+import type { StudioDevice } from '/_102033_/l2/cbe/studioDevice.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -70,6 +72,19 @@ const message_en = {
     editElementIn: 'in',
     editElementRemove: 'Do not send this element',
     editElementElsewhere: 'The selected element is not on this page and device: it will not be sent.',
+    tabVisual: 'Visual changes',
+    tabStates: 'States',
+    tabPage: 'Page',
+    themeTitle: 'Theme while editing',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    themeHint: 'Only in studio mode: leaving it, the app goes back to its own theme.',
+    deviceTitle: 'Device',
+    deviceDesktop: 'Desktop',
+    deviceMobile: 'Mobile',
+    deviceMissing: 'This page has no {device} version for the current layout / design system.',
+    deviceFailed: 'Could not switch: the variant did not load (the reason is in the console).',
+    deviceStretchHint: 'On a wide window the app shows in a phone-wide frame; leaving studio mode, the width decides again.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -126,6 +141,19 @@ const messages: Record<string, MessageType> = {
         editElementIn: 'em',
         editElementRemove: 'Não enviar este elemento',
         editElementElsewhere: 'O elemento selecionado não é desta página e device: não será enviado.',
+        tabVisual: 'Alterações visuais',
+        tabStates: 'Estados',
+        tabPage: 'Página',
+        themeTitle: 'Tema durante a edição',
+        themeLight: 'Claro',
+        themeDark: 'Escuro',
+        themeHint: 'Só no modo studio: ao sair dele, o app volta ao tema que tinha.',
+        deviceTitle: 'Dispositivo',
+        deviceDesktop: 'Desktop',
+        deviceMobile: 'Mobile',
+        deviceMissing: 'Esta página não tem versão {device} para o layout / design system atual.',
+        deviceFailed: 'Não foi possível trocar: a versão não carregou (o motivo está no console).',
+        deviceStretchHint: 'Numa janela larga o app aparece numa moldura com largura de celular; ao sair do modo studio, a largura volta a decidir.',
     },
     es: {
         title: 'Páginas',
@@ -179,6 +207,19 @@ const messages: Record<string, MessageType> = {
         editElementIn: 'en',
         editElementRemove: 'No enviar este elemento',
         editElementElsewhere: 'El elemento seleccionado no es de esta página y dispositivo: no se enviará.',
+        tabVisual: 'Cambios visuales',
+        tabStates: 'Estados',
+        tabPage: 'Página',
+        themeTitle: 'Tema durante la edición',
+        themeLight: 'Claro',
+        themeDark: 'Oscuro',
+        themeHint: 'Solo en el modo studio: al salir, la app vuelve a su propio tema.',
+        deviceTitle: 'Dispositivo',
+        deviceDesktop: 'Desktop',
+        deviceMobile: 'Móvil',
+        deviceMissing: 'Esta página no tiene versión {device} para el layout / design system actual.',
+        deviceFailed: 'No se pudo cambiar: la versión no cargó (el motivo está en la consola).',
+        deviceStretchHint: 'En una ventana ancha la app aparece en un marco con ancho de celular; al salir del modo studio, el ancho vuelve a decidir.',
     },
 };
 /// **collab_i18n_end**
@@ -227,6 +268,8 @@ interface IEditNotes {
     warnings: string[];
 }
 
+type DetailTab = 'visual' | 'states' | 'page';
+
 // ─── Constants ───────────────────────────────────────────────────────
 
 const DEVICE_SUB_PATHS: Record<number, string> = {
@@ -274,6 +317,17 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _selection: IAuraEditSelection | null = null;
     @state() private _selectionOff: Record<string, boolean> = {};
     private _selectionUsed: IAuraEditSelection | null = null;
+    // The open tab of the page detail; kept across pages.
+    @state() private _tab: DetailTab = 'visual';
+    // The studio's light/dark switch; null = not in the client's studio mode (no switch to show).
+    @state() private _studioTheme: StudioTheme | null = null;
+    // The page variant the studio shows (Desktop | Mobile); null = not in the client's studio mode.
+    @state() private _contentDevice: StudioDevice | null = null;
+    @state() private _deviceBusy = false;
+    @state() private _deviceError = '';
+    // page name → device paths ('web/desktop'…) with a variant generated for the current layout/DS, counted
+    // BEFORE the active-device filter (what the Desktop | Mobile switch can offer).
+    @state() private _variantDevices: Record<string, string[]> = {};
 
     private _threadCache = new Map<string, Promise<any>>();
     private _taskInfoByName = new Map<string, { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }>();
@@ -284,19 +338,89 @@ export class PluginSelectPage extends StateLitElement {
         this._unsubTasks = subscribeTaskManager(() => this.requestUpdate());
         this._selection = getAuraEdit()?.selection ?? null;
         subscribe('aura.edit.selection', this);
+        subscribe('aura.actualDevice', this);
         this._loadPages();
+        void this._readStudioTheme();
+    }
+
+    // The switches belong to the client app's studio mode (its shell holds the app theme aside while editing).
+    // Elsewhere — e.g. the preview iframe, which has its own toggles — the theme module says it is not active.
+    private async _readStudioTheme(): Promise<void> {
+        try {
+            const mod = await import('/_102033_/l2/cbe/studioTheme.js');
+            const active = mod.isStudioThemeActive();
+            this._studioTheme = active ? mod.getStudioTheme() : null;
+            const sites = this._sitesDevice();
+            this._contentDevice = active && sites ? sites.getDevice() : null;
+            // A remembered pick is re-applied on studio entry and can land after the seed read the other variant.
+            if (this._contentDevice && getAuraState().actualDevice !== `web/${this._contentDevice}`) await this._reseedAura();
+        } catch {
+            this._studioTheme = null;
+            this._contentDevice = null;
+        }
+    }
+
+    // Re-reads the Aura state from the page mounted in the app region (studioAuraSeed: the DOM is the authority).
+    private async _reseedAura(): Promise<void> {
+        const [{ currentEditHost }, { seedAuraStateFromHost }] = await Promise.all([
+            import('/_102033_/l2/cbe/studioEditSlot.js'),
+            import('/_102020_/l2/aura/studio/studioAuraSeed.js'),
+        ]);
+        seedAuraStateFromHost(currentEditHost()?.host);
+    }
+
+    // The shell's device controls on mls.sites (not in the published mls typings yet); null until it registers.
+    private _sitesDevice(): { getDevice: () => StudioDevice; setDevice: (device: StudioDevice) => Promise<boolean> } | null {
+        const sites = (mls as unknown as { sites?: { getDevice?: () => StudioDevice; setDevice?: (device: StudioDevice) => Promise<boolean> } }).sites;
+        return typeof sites?.getDevice === 'function' && typeof sites.setDevice === 'function'
+            ? { getDevice: sites.getDevice, setDevice: sites.setDevice }
+            : null;
+    }
+
+    // The shell swaps the mounted page; the Aura state is then re-seeded from it (the DOM is the authority), which
+    // moves `actualDevice` and, through the subscription, reloads this list on the new device.
+    private async _setContentDevice(device: StudioDevice): Promise<void> {
+        const sites = this._sitesDevice();
+        if (!sites || this._deviceBusy) return;
+        this._deviceBusy = true;
+        this._deviceError = '';
+        try {
+            const ok = await sites.setDevice(device);
+            this._contentDevice = sites.getDevice();
+            if (!ok) {
+                this._deviceError = this.msg.deviceFailed;
+                return;
+            }
+            await this._reseedAura();
+        } catch (e: any) {
+            this._deviceError = e?.message ?? String(e);
+        } finally {
+            this._deviceBusy = false;
+        }
+    }
+
+    private async _setStudioTheme(theme: StudioTheme): Promise<void> {
+        const mod = await import('/_102033_/l2/cbe/studioTheme.js');
+        this._studioTheme = mod.isStudioThemeActive() ? mod.setStudioTheme(theme) : null;
     }
 
     disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubTasks?.();
         unsubscribe('aura.edit.selection', this);
+        unsubscribe('aura.actualDevice', this);
     }
 
     handleIcaStateChange(key: string, value: unknown) {
+        if (key === 'aura.actualDevice') {
+            this._loadPages();
+            return;
+        }
         if (key !== 'aura.edit.selection') return;
         this._selection = (value ?? getAuraEdit()?.selection ?? null) as IAuraEditSelection | null;
         this._selectionOff = {};
+        // Selecting an element means editing it: bring the tab with the prompt and the picker forward.
+        if (this._selection) this._tab = 'visual';
     }
 
     willUpdate(changed: Map<string, unknown>) {
@@ -367,6 +491,7 @@ export class PluginSelectPage extends StateLitElement {
         if (!pages.length) pages = this._scanPagesFromStor(project, modulePath);
 
         const pageMap = new Map<string, { devices: Set<string>; file: mls.stor.IFileInfo; exists: boolean }>();
+        const variantDevices: Record<string, string[]> = {};
         let candidateCount = 0;
 
         for (const page of pages) {
@@ -391,10 +516,17 @@ export class PluginSelectPage extends StateLitElement {
             }
             if (!devicePath) continue;
 
-            if (activeDevicePath && devicePath !== activeDevicePath) continue;
-
             // Swap the source's variation segment (e.g. page11) for the current one.
             const variationFolder = rawFolder.replace(/page\d+(\/|$)/, `${variation}$1`);
+
+            // Every device with a generated variant, before the active-device filter below.
+            if (this._fileExists(project, level, variationFolder, shortName)) {
+                const id = page.pageId || shortName;
+                const list = variantDevices[id] ?? (variantDevices[id] = []);
+                if (!list.includes(devicePath)) list.push(devicePath);
+            }
+
+            if (activeDevicePath && devicePath !== activeDevicePath) continue;
             candidateCount++;
 
             // The page list is owned by the config (or, without one, by the page11 scan):
@@ -416,6 +548,7 @@ export class PluginSelectPage extends StateLitElement {
         this._pages = Array.from(pageMap.entries())
             .map(([name, { devices, file, exists }]) => ({ name, devices: Array.from(devices).sort(), file, exists }))
             .sort((a, b) => a.name.localeCompare(b.name));
+        this._variantDevices = variantDevices;
 
         // Config lists pages for this module/device, but none exist for the
         // current variation → offer to generate them.
@@ -588,7 +721,123 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
+    // A page not generated for this variation has nothing to edit: only the way to generate it, no tabs.
+    // The DS-version warnings stay above the tabs: they ask for an action whichever tab is open.
     private _renderPageDetail(page: IPageEntry) {
+        if (!page.exists) return html`${this._renderPageInfo(page)}${this._renderMissingPanel(page)}`;
+        return html`
+            ${this._renderDsVersionPanel(page)}
+            ${this._renderTabs()}
+            ${this._renderTabPanel('visual', html`${this._renderEditPanel(page)}${this._renderClassPicker()}`)}
+            ${this._renderTabPanel('states', html`
+                <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">${this.msg.inDevelopment}</span>
+                </div>
+            `)}
+            ${this._renderTabPanel('page', html`${this._renderPageInfo(page)}${this._renderDeviceSwitch(page)}${this._renderThemeSwitch()}`)}
+        `;
+    }
+
+    private _renderDeviceSwitch(page: IPageEntry) {
+        const current = this._contentDevice;
+        if (!current) return nothing;
+        const available = this._variantDevices[page.name] ?? [];
+        const options: Array<{ id: StudioDevice; label: string }> = [
+            { id: 'desktop', label: this.msg.deviceDesktop },
+            { id: 'mobile', label: this.msg.deviceMobile },
+        ];
+        const missing = options.filter(o => o.id !== current && !available.includes(`web/${o.id}`));
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.deviceTitle}</span>
+                <div role="radiogroup" class="flex self-start rounded-md border border-gray-300 dark:border-gray-700 overflow-hidden">
+                    ${options.map(o => {
+                        const unavailable = o.id !== current && !available.includes(`web/${o.id}`);
+                        return html`
+                            <button
+                                type="button"
+                                role="radio"
+                                aria-checked=${String(current === o.id)}
+                                ?disabled=${this._deviceBusy || unavailable}
+                                class="px-3 py-1 text-xs transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed
+                                    ${current === o.id
+                                        ? 'bg-indigo-500 dark:bg-indigo-600 text-white'
+                                        : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+                                @click=${() => { if (o.id !== current) void this._setContentDevice(o.id); }}
+                            >${o.label}</button>
+                        `;
+                    })}
+                </div>
+                ${missing.map(o => html`<span class="text-[10px] text-amber-600 dark:text-amber-400">${this.msg.deviceMissing.replace('{device}', o.label)}</span>`)}
+                ${this._deviceError ? html`<span class="text-[10px] text-red-600 dark:text-red-400">${this._deviceError}</span>` : nothing}
+                ${current === 'mobile' ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.deviceStretchHint}</span>` : nothing}
+            </div>
+        `;
+    }
+
+    private _renderThemeSwitch() {
+        const current = this._studioTheme;
+        if (!current) return nothing;
+        const options: Array<{ id: StudioTheme; label: string }> = [
+            { id: 'light', label: this.msg.themeLight },
+            { id: 'dark', label: this.msg.themeDark },
+        ];
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.themeTitle}</span>
+                <div role="radiogroup" class="flex self-start rounded-md border border-gray-300 dark:border-gray-700 overflow-hidden">
+                    ${options.map(o => html`
+                        <button
+                            type="button"
+                            role="radio"
+                            aria-checked=${String(current === o.id)}
+                            class="px-3 py-1 text-xs transition-colors cursor-pointer
+                                ${current === o.id
+                                    ? 'bg-indigo-500 dark:bg-indigo-600 text-white'
+                                    : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+                            @click=${() => this._setStudioTheme(o.id)}
+                        >${o.label}</button>
+                    `)}
+                </div>
+                <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.themeHint}</span>
+            </div>
+        `;
+    }
+
+    private _renderTabs() {
+        const tabs: Array<{ id: DetailTab; label: string }> = [
+            { id: 'visual', label: this.msg.tabVisual },
+            { id: 'states', label: this.msg.tabStates },
+            { id: 'page', label: this.msg.tabPage },
+        ];
+        return html`
+            <div role="tablist" class="flex items-stretch border-b border-gray-200 dark:border-gray-800">
+                ${tabs.map(tab => {
+                    const active = this._tab === tab.id;
+                    return html`
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected=${String(active)}
+                            class="flex-1 px-2 py-1.5 text-xs border-b-2 -mb-px transition-colors cursor-pointer
+                                ${active
+                                    ? 'border-indigo-500 dark:border-indigo-400 text-gray-900 dark:text-gray-100 font-medium'
+                                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
+                            @click=${() => { this._tab = tab.id; }}
+                        >${tab.label}</button>
+                    `;
+                })}
+            </div>
+        `;
+    }
+
+    // Every panel stays mounted and only the open one shows: the docked class picker must not leave the DOM, or the
+    // editor hands the editing back to the floating picker, which then pops over the app.
+    private _renderTabPanel(id: DetailTab, content: unknown) {
+        return html`<div role="tabpanel" class="${this._tab === id ? 'flex' : 'hidden'} flex-col gap-3">${content}</div>`;
+    }
+
+    private _renderPageInfo(page: IPageEntry) {
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
                 <div class="flex items-baseline gap-1">
@@ -605,9 +854,6 @@ export class PluginSelectPage extends StateLitElement {
                     `)}
                 </div>
             </div>
-            ${page.exists ? this._renderDsVersionPanel(page) : this._renderMissingPanel(page)}
-            ${page.exists ? this._renderEditPanel(page) : nothing}
-            ${page.exists ? this._renderClassPicker() : nothing}
         `;
     }
 
@@ -674,7 +920,9 @@ export class PluginSelectPage extends StateLitElement {
         const busy = this._editBusy[page.name];
         const error = this._editError[page.name];
         const done = this._editNotes[page.name];
-        const devices = page.devices.map(d => d.replace(/^web\//, '')).filter(d => d === 'desktop' || d === 'mobile');
+        // With the studio's Desktop | Mobile switch on screen, the request goes to the page variant being shown:
+        // a second device picker here could aim at a file other than the one the element was selected on.
+        const devices = this._contentDevice ? [] : page.devices.map(d => d.replace(/^web\//, '')).filter(d => d === 'desktop' || d === 'mobile');
         const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">

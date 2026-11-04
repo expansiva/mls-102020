@@ -193,6 +193,19 @@ test('the route of a page comes from its FILE, so a variation is not the same pa
   );
 });
 
+test('a mobile page opens the route of its desktop mirror: the config declares one entry per route', () => {
+  assert.equal(
+    routeForSource(CONFIG, 102047, 'l2/controleChamados/web/mobile/page11/ticketCatalogue.ts'),
+    '/controleChamados/ticketCatalogue',
+  );
+  // Only the device is mirrored: the variation still picks its own entry.
+  assert.equal(
+    routeForSource(CONFIG, 102047, 'l2/controleChamados/web/mobile/page21/commentOpenTicket.ts'),
+    '/controleChamados/commentOpenTicket-page21',
+  );
+  assert.equal(routeForSource(CONFIG, 102047, 'l2/controleChamados/web/mobile/page11/ghost.ts'), '');
+});
+
 test('route parameters are dropped: the knob asks for the screen, not for a record', () => {
   assert.equal(
     routeForSource(CONFIG, 102047, 'l2/controleChamados/web/desktop/page11/ticketCatalogue.ts'),

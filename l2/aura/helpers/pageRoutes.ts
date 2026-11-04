@@ -27,9 +27,20 @@ interface IConfigPage {
  * apart. Route PARAMETERS are dropped (`/x/y/:id?` -> `/x/y`), because this answers "which screen",
  * not "which record" — the app opens the screen and the screen asks for the rest.
  *
+ * A mobile file the config does not declare falls back to its desktop mirror. The config registers one
+ * entry per route — the desktop one — and the mobile page is the same screen (same pageId, same pageNN);
+ * which of the two the app mounts is the shell's call (the width, or the studio's Desktop | Mobile pick).
+ * Only the device segment is mirrored, never the variation.
+ *
  * @param source the page file as the config writes it: `l2/<folder>/<shortName>.ts`
  */
 export function routeForSource(config: unknown, project: number, source: string): string {
+  const exact = declaredRoute(config, project, source);
+  if (exact || !source.includes('/web/mobile/')) return exact;
+  return declaredRoute(config, project, source.replace('/web/mobile/', '/web/desktop/'));
+}
+
+function declaredRoute(config: unknown, project: number, source: string): string {
   const projects = (config as { projects?: Record<string, { modules?: unknown[] }> })?.projects;
   const modules = projects?.[String(project)]?.modules ?? [];
 
