@@ -6,21 +6,15 @@
 //
 // The defs is written like the page `.ts`: Monaco model + local copy, never the disk (studio-edit-stops-at-local).
 //
-// GATED BY PROJECT. agentMaterializeL2 and agentDefsL2 do not read the `history` export yet: the materializer refuses
-// a page11 that has it (M4_INPUT_DEFS_FORMAT) and agentDefsL2 rebuilds the defs and drops it. Until those two
-// agents take it, only the projects listed below write it.
+// ON FOR EVERY PROJECT (04/11/2026). It started gated to the smoke project 102047 while agentMaterializeL2 refused a
+// page11 with the `history` export; the materializer reads it now (helpers/defs/page11, input20). The only gate
+// left is the folder: a page defs exists only in a generated page folder.
 
 import {
   defsHistoryKey, findDefsHistory, indexOfDefsHistory, recordDefsHistory, restoreDefsHistory, splitDefsHistory, withDefsHistory,
   type DefsHistoryEntry,
 } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import { persistLocalEdit, targetForFile } from '/_102020_/l2/aura/studio/studioEditTarget.js';
-
-/**
- * Projects whose Studio edits are written to the defs history. Empty = off everywhere.
- * 102047 is the smoke project (27/10/2026). Remove the list once both agents read the export.
- */
-export const DEFS_HISTORY_PROJECTS: readonly number[] = [102047];
 
 export interface IDefsHistoryPage {
   project: number;
@@ -44,7 +38,7 @@ const PAGE_FOLDER = /^[a-z][A-Za-z0-9]*\/web\/(?:desktop|mobile)\/page\d\d$/u;
 const MAX_PATH_STEPS = 8;
 
 export function defsHistoryEnabled(page: IDefsHistoryPage | null | undefined): page is IDefsHistoryPage {
-  return Boolean(page && DEFS_HISTORY_PROJECTS.includes(page.project) && PAGE_FOLDER.test(page.folder));
+  return Boolean(page && PAGE_FOLDER.test(page.folder));
 }
 
 /** The minimal element shape the two DOM readers below need — what makes them testable without a DOM. */

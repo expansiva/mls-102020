@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  DEFS_HISTORY_PROJECTS, defsHistoryEnabled, organismOf, pathWithinOrganism, type IHistoryElement,
+  defsHistoryEnabled, organismOf, pathWithinOrganism, type IHistoryElement,
 } from '/_102020_/l2/aura/studio/studioDefsHistory.js';
 
 /** A tiny element tree: enough for the two readers, no DOM. */
@@ -19,13 +19,12 @@ function el(tag: string, attrs: Record<string, string> = {}, children: IHistoryE
   return node;
 }
 
-test('the gate is off outside the listed projects and outside a page folder', () => {
-  const [enabled] = DEFS_HISTORY_PROJECTS;
-  assert.ok(enabled, 'the smoke project is listed');
-  assert.ok(defsHistoryEnabled({ project: enabled, shortName: 'pessoas', folder: 'tarefas/web/desktop/page11' }));
-  assert.ok(defsHistoryEnabled({ project: enabled, shortName: 'pessoas', folder: 'tarefas/web/mobile/page21' }));
-  assert.ok(!defsHistoryEnabled({ project: 999999, shortName: 'pessoas', folder: 'tarefas/web/desktop/page11' }));
-  assert.ok(!defsHistoryEnabled({ project: enabled, shortName: 'pessoas', folder: 'tarefas/web/shared' }));
+test('the gate is on in every project, and only in a page folder', () => {
+  for (const project of [102047, 102052, 999999]) {
+    assert.ok(defsHistoryEnabled({ project, shortName: 'pessoas', folder: 'tarefas/web/desktop/page11' }));
+    assert.ok(defsHistoryEnabled({ project, shortName: 'pessoas', folder: 'tarefas/web/mobile/page21' }));
+    assert.ok(!defsHistoryEnabled({ project, shortName: 'pessoas', folder: 'tarefas/web/shared' }));
+  }
   assert.ok(!defsHistoryEnabled(null));
 });
 
