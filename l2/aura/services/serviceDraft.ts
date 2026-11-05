@@ -116,11 +116,11 @@ const message_en = {
     release: 'Release',
     noLocal: 'No files in the browser.',
     noPublished: 'Nothing published from this browser yet.',
-    autoSaveOn: 'Auto-save: on · last send {ago}s ago · {pending} pending',
-    autoSaveWaiting: 'Auto-save: on · no send yet · {pending} pending',
-    autoSaveOff: 'Auto-save: off',
-    autoSaveFailed: 'not saved: {reason}',
-    autoSaveAgent: 'Agent working: the send waits until the end',
+    autoSaveSending: 'Sending…',
+    autoSaveAgent: 'Paused: agent working',
+    autoSavePending: '{count} pending',
+    autoSaveLast: 'Last send at {time}',
+    autoSaveFailed: 'Not saved: {reason}',
     syncPublished: 'Bring in published changes',
     syncConflict: 'Conflicts with the published version in: {files}. Nothing was changed.',
 };
@@ -196,11 +196,11 @@ const messages: Record<string, MessageType> = {
         release: 'Release',
         noLocal: 'Nenhum arquivo no navegador.',
         noPublished: 'Nada publicado a partir deste navegador.',
-        autoSaveOn: 'Auto-save: ligado · último envio há {ago}s · {pending} pendentes',
-        autoSaveWaiting: 'Auto-save: ligado · ainda sem envio · {pending} pendentes',
-        autoSaveOff: 'Auto-save: desligado',
-        autoSaveFailed: 'não salvo: {reason}',
-        autoSaveAgent: 'Agente trabalhando: o envio fica para o fim',
+        autoSaveSending: 'Enviando…',
+        autoSaveAgent: 'Pausado: agente trabalhando',
+        autoSavePending: '{count} pendentes',
+        autoSaveLast: 'Último envio às {time}',
+        autoSaveFailed: 'Não salvo: {reason}',
         syncPublished: 'Trazer o publicado',
         syncConflict: 'Conflito com o publicado em: {files}. Nada foi alterado.',
     },
@@ -273,11 +273,11 @@ const messages: Record<string, MessageType> = {
         release: 'Release',
         noLocal: 'Ningún archivo en el navegador.',
         noPublished: 'Nada publicado desde este navegador.',
-        autoSaveOn: 'Auto-save: activo · último envío hace {ago}s · {pending} pendientes',
-        autoSaveWaiting: 'Auto-save: activo · todavía sin envío · {pending} pendientes',
-        autoSaveOff: 'Auto-save: apagado',
-        autoSaveFailed: 'no guardado: {reason}',
-        autoSaveAgent: 'Agente trabajando: el envío queda para el final',
+        autoSaveSending: 'Enviando…',
+        autoSaveAgent: 'En pausa: el agente está trabajando',
+        autoSavePending: '{count} pendientes',
+        autoSaveLast: 'Último envío a las {time}',
+        autoSaveFailed: 'No guardado: {reason}',
         syncPublished: 'Traer lo publicado',
         syncConflict: 'Conflicto con lo publicado en: {files}. No se cambió nada.',
     },
@@ -465,7 +465,7 @@ export class ServiceDraft102020 extends ServiceBase {
         super.connectedCallback();
         this._unsubAutoSave = subscribeAutoSave((state) => {
             this._autoSave = state;
-            this._syncAutoSaveClock(state.on && state.lastSentAt !== null && !state.error);
+            this._syncAutoSaveClock(this._sendClockRuns(state));
         });
         void this._load();
     }
@@ -573,12 +573,16 @@ export class ServiceDraft102020 extends ServiceBase {
         const save = this.msg.saveAll.replace('{count}', String(counts.save));
         const publish = this.msg.publishAll.replace('{count}', String(counts.publish));
         const discard = this.msg.discardAll.replace('{count}', String(counts.discard));
+        const tone = !this._autoSave.agentWorking && this._autoSave.error
+            ? 'text-amber-700 dark:text-amber-300'
+            : 'text-gray-600 dark:text-gray-400';
         return html`
             <div class="draft-actions flex flex-wrap gap-3 px-4 py-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
                 <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${save}</button>
                 <button class=${BUTTON_PRIMARY} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
                 <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
                 <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onResetDatabase(); }}>${this.msg.resetDatabase}</button>
+                <p class="w-full text-sm ${tone}">${this._autoSaveLine()}</p>
             </div>
         `;
     }
@@ -605,14 +609,31 @@ export class ServiceDraft102020 extends ServiceBase {
 
     private _autoSaveLine(): string {
         const state = this._autoSave;
-        if (!state.on) return this.msg.autoSaveOff;
         if (state.agentWorking) return this.msg.autoSaveAgent;
         if (state.error) return this.msg.autoSaveFailed.replace('{reason}', state.error);
-        if (state.lastSentAt === null) {
-            return this.msg.autoSaveWaiting.replace('{pending}', String(state.pending));
+        if (state.on && state.pending > 0) return this.msg.autoSaveSending;
+        if (state.pending > 0 || state.lastSentAt === null) {
+            return this.msg.autoSavePending.replace('{count}', String(state.pending));
         }
-        const ago = String(Math.max(0, Math.floor((Date.now() - state.lastSentAt) / 1000)));
-        return this.msg.autoSaveOn.replace('{ago}', ago).replace('{pending}', String(state.pending));
+        return this.msg.autoSaveLast.replace('{time}', this._sendClock(state.lastSentAt));
+    }
+
+    /** The last-send line is the only one that names a clock time. */
+    private _sendClockRuns(state: IAutoSavePanelState): boolean {
+        if (state.agentWorking || state.error) return false;
+        if (state.pending > 0) return false;
+        return state.lastSentAt !== null;
+    }
+
+    private _sendClock(at: number): string {
+        const date = new Date(at);
+        if (Number.isNaN(date.getTime())) {
+            console.error('[serviceDraft] last send time is not a date', at);
+            return '--:--';
+        }
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
     }
 
     private _syncAutoSaveClock(running: boolean): void {

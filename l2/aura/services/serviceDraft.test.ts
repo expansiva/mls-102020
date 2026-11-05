@@ -223,23 +223,37 @@ test('serviceDraft.less stays within 15 lines', () => {
     assert.ok(lines <= 24, `serviceDraft.less has ${lines} lines`);
 });
 
-test('the browser block shows auto-save on, off and the failure', () => {
+test('the send line under the four buttons shows pause, failure, sending, pending and the last time', () => {
     const line = methodOf(DRAFT, 'private _autoSaveLine()');
-    const offAt = line.indexOf('!state.on');
     const agentAt = line.indexOf('state.agentWorking');
     const errorAt = line.indexOf('state.error');
-    const onAt = line.indexOf('autoSaveOn');
-    assert.ok(offAt !== -1 && agentAt > offAt && errorAt > agentAt && onAt > errorAt, 'off, then the agent hold, then failure, then the last-send line');
+    const sendingAt = line.indexOf('autoSaveSending');
+    const pendingAt = line.indexOf('autoSavePending');
+    const lastAt = line.indexOf('autoSaveLast');
+    assert.ok(
+        agentAt !== -1 && errorAt > agentAt && sendingAt > errorAt && pendingAt > sendingAt && lastAt > pendingAt,
+        'pause, then the failure, then sending, then the pending count, then the last send',
+    );
     assert.match(line, /autoSaveAgent/);
-    assert.match(line, /autoSaveWaiting/);
     assert.match(line, /autoSaveFailed/);
-    assert.match(line, /autoSaveOff/);
-    assert.match(DRAFT, /Agent working: the send waits until the end/);
-    assert.match(DRAFT, /Agente trabalhando: o envio fica para o fim/);
-    assert.match(DRAFT, /Agente trabajando: el envío queda para el final/);
-    assert.match(DRAFT, /Auto-save: ligado · último envio há \{ago\}s · \{pending\} pendentes/);
-    assert.match(DRAFT, /não salvo: \{reason\}/);
-    assert.match(DRAFT, /private _autoSaveLine\(\)/);
+    assert.match(DRAFT, /Paused: agent working/);
+    assert.match(DRAFT, /Pausado: agente trabalhando/);
+    assert.match(DRAFT, /En pausa: el agente está trabajando/);
+    assert.match(DRAFT, /Sending…/);
+    assert.match(DRAFT, /Enviando…/);
+    assert.match(DRAFT, /\{count\} pending/);
+    assert.match(DRAFT, /\{count\} pendentes/);
+    assert.match(DRAFT, /\{count\} pendientes/);
+    assert.match(DRAFT, /Last send at \{time\}/);
+    assert.match(DRAFT, /Último envio às \{time\}/);
+    assert.match(DRAFT, /Último envío a las \{time\}/);
+    assert.match(DRAFT, /Not saved: \{reason\}/);
+    assert.match(DRAFT, /Não salvo: \{reason\}/);
+    assert.match(DRAFT, /No guardado: \{reason\}/);
+    const actions = methodOf(DRAFT, 'private _renderActions');
+    const resetAt = actions.lastIndexOf('_onResetDatabase');
+    const lineAt = actions.indexOf('_autoSaveLine()');
+    assert.ok(resetAt !== -1 && lineAt > resetAt, 'the send line sits under the four buttons');
 });
 
 test('auto-save sends through saveToDraft, not setContents on its own', () => {
