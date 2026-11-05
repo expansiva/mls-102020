@@ -29,7 +29,7 @@ import {
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { resetAuraSeed, seedActiveHeader, seedAuraStateFromHost } from '/_102020_/l2/aura/studio/studioAuraSeed.js';
-import { installStudioModuleLock } from '/_102020_/l2/aura/studio/studioModuleLock.js';
+import { installStudioModuleLock, isModuleLocked } from '/_102020_/l2/aura/studio/studioModuleLock.js';
 import {
   autosaveMessage,
   captureModelText,
@@ -166,6 +166,15 @@ export async function deliverSharedEdit(
 }
 
 const AUTO_SAVE_MS = 3000;
+
+/** Same event the module lock records. While it is active, that module's sources stay in the browser. */
+const APPLY_EVENT = 'nr-implementation-state';
+
+interface IApplyState {
+  project: number;
+  moduleName: string;
+  active: boolean;
+}
 
 /** What the tool starts and stops. Tests pass a fake; the app uses `DraftAutoSave`. */
 export interface IDraftAutoSave {
@@ -348,6 +357,62 @@ function storFileFrom(ref: {
   return file ?? undefined;
 }
 
+function pageEvents(): EventTarget | null {
+  const target = (globalThis as { window?: EventTarget }).window;
+  if (!target || typeof target.addEventListener !== 'function' || typeof target.removeEventListener !== 'function') {
+    console.error('[studio] nr-implementation-state: window.addEventListener is missing');
+    return null;
+  }
+  return target;
+}
+
+function layerPath(file: {
+  level?: number;
+  folder?: string;
+  shortName?: string;
+  extension?: string;
+}): string {
+  return draftFilePath(file).replace(/\\/gu, '/');
+}
+
+/** Same prefixes the module lock uses: `l1/<module>/`, `l1/<module>_old/`, `l2/<module>/`, `l4/<module>/`. */
+function pathUnderModule(path: string, moduleName: string): boolean {
+  const markers = [
+    `l1/${moduleName}/`,
+    `l1/${moduleName}_old/`,
+    `l2/${moduleName}/`,
+    `l4/${moduleName}/`,
+  ];
+  for (const marker of markers) {
+    let from = 0;
+    while (from <= path.length) {
+      const at = path.indexOf(marker, from);
+      if (at < 0) break;
+      if (at === 0 || path[at - 1] === '/') return true;
+      from = at + 1;
+    }
+  }
+  return false;
+}
+
+function applyStateOf(ev: Event): IApplyState | null {
+  if (!(ev instanceof CustomEvent) || !ev.detail || typeof ev.detail !== 'object') {
+    console.error('[studio] nr-implementation-state detail is not { project, moduleName, active }', ev);
+    return null;
+  }
+  const detail = ev.detail as { project?: unknown; moduleName?: unknown; active?: unknown };
+  const moduleName = detail.moduleName;
+  if (
+    typeof detail.project !== 'number' || !Number.isSafeInteger(detail.project)
+    || typeof moduleName !== 'string' || moduleName.length === 0 || moduleName.includes('/') || moduleName.includes('\\')
+    || typeof detail.active !== 'boolean'
+  ) {
+    console.error('[studio] nr-implementation-state detail is not { project, moduleName, active }', ev.detail);
+    return null;
+  }
+  return { project: detail.project, moduleName, active: detail.active };
+}
+
 /** `collabAgentChain` detail. `null` when the event is not that shape; the cause is logged. */
 function agentChainRunning(ev: Event): number | null {
   if (!(ev instanceof CustomEvent)) {
@@ -367,6 +432,9 @@ class DraftAutoSave implements IDraftAutoSave {
   private chainListening = false;
   /** Open agent chains. Above 0, notifies stay pending and nothing is sent. */
   private agentRunning = 0;
+  private applyListening = false;
+  /** Modules whose Apply is active, per project. The lock registry is the other reader of the same event. */
+  private readonly applying = new Map<number, Set<string>>();
   private readonly sharedEdits: ISharedEditSession = {
     refreshed: new Set<string>(),
     others: [],
@@ -392,7 +460,7 @@ class DraftAutoSave implements IDraftAutoSave {
         console.error('[studio] auto-save has no site project');
         return;
       }
-      const batch = pendingFiles(files, project);
+      const batch = pendingFiles(files, project).filter((file) => !this.heldFromApply(project, file));
       if (batch.length === 0) return;
       await sendAutoSaveBatch(batch, project, (file) => this.saver.notify(file));
       publishPanel({
@@ -413,6 +481,7 @@ class DraftAutoSave implements IDraftAutoSave {
     mls.events.addListener(2, 'styleChanged' as mls.events.TypeEvent, this.onStyleChanged);
     this.listening = true;
     this.listenForAgentChain();
+    this.listenForApply();
     const project = siteProject();
     const pending = project === null ? [] : pendingNow(project);
     publishPanel({
@@ -451,6 +520,7 @@ class DraftAutoSave implements IDraftAutoSave {
     mls.events.removeEventListener([2], ['styleChanged' as mls.events.TypeEvent], this.onStyleChanged);
     this.listening = false;
     this.stopListeningForAgentChain();
+    this.stopListeningForApply();
     publishPanel({
       on: false,
       lastSentAt: panelState.lastSentAt,
@@ -528,6 +598,56 @@ class DraftAutoSave implements IDraftAutoSave {
       agentWorking: false,
     });
     for (const file of pending) this.saver.notify(file);
+  }
+
+  private listenForApply(): void {
+    const target = pageEvents();
+    if (!target) return;
+    target.addEventListener(APPLY_EVENT, this.onApply);
+    this.applyListening = true;
+  }
+
+  private stopListeningForApply(): void {
+    if (!this.applyListening) return;
+    this.applyListening = false;
+    const target = pageEvents();
+    if (!target) return;
+    target.removeEventListener(APPLY_EVENT, this.onApply);
+  }
+
+  private readonly onApply = (ev: Event): void => {
+    const detail = applyStateOf(ev);
+    if (!detail) return;
+    const names = this.applying.get(detail.project) ?? new Set<string>();
+    if (detail.active) {
+      names.add(detail.moduleName);
+      this.applying.set(detail.project, names);
+      return;
+    }
+    names.delete(detail.moduleName);
+    if (names.size === 0) this.applying.delete(detail.project);
+    else this.applying.set(detail.project, names);
+    const project = detail.project;
+    const moduleName = detail.moduleName;
+    queueMicrotask(() => this.releaseModule(project, moduleName));
+  };
+
+  /** Apply finished, was cancelled, or was undone. One notify of what that module still has pending. */
+  private releaseModule(project: number, moduleName: string): void {
+    if (!this.listening || !studioDraftOn() || this.agentRunning > 0) return;
+    const pending = pendingNow(project).filter((file) => pathUnderModule(layerPath(file), moduleName));
+    for (const file of pending) this.saver.notify(file);
+  }
+
+  private heldFromApply(project: number, file: mls.stor.IFileInfo): boolean {
+    const path = layerPath(file);
+    const names = this.applying.get(project);
+    if (isModuleLocked(project, path)) return true;
+    if (!names) return false;
+    for (const moduleName of names) {
+      if (pathUnderModule(path, moduleName)) return true;
+    }
+    return false;
   }
 
   private readonly onFileAction = (ev: mls.events.IEvent): void => {

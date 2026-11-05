@@ -562,6 +562,129 @@ test('agent chain 0→1 sends nothing; 1→0 sends one batch, including after an
   assert.equal(thrown.message, 'agent chain failed');
 });
 
+function applyFile(level: number, folder: string, shortName: string, extension: string): mls.stor.IFileInfo {
+  return {
+    project: 7,
+    level,
+    shortName,
+    folder,
+    extension,
+    status: 'changed',
+    hasError: false,
+    inLocalStorage: true,
+  } as mls.stor.IFileInfo;
+}
+
+function applyPath(file: mls.stor.IFileInfo): string {
+  const folder = file.folder.length > 0 ? `${file.folder}/` : '';
+  return `l${file.level}/${folder}${file.shortName}${file.extension}`;
+}
+
+test('Apply on tarefas holds that module; agendaClinica still sends', async () => {
+  const host = globalThis as unknown as IHost & {
+    mls: IHost['mls'] & {
+      sites?: { getMode?: () => string };
+      events?: {
+        addListener: (level: number, type: string, fn: (ev: mls.events.IEvent) => void) => void;
+        removeEventListener: (levels: number[] | undefined, types: string[] | undefined, fn: (ev: mls.events.IEvent) => void) => void;
+      };
+    };
+  };
+  const win = globalThis as unknown as IChainWindow;
+  const previous = {
+    editor: host.mls.editor,
+    common: host.mls.common,
+    stor: host.mls.stor,
+    sites: host.mls.sites,
+    events: host.mls.events,
+    fetch: globalThis.fetch,
+    addEventListener: win.addEventListener,
+    removeEventListener: win.removeEventListener,
+    dispatchEvent: win.dispatchEvent,
+  };
+  const bus = new EventTarget();
+  win.addEventListener = bus.addEventListener.bind(bus);
+  win.removeEventListener = bus.removeEventListener.bind(bus);
+  win.dispatchEvent = bus.dispatchEvent.bind(bus);
+  const tarefas = applyFile(1, 'tarefas', 'repo', '.ts');
+  const agenda = applyFile(2, 'agendaClinica', 'page', '.ts');
+  const files: Record<string, mls.stor.IFileInfo> = {
+    [applyPath(tarefas)]: tarefas,
+    [applyPath(agenda)]: agenda,
+  };
+  const batches: string[][] = [];
+  host.mls.sites = { getMode: () => 'studio' };
+  host.mls.events = {
+    addListener() {},
+    removeEventListener() {},
+  };
+  host.mls.editor = {
+    getKeyModel: (_project: number, shortName: string) => shortName,
+    models: {
+      repo: { ts: { model: { getValue: () => 'tarefas-body' } } },
+      page: { ts: { model: { getValue: () => 'agenda-body' } } },
+    },
+    deleteModels: () => undefined,
+  };
+  host.mls.common = { crc: { crc32: (value: string) => value.length } };
+  host.mls.stor = {
+    files,
+    getKeyToFile: (file: mls.stor.IFileInfo) => applyPath(file),
+    getKeyToFiles: (_project: number, level: number, shortName: string, folder: string, extension: string) => (
+      `${level}/${folder}/${shortName}${extension}`
+    ),
+    setContents: async (batch: readonly mls.stor.IFileInfo[]) => {
+      batches.push(batch.map(applyPath).sort());
+      return batch.map(() => ({ result: true }));
+    },
+    localStor: { setContent: async () => true },
+    cache: { setContent: async () => true },
+  } as IHost['mls']['stor'];
+  globalThis.fetch = (async () => ({
+    status: 200,
+    json: async () => ({ status: 'listed', drafts: [] }),
+  })) as typeof fetch;
+  rememberCollabMode({ mode: 'studio', project: 7, draft: 'user-apply' });
+  setAuraState('actualProject', 7);
+  const postApply = (active: boolean): void => {
+    (globalThis as unknown as EventTarget).dispatchEvent(new CustomEvent('nr-implementation-state', {
+      detail: { project: 7, moduleName: 'tarefas', active },
+    }));
+  };
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    syncDraftAutoSave(true, true);
+    postApply(true);
+    mock.timers.tick(3000);
+    await drain();
+    assert.deepEqual(batches, [['l2/agendaClinica/page.ts']]);
+    assert.equal(tarefas.inLocalStorage, true, applyPath(tarefas));
+    postApply(false);
+    await drain();
+    mock.timers.tick(3000);
+    await drain();
+    assert.equal(batches.length, 2);
+    assert.deepEqual(batches[1], ['l1/tarefas/repo.ts']);
+  } finally {
+    postApply(false);
+    await drain();
+    mock.timers.tick(3000);
+    await drain();
+    syncDraftAutoSave(false, false);
+    rememberCollabMode({ mode: 'production' });
+    mock.timers.reset();
+    host.mls.editor = previous.editor;
+    host.mls.common = previous.common;
+    host.mls.stor = previous.stor;
+    host.mls.sites = previous.sites;
+    host.mls.events = previous.events;
+    globalThis.fetch = previous.fetch;
+    win.addEventListener = previous.addEventListener;
+    win.removeEventListener = previous.removeEventListener;
+    win.dispatchEvent = previous.dispatchEvent;
+  }
+});
+
 test('a file with no open model (an agent wrote it) is sent without a console.error', async () => {
   const host = globalThis as unknown as IHost;
   const previous = { editor: host.mls.editor, common: host.mls.common, stor: host.mls.stor };
