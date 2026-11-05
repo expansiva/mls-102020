@@ -11,7 +11,7 @@ import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
 import { getLastOpenedFiles, saveOpenedFile } from '/_102027_/l2/libCommom.js';
 import { createModel } from '/_102027_/l2/libModel.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { routeForSource, sourceOfPageFile } from '/_102020_/l2/aura/helpers/pageRoutes.js';
+import { navigateAppToPage } from '/_102020_/l2/aura/helpers/pageNavigation.js';
 import { compileAndApplyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
 import { compileAfterEdit, findPageElement, persistLocalEdit, resolveEditTarget, targetForFile, type IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
 import { recordEditInDefs } from '/_102020_/l2/aura/studio/studioDefsHistory.js';
@@ -1027,42 +1027,11 @@ export class ServiceGenome102020 extends ServiceBase {
      *
      * The app navigates by URL, and the route of each page is declared in `l5/config.json` under
      * `projects[<id>].modules[].frontend.pages[]`, keyed by the very file this knob holds (`source`).
-     * The navigation itself is the SAME call the apps menu makes (`openProgramUnified`, mls-102033):
-     * pushState + popstate for a page of the current app, a nav3 tab for anything else, plain
-     * navigation as the fallback. Copying that logic here would be a second implementation of the
-     * shell's own routing, and the two would drift.
+     * Reading the route and navigating is shared with the serviceSource "Abrir página" action
+     * (pageNavigation.ts), so both take the app to the same place.
      */
     private async _navigateApp(file: mls.stor.IFileInfo): Promise<void> {
-        const route = await this._routeOfPage(file);
-        if (!route) {
-            console.info(`[serviceGenome] no route declared for ${file.folder}/${file.shortName}: the app stays where it is`);
-            return;
-        }
-        try {
-            const { openProgramUnified } = await import('/_102033_/l2/cbe/runtimeMessagesEnvironment.js');
-            await openProgramUnified({ url: route, pageName: file.shortName });
-        } catch (error) {
-            console.warn('[serviceGenome] could not navigate the app', error);
-        }
-    }
-
-    /** Reads `l5/config.json` out of the stor and asks `routeForSource` which route this file has. */
-    private async _routeOfPage(file: mls.stor.IFileInfo): Promise<string> {
-        const project = file.project || (getAuraState().actualProject || mls.actualProject) as number;
-        if (!project) return '';
-        const key = mls.stor.getKeyToFiles(project, 5, 'config', '', '.json');
-        const configFile = mls.stor.files[key];
-        if (!configFile) return '';
-
-        let config: any;
-        try {
-            config = JSON.parse(String(await configFile.getContent()));
-        } catch (error) {
-            console.warn('[serviceGenome] l5/config.json did not parse', error);
-            return '';
-        }
-
-        return routeForSource(config, project, sourceOfPageFile(file));
+        await navigateAppToPage(file, (getAuraState().actualProject || mls.actualProject) as number);
     }
 
     private _onFileActionGenome = async (ev: mls.events.IEvent) => {

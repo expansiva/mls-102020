@@ -731,6 +731,11 @@ const message_pt = {
   'custom.fade': 'qual opacidade sob o mouse',
   'custom.rotate': 'quantos graus ele inclina',
   'custom.bright': 'quanto ele clareia',
+  // Inspect of the serviceSource (studioSourceInspect)
+  'inspect.noApp': 'Inspect: o app não está aberto no modo estúdio.',
+  'inspect.otherPage': 'Inspect: o app não está mostrando esta página. Use "Abrir página" primeiro.',
+  'inspect.noSource': 'Inspect: o código desta página não está carregado no editor.',
+  'inspect.refused': 'Inspect: {reason}',
 };
 /// **collab_i18n_end**
 
@@ -1427,6 +1432,10 @@ const message_en: typeof message_pt = {
   'custom.fade': 'the opacity under the mouse',
   'custom.rotate': 'how many degrees it tilts',
   'custom.bright': 'how much it brightens',
+  'inspect.noApp': 'Inspect: the app is not open in studio mode.',
+  'inspect.otherPage': 'Inspect: the app is not showing this page. Use "Abrir página" first.',
+  'inspect.noSource': 'Inspect: the code of this page is not loaded in the editor.',
+  'inspect.refused': 'Inspect: {reason}',
 };
 
 export type StudioMessageId = keyof typeof message_pt;

@@ -22,6 +22,7 @@ import { routeForSource, sourceOfPageFile } from '/_102020_/l2/aura/helpers/page
 const SERVICES = fileURLToPath(new URL('.', import.meta.url));
 const GENOME = readFileSync(`${SERVICES}serviceGenome.ts`, 'utf8');
 const PROJECT = readFileSync(`${SERVICES}serviceProject.ts`, 'utf8');
+const NAVIGATION = readFileSync(fileURLToPath(new URL('../helpers/pageNavigation.ts', import.meta.url)), 'utf8');
 
 /** The body of a method, from its signature to the next one at the same indentation. */
 function methodOf(source: string, signature: string): string {
@@ -222,7 +223,7 @@ test('the key is built the same way on both sides', () => {
     sourceOfPageFile({ folder: 'controleChamados/web/desktop/page11', shortName: 'ticketCatalogue' }),
     'l2/controleChamados/web/desktop/page11/ticketCatalogue.ts',
   );
-  assert.match(GENOME, /routeForSource\(config, project, sourceOfPageFile\(file\)\)/u);
+  assert.match(NAVIGATION, /routeForSource\(config, project, sourceOfPageFile\(file\)\)/u);
 });
 
 test('a file the config does not declare has no route, and says so by staying empty', () => {
@@ -235,9 +236,11 @@ test('a file the config does not declare has no route, and says so by staying em
 test('the navigation itself is the shell’s, not a second copy of it', () => {
   // Copying pushState/popstate/activateTab here would be a second implementation of the shell's own
   // routing, and the two would drift. The apps menu calls `openProgramUnified`; so does this.
-  const navigate = methodOf(GENOME, 'private async _navigateApp');
-  assert.match(navigate, /openProgramUnified/u);
-  assert.match(navigate, /_102033_\/l2\/cbe\/runtimeMessagesEnvironment/u);
+  // The genome and the serviceSource "Abrir página" action share pageNavigation.ts, so there is one
+  // reading of the config and one call into the shell.
+  assert.match(methodOf(GENOME, 'private async _navigateApp'), /navigateAppToPage\(file,/u);
+  assert.match(NAVIGATION, /openProgramUnified/u);
+  assert.match(NAVIGATION, /_102033_\/l2\/cbe\/runtimeMessagesEnvironment/u);
   assert.match(methodOf(GENOME, 'private async _openPage'), /await this\._navigateApp\(file\)/u);
 });
 

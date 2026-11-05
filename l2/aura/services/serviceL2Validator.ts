@@ -23,6 +23,9 @@ const message_en = {
     folder: 'folder',
     page: 'page',
     totalCount: (total: number, issues: number) => `${total} total · ${issues} not linked`,
+    modules: 'Modules',
+    noModules: 'No module found in this project.',
+    back: 'Modules',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -43,6 +46,9 @@ const messages: Record<string, MessageType> = {
         folder: 'folder',
         page: 'page',
         totalCount: (total: number, issues: number) => `${total} no total · ${issues} não ligados`,
+        modules: 'Módulos',
+        noModules: 'Nenhum módulo encontrado neste projeto.',
+        back: 'Módulos',
     },
     es: {
         svcTitle: 'Validador L2',
@@ -60,6 +66,9 @@ const messages: Record<string, MessageType> = {
         folder: 'folder',
         page: 'page',
         totalCount: (total: number, issues: number) => `${total} en total · ${issues} no ligados`,
+        modules: 'Módulos',
+        noModules: 'Ningún módulo encontrado en este proyecto.',
+        back: 'Módulos',
     },
 };
 /// **collab_i18n_end**
@@ -114,8 +123,8 @@ export class ServiceL2Validator102020 extends ServiceBase {
         onClickMain: this.onClickMain.bind(this),
     };
 
-    async onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
-        await this._loadAudit();
+    async onServiceClick(visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
+        if (visible) this._loadModules();
     }
 
     // ─── State ────────────────────────────────────────────────────────
@@ -123,7 +132,11 @@ export class ServiceL2Validator102020 extends ServiceBase {
     @state() private msg: MessageType = message_en;
 
     @state() private _loading: boolean = false;
-    private _auditProject: number | null = null;
+    private _loadToken = 0;
+
+    /** Modules of the project; the audit only runs for the one the user picks. */
+    @state() private _modules: string[] = [];
+    @state() private _module: string | null = null;
 
     @state() private _pages: IPageRow[] = [];
     @state() private _selectedPage: IPageRow | null = null;
@@ -132,7 +145,7 @@ export class ServiceL2Validator102020 extends ServiceBase {
 
     connectedCallback() {
         super.connectedCallback();
-        void this._loadAudit();
+        this._loadModules();
         mls.events.addListener(2, 'FileAction', this._onFileAction);
     }
 
@@ -150,7 +163,8 @@ export class ServiceL2Validator102020 extends ServiceBase {
         if (!ev.desc) return;
         try {
             const fa = JSON.parse(ev.desc) as mls.events.IFileAction;
-            if (fa.action !== 'open') return;
+            if (fa.action !== 'open' || !this._module) return;
+            if (fa.project !== mls.actualProject || !fa.folder.startsWith(`${this._module}/`)) return;
             const match = this._pages.find((p) => p.page === fa.shortName);
             if (!match) return;
             this._selectedPage = match;
@@ -160,12 +174,7 @@ export class ServiceL2Validator102020 extends ServiceBase {
 
     // ─── Discovery + check (mls.stor.files, level 1 backend + level 2 frontend) ─
 
-    private async _loadAudit(): Promise<void> {
-        const project = mls.actualProject || 0;
-        if (!project || this._auditProject === project) return;
-        this._loading = true;
-        this.requestUpdate();
-
+    private _projectFiles(project: number): mls.stor.IFileInfo[] {
         const all: mls.stor.IFileInfo[] = [];
         for (const file of Object.values(mls.stor.files)) {
             if (!file || file.project !== project) continue;
@@ -173,19 +182,62 @@ export class ServiceL2Validator102020 extends ServiceBase {
             if (file.level !== 1 && file.level !== 2) continue;
             all.push(file);
         }
-        const moduleId = mls.actualModule || this._inferModule(all);
+        return all;
+    }
+
+    /** A module is a first folder that has a `web/` frontend in l2 (`<module>/web/...`). Re-read on
+     *  every show: the list is cheap, and a module generated meanwhile has to appear. */
+    private _loadModules(): void {
+        const project = mls.actualProject || 0;
+        const modules = new Set<string>();
+        if (project) {
+            for (const file of this._projectFiles(project)) {
+                const match = file.level === 2 ? /^([^/]+)\/web\//.exec(file.folder) : null;
+                if (match) modules.add(match[1]);
+            }
+        }
+        this._modules = [...modules].sort((a, b) => a.localeCompare(b));
+        if (this._module && !modules.has(this._module)) this._backToModules();
+        this.requestUpdate();
+    }
+
+    private _selectModule(moduleId: string): void {
+        this._module = moduleId;
+        void this._loadAudit(moduleId);
+    }
+
+    private _backToModules(): void {
+        this._loadToken++; // an audit still running for the old module must not land
+        this._module = null;
+        this._pages = [];
+        this._selectedPage = null;
+        this._loading = false;
+        this.requestUpdate();
+    }
+
+    /** Always re-reads the stor: picking the module again is how the user refreshes the audit. */
+    private async _loadAudit(moduleId: string): Promise<void> {
+        const project = mls.actualProject || 0;
+        if (!project) return;
+        const token = ++this._loadToken;
+        this._loading = true;
+        this._pages = [];
+        this._selectedPage = null;
+        this.requestUpdate();
+
+        const all = this._projectFiles(project);
         const under = (level: number, suffix: string) => all.filter((f) => f.level === level && f.folder === `${moduleId}/${suffix}`);
 
-        const contractFiles = under(2, 'web/contracts').filter((f) => f.extension === '.ts');
+        const contractFiles = under(2, 'web/contracts').filter((f) => f.extension === '.defs.ts');
         const sharedFiles = under(2, 'web/shared').filter((f) => f.extension === '.ts');
         const controllerDefs = under(1, 'layer_1_external/adapters/http/controllers').filter((f) => f.extension === '.defs.ts');
         const desktopFiles = all.filter((f) => f.level === 2 && f.extension === '.ts' && new RegExp(`^${moduleId}/web/desktop/page\\d+$`).test(f.folder));
 
         const rows = await this._checkRoutes(contractFiles, sharedFiles, controllerDefs);
+        if (token !== this._loadToken) return;
         const pages = this._groupByPage(rows, desktopFiles);
 
         this._pages = pages;
-        this._auditProject = project;
         this._loading = false;
         this._selectedPage = pages[0] ?? null;
         this.requestUpdate();
@@ -219,14 +271,6 @@ export class ServiceL2Validator102020 extends ServiceBase {
         return pages;
     }
 
-    private _inferModule(files: mls.stor.IFileInfo[]): string {
-        for (const file of files) {
-            const first = file.folder.split('/')[0];
-            if (first && first !== 'trace') return first;
-        }
-        return '';
-    }
-
     /** First `export const … = {…} as const;` artifact block — same idiom the codegen agents use
      *  (e.g. agentCbHttpController.ts). Unwraps to the artifact's `data`. */
     private _parseArtifactData(content: string): Record<string, unknown> | undefined {
@@ -244,7 +288,40 @@ export class ServiceL2Validator102020 extends ServiceBase {
     }
 
     private _tsPath(file: mls.stor.IFileInfo): string {
-        return `${file.folder}/${file.shortName}.ts`;
+        return `${file.folder}/${file.shortName}${file.extension}`;
+    }
+
+    /** The routes a page contract declares: the quoted keys of its `export interface <X>Contracts { … }`
+     *  (`'agendaClinica.pacientes.loadPatients': { input…; output… }`). Only the keys at the first
+     *  level of that interface — the nested input/output shapes are not routes. */
+    private _contractRoutes(content: string): string[] {
+        const head = /export interface \w*Contracts\s*\{/.exec(content);
+        if (!head) return [];
+        const routes: string[] = [];
+        let depth = 1;
+        let lineStart = true;
+        for (let i = head.index + head[0].length; i < content.length && depth > 0; i++) {
+            const ch = content[i];
+            if (ch === '{') depth++;
+            else if (ch === '}') depth--;
+            else if (depth === 1 && lineStart && (ch === "'" || ch === '"')) {
+                const key = new RegExp(`^${ch}([\\w.]+)${ch}\\s*\\??:`).exec(content.slice(i));
+                if (key) routes.push(key[1]);
+            }
+            if (ch === '\n') lineStart = true;
+            else if (ch !== ' ' && ch !== '\t') lineStart = false;
+        }
+        return routes;
+    }
+
+    /** The shared passes the route as an ARGUMENT — right after `(` or `,` — and uses execBff. That
+     *  covers the three shapes the generator writes: `execBff<Output<'r'>>('r', …)`, a generic
+     *  wrapper `this.query('r', …)` that hands it to `execBff(request, …)`, and helpers like
+     *  `runCommand('id', 'r', …)`. In type positions (`Output<'r'>`, `| 'r'`) it follows `<` or `|`. */
+    private _callsRoute(sharedContent: string, route: string): boolean {
+        if (!/\bexecBff\b/.test(sharedContent)) return false;
+        const escaped = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`[(,]\\s*['"\`]${escaped}['"\`]`).test(sharedContent);
     }
 
     /** Navigates to l1 and opens the backend controller file for this route in serviceSourceL1 —
@@ -257,7 +334,7 @@ export class ServiceL2Validator102020 extends ServiceBase {
         const lastSlash = row.backendPath.lastIndexOf('/');
         const folder = lastSlash >= 0 ? row.backendPath.slice(0, lastSlash) : '';
         const fileName = lastSlash >= 0 ? row.backendPath.slice(lastSlash + 1) : row.backendPath;
-        const shortName = fileName.replace(/\.ts$/, '');
+        const shortName = fileName.replace(/(\.defs)?\.ts$/, '');
         const project = row.backendProject;
 
         const key = mls.stor.getKeyToFiles(project, 1, shortName, folder, '.ts');
@@ -307,26 +384,23 @@ export class ServiceL2Validator102020 extends ServiceBase {
                 ? (data as { handlers: Array<Record<string, unknown>> }).handlers
                 : [];
             for (const handler of handlers) {
-                if (typeof handler.route === 'string') backendRoutes.set(handler.route, { path: this._tsPath(f), project: f.project });
+                // The route is declared in the controller's .defs.ts, but the link opens the controller
+                // itself: serviceSourceL1 only opens the .ts of a file.
+                if (typeof handler.route === 'string') backendRoutes.set(handler.route, { path: `${f.folder}/${f.shortName}.ts`, project: f.project });
             }
         }
 
         const sharedByShortName = new Map(sharedFiles.map((f) => [f.shortName, f]));
         const rows: IRouteRow[] = [];
-        const routeRe = /export const (\w+Route) = '([^']+)' as const;/g;
 
         for (const contractFile of contractFiles) {
             const content = String(await contractFile.getContent());
             const sharedFile = sharedByShortName.get(contractFile.shortName);
             const sharedContent = sharedFile ? String(await sharedFile.getContent()) : '';
 
-            routeRe.lastIndex = 0;
-            let match: RegExpExecArray | null;
-            while ((match = routeRe.exec(content))) {
-                const [, routeName, route] = match;
-                const calledInFrontend = sharedFile
-                    ? new RegExp(`execBff\\s*(?:<[^>]*>)?\\(\\s*${routeName}\\b`).test(sharedContent)
-                    : false;
+            for (const route of this._contractRoutes(content)) {
+                const routeName = route.split('.').pop() || route;
+                const calledInFrontend = sharedFile ? this._callsRoute(sharedContent, route) : false;
                 const backendInfo = backendRoutes.get(route);
                 const existsInBackend = Boolean(backendInfo);
                 rows.push({
@@ -356,10 +430,38 @@ export class ServiceL2Validator102020 extends ServiceBase {
 
         return html`
             <div class="flex h-full min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
-                ${this._loading ? html`<div class="flex-1 flex items-center justify-center text-sm text-gray-400">${this.msg.loading}</div>` : html`
-                    ${this._renderItemList()}
-                    ${this._renderDetail()}
+                ${!this._module ? this._renderModules() : html`
+                    <div class="flex flex-col flex-1 min-w-0">
+                        <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800">
+                            <button
+                                class="text-xs text-cyan-600 dark:text-cyan-400 hover:underline"
+                                @click=${() => this._backToModules()}
+                            >&#8592; ${this.msg.back}</button>
+                            <span class="text-xs font-semibold truncate">${this._module}</span>
+                        </div>
+                        <div class="flex flex-1 min-h-0">
+                            ${this._loading ? html`<div class="flex-1 flex items-center justify-center text-sm text-gray-400">${this.msg.loading}</div>` : html`
+                                ${this._renderItemList()}
+                                ${this._renderDetail()}
+                            `}
+                        </div>
+                    </div>
                 `}
+            </div>
+        `;
+    }
+
+    private _renderModules() {
+        return html`
+            <div class="flex-1 overflow-y-auto">
+                <div class="px-3 py-2 text-[10px] text-gray-400 uppercase tracking-wide font-semibold">${this.msg.modules}</div>
+                ${!this._modules.length ? html`<div class="p-3 text-xs text-gray-400">${this.msg.noModules}</div>` : nothing}
+                ${this._modules.map((m) => html`
+                    <div
+                        class="px-3 py-2 cursor-pointer border-b border-gray-100 dark:border-gray-900 text-xs font-semibold hover:bg-gray-50 dark:hover:bg-gray-900"
+                        @click=${() => this._selectModule(m)}
+                    >${m}</div>
+                `)}
             </div>
         `;
     }
