@@ -23,11 +23,53 @@ export interface D2Page11GateSources {
   access: { grants: D2Page11AccessGrant[] };
   categories: D2Page11Category[];
   templatePaths: ReadonlySet<string>;
+  /** Allowed templates per category (default + experienceIndex.json alternatives); absent means only the defaults. */
+  templateOptions?: ReadonlyMap<string, readonly D2Page11TemplateOption[]>;
+  /** The category the answer chose; a template from another category is refused. */
+  chosenCategory?: string;
   moleculeTags: ReadonlySet<string>;
   promptTokens?: number;
   pageActors?: string[];
 }
 export interface D2Page11Issue { code: string; path: string; message: string }
+/** One template a page11 of `categoryId` may use; `path` is `templates/<category>/<file>.md`, `reference` the full source path. */
+export interface D2Page11TemplateOption { categoryId: string; shortName: string; path: string; reference: string; experience: string; isDefault: boolean }
+
+const TEMPLATE_ROOT = '_102020_/l4/collabux/templates/';
+
+/** The category folder and file of a template reference, or null when it is not one. */
+export function parseD2Page11TemplateReference(reference: string): { categoryId: string; shortName: string } | null {
+  const match = /^_102020_\/l4\/collabux\/templates\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\.md$/u.exec(reference);
+  return match ? { categoryId: match[1], shortName: match[2] } : null;
+}
+
+/**
+ * Templates allowed per published category: the categoryList.json default first (its experience is the derived one),
+ * then each experienceIndex.json entry whose file lives in that category's folder. A missing or malformed index
+ * leaves only the defaults.
+ */
+export function d2Page11TemplateOptions(categories: readonly D2Page11Category[], index: unknown): Map<string, D2Page11TemplateOption[]> {
+  const options = new Map<string, D2Page11TemplateOption[]>();
+  const indexed = index && typeof index === 'object' && !Array.isArray(index) ? (index as { categories?: unknown }).categories : null;
+  const byCategory = indexed && typeof indexed === 'object' && !Array.isArray(indexed) ? indexed as Record<string, unknown> : {};
+  for (const item of categories) {
+    const key = item.experiences?.page11 ? 'page11' : item.experiences?.page21 ? 'page21' : '';
+    if (!key) continue;
+    const list: D2Page11TemplateOption[] = [{ categoryId: item.categoryId, shortName: key, path: `templates/${item.categoryId}/${key}.md`,
+      reference: `${TEMPLATE_ROOT}${item.categoryId}/${key}.md`, experience: deriveD2Page11Experience(item.categoryId, categories), isDefault: true }];
+    const rows = byCategory[item.categoryId];
+    for (const raw of Array.isArray(rows) ? rows : []) {
+      const row = raw && typeof raw === 'object' ? raw as { experience?: unknown; file?: unknown } : {};
+      if (typeof row.experience !== 'string' || !row.experience.trim() || typeof row.file !== 'string') continue;
+      const parsed = parseD2Page11TemplateReference(`${TEMPLATE_ROOT}${row.file}`);
+      if (!parsed || parsed.categoryId !== item.categoryId || list.some(option => option.shortName === parsed.shortName)) continue;
+      list.push({ categoryId: item.categoryId, shortName: parsed.shortName, path: `templates/${item.categoryId}/${parsed.shortName}.md`,
+        reference: `${TEMPLATE_ROOT}${row.file}`, experience: row.experience.trim(), isDefault: false });
+    }
+    options.set(item.categoryId, list);
+  }
+  return options;
+}
 
 export function deriveD2Page11Experience(category: string, categories: readonly D2Page11Category[]): string {
   if (category === 'bespoke') return 'none';
@@ -45,14 +87,16 @@ export function deriveD2Page11CategoryReference(category: string, categories: re
   return `_102020_/l4/collabux/templates/${category}/${key}.md`;
 }
 
-export function buildD2Page11WithExperience(value: unknown, categories: readonly D2Page11Category[]): D2Page11Definition {
+/** `kept` replaces the derived default template (an approved alternative of the same category, d2 regeneration). */
+export function buildD2Page11WithExperience(value: unknown, categories: readonly D2Page11Category[], kept?: { category: string; experience: string } | null): D2Page11Definition {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('D2_PAGE11_TOOL_OBJECT');
   const root = value as Record<string, unknown>;
   const template = root.template;
   if (!template || typeof template !== 'object' || Array.isArray(template)) throw new Error('D2_PAGE11_TOOL_TEMPLATE');
   const templateRow = template as Record<string, unknown>;
   if (Object.keys(templateRow).join('\0') !== 'category' || typeof templateRow.category !== 'string') throw new Error('D2_PAGE11_TOOL_CATEGORY_ONLY');
-  return buildD2Page11Definition({ ...root, template: { category: deriveD2Page11CategoryReference(templateRow.category, categories), experience: deriveD2Page11Experience(templateRow.category, categories) } });
+  const derived = { category: deriveD2Page11CategoryReference(templateRow.category, categories), experience: deriveD2Page11Experience(templateRow.category, categories) };
+  return buildD2Page11Definition({ ...root, template: kept ?? derived });
 }
 
 export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Page11GateSources): D2Page11Issue[] {
@@ -85,8 +129,14 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
   const category = definition.template.category;
   const entry = sources.categories.find(item => (item.experiences?.page11 || item.experiences?.page21)
     && deriveD2Page11CategoryReference(item.categoryId, sources.categories) === category);
-  if (category !== 'bespoke' && !entry) {
-    add('D2_PAGE11_CATEGORY_UNKNOWN', 'template.category', `Category reference ${category} is absent from categoryList.json.`);
+  const reference = category === 'bespoke' ? null : parseD2Page11TemplateReference(category);
+  const alternative = !entry && reference ? sources.templateOptions?.get(reference.categoryId)?.find(option => option.reference === category) : undefined;
+  if (category !== 'bespoke' && !entry && !alternative) {
+    // Same code as before the alternatives existed: neither the categoryList.json default nor an experienceIndex.json file.
+    add('D2_PAGE11_CATEGORY_UNKNOWN', 'template.category', `Category reference ${category} is absent from categoryList.json${reference ? ` and from the ${reference.categoryId} templates of experienceIndex.json` : ''}.`);
+  } else if (alternative) {
+    // A user-chosen template of the same category (experienceIndex.json); its experience comes from the index.
+    if (definition.template.experience !== alternative.experience) add('D2_PAGE11_EXPERIENCE_DERIVATION', 'template.experience', `Experience must be ${alternative.experience} for template ${category}.`);
   } else {
     const expected = deriveD2Page11Experience(entry?.categoryId ?? 'bespoke', sources.categories);
     if (definition.template.experience !== expected) add('D2_PAGE11_EXPERIENCE_DERIVATION', 'template.experience', `Experience must be ${expected} for category ${category}.`);
@@ -95,6 +145,10 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
       const path = `templates/${entry!.categoryId}/${key}.md`;
       if (!sources.templatePaths.has(path)) add('D2_PAGE11_TEMPLATE_MISSING', 'template', `Selected template ${path} is absent.`);
     }
+  }
+  const templateCategory = category === 'bespoke' ? 'bespoke' : entry?.categoryId ?? reference?.categoryId;
+  if (sources.chosenCategory && templateCategory && templateCategory !== sources.chosenCategory) {
+    add('D2_PAGE11_TEMPLATE_CATEGORY', 'template.category', `Template ${category} belongs to ${templateCategory}, not to the chosen category ${sources.chosenCategory}.`);
   }
   const pageActors = sources.pageActors ?? [sources.actor];
   const currentNeeds = sources.needsPages.find(item => item.pageId === sources.pageId);

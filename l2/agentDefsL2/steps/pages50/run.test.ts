@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import { parseD2Page11Definition, renderD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import { buildD2Page11WithExperience, d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { buildD2Page11WithExperience, d2Page11TemplateOptions, d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { afterPromptStep as afterPagesPrompt, approvedPageSeed, beforePromptStep, fromDecisionLists, readApprovedPage11, readPageSchema, reusableD2Page, withPageEnums, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
@@ -14,7 +14,8 @@ import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { d2NormalizeWriteKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { gateD2Page11 } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, d2PageIssues, d2PageWriteKeys, d2RegenerationReason, normalizeNeedsPaths, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { loadD2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages50/templateContext.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2KeptPage11Template, d2PageChoiceEnums, d2PageIssues, d2PageWriteKeys, d2RegenerationReason, normalizeNeedsPaths, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`../../helpers/fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
 const categories = (JSON.parse(readFileSync(new URL('../../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8')) as { categories: D2PagesContext['template']['categories'] }).categories;
@@ -700,4 +701,104 @@ void test('d2_97: the decision tool lists organisms and molecules by id and the 
   assert.deepEqual(fromDecisionLists(lists), maps);
   assert.equal(fromDecisionLists(maps), maps);
   assert.throws(() => fromDecisionLists({ desktop: { definition: { organisms: [{ id: 'lista' }, { id: 'lista' }] } } }), /D2_PAGE11_ORGANISM_DUPLICATE: desktop\.definition\.organisms\.lista/u);
+});
+
+void test('genome-ux-4: a regeneration keeps the approved alternative template; a new page gets the category default', async () => {
+  const experienceIndex = JSON.parse(readFileSync(new URL('../../../../l4/collabux/templates/experienceIndex.json', import.meta.url), 'utf8')) as unknown;
+  const options = d2Page11TemplateOptions(categories, experienceIndex);
+  const data = context('controleEstoque', 'produtos');
+  const calls: Array<[string, string | null]> = [];
+  data.template = { ...data.template, templateOptions: options,
+    select: async (category, reference) => {
+      calls.push([category, reference ?? null]);
+      const option = options.get(category)?.find(item => !item.isDefault && item.reference === reference) ?? options.get(category)![0];
+      return { experience: option.experience, reason: `from ${option.shortName}`, reference: option.reference, content: option.shortName, hash: `sha256:${option.shortName}` };
+    } };
+  const writes = new Map<string, unknown>();
+  const key = (info: { folder: string; shortName: string; extension: string }) => `${info.folder}/${info.shortName}${info.extension}`;
+  const writer: D2PagesWriter = { writeSource: async (info, source) => { writes.set(key(info), source); }, writeJson: async (info, value) => { writes.set(key(info), value); } };
+  const port: D2PagesReusePort = {
+    readReceipt: async () => null, context: async () => data,
+    readSource: async info => writes.get(key(info)) as string, readNeeds: async info => writes.get(key(info)),
+  };
+  const desktopKey = 'controleEstoque/web/desktop/page11/produtos.defs.ts';
+  const defaultReference = '_102020_/l4/collabux/templates/inventoryControl/page21.md';
+  const alternativeReference = '_102020_/l4/collabux/templates/inventoryControl/movementLedger.md';
+
+  // New page (nothing approved): the category default, as before.
+  const created = await approveD2PagesUnit(data, product(), 1400, 0, writer, null);
+  assert.deepEqual(parseD2Page11Definition(writes.get(desktopKey) as string).definition.template, { category: defaultReference, experience: 'splitViewOperations' });
+  assert.deepEqual([created.template.reference, created.template.experience, created.template.hash], [defaultReference, 'splitViewOperations', 'sha256:page21']);
+  assert.deepEqual(calls.at(-1), ['inventoryControl', null]);
+  // An approved page on the default stays on the default.
+  const onDefault = await readApprovedPage11(data.identity, 'produtos', port);
+  assert.ok(onDefault);
+  assert.equal(d2KeptPage11Template(data, onDefault, 'inventoryControl'), null);
+
+  // The user picked another template of the same category (agentGenomeUx rewrote both page11 files).
+  for (const device of ['desktop', 'mobile'] as const) {
+    const info = `controleEstoque/web/${device}/page11/produtos.defs.ts`;
+    const parsed = parseD2Page11Definition(writes.get(info) as string);
+    writes.set(info, renderD2Page11Definition(parsed.location, { ...parsed.definition, template: { category: alternativeReference, experience: 'movementLedger' } }));
+  }
+  const approved = await readApprovedPage11(data.identity, 'produtos', port);
+  assert.ok(approved);
+  // The approved alternative passes the gate: the regeneration reason does not ask to change it.
+  assert.equal(d2RegenerationReason(data, approved).some(item => /TEMPLATE|CATEGORY|EXPERIENCE/u.test(item)), false);
+  assert.deepEqual(d2KeptPage11Template(data, approved, 'inventoryControl'), { category: alternativeReference, experience: 'movementLedger' });
+  // Another category in the answer: the approved template is not kept.
+  assert.equal(d2KeptPage11Template(data, approved, 'financialTransactions'), null);
+  assert.equal(d2KeptPage11Template(data, approved, 'bespoke'), null);
+
+  const regenerated = await approveD2PagesUnit(data, product(), 1400, 0, writer, approved);
+  for (const device of ['desktop', 'mobile'] as const) {
+    assert.deepEqual(parseD2Page11Definition(writes.get(`controleEstoque/web/${device}/page11/produtos.defs.ts`) as string).definition.template, { category: alternativeReference, experience: 'movementLedger' });
+  }
+  assert.deepEqual(calls.at(-1), ['inventoryControl', alternativeReference]);
+  assert.deepEqual([regenerated.template.category, regenerated.template.reference, regenerated.template.experience, regenerated.template.hash], ['inventoryControl', alternativeReference, 'movementLedger', 'sha256:movementLedger']);
+  // The receipt of the kept template is reusable: the check reads the approved template, not the default.
+  data.groupAssessments = data.page.organisms.map((_, index) => ({ organismId: `organism${index + 1}`, groups: [] }));
+  const withAssessments = await approveD2PagesUnit(data, product(), 1400, 0, writer, approved);
+  assert.equal(await reusableD2Page(data.identity, 'produtos', { ...port, readReceipt: async () => withAssessments }), true);
+
+  // An alternative the index no longer lists is not kept: the code derives the default again.
+  const shrunk = new Map(options);
+  shrunk.set('inventoryControl', options.get('inventoryControl')!.filter(item => item.reference !== alternativeReference));
+  data.template = { ...data.template, templateOptions: shrunk };
+  assert.equal(d2KeptPage11Template(data, approved, 'inventoryControl'), null);
+  await approveD2PagesUnit(data, product(), 1400, 0, writer, approved);
+  assert.equal(parseD2Page11Definition(writes.get(desktopKey) as string).definition.template.category, defaultReference);
+});
+
+void test('genome-ux-4: the template context selects the approved alternative text and falls back to the default', async () => {
+  const l4 = (path: string): string => readFileSync(new URL(`../../../../l4/collabux/${path}`, import.meta.url), 'utf8');
+  const disk = (paths: string[]) => Object.fromEntries(paths.map(path => [`collabux/${path}`, { status: 'active', getContent: async () => l4(path) }]));
+  // A writable view of the studio store, so the test swaps the files the template context reads.
+  const stor = mls.stor as unknown as { files: unknown; getKeyToFile: (info: { folder: string; shortName: string; extension: string }) => string };
+  const previousFiles = stor.files;
+  const previousKey = stor.getKeyToFile;
+  stor.getKeyToFile = info => `${info.folder}/${info.shortName}${info.extension}`;
+  const reference = '_102020_/l4/collabux/templates/financialTransactions/dueAgenda.md';
+  try {
+    stor.files = disk(['templates/categoryList.json', 'templates/experienceIndex.json', 'templates/financialTransactions/page21.md', 'templates/financialTransactions/dueAgenda.md']);
+    const template = await loadD2PageTemplateContext();
+    assert.ok(template.templateOptions?.get('financialTransactions')?.some(item => item.reference === reference && item.experience === 'dueAgenda'));
+    const kept = await template.select('financialTransactions', reference);
+    assert.deepEqual([kept.reference, kept.experience], [reference, 'dueAgenda']);
+    assert.equal(kept.content, l4('templates/financialTransactions/dueAgenda.md'));
+    assert.equal(kept.hash, await sha256Text(kept.content));
+    // An alternative of another category (or none) gives the category default.
+    const fallback = await template.select('financialTransactions', '_102020_/l4/collabux/templates/inventoryControl/movementLedger.md');
+    assert.deepEqual([fallback.reference, fallback.experience], ['_102020_/l4/collabux/templates/financialTransactions/page21.md', 'ledgerTable']);
+    assert.equal(fallback.content, l4('templates/financialTransactions/page21.md'));
+    assert.deepEqual(await template.select('financialTransactions'), fallback);
+    // Without experienceIndex.json only the defaults are allowed, as before.
+    stor.files = disk(['templates/categoryList.json', 'templates/financialTransactions/page21.md']);
+    const plain = await loadD2PageTemplateContext();
+    assert.deepEqual(plain.templateOptions?.get('financialTransactions')?.map(item => item.shortName), ['page21']);
+    assert.equal((await plain.select('financialTransactions', reference)).reference, fallback.reference);
+  } finally {
+    stor.files = previousFiles;
+    stor.getKeyToFile = previousKey;
+  }
 });

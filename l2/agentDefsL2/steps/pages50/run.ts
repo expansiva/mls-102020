@@ -6,7 +6,7 @@ import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.j
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { d2NormalizeWriteKey, d2WriteKey, type D2Write } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type { D2InputSnapshot, D2InputArtifacts, D2SelectedPage, D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
-import { buildD2Page11WithExperience, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { buildD2Page11WithExperience, parseD2Page11TemplateReference, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { renderD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { d2BffL4Slice, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
@@ -245,14 +245,15 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
 export interface D2PagesWriter { writeSource(info: Ns5FileInfo, source: string): Promise<void>; writeJson(info: Ns5FileInfo, value: unknown): Promise<unknown> }
 const productionWriter: D2PagesWriter = { writeSource: writeSourceText, writeJson };
 /** Every page11 gate the approval runs, for an answer or for an approved page11 under the current inputs. */
-export function d2PageIssues(context: D2PagesContext, definitions: Record<D2Page11Device, D2Page11Definition>, needs: Record<D2Page11Device, D2Page11Needs>, promptChars = 0): Array<{ code: string; path: string; message: string }> {
+export function d2PageIssues(context: D2PagesContext, definitions: Record<D2Page11Device, D2Page11Definition>, needs: Record<D2Page11Device, D2Page11Needs>, promptChars = 0, chosenCategory?: string): Array<{ code: string; path: string; message: string }> {
   const menu = context.artifacts.menu as D2Page11Menu;
   const needPages = record(context.artifacts.needs).pages as D2Page11NeedPage[];
   if (!Array.isArray(needPages)) throw new Error('D2_PAGE11_SOURCE_NEEDS');
   const sources: D2Page11GateSources = { pageId: context.page.pageId, actor: context.page.actors[0], pageActors: context.page.actors, menu,
     needsPages: needPages, entities: context.artifacts.entities as Record<string, Ns5OntologyAnyEntity>,
     access: context.artifacts.access as D2Page11GateSources['access'], categories: context.template.categories,
-    templatePaths: context.template.templatePaths, moleculeTags: new Set(context.groups.flatMap(group => group.tags)),
+    templatePaths: context.template.templatePaths, templateOptions: context.template.templateOptions, ...(chosenCategory ? { chosenCategory } : {}),
+    moleculeTags: new Set(context.groups.flatMap(group => group.tags)),
     promptTokens: Math.ceil(promptChars / 4) };
   const origins = menuOrigins(context.page, definitions.desktop);
   const groupsByOrganism = Object.fromEntries(origins.map(origin => [origin.organismId, context.selectedGroups[`organism${origin.sourceIndex + 1}`] ?? []]));
@@ -310,14 +311,33 @@ export function d2RegenerationReason(context: D2PagesContext, approved: D2Approv
   return [...new Set(reasons)];
 }
 
-export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesResponse, promptChars: number, repairPromptChars = 0, writer: D2PagesWriter = productionWriter): Promise<D2PagesReceipt> {
+/**
+ * The template an approved page11 keeps on regeneration (TASK genome-ux-4, decision 5): when the answer keeps the
+ * approved category and the approved template is an allowed alternative of it (experienceIndex.json, chosen by the
+ * user), that template and its experience stay instead of the category default. Otherwise null: the code derives the
+ * default, as for a page made from scratch.
+ */
+export function d2KeptPage11Template(context: D2PagesContext, approved: D2ApprovedPage11 | null | undefined, category: string): { category: string; experience: string } | null {
+  if (!approved || category === 'bespoke') return null;
+  const desktop = approved.definitions.desktop.template;
+  const mobile = approved.definitions.mobile.template;
+  if (desktop.category !== mobile.category || desktop.experience !== mobile.experience) return null;
+  if (parseD2Page11TemplateReference(desktop.category)?.categoryId !== category) return null;
+  const option = context.template.templateOptions?.get(category)?.find(item => item.reference === desktop.category);
+  if (!option || option.isDefault || option.experience !== desktop.experience) return null;
+  return { category: option.reference, experience: option.experience };
+}
+
+export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesResponse, promptChars: number, repairPromptChars = 0, writer: D2PagesWriter = productionWriter, approved: D2ApprovedPage11 | null = null): Promise<D2PagesReceipt> {
   const category = text(record(record(raw.desktop).definition).template && record(record(record(raw.desktop).definition).template).category);
   if (!category || category !== text(record(record(record(raw.mobile).definition).template).category)) throw new Error('D2_PAGE11_DEVICE_CATEGORY');
   if (!text(raw.categoryReason)) throw new Error('D2_PAGE11_CATEGORY_REASON');
-  const selectedTemplate = await context.template.select(category);
+  // The LLM answers the category; the code derives the template, or keeps the approved alternative (d2KeptPage11Template).
+  const kept = d2KeptPage11Template(context, approved, category);
+  const selectedTemplate = await context.template.select(category, kept?.category);
   const definitions: Record<D2Page11Device, D2Page11Definition> = {
-    desktop: buildD2Page11WithExperience(raw.desktop.definition, context.template.categories),
-    mobile: buildD2Page11WithExperience(raw.mobile.definition, context.template.categories),
+    desktop: buildD2Page11WithExperience(raw.desktop.definition, context.template.categories, kept),
+    mobile: buildD2Page11WithExperience(raw.mobile.definition, context.template.categories, kept),
   };
   const writes = pageWrites(context.page);
   const grants = ((record(context.artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => context.page.actors.includes(text(record(raw).actorRef)));
@@ -326,7 +346,7 @@ export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesRe
     mobile: buildD2Page11Needs(normalizeSubmitWrites(normalizeNeedsPaths(raw.mobile.needs, context.page, context.artifacts.entities, grants), writes)),
   };
   if (!context.page.actors.length) throw new Error('D2_PAGE11_ACTOR_MISSING');
-  const issues = d2PageIssues(context, definitions, needs, Math.max(promptChars, repairPromptChars));
+  const issues = d2PageIssues(context, definitions, needs, Math.max(promptChars, repairPromptChars), category);
   if (issues.length) throw new Error(issues.map(issue => `${issue.code}: ${issue.message}`).join(' | '));
   const origins = menuOrigins(context.page, definitions.desktop);
   if (origins.some(origin => !origin.organismId)) throw new Error('D2_PAGE11_MENU_ORIGIN_MISSING');

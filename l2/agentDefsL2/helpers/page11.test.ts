@@ -6,10 +6,11 @@ import test from 'node:test';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2Page11Definition, d2Page11Path, parseD2Page11Definition, renderD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, d2Page11NeedsPath, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { buildD2Page11WithExperience, deriveD2Page11CategoryReference, deriveD2Page11Experience, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { buildD2Page11WithExperience, d2Page11TemplateOptions, deriveD2Page11CategoryReference, deriveD2Page11Experience, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`./fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
 const categories = (JSON.parse(readFileSync(new URL('../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8')) as { categories: D2Page11GateSources['categories'] }).categories;
+const experienceIndex = JSON.parse(readFileSync(new URL('../../../l4/collabux/templates/experienceIndex.json', import.meta.url), 'utf8')) as unknown;
 const tags = new Set(['groupviewtable--ml-responsive-data-table', 'groupentertext--ml-enter-text']);
 const templatePaths = new Set(['templates/inventoryControl/page21.md', 'templates/financialTransactions/page21.md']);
 const productMenu = fixture<D2Page11Menu>('controleEstoque', 'menu');
@@ -88,6 +89,48 @@ void test('experience is derived from category, with bespoke and absent experien
   assert.throws(() => deriveD2Page11CategoryReference('empty', [{ categoryId: 'empty' }]), /D2_PAGE11_CATEGORY_UNPUBLISHED/u);
   assert.throws(() => buildD2Page11WithExperience({ ...tool, template: { category: 'notReal' } }, categories), /D2_PAGE11_CATEGORY_UNKNOWN/u);
   assert.throws(() => buildD2Page11WithExperience(product(), categories), /D2_PAGE11_TOOL_CATEGORY_ONLY/u);
+});
+
+void test('genome-ux-4: the gate accepts a page11 template of the same category from experienceIndex.json', () => {
+  const options = d2Page11TemplateOptions(categories, experienceIndex);
+  const finance = options.get('financialTransactions') ?? [];
+  assert.deepEqual(finance.map(item => [item.shortName, item.experience, item.isDefault]), [
+    ['page21', 'ledgerTable', true], ['page31', 'cashflowReview', false], ['dueAgenda', 'dueAgenda', false], ['paymentWizard', 'paymentWizard', false],
+  ]);
+  // The categoryList.json default keeps its derived experience even when the index names that file differently.
+  assert.equal(options.get('contentLanding')?.[0].experience, deriveD2Page11Experience('contentLanding', categories));
+  assert.equal(options.get('contentLanding')?.filter(item => item.shortName === 'page11').length, 1);
+  // Without the index (missing or unreadable) only the defaults are allowed.
+  assert.deepEqual([...d2Page11TemplateOptions(categories, null).values()].map(list => list.length), categories.filter(item => item.experiences?.page11 || item.experiences?.page21).map(() => 1));
+
+  const withOptions = (): D2Page11GateSources => ({ ...sources(), templateOptions: options });
+  const alternative = clone(product());
+  alternative.template = { category: '_102020_/l4/collabux/templates/inventoryControl/movementLedger.md', experience: 'movementLedger' };
+  assert.deepEqual(issues(alternative, productDraft(), withOptions()), []);
+  assert.deepEqual(issues(alternative, productDraft(), { ...withOptions(), chosenCategory: 'inventoryControl' }), []);
+  const dueAgenda = clone(product());
+  dueAgenda.template = { category: '_102020_/l4/collabux/templates/financialTransactions/dueAgenda.md', experience: 'dueAgenda' };
+  assert.deepEqual(issues(dueAgenda, productDraft(), withOptions()), []);
+  // Without the options the same template is refused, as before.
+  assert.ok(issues(dueAgenda).includes('D2_PAGE11_CATEGORY_UNKNOWN'));
+  // A template of another category than the chosen one is refused.
+  assert.ok(issues(dueAgenda, productDraft(), { ...withOptions(), chosenCategory: 'inventoryControl' }).includes('D2_PAGE11_TEMPLATE_CATEGORY'));
+  assert.ok(issues(product(), productDraft(), { ...withOptions(), chosenCategory: 'financialTransactions' }).includes('D2_PAGE11_TEMPLATE_CATEGORY'));
+  // A file of another category placed under this category's folder, or an unknown file, is refused.
+  const foreignFile = clone(product());
+  foreignFile.template = { category: '_102020_/l4/collabux/templates/inventoryControl/dueAgenda.md', experience: 'dueAgenda' };
+  assert.ok(issues(foreignFile, productDraft(), withOptions()).includes('D2_PAGE11_CATEGORY_UNKNOWN'));
+  const unknownFile = clone(product());
+  unknownFile.template = { category: '_102020_/l4/collabux/templates/inventoryControl/notATemplate.md', experience: 'notATemplate' };
+  assert.ok(issues(unknownFile, productDraft(), withOptions()).includes('D2_PAGE11_CATEGORY_UNKNOWN'));
+  // The experience of an alternative is the index's one.
+  const wrongExperience = clone(alternative); wrongExperience.template.experience = 'splitViewOperations';
+  assert.ok(issues(wrongExperience, productDraft(), withOptions()).includes('D2_PAGE11_EXPERIENCE_DERIVATION'));
+  const otherCategoryExperience = clone(alternative); otherCategoryExperience.template.experience = 'dueAgenda';
+  assert.ok(issues(otherCategoryExperience, productDraft(), withOptions()).includes('D2_PAGE11_EXPERIENCE_DERIVATION'));
+  // The tool still answers only a category; a kept template replaces the derived default.
+  const tool = { ...product(), template: { category: 'inventoryControl' } };
+  assert.deepEqual(buildD2Page11WithExperience(tool, categories, alternative.template).template, alternative.template);
 });
 
 void test('HEAD a4de463 expenses hub/process fixture has nine real organisms and full 1:1 coverage', () => {

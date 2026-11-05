@@ -90,7 +90,8 @@ export async function reusableD2Page(identity: { project: number; module: string
   try {
     const context = await port.context(identity, pageId, selectedGroups);
     if (await pageUnitInputHash(context) !== receipt.unitInputHash) return false;
-    const template = await context.template.select(receipt.template.category);
+    // An approved alternative template (kept on regeneration) is checked against its own text, not the default.
+    const template = await context.template.select(receipt.template.category, receipt.template.reference);
     if (template.experience !== receipt.template.experience || template.reference !== receipt.template.reference || template.hash !== receipt.template.hash) return false;
     // d2_71: the catalog counts only through what this page uses (its template above, its molecules below);
     // index text that does not touch them keeps the page.
@@ -198,7 +199,7 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
       return [next(context, parentStep, { ...args, stage: 'decision', selectedGroups, groupAssessments: result.assessments, diagnostic: undefined, previous: undefined, repairPromptChars }),
         updateD2Status(context, parentStep, step, hookSequential, 'completed', `Molecule shortlist ready for ${args.pageId}.`)];
     }
-    const receipt = await approveD2PagesUnit(data, response as D2PagesResponse, promptChars, args.diagnostic ? promptChars : args.repairPromptChars ?? 0);
+    const receipt = await approveD2PagesUnit(data, response as D2PagesResponse, promptChars, args.diagnostic ? promptChars : args.repairPromptChars ?? 0, undefined, approved);
     await recordD2LlmVerdict(recorded.info, recorded.record, 'accepted');
     const ids = [...data.snapshot.selection.writePageIds].sort();
     let allReady = true;
