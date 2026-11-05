@@ -3,6 +3,9 @@
 // Estrutura do shared congelada pelo Wagner em 13/10/2026 ("o defs deve ter a intenção, do que deve ser feito, sem amarrar a LLM materializador").
 // Nenhuma chave, campo ou forma entra ou sai sem autorização dele, datada e com a frase. Leitores: agentDefsL2 (gate e derivação), describeEffort, agentMaterializeL2 (equipe).
 
+import { defsWithoutHistory, splitDefsHistory, withDefsHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
+import { sha256Text } from '/_102020_/l2/helpers/hash.js';
+
 /** Public page11 v2 contains only rendering decisions. Identity comes from its path. */
 export type D2Page11Device = 'desktop' | 'mobile';
 export type D2Page11Priority = 'primary' | 'main' | 'secondary';
@@ -82,8 +85,38 @@ export function renderD2Page11Definition(location: D2Page11Location, value: unkn
   return `/// <mls fileReference="${d2Page11Path(location)}" enhancement="_blank"/>\n\nexport const definition = ${JSON.stringify(definition, null, 2)} as const;\n`;
 }
 
-/** Parses the exact renderer grammar as JSON, with no eval, import or code execution. */
+/**
+ * THE `history` EXPORT. The Studio appends `export const history = [...] as const;` to a page11 after the
+ * `definition` (aura/studio/studioDefsHistory): the edits the person made on the generated page. It is not part of
+ * the definition grammar, so every reader here sees the defs without it, every hash is taken without it (an edit in
+ * the Studio must not make an approved page stale), and a rewrite of the page11 keeps it (d2Page11KeepingHistory).
+ */
+export function d2Page11Base(source: string): string {
+  return defsWithoutHistory(source);
+}
+
+/** The hash a receipt keeps for a page11: of the definition alone, never of the Studio history. */
+export async function d2Page11Hash(source: string): Promise<string> {
+  return sha256Text(defsWithoutHistory(source));
+}
+
+/**
+ * `next` (a freshly rendered page11) with the history of `previous` (what is there now). A history that does not
+ * parse is not carried: the new text is written as rendered.
+ */
+export function d2Page11KeepingHistory(next: string, previous: string | null | undefined): string {
+  if (!previous) return next;
+  try {
+    const { history } = splitDefsHistory(previous);
+    return history.length ? withDefsHistory(next, history) : next;
+  } catch {
+    return next;
+  }
+}
+
+/** Parses the exact renderer grammar as JSON, with no eval, import or code execution. The Studio history is cut off first. */
 export function parseD2Page11Definition(source: string): { location: D2Page11Location; definition: D2Page11Definition } {
+  source = defsWithoutHistory(source);
   const match = /^\/\/\/ <mls fileReference="_(\d+)_\/l2\/([a-z][A-Za-z0-9]*)\/web\/(desktop|mobile)\/page11\/([a-z][A-Za-z0-9_]*)\.defs\.ts" enhancement="_blank"\/>\n\nexport const definition = ([\s\S]+) as const;\n$/u.exec(source);
   if (!match) throw new Error('D2_PAGE11_SOURCE_SHAPE');
   let parsed: unknown;

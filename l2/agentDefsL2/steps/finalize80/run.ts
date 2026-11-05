@@ -6,6 +6,7 @@ import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_10
 import { markD2Complete, markD2FinalizeBlocked, readD2Pipeline, type D2RunIdentity, type D2Scope } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import { readD2PagesReceipt, sourceInfo } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { d2Page11Hash } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { draftFile, readD2SharedReceipt, readD2SharedRefusal, sharedInfo, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 import { readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { contractInfo, contractReceiptInfo, readD2ContractsRefusal, type D2Contracts70Receipt } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
@@ -114,7 +115,8 @@ export async function finalizeD2Pages(identity: D2RunIdentity & { scope?: D2Scop
       if (!(port.indexed ? port.indexed(info) : Boolean(indexedFile(info)))) { pending.push(`D2_FINALIZE_INDEX_ENTRY_MISSING: ${path}`); continue; }
       const source = await (port.readSource || readSourceText)(info);
       const hash = await sha256Text(source);
-      if (hash !== receipt.sourceHashes[device]) { pending.push(`D2_FINALIZE_SOURCE_CHANGED: ${path}`); continue; }
+      // The receipt is of the definition alone: the Studio history in the page11 is not a change (d2Page11Hash).
+      if (await d2Page11Hash(source) !== receipt.sourceHashes[device]) { pending.push(`D2_FINALIZE_SOURCE_CHANGED: ${path}`); continue; }
       sources.push({ pageId, kind: device === 'desktop' ? 'desktopPage' : 'mobilePage', path, source });
       artifacts.push({ pageId, kind: device === 'desktop' ? 'desktopPage' : 'mobilePage', path, sha256: hash });
     }
@@ -128,7 +130,7 @@ export async function finalizeD2Pages(identity: D2RunIdentity & { scope?: D2Scop
     let sharedStale = !sharedReceipt?.page11Hashes || !sharedReceipt.draftHashes;
     if (!sharedStale) {
       for (const device of ['desktop', 'mobile'] as const) {
-        const page11Hash = await sha256Text(await (port.readSource || readSourceText)(sourceInfo(identity, pageId, device)));
+        const page11Hash = await d2Page11Hash(await (port.readSource || readSourceText)(sourceInfo(identity, pageId, device)));
         const draftValue = port.readDraftText ? undefined : await (port.readJson || readJson)(draftFile(identity, pageId, device));
         const draftRaw = port.readDraftText ? await port.readDraftText(identity, pageId, device) : draftValue == null ? '' : JSON.stringify(draftValue);
         if (!port.readDraftText && draftValue == null) sharedStale = true;

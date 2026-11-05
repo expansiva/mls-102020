@@ -5,7 +5,7 @@ import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
-import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { d2Page11Base, parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { d2BffAccess, type D2Grant, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { renderD2SharedV2 } from '/_102020_/l2/helpers/sharedV2/format.js';
@@ -151,7 +151,8 @@ export function d2SharedPageFrom(input: {
 
 async function readPair(identity: D2RunIdentity, pageId: string): Promise<{ texts: Record<D2Page11Device, string>; drafts: Record<D2Page11Device, unknown> }> {
   const devices = ['desktop', 'mobile'] as const;
-  const texts = await Promise.all(devices.map(device => readSourceText(page11File(identity, pageId, device))));
+  // Without the Studio history: page11Hashes, the prompt and the parse see the definition alone.
+  const texts = await Promise.all(devices.map(async device => { const text = await readSourceText(page11File(identity, pageId, device)); return text ? d2Page11Base(text) : text; }));
   const drafts = await Promise.all(devices.map(device => readJson<unknown>(draftFile(identity, pageId, device))));
   if (texts.some(text => !text) || drafts.some(draft => !draft)) throw new Error(`D2_SHARED_PAGE11_MISSING: ${pageId}`);
   return { texts: { desktop: texts[0], mobile: texts[1] }, drafts: { desktop: drafts[0], mobile: drafts[1] } };

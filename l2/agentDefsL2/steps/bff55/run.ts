@@ -6,7 +6,7 @@ import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
 import { d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
-import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { d2Page11Base, parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import {
   buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN, D2_BFF_UPDATE_MODES,
@@ -233,7 +233,8 @@ export async function loadD2BffContext(identity: D2RunIdentity, pageId: string):
   await assertD2InputSourcesStable(bundle);
   if (!snapshot.selection.writePageIds.includes(pageId)) throw new Error(`D2_BFF_PAGE_NOT_SELECTED: ${pageId}`);
   const devices = ['desktop', 'mobile'] as const;
-  const texts = await Promise.all(devices.map(device => readSourceText(page11Info(identity, pageId, device))));
+  // Without the Studio history: the prompt and the parse see the definition alone.
+  const texts = await Promise.all(devices.map(async device => { const text = await readSourceText(page11Info(identity, pageId, device)); return text ? d2Page11Base(text) : text; }));
   const drafts = await Promise.all(devices.map(device => readJson<unknown>(draftInfo(identity, pageId, device))));
   if (texts.some(text => !text) || drafts.some(draft => !draft)) throw new Error(`D2_BFF_PAGE11_MISSING: ${pageId}`);
   const prompt = await readSourceText({ project: 102020, level: 2, folder: 'agentDefsL2/steps/bff55', shortName: 'prompt', extension: '.md' });

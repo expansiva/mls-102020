@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
-import { buildD2Page11Definition, d2Page11Path, parseD2Page11Definition, renderD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { buildD2Page11Definition, d2Page11Hash, d2Page11KeepingHistory, d2Page11Path, parseD2Page11Definition, renderD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { splitDefsHistory, withDefsHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import { buildD2Page11Needs, d2Page11NeedsPath, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { buildD2Page11WithExperience, d2Page11TemplateOptions, deriveD2Page11CategoryReference, deriveD2Page11Experience, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 
@@ -237,4 +238,32 @@ void test('a field or navigate target is refused only when no actor of the page 
 void test('needs path shape error names the first item that is not Entity.path', () => {
   const organisms = { listaMotoristas: { reads: ['Motorista.id', 'id'], edits: [], selects: '', submits: [] } };
   assert.throws(() => buildD2Page11Needs({ organisms }), /D2_PAGE11_NEEDS_READS: listaMotoristas: "id" is not Entity\.path/u);
+});
+
+// ── The Studio history (aura/studio/studioDefsHistory) appended after the definition ─────────────
+
+const HISTORY: DefsHistoryEntry[] = [{
+  kind: 'class', organism: 'lista', target: 'div>button#1', from: 'p-2', to: 'p-4', at: '2026-11-04T10:00:00Z', attribute: 'class',
+}];
+const historyLocation = { project: 102052, module: 'controleEstoque', pageId: 'produtos', device: 'desktop' } as const;
+
+test('a page11 with the Studio history parses and hashes as the definition alone', async () => {
+  const plain = renderD2Page11Definition(historyLocation, product());
+  const edited = withDefsHistory(plain, HISTORY);
+  assert.notEqual(edited, plain);
+  assert.deepEqual(parseD2Page11Definition(edited), parseD2Page11Definition(plain));
+  assert.equal(await d2Page11Hash(edited), await d2Page11Hash(plain));
+});
+
+test('a rewritten page11 keeps the history of the one it replaces, and only when there is one', () => {
+  const plain = renderD2Page11Definition(historyLocation, product());
+  const previous = withDefsHistory(plain, HISTORY);
+  const next = renderD2Page11Definition(historyLocation, { ...product(), intent: 'Outra intenção.' });
+  const kept = d2Page11KeepingHistory(next, previous);
+  assert.deepEqual(splitDefsHistory(kept), { base: next, history: HISTORY });
+  assert.equal(d2Page11KeepingHistory(next, plain), next);
+  assert.equal(d2Page11KeepingHistory(next, null), next);
+  assert.equal(d2Page11KeepingHistory(next, `${plain}
+export const history = [oops] as const;
+`), next, 'a history that does not parse is not carried');
 });

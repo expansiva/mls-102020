@@ -13,7 +13,7 @@ import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { d2LlmModelOf, d2LlmResponseInfo, recordD2LlmResponse, recordD2LlmVerdict, type D2LlmResponseRecord } from '/_102020_/l2/helpers/llmResponses.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { d2Page11Hash, parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2ChosenMolecules, d2PageChoiceEnums, type D2ApprovedPage11, type D2PageChoiceEnums, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse, D2_PAGES_PROMPT_LIMIT_CHARS } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 interface Args { project: number; module: string; scope?: D2Scope; pageId: string; stage: 'groups' | 'decision'; attempt: 1 | 2; selectedGroups?: Record<string, string[]>; groupAssessments?: D2PagesContext['groupAssessments']; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
@@ -101,7 +101,7 @@ export async function reusableD2Page(identity: { project: number; module: string
     for (const device of ['desktop', 'mobile'] as const) {
       const source = await port.readSource(sourceInfo(identity, pageId, device));
       const needs = await port.readNeeds(needsInfo(identity, pageId, device));
-      if (!needs || await sha256Text(source) !== receipt.sourceHashes[device]
+      if (!needs || await d2Page11Hash(source) !== receipt.sourceHashes[device]
         || await sha256Text(JSON.stringify(needs)) !== receipt.needsHashes[device]) return false;
       // A page11 approved before a gate existed is checked again; refused means redone, not reused.
       if (d2Page11WriteDuplicates(buildD2Page11Needs(needs)).length) return false;

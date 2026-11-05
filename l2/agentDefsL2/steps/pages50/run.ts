@@ -1,13 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/pages50/run.ts" enhancement="_blank"/>
 
-import { readJson, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { readJson, readSourceText, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { d2NormalizeWriteKey, d2WriteKey, type D2Write } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type { D2InputSnapshot, D2InputArtifacts, D2SelectedPage, D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { buildD2Page11WithExperience, parseD2Page11TemplateReference, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
-import { renderD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { d2Page11KeepingHistory, renderD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { d2BffL4Slice, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import type { D2MoleculeInventory, D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
@@ -242,8 +242,9 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
   return { prompt, chars: prompt.length };
 }
 
-export interface D2PagesWriter { writeSource(info: Ns5FileInfo, source: string): Promise<void>; writeJson(info: Ns5FileInfo, value: unknown): Promise<unknown> }
-const productionWriter: D2PagesWriter = { writeSource: writeSourceText, writeJson };
+/** `readSource` gives the page11 there now, so a rewrite keeps its Studio history; null when there is none. */
+export interface D2PagesWriter { writeSource(info: Ns5FileInfo, source: string): Promise<void>; writeJson(info: Ns5FileInfo, value: unknown): Promise<unknown>; readSource?(info: Ns5FileInfo): Promise<string | null> }
+const productionWriter: D2PagesWriter = { writeSource: writeSourceText, writeJson, readSource: info => readSourceText(info).catch(() => null) };
 /** Every page11 gate the approval runs, for an answer or for an approved page11 under the current inputs. */
 export function d2PageIssues(context: D2PagesContext, definitions: Record<D2Page11Device, D2Page11Definition>, needs: Record<D2Page11Device, D2Page11Needs>, promptChars = 0, chosenCategory?: string): Array<{ code: string; path: string; message: string }> {
   const menu = context.artifacts.menu as D2Page11Menu;
@@ -364,7 +365,10 @@ export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesRe
     menuOrigins: origins,
   };
   for (const device of ['desktop', 'mobile'] as const) {
-    await writer.writeSource(sourceInfo(context.identity, context.page.pageId, device), sourcesText[device]);
+    // The receipt hashes the definition alone (d2Page11Hash), so the history carried over does not change it.
+    const info = sourceInfo(context.identity, context.page.pageId, device);
+    const previous = writer.readSource ? await writer.readSource(info) : null;
+    await writer.writeSource(info, d2Page11KeepingHistory(sourcesText[device], previous));
     await writer.writeJson(needsInfo(context.identity, context.page.pageId, device), needs[device]);
   }
   await writer.writeJson(owned(context.identity, context.page.pageId), receipt);
