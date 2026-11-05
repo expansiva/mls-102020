@@ -23,11 +23,12 @@ function file(over: Partial<IAutoSaveStorFile> = {}): IAutoSaveStorFile {
   });
 }
 
-test('pending files are dirty l1–l3 of this project, including defs and tests', () => {
+test('pending files are dirty l1–l3 and l5 of this project, including defs and tests', () => {
   const keepTs = file();
   const keepDefs = file({ shortName: 'order', extension: '.defs.ts', folder: '' });
   const keepTest = file({ shortName: 'order', extension: '.test.ts', level: 2, folder: 'aura' });
   const keepLess = file({ shortName: 'order', extension: '.less', level: 3, status: 'new' });
+  const keepL5 = file({ shortName: 'config', extension: '.json', level: 5, folder: '' });
   const keepDeleted = file({ shortName: 'gone', status: 'deleted', folder: '' });
   const keepDeletedWithError = file({ shortName: 'goneBroken', status: 'deleted', hasError: true, folder: '' });
   const error = file({ shortName: 'broken', hasError: true });
@@ -38,11 +39,11 @@ test('pending files are dirty l1–l3 of this project, including defs and tests'
   const level4 = file({ shortName: 'page', level: 4, folder: 'app' });
 
   const pending = pendingFiles([
-    keepTs, error, clean, otherProject, declaration, keepDefs, keepTest, keepLess,
+    keepTs, error, clean, otherProject, declaration, keepDefs, keepTest, keepLess, keepL5,
     declarationViaShortName, level4, keepDeleted, keepDeletedWithError,
   ], 7);
 
-  assert.deepEqual(pending, [keepTs, keepDefs, keepTest, keepLess, keepDeleted, keepDeletedWithError]);
+  assert.deepEqual(pending, [keepTs, keepDefs, keepTest, keepLess, keepL5, keepDeleted, keepDeletedWithError]);
   assert.equal(pending.includes(error), false);
 });
 

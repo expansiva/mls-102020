@@ -375,6 +375,11 @@ function layerPath(file: {
   return draftFilePath(file).replace(/\\/gu, '/');
 }
 
+/** `l5/…` belongs to the site, not to one module. Any active Apply holds every one of them. */
+function level5File(file: { level?: number }, path: string): boolean {
+  return file.level === 5 || path.startsWith('l5/');
+}
+
 /** Same prefixes the module lock uses: `l1/<module>/`, `l1/<module>_old/`, `l2/<module>/`, `l4/<module>/`. */
 function pathUnderModule(path: string, moduleName: string): boolean {
   const markers = [
@@ -478,6 +483,7 @@ class DraftAutoSave implements IDraftAutoSave {
     mls.events.addListener(1, 'FileAction', this.onFileAction);
     mls.events.addListener(2, 'FileAction', this.onFileAction);
     mls.events.addListener(3, 'FileAction', this.onFileAction);
+    mls.events.addListener(5, 'FileAction', this.onFileAction);
     mls.events.addListener(2, 'styleChanged' as mls.events.TypeEvent, this.onStyleChanged);
     this.listening = true;
     this.listenForAgentChain();
@@ -516,7 +522,7 @@ class DraftAutoSave implements IDraftAutoSave {
 
   public stop(): void {
     if (!this.listening) return;
-    mls.events.removeEventListener([1, 2, 3], ['FileAction'], this.onFileAction);
+    mls.events.removeEventListener([1, 2, 3, 5], ['FileAction'], this.onFileAction);
     mls.events.removeEventListener([2], ['styleChanged' as mls.events.TypeEvent], this.onStyleChanged);
     this.listening = false;
     this.stopListeningForAgentChain();
@@ -632,10 +638,15 @@ class DraftAutoSave implements IDraftAutoSave {
     queueMicrotask(() => this.releaseModule(project, moduleName));
   };
 
-  /** Apply finished, was cancelled, or was undone. One notify of what that module still has pending. */
+  /** Apply finished, was cancelled, or was undone. One notify of that module, plus every `l5` when no Apply remains. */
   private releaseModule(project: number, moduleName: string): void {
     if (!this.listening || !studioDraftOn() || this.agentRunning > 0) return;
-    const pending = pendingNow(project).filter((file) => pathUnderModule(layerPath(file), moduleName));
+    const applyStillOn = (this.applying.get(project)?.size ?? 0) > 0;
+    const pending = pendingNow(project).filter((file) => {
+      const path = layerPath(file);
+      if (level5File(file, path)) return !applyStillOn;
+      return pathUnderModule(path, moduleName);
+    });
     for (const file of pending) this.saver.notify(file);
   }
 
@@ -643,7 +654,8 @@ class DraftAutoSave implements IDraftAutoSave {
     const path = layerPath(file);
     const names = this.applying.get(project);
     if (isModuleLocked(project, path)) return true;
-    if (!names) return false;
+    if (!names || names.size === 0) return false;
+    if (level5File(file, path)) return true;
     for (const moduleName of names) {
       if (pathUnderModule(path, moduleName)) return true;
     }
@@ -651,7 +663,7 @@ class DraftAutoSave implements IDraftAutoSave {
   }
 
   private readonly onFileAction = (ev: mls.events.IEvent): void => {
-    if ((ev.level !== 1 && ev.level !== 2 && ev.level !== 3) || ev.type !== 'FileAction' || !ev.desc) return;
+    if ((ev.level !== 1 && ev.level !== 2 && ev.level !== 3 && ev.level !== 5) || ev.type !== 'FileAction' || !ev.desc) return;
     let fileAction: mls.events.IFileAction;
     try {
       fileAction = JSON.parse(ev.desc) as mls.events.IFileAction;

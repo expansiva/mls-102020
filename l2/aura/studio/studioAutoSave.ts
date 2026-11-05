@@ -36,10 +36,10 @@ export function buildAutoSaveStorFile(file: IAutoSaveStorFile): IAutoSaveStorFil
   };
 }
 
-const SOURCE_LEVELS: ReadonlySet<number> = new Set([1, 2, 3]);
+const SOURCE_LEVELS: ReadonlySet<number> = new Set([1, 2, 3, 5]);
 
 /**
- * Site-project files that should go to the draft: l1–l3, not yet sent, no compile error.
+ * Site-project files that should go to the draft: l1–l3 and l5, not yet sent, no compile error.
  * A deletion is always sent (nothing is sent but the delete).
  * Anything else is pending when its content CRC differs from the last send,
  * including a `nochange` file whose text returned to the published copy.

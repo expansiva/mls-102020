@@ -286,7 +286,7 @@ test('studio mode with the cookie starts the injected auto-saver and leaving sto
     }
 });
 
-test('auto-save listens to FileAction on levels 1, 2 and 3', () => {
+test('auto-save listens to FileAction on levels 1, 2, 3 and 5', () => {
     const startAt = TOOL.indexOf('public start(): void');
     const stopAt = TOOL.indexOf('public stop(): void');
     const onFileAt = TOOL.indexOf('private readonly onFileAction');
@@ -295,12 +295,12 @@ test('auto-save listens to FileAction on levels 1, 2 and 3', () => {
     const start = TOOL.slice(startAt, stopAt);
     const stop = TOOL.slice(stopAt, onFileAt);
     const onFile = TOOL.slice(onFileAt, onStyleAt);
-    for (const level of [1, 2, 3]) {
+    for (const level of [1, 2, 3, 5]) {
         assert.match(start, new RegExp(`addListener\\(${level}, 'FileAction'`));
     }
-    assert.match(stop, /removeEventListener\(\[1, 2, 3\], \['FileAction'\]/);
+    assert.match(stop, /removeEventListener\(\[1, 2, 3, 5\], \['FileAction'\]/);
     assert.doesNotMatch(onFile, /ev\.level !== 2 \|\|/);
-    assert.match(onFile, /ev\.level !== 1 && ev\.level !== 2 && ev\.level !== 3/);
+    assert.match(onFile, /ev\.level !== 1 && ev\.level !== 2 && ev\.level !== 3 && ev\.level !== 5/);
     assert.match(start, /addListener\(2, 'styleChanged'/);
     assert.match(stop, /removeEventListener\(\[2\], \['styleChanged'/);
 });
