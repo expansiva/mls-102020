@@ -25,6 +25,8 @@ import {
   visibleTreeRows,
   readPublished,
   saveDefaultDraft,
+  draftBlockReason,
+  draftFileTooBigMessage,
   saveToDraft,
   slugForBranch,
   storeCapturedDraftText,
@@ -493,6 +495,59 @@ test('saveToDraft throws when setContents reports a refusal', async () => {
   );
   assert.equal(file.inLocalStorage, true);
   assert.equal(cleared, 0);
+});
+
+test('saveToDraft blocks one oversized file and clears the ones the driver wrote', async () => {
+  const smallA = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'a', extension: '.ts' };
+  const big = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'big', extension: '.ts' };
+  const smallB = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: 'aura', shortName: 'b', extension: '.ts' };
+  const cleared: string[] = [];
+  const pt = '{path} tem {size}; o limite por envio é {limit}. O arquivo continua no navegador.';
+  const saved = await saveToDraft(
+    [smallA, big, smallB],
+    'save',
+    async () => {
+      throw new Error('setContents: file exceeds the 2097152 byte limit: l2/big.ts (2621440 bytes)');
+    },
+    async (file) => { cleared.push(file.shortName ?? ''); },
+    { lang: 'pt', fileTooBig: pt },
+  );
+  assert.deepEqual(cleared, ['a', 'b']);
+  assert.equal(smallA.inLocalStorage, false);
+  assert.equal(smallB.inLocalStorage, false);
+  assert.equal(big.inLocalStorage, true);
+  assert.deepEqual(saved.blocked, [big]);
+  assert.equal(
+    draftBlockReason(big),
+    'l2/big.ts tem 2,5 MB; o limite por envio é 2 MB. O arquivo continua no navegador.',
+  );
+  assert.equal(
+    draftFileTooBigMessage('l2/foto.png', 4_928_307, 2_097_152, 'pt', pt),
+    'l2/foto.png tem 4,7 MB; o limite por envio é 2 MB. O arquivo continua no navegador.',
+  );
+});
+
+test('saveToDraft restores every file when the send fails on the network', async () => {
+  const files = ['a', 'b', 'c'].map((shortName) => ({
+    project: 102047,
+    inLocalStorage: true as boolean | undefined,
+    level: 2,
+    folder: '',
+    shortName,
+    extension: '.ts',
+  }));
+  let cleared = 0;
+  await assert.rejects(
+    () => saveToDraft(
+      files,
+      'save',
+      async () => [{ result: false }],
+      async () => { cleared += 1; },
+    ),
+    /setContents refused the draft save/,
+  );
+  assert.equal(cleared, 0);
+  assert.deepEqual(files.map((file) => file.inLocalStorage), [true, true, true]);
 });
 
 test('saveToDraft restores inLocalStorage when setContents throws and does not clear', async () => {
