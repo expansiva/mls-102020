@@ -7,6 +7,7 @@ import {
   fileExists,
   moduleFile,
   moduleFolder,
+  normalizeModuleName,
   readJson,
   readSourceText,
   writeJson,
@@ -167,7 +168,7 @@ export function generatedFilesOf<T extends NrListedFile>(
   existing: readonly T[],
   sharedPages: readonly string[],
 ): T[] {
-  const web = `${moduleFolder(moduleName)}/web`;
+  const web = `${normalizeModuleName(moduleName)}/web`;
   const slots = new Set<string>();
   for (const file of existing) {
     if (!isLiveListed(file)) continue;
@@ -574,7 +575,13 @@ export function stepsPhaseNote(count: number, commands: readonly string[]): stri
 /** Names each effort page whose generated files were not in the index. Empty when every page had one. */
 export function stepsDeletedNote(base: string, missing: readonly string[]): string {
   if (missing.length === 0) return base;
-  return `${base}; deleted: none for ${missing.join(', ')}`;
+  const project = currentProjectNumber();
+  let count = 0;
+  for (const file of Object.values(mls.stor.files)) {
+    if (!file || file.status === 'deleted' || Number(file.level) !== 2 || Number(file.project) !== project) continue;
+    count += 1;
+  }
+  return `${base}; deleted: none for ${missing.join(', ')} (index: ${count} level-2 file(s) of project ${project})`;
 }
 
 export function planIdOf(step: { planning?: { planId?: string } | null }): string {

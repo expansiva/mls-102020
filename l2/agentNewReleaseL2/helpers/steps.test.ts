@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
+import { setModuleRoot } from '/_102035_/l2/solution/fs.js';
 import { createAgent } from '/_102020_/l2/agentNewReleaseL2/agentNewReleaseL2.js';
 import { planNewReleaseL2 } from '/_102020_/l2/agentNewReleaseL2/helpers/plan.js';
 import {
@@ -758,10 +759,39 @@ test('materialize names a page whose generated files were not found', async () =
     } as mls.msg.ExecutionContext, '@@agentNewReleaseL2 tarefas');
     const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
     const stepsLine = log.phases.find(line => line.phase === 'steps');
-    assert.equal(stepsLine?.note, '2 steps; deleted: none for listas_tarefas');
+    assert.equal(stepsLine?.note, '2 steps; deleted: none for listas_tarefas (index: 1 level-2 file(s) of project 102047)');
     assert.deepEqual(stepsLine?.deleted, []);
     assert.equal(stepsLine?.status, 'ok');
   } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('listas_tarefas generated files are deleted when moduleRoot points at tobe/plan', async () => {
+  const previous = mls.actualProject;
+  installRunStor(102047);
+  setModuleRoot('tarefas', 'tarefas/tobe/plan');
+  (mls.stor.localStor as { deleteFile?: (file: { status?: string }) => Promise<void> }).deleteFile = async (file) => {
+    file.status = 'deleted';
+  };
+  plantJson(changeEffortInfo('tarefas'), JSON.stringify(pageEffort('listas_tarefas')));
+  plantJson(runInfo('tarefas'), '{}\n');
+  plantPage('tarefas/web/desktop/page11', 'listas_tarefas');
+  plantPage('tarefas/web/mobile/page11', 'listas_tarefas');
+  try {
+    const agent = createAgent();
+    await agent.beforePromptImplicit(agent, {
+      message: { threadId: 'thread-root', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    } as mls.msg.ExecutionContext, '@@agentNewReleaseL2 tarefas');
+    const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
+    const stepsLine = log.phases.find(line => line.phase === 'steps');
+    assert.deepEqual(stepsLine?.deleted, [
+      'l2/tarefas/web/desktop/page11/listas_tarefas.ts',
+      'l2/tarefas/web/mobile/page11/listas_tarefas.ts',
+    ]);
+    assert.equal(stepsLine?.note?.includes('deleted: none for'), false);
+  } finally {
+    setModuleRoot('tarefas', null);
     mls.actualProject = previous;
   }
 });
