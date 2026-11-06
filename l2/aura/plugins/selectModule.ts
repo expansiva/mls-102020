@@ -16,6 +16,17 @@ import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
+import '/_102020_/l2/aura/plugins/pluginMenuEditor.js';
+import { tryReadConfig } from '/_102020_/l2/aura/plugins/helpers/configIo.js';
+import { findModuleEntry, readModuleMenu } from '/_102020_/l2/aura/plugins/helpers/menuConfigCore.js';
+
+/** Tag of the menu editor the Menu section opens in the details area (it defines itself on import). */
+const MENU_EDITOR_TAG = 'aura--plugins--plugin-menu-editor-102020';
+
+/** What the Menu section shows: counts, or why the editor cannot open. */
+type MenuSummary =
+    | { kind: 'ready'; items: number; hidden: number; issues: number }
+    | { kind: 'disabled'; reason: 'noEntry' | 'noPages' | 'error' };
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -56,6 +67,14 @@ const message_en = {
     orphanLabel: 'orphan',
     pagesWord: 'pages',
     followTask: 'Follow task',
+    menuTitle: 'Menu',
+    menuEdit: 'Edit menu',
+    menuItems: 'in the menu',
+    menuHidden: 'hidden',
+    menuIssues: 'inconsistencies',
+    menuNoEntry: 'This module has no entry in l5/config.json.',
+    menuNoPages: 'No page of this module is registered in l5/config.json yet.',
+    menuError: 'Could not read l5/config.json.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -97,6 +116,14 @@ const messages: Record<string, MessageType> = {
         orphanLabel: 'órfã',
         pagesWord: 'páginas',
         followTask: 'Acompanhar task',
+        menuTitle: 'Menu',
+        menuEdit: 'Editar menu',
+        menuItems: 'no menu',
+        menuHidden: 'ocultas',
+        menuIssues: 'inconsistências',
+        menuNoEntry: 'Este módulo não tem entrada no l5/config.json.',
+        menuNoPages: 'Nenhuma página deste módulo está registrada no l5/config.json ainda.',
+        menuError: 'Não foi possível ler o l5/config.json.',
     },
     es: {
         title: 'Módulo',
@@ -135,6 +162,14 @@ const messages: Record<string, MessageType> = {
         orphanLabel: 'huérfana',
         pagesWord: 'páginas',
         followTask: 'Seguir tarea',
+        menuTitle: 'Menú',
+        menuEdit: 'Editar menú',
+        menuItems: 'en el menú',
+        menuHidden: 'ocultas',
+        menuIssues: 'inconsistencias',
+        menuNoEntry: 'Este módulo no tiene entrada en l5/config.json.',
+        menuNoPages: 'Ninguna página de este módulo está registrada en l5/config.json todavía.',
+        menuError: 'No se pudo leer l5/config.json.',
     },
 };
 /// **collab_i18n_end**
@@ -165,6 +200,11 @@ export class PluginSelectModule extends StateLitElement {
     @state() private _expandedPage: string | null = null;
     private _varsLoadedFor: string | null = null;
     private _varsLoadSeq = 0;
+
+    // ─── Menu section state (TASK-102020-config-menu-editor) ──────────
+    @state() private _menu: MenuSummary | null = null;
+    private _menuLoadedFor: string | null = null;
+    private _menuLoadSeq = 0;
     private _threadCache = new Map<string, Promise<any>>();
     private _taskInfoByKey = new Map<string, { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }>();
     private _unsubTasks: (() => void) | undefined;
@@ -183,8 +223,12 @@ export class PluginSelectModule extends StateLitElement {
         if (changed.has('value')) this._search = '';
         // Service (re)open bumps the token: drop the guard so the stor is re-checked
         // (files may have been deleted/created outside this panel).
-        if (changed.has('reloadToken')) this._varsLoadedFor = null;
+        if (changed.has('reloadToken')) {
+            this._varsLoadedFor = null;
+            this._menuLoadedFor = null;
+        }
         this._maybeLoadVariations();
+        this._maybeLoadMenu();
     }
 
     private get msg(): MessageType {
@@ -259,6 +303,93 @@ export class PluginSelectModule extends StateLitElement {
                     : nothing}
                 ${module ? this._renderModuleDetail(module) : nothing}
                 ${module ? this._renderVariationsPanel(module) : nothing}
+                ${module ? this._renderMenuPanel(module) : nothing}
+            </div>
+        `;
+    }
+
+    // ─── Menu panel ───────────────────────────────────────────────────
+    // Summary of the module menu in l5/config.json (the source of truth of the menu) and the button that opens
+    // pluginMenuEditor in the details panel, like the Header knob does with its editor.
+
+    private _maybeLoadMenu(): void {
+        const module = this._selectedModule;
+        if (!module) {
+            this._menuLoadedFor = null;
+            this._menu = null;
+            return;
+        }
+        if (module.name === this._menuLoadedFor) return;
+        this._menuLoadedFor = module.name;
+        void this._loadMenu(module.name);
+    }
+
+    private async _loadMenu(moduleName: string): Promise<void> {
+        const seq = ++this._menuLoadSeq;
+        this._menu = null;
+        const project = getAuraState().actualProject;
+        if (!project) return;
+        const config = await tryReadConfig(project);
+        if (seq !== this._menuLoadSeq) return; // superseded by a newer load
+        if (config === undefined) {
+            this._menu = { kind: 'disabled', reason: 'error' };
+            return;
+        }
+        const entry = findModuleEntry(config, project, moduleName);
+        if (!entry) {
+            this._menu = { kind: 'disabled', reason: 'noEntry' };
+            return;
+        }
+        const view = readModuleMenu(entry);
+        this._menu = view.rows.length + view.hidden.length === 0
+            ? { kind: 'disabled', reason: 'noPages' }
+            : { kind: 'ready', items: view.rows.length, hidden: view.hidden.length, issues: view.issues.length };
+    }
+
+    private async _openMenuEditor(module: IModule): Promise<void> {
+        const project = getAuraState().actualProject;
+        if (!project) return;
+        const element = document.createElement(MENU_EDITOR_TAG) as HTMLElement & { project?: number; moduleId?: string };
+        element.setAttribute('autoPrepare', 'true');
+        element.project = project;
+        element.moduleId = module.name;
+        // On the element, not left to bubble: the details host moves it out of this panel's DOM tree.
+        element.addEventListener('menu-saved', () => {
+            this._menuLoadedFor = null;
+            this._maybeLoadMenu();
+        });
+        await openElementInServiceDetails(element);
+    }
+
+    private _renderMenuPanel(module: IModule) {
+        const menu = this._menu;
+        const reason = menu?.kind === 'disabled'
+            ? { noEntry: this.msg.menuNoEntry, noPages: this.msg.menuNoPages, error: this.msg.menuError }[menu.reason]
+            : '';
+        return html`
+            <div class="flex flex-col gap-1.5">
+                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.menuTitle}</span>
+                ${menu?.kind === 'ready'
+                    ? html`
+                        <div class="flex items-center gap-2 flex-wrap text-xs text-gray-600 dark:text-gray-400">
+                            <span>${menu.items} ${this.msg.menuItems}</span>
+                            ${menu.hidden ? html`<span>· ${menu.hidden} ${this.msg.menuHidden}</span>` : nothing}
+                            ${menu.issues
+                                ? html`<span class="px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">${menu.issues} ${this.msg.menuIssues}</span>`
+                                : nothing}
+                            <button
+                                class="
+                                    ml-auto text-sm px-2.5 py-1 rounded
+                                    bg-indigo-500 dark:bg-indigo-600 text-white
+                                    hover:bg-indigo-600 dark:hover:bg-indigo-500
+                                    transition-colors whitespace-nowrap cursor-pointer
+                                "
+                                @click=${() => void this._openMenuEditor(module)}
+                            >${this.msg.menuEdit}</button>
+                        </div>`
+                    : reason
+                        ? html`<span class="text-xs text-gray-400 dark:text-gray-500 italic">${reason}</span>`
+                        : nothing}
             </div>
         `;
     }
