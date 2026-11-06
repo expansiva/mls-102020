@@ -902,7 +902,7 @@ test('an auto-save batch records the CRC of the small files and leaves the overs
   host.mls.stor = {
     files: previous.stor.files,
     setContents: async () => {
-      throw new Error('setContents: file exceeds the 1048576 byte limit: l1/usecases/big.ts (2000000 bytes)');
+      throw new Error('setContents: file exceeds the 67108864 byte limit: l1/usecases/big.ts (73400320 bytes)');
     },
     localStor: {
       setContent: async () => true,
@@ -916,13 +916,47 @@ test('an auto-save batch records the CRC of the small files and leaves the overs
     assert.deepEqual(again, ['big']);
     assert.equal(
       draftBlockReason(big),
-      'l1/usecases/big.ts is 1.9 MB; the limit per send is 1 MB. The file stays in the browser.',
+      'l1/usecases/big.ts is 70 MB; the limit per send is 64 MB. The file stays in the browser.',
     );
     assert.equal(draftBlockReason(one), undefined);
     assert.equal(draftBlockReason(two), undefined);
     assert.ok(logged.some((args) => args[2] === draftBlockReason(big)));
   } finally {
     console.error = previousError;
+    host.mls.editor = previous.editor;
+    host.mls.common = previous.common;
+    host.mls.stor = previous.stor;
+  }
+});
+
+test('an auto-save batch leaves a refused part pending and still records the small files', async () => {
+  const host = globalThis as unknown as IHost;
+  const previous = { editor: host.mls.editor, common: host.mls.common, stor: host.mls.stor };
+  const again: string[] = [];
+  const one = storFile('one');
+  const big = storFile('big');
+  host.mls.editor = {
+    getKeyModel: (_project: number, shortName: string) => shortName,
+    models: {
+      one: { ts: { model: { getValue: () => 'one-body' } } },
+      big: { ts: { model: { getValue: () => 'big-body' } } },
+    },
+  };
+  host.mls.common = { crc: { crc32: (value: string) => value.length } };
+  host.mls.stor = {
+    files: previous.stor.files,
+    setContents: async () => {
+      throw new Error('setContents: l1/usecases/big.ts part 2/3 refused: missing part; not sent');
+    },
+    localStor: { setContent: async () => true },
+  };
+  try {
+    await sendAutoSaveBatch([one, big], 7, (item) => { again.push(item.shortName); });
+    assert.deepEqual(pendingFiles([one], 7), []);
+    assert.deepEqual(pendingFiles([big], 7), [big]);
+    assert.deepEqual(again, ['big']);
+    assert.equal(draftBlockReason(big), 'l1/usecases/big.ts was not saved: missing part.');
+  } finally {
     host.mls.editor = previous.editor;
     host.mls.common = previous.common;
     host.mls.stor = previous.stor;

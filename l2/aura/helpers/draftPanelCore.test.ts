@@ -25,8 +25,11 @@ import {
   visibleTreeRows,
   readPublished,
   saveDefaultDraft,
+  applyDraftUpload,
   draftBlockReason,
+  draftFileRefusedMessage,
   draftFileTooBigMessage,
+  draftUploadLine,
   saveToDraft,
   slugForBranch,
   storeCapturedDraftText,
@@ -525,6 +528,63 @@ test('saveToDraft blocks one oversized file and clears the ones the driver wrote
     draftFileTooBigMessage('l2/foto.png', 4_928_307, 2_097_152, 'pt', pt),
     'l2/foto.png tem 4,7 MB; o limite por envio é 2 MB. O arquivo continua no navegador.',
   );
+});
+
+test('saveToDraft reads a 64 MB ceiling from the error and blocks a refused part beside it', async () => {
+  const limit = 64 * 1024 * 1024;
+  const hugeBytes = 70 * 1024 * 1024;
+  const small = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'a', extension: '.ts' };
+  const huge = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'huge', extension: '.ts' };
+  const refused = { project: 102047, inLocalStorage: true as boolean | undefined, level: 4, folder: 'tarefas', shortName: 'undo', extension: '.json' };
+  const mismatch = { project: 102047, inLocalStorage: true as boolean | undefined, level: 4, folder: 'tarefas', shortName: 'layers', extension: '.json' };
+  const cleared: string[] = [];
+  const ptTooBig = '{path} tem {size}; o limite por envio é {limit}. O arquivo continua no navegador.';
+  const ptRefused = '{path} não foi salvo: {reason}.';
+  const saved = await saveToDraft(
+    [small, huge, refused, mismatch],
+    'save',
+    async () => {
+      throw new Error([
+        `setContents: file exceeds the ${limit} byte limit: l2/huge.ts (${hugeBytes} bytes)`,
+        'setContents: l4/tarefas/undo.json part 2/3 refused: missing part; not sent',
+        'setContents: l4/tarefas/layers.json refused: sha256 mismatch; not sent',
+      ].join('; '));
+    },
+    async (file) => { cleared.push(file.shortName ?? ''); },
+    { lang: 'pt', fileTooBig: ptTooBig, fileRefused: ptRefused },
+  );
+  assert.deepEqual(cleared, ['a']);
+  assert.equal(small.inLocalStorage, false);
+  assert.equal(huge.inLocalStorage, true);
+  assert.equal(refused.inLocalStorage, true);
+  assert.equal(mismatch.inLocalStorage, true);
+  assert.deepEqual(saved.blocked, [huge, refused, mismatch]);
+  assert.equal(
+    draftBlockReason(huge),
+    'l2/huge.ts tem 70 MB; o limite por envio é 64 MB. O arquivo continua no navegador.',
+  );
+  assert.equal(draftBlockReason(refused), 'l4/tarefas/undo.json não foi salvo: missing part.');
+  assert.equal(draftBlockReason(mismatch), 'l4/tarefas/layers.json não foi salvo: sha256 mismatch.');
+  assert.equal(
+    draftFileRefusedMessage('l4/tarefas/layers.json', 'invalid gzip', '{path} no se guardó: {reason}.'),
+    'l4/tarefas/layers.json no se guardó: invalid gzip.',
+  );
+});
+
+test('a draft upload line names the file and the part, then clears when the file is done', () => {
+  const en = 'Sending {file} (part {part} of {total})';
+  const pt = 'Enviando {file} (parte {part} de {total})';
+  const es = 'Enviando {file} (parte {part} de {total})';
+  const first = applyDraftUpload(null, { project: 102047, shortPath: 'l4/tarefas/undo.json', part: 1, total: 3, done: false });
+  assert.ok(first);
+  assert.equal(draftUploadLine(first, en), 'Sending l4/tarefas/undo.json (part 1 of 3)');
+  assert.equal(draftUploadLine(first, pt), 'Enviando l4/tarefas/undo.json (parte 1 de 3)');
+  assert.equal(draftUploadLine(first, es), 'Enviando l4/tarefas/undo.json (parte 1 de 3)');
+  const next = applyDraftUpload(first, { project: 102047, shortPath: 'l4/tarefas/undo.json', part: 2, total: 3, done: false });
+  assert.equal(next && draftUploadLine(next, en), 'Sending l4/tarefas/undo.json (part 2 of 3)');
+  assert.equal(applyDraftUpload(next, { project: 102047, shortPath: 'l4/tarefas/undo.json', part: 3, total: 3, done: true }), null);
+  const other = applyDraftUpload(next, { project: 102047, shortPath: 'l2/a.ts', part: 1, total: 1, done: true });
+  assert.equal(other, next);
 });
 
 test('saveToDraft restores every file when the send fails on the network', async () => {
