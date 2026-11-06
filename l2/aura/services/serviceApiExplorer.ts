@@ -64,6 +64,19 @@ interface IRouteEntry {
     kind: string;
     inputTypeName?: string;
     inputContract: IRouteField[];
+    /** Body template from the l2 contract (definition-v2); the old schema builds it from inputContract. */
+    exampleBody?: unknown;
+}
+
+interface IModuleGroup {
+    moduleId: string;
+    routes: IRouteEntry[];
+}
+
+interface ITypeField {
+    name: string;
+    optional: boolean;
+    type: string;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -128,23 +141,30 @@ export class ServiceApiExplorer102020 extends ServiceBase {
         this.requestUpdate();
 
         const routes: IRouteEntry[] = [];
+        const contracts = new Map<string, string>();
         for (const file of Object.values(mls.stor.files)) {
             if (!file || file.project !== project || file.level !== 1) continue;
             if (file.status === 'deleted' || file.extension !== '.defs.ts') continue;
             if (!file.folder.endsWith('/layer_1_external/adapters/http/controllers')) continue;
-            const data = this._parseArtifactData(String(await file.getContent()));
-            if (!data) continue;
+            const artifact = this._parseArtifact(String(await file.getContent()));
+            if (!artifact) continue;
+            const { root, data } = artifact;
             const handlers = Array.isArray((data as any).handlers) ? (data as any).handlers : [];
-            const moduleId = String((data as any).moduleName || file.folder.split('/')[0] || '');
+            const moduleId = String((data as any).moduleName || (root as any).moduleName || file.folder.split('/')[0] || '');
             const pageId = String((data as any).pageId || '');
             for (const h of handlers) {
                 if (!h || typeof h.route !== 'string') continue;
+                const contractText = typeof h.contractPath === 'string'
+                    ? await this._readContract(project, h.contractPath, contracts)
+                    : '';
+                const inputFields = contractText ? this._contractInputFields(contractText, h.route) : undefined;
                 routes.push({
                     route: h.route,
                     moduleId,
                     pageId,
-                    command: String(h.command || ''),
+                    command: String(h.command || h.route.split('.').pop() || ''),
                     kind: String(h.kind || ''),
+                    exampleBody: inputFields ? this._exampleFromFields(inputFields) : undefined,
                     inputTypeName: h.inputTypeName ? String(h.inputTypeName) : undefined,
                     inputContract: Array.isArray(h.inputContract)
                         ? h.inputContract
@@ -156,7 +176,11 @@ export class ServiceApiExplorer102020 extends ServiceBase {
                                 source: f.source ? String(f.source) : undefined,
                                 description: f.description ? String(f.description) : undefined,
                             }))
-                        : [],
+                        : (inputFields || []).map((f) => ({
+                            inputId: f.name,
+                            required: !f.optional,
+                            description: f.type,
+                        })),
                 });
             }
         }
@@ -168,9 +192,21 @@ export class ServiceApiExplorer102020 extends ServiceBase {
         this.requestUpdate();
     }
 
+    private get _moduleGroups(): IModuleGroup[] {
+        const groups = new Map<string, IRouteEntry[]>();
+        for (const entry of this._routes) {
+            const list = groups.get(entry.moduleId) || [];
+            list.push(entry);
+            groups.set(entry.moduleId, list);
+        }
+        return [...groups.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([moduleId, routes]) => ({ moduleId, routes }));
+    }
+
     /** First `export const … = {…} as const;` artifact block — same idiom the codegen agents use
-     *  to read these files (e.g. agentCbHttpController.ts). Unwraps to the artifact's `data`. */
-    private _parseArtifactData(content: string): Record<string, unknown> | undefined {
+     *  to read these files (e.g. agentCbHttpController.ts). `data` is the artifact's `data` when present. */
+    private _parseArtifact(content: string): { root: Record<string, unknown>; data: Record<string, unknown> } | undefined {
         const s = content.indexOf('= ');
         const e = content.indexOf(' as const;');
         if (s === -1 || e <= s) return undefined;
@@ -178,10 +214,92 @@ export class ServiceApiExplorer102020 extends ServiceBase {
             const parsed = JSON.parse(content.slice(s + 2, e));
             if (!parsed || typeof parsed !== 'object') return undefined;
             const data = (parsed as { data?: unknown }).data;
-            return data && typeof data === 'object' ? data as Record<string, unknown> : parsed;
+            return { root: parsed, data: data && typeof data === 'object' ? data as Record<string, unknown> : parsed };
         } catch {
             return undefined;
         }
+    }
+
+    // ─── l2 contracts (definition-v2: handler.contractPath) ─────────
+
+    /** contractPath is project-relative, e.g. `l2/<module>/web/contracts/<page>.defs.ts`. */
+    private async _readContract(project: number, contractPath: string, cache: Map<string, string>): Promise<string> {
+        if (cache.has(contractPath)) return cache.get(contractPath) || '';
+        let text = '';
+        const match = /^l(\d+)\/(.+)\/([^/]+?)(\.[^/]*)$/.exec(contractPath.replace(/^\/+/, ''));
+        if (match) {
+            const [, level, folder, shortName, extension] = match;
+            const file = mls.stor.files[mls.stor.getKeyToFiles(project, Number(level), shortName, folder, extension)];
+            if (file && file.status !== 'deleted') text = String(await file.getContent());
+        }
+        cache.set(contractPath, text);
+        return text;
+    }
+
+    /** Top-level fields of `input: { … }` under the route's key in the contract interface. */
+    private _contractInputFields(contract: string, route: string): ITypeField[] | undefined {
+        const key = contract.search(new RegExp(`['"]${route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]\\s*:`));
+        if (key === -1) return undefined;
+        const entry = this._balancedFrom(contract, contract.indexOf('{', key));
+        if (!entry) return undefined;
+        const input = /\binput\s*:\s*/.exec(entry);
+        if (!input) return undefined;
+        const body = this._balancedFrom(entry, input.index + input[0].length);
+        return body ? this._typeLiteralFields(body) : [];
+    }
+
+    /** Text of the `{…}` that starts at `start` (braces included), or undefined. */
+    private _balancedFrom(text: string, start: number): string | undefined {
+        if (start < 0 || text[start] !== '{') return undefined;
+        let depth = 0;
+        for (let i = start; i < text.length; i++) {
+            if (text[i] === '{') depth++;
+            else if (text[i] === '}' && --depth === 0) return text.slice(start, i + 1);
+        }
+        return undefined;
+    }
+
+    private _typeLiteralFields(literal: string): ITypeField[] {
+        const inner = literal.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '').trim().slice(1, -1);
+        const members: string[] = [];
+        let depth = 0;
+        let current = '';
+        for (const ch of inner) {
+            if ('{[(<'.includes(ch)) depth++;
+            else if ('}])>'.includes(ch)) depth--;
+            if ((ch === ';' || ch === ',') && depth === 0) {
+                members.push(current);
+                current = '';
+            } else {
+                current += ch;
+            }
+        }
+        members.push(current);
+
+        const fields: ITypeField[] = [];
+        for (const member of members) {
+            const m = /^\s*(?:readonly\s+)?['"]?([\w$]+)['"]?(\?)?\s*:\s*([\s\S]+?)\s*$/.exec(member);
+            if (m) fields.push({ name: m[1], optional: !!m[2], type: m[3].replace(/\s+/g, ' ') });
+        }
+        return fields;
+    }
+
+    private _exampleFromFields(fields: ITypeField[]): Record<string, unknown> {
+        const body: Record<string, unknown> = {};
+        for (const field of fields) body[field.name] = this._exampleFromType(field.type);
+        return body;
+    }
+
+    private _exampleFromType(type: string): unknown {
+        const t = type.trim();
+        if (t.startsWith('{')) return this._exampleFromFields(this._typeLiteralFields(t));
+        if (t.endsWith('[]') || /^(ReadonlyArray|Array)</.test(t)) return [];
+        const first = t.split('|')[0].trim();
+        if (/^['"]/.test(first)) return first.slice(1, -1);
+        if (first === 'number') return 0;
+        if (first === 'boolean') return false;
+        if (first === 'string') return '';
+        return {};
     }
 
     // ─── Selection / body editing ───────────────────────────────────
@@ -196,6 +314,7 @@ export class ServiceApiExplorer102020 extends ServiceBase {
     }
 
     private _exampleBody(entry: IRouteEntry): string {
+        if (entry.exampleBody !== undefined) return JSON.stringify(entry.exampleBody, null, 2);
         const body: Record<string, string> = {};
         for (const field of entry.inputContract) body[field.inputId] = '';
         return JSON.stringify(body, null, 2);
@@ -261,18 +380,23 @@ export class ServiceApiExplorer102020 extends ServiceBase {
                 ${!this._loadingRoutes && !this._routes.length
                 ? html`<div class="p-3 text-xs text-gray-400">${this.msg.noRoutines}</div>`
                 : nothing}
-                ${this._routes.map((entry) => html`
-                    <div
-                        title=${entry.route}
-                        class="px-3 py-2 cursor-pointer border-b border-gray-100 dark:border-gray-900 ${this._selectedRoute?.route === entry.route
-                ? 'bg-cyan-50 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300'
-                : 'hover:bg-gray-50 dark:hover:bg-gray-900'}"
-                        @click=${() => this._selectRoute(entry)}
-                    >
-                        <div class="text-xs font-semibold truncate">${entry.pageId}</div>
-                        <div class="font-mono text-[11px] truncate text-gray-500 dark:text-gray-400">${entry.command}</div>
-                        <div class="text-[10px] uppercase tracking-wide ${entry.kind === 'command' ? 'text-amber-500' : 'text-gray-400'}">${entry.kind}</div>
+                ${this._moduleGroups.map((group) => html`
+                    <div class="sticky top-0 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-800">
+                        ${group.moduleId} <span class="font-normal text-gray-400">(${group.routes.length})</span>
                     </div>
+                    ${group.routes.map((entry) => html`
+                        <div
+                            title=${entry.route}
+                            class="px-3 py-2 cursor-pointer border-b border-gray-100 dark:border-gray-900 ${this._selectedRoute?.route === entry.route
+                    ? 'bg-cyan-50 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300'
+                    : 'hover:bg-gray-50 dark:hover:bg-gray-900'}"
+                            @click=${() => this._selectRoute(entry)}
+                        >
+                            <div class="text-xs font-semibold truncate">${entry.pageId}</div>
+                            <div class="font-mono text-[11px] truncate text-gray-500 dark:text-gray-400">${entry.command}</div>
+                            <div class="text-[10px] uppercase tracking-wide ${entry.kind === 'command' ? 'text-amber-500' : 'text-gray-400'}">${entry.kind}</div>
+                        </div>
+                    `)}
                 `)}
             </div>
         `;
