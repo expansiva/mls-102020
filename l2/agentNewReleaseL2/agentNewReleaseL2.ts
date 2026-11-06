@@ -20,6 +20,7 @@ import {
   deletedPaths,
   defsOutcome,
   deleteGeneratedFiles,
+  generatedFilesOf,
   guardAfterDefs,
   markedPageIds,
   marksDifferMessage,
@@ -37,6 +38,7 @@ import {
   statusIntents,
   statusKind,
   statusText,
+  stepsDeletedNote,
   stepsPhaseNote,
   writeReleaseSnapshot,
   type NrRunPhase,
@@ -89,7 +91,13 @@ async function beforePromptImplicit(
       phase = 'steps';
       const prepared = await prepareMaterialize(project, moduleName, plan.pages, plan.materializeOnly, plan.commands, plan.sharedPages, plan.degrees);
       if (!prepared.ok) return refuse(agent, context, moduleName, phase, prepared.message);
-      await recordPhase(moduleName, phase, 'ok', stepsPhaseNote(prepared.steps.length, plan.commands));
+      await recordPhase(
+        moduleName,
+        phase,
+        'ok',
+        stepsDeletedNote(stepsPhaseNote(prepared.steps.length, plan.commands), prepared.missing),
+        { deleted: prepared.paths },
+      );
       const steps = prepared.steps.map(step => addStepIntent(context, step, 1, false));
       return [openMessage(agent, context, moduleName, project, { nrDegrees: JSON.stringify(plan.degrees) }), ...steps];
     }
@@ -219,10 +227,13 @@ async function prepareMaterialize(
   commands: readonly string[],
   sharedPages: readonly string[],
   degrees: Readonly<Record<string, number>>,
-): Promise<{ ok: true; steps: mls.msg.AIAgentStep[] } | { ok: false; message: string }> {
-  const removed = await deleteGeneratedFiles(moduleName, releasePages(pages, materializeOnly), currentStorFiles(), deleteFile, sharedPages);
+): Promise<{ ok: true; steps: mls.msg.AIAgentStep[]; paths: string[]; missing: string[] } | { ok: false; message: string }> {
+  const existing = currentStorFiles();
+  const targets = releasePages(pages, materializeOnly);
+  const missing = targets.filter(pageId => generatedFilesOf(moduleName, pageId, existing, sharedPages).length === 0);
+  const removed = await deleteGeneratedFiles(moduleName, targets, existing, deleteFile, sharedPages);
   if (!removed.ok) return removed;
-  return { ok: true, steps: buildApplySteps(project, moduleName, removed.paths, commands, degrees) };
+  return { ok: true, steps: buildApplySteps(project, moduleName, removed.paths, commands, degrees), paths: removed.paths, missing };
 }
 
 function openMessage(

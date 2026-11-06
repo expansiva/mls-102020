@@ -260,6 +260,7 @@ export interface NrRunPhaseLine {
   note: string;
   bffPages?: string[];
   sharedPages?: string[];
+  deleted?: string[];
 }
 
 /** `l2/<module>/pipeline/agentNewReleaseL2/run.json` — each write is one host trace line. */
@@ -272,13 +273,16 @@ export async function recordPhase(
   phase: NrRunPhase,
   status: NrRunPhaseLine['status'],
   note: string,
-  lists?: { bffPages: readonly string[]; sharedPages: readonly string[] },
+  lists?: { bffPages: readonly string[]; sharedPages: readonly string[] } | { deleted: readonly string[] },
 ): Promise<void> {
   const info = runInfo(moduleName);
   const line: NrRunPhaseLine = { phase, status, note };
-  if (phase === 'plan' && lists) {
+  if (phase === 'plan' && lists && 'bffPages' in lists) {
     line.bffPages = [...lists.bffPages];
     line.sharedPages = [...lists.sharedPages];
+  }
+  if (phase === 'steps' && lists && 'deleted' in lists) {
+    line.deleted = [...lists.deleted];
   }
   if (phase === 'effort-read') {
     await writeJson(info, { phases: [line] });
@@ -565,6 +569,12 @@ export function screenCostLines(roots: readonly CostStep[] | undefined, degrees:
 export function stepsPhaseNote(count: number, commands: readonly string[]): string {
   const base = `${count} steps`;
   return commands.length === 0 ? base : `${base}; ${commands.join('\n')}`;
+}
+
+/** Names each effort page whose generated files were not in the index. Empty when every page had one. */
+export function stepsDeletedNote(base: string, missing: readonly string[]): string {
+  if (missing.length === 0) return base;
+  return `${base}; deleted: none for ${missing.join(', ')}`;
 }
 
 export function planIdOf(step: { planning?: { planId?: string } | null }): string {

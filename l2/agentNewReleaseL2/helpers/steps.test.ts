@@ -25,6 +25,7 @@ import {
   refusedPages,
   degreesOf,
   screenCostLines,
+  stepsDeletedNote,
   stepsPhaseNote,
   currentProjectNumber,
   deleteGeneratedFiles,
@@ -690,10 +691,76 @@ test('materialize records the returned command and the close step carries it', a
     assert.ok(added.every(intent => intent.type === 'add-step' && intent.parentStepId === 1 && intent.messageId === '' && intent.taskId === ''));
     assert.deepEqual(commandLines(close.step.prompt || ''), [FIELD_COMMAND]);
     const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
-    assert.equal(log.phases.find(line => line.phase === 'steps')?.note, stepsPhaseNote(2, [FIELD_COMMAND]));
+    const stepsLine = log.phases.find(line => line.phase === 'steps');
+    assert.equal(stepsLine?.note, stepsDeletedNote(stepsPhaseNote(2, [FIELD_COMMAND]), ['minhas_tarefas', 'tarefas_equipe']));
+    assert.deepEqual(stepsLine?.deleted, []);
     const planLine = log.phases.find(line => line.phase === 'plan');
     assert.deepEqual(planLine?.bffPages, []);
     assert.deepEqual(planLine?.sharedPages, []);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+function pageEffort(pageId: string): unknown {
+  const effort = textFieldEffort() as {
+    perItem: Array<{ answers: Array<{ master: { project: string }; materialize: Array<{ kind: string; id: string; path: string }>; runAgents: unknown[] }> }>;
+    merged: unknown;
+  };
+  const answer = effort.perItem[0].answers.find(row => row.master.project === '102020');
+  if (!answer) throw new Error('missing master answer');
+  answer.materialize = [{ kind: 'page', id: pageId, path: `l2/tarefas/web/contracts/${pageId}.defs.ts` }];
+  answer.runAgents = [];
+  effort.merged = mergeChangeEffort(effort.perItem as never);
+  return effort;
+}
+
+function plantPage(folder: string, shortName: string): void {
+  plantJson({ project: 102047, level: 2, folder, shortName, extension: '.ts' }, 'export {}\n');
+}
+
+test('materialize records the deleted listas_tarefas page files in run.json', async () => {
+  const previous = mls.actualProject;
+  installRunStor(102047);
+  (mls.stor.localStor as { deleteFile?: (file: { status?: string }) => Promise<void> }).deleteFile = async (file) => {
+    file.status = 'deleted';
+  };
+  plantJson(changeEffortInfo('tarefas'), JSON.stringify(pageEffort('listas_tarefas')));
+  plantJson(runInfo('tarefas'), '{}\n');
+  plantPage('tarefas/web/desktop/page11', 'listas_tarefas');
+  plantPage('tarefas/web/mobile/page11', 'listas_tarefas');
+  try {
+    const agent = createAgent();
+    await agent.beforePromptImplicit(agent, {
+      message: { threadId: 'thread-deleted', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    } as mls.msg.ExecutionContext, '@@agentNewReleaseL2 tarefas');
+    const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
+    const stepsLine = log.phases.find(line => line.phase === 'steps');
+    assert.deepEqual(stepsLine?.deleted, [
+      'l2/tarefas/web/desktop/page11/listas_tarefas.ts',
+      'l2/tarefas/web/mobile/page11/listas_tarefas.ts',
+    ]);
+    assert.equal(stepsLine?.note?.includes('deleted: none for'), false);
+  } finally {
+    mls.actualProject = previous;
+  }
+});
+
+test('materialize names a page whose generated files were not found', async () => {
+  const previous = mls.actualProject;
+  installRunStor(102047);
+  plantJson(changeEffortInfo('tarefas'), JSON.stringify(pageEffort('listas_tarefas')));
+  plantJson(runInfo('tarefas'), '{}\n');
+  try {
+    const agent = createAgent();
+    await agent.beforePromptImplicit(agent, {
+      message: { threadId: 'thread-none', content: '@@agentNewReleaseL2 tarefas', orderAt: '1' },
+    } as mls.msg.ExecutionContext, '@@agentNewReleaseL2 tarefas');
+    const log = JSON.parse((mls.stor.files[fileKey(runInfo('tarefas'))] as { content?: string }).content || '') as { phases: NrRunPhaseLine[] };
+    const stepsLine = log.phases.find(line => line.phase === 'steps');
+    assert.equal(stepsLine?.note, '2 steps; deleted: none for listas_tarefas');
+    assert.deepEqual(stepsLine?.deleted, []);
+    assert.equal(stepsLine?.status, 'ok');
   } finally {
     mls.actualProject = previous;
   }
