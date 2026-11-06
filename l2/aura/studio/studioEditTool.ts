@@ -20,6 +20,7 @@ import {
 import { activeDraft } from '/_102033_/l2/cbe/studioDraft.js';
 import {
   afterDraftSave,
+  draftBlockReason,
   dropCapturedDraftText,
   holdCapturedDraftText,
   loadPanel,
@@ -270,6 +271,9 @@ function pendingNow(project: number): mls.stor.IFileInfo[] {
   return pendingFiles(files, project);
 }
 
+/** Last refusal reason logged per file, so a file that stays refused is not logged on every pass. */
+const refusalLogged = new WeakMap<mls.stor.IFileInfo, string | undefined>();
+
 /**
  * Capture each file's text, put that text in the local record, write the batch, then record the captured CRC.
  * A file whose model moved during the write stays pending and is handed back to schedule again.
@@ -307,20 +311,33 @@ export async function sendAutoSaveBatch(
     dropCapturedDraftText(file);
     heldBack.push(file);
   }
+  const refused = new Set<mls.stor.IFileInfo>();
   try {
     if (toSend.length > 0) {
       // `saveToDraft` clears `inLocalStorage` before the write. A direct `setContents` would hit the local driver.
-      await saveToDraft(
+      const saved = await saveToDraft(
         toSend,
         autosaveMessage(batch),
         (clean, msg) => mls.stor.setContents(clean, msg),
         (file) => afterDraftSave(file),
       );
+      for (const file of saved.blocked) refused.add(file);
     }
   } finally {
     for (const file of batch) dropCapturedDraftText(file);
   }
   for (const file of toSend) {
+    if (refused.has(file)) {
+      // Not written. A sent CRC here would hide the file from the next pass.
+      // The file stays pending and is retried on every pass: log it once, not every few seconds.
+      const reason = draftBlockReason(file);
+      if (refusalLogged.get(file) !== reason) {
+        refusalLogged.set(file, reason);
+        console.error('[studio] auto-save did not send a file', file.shortName, reason);
+      }
+      onStillPending(file);
+      continue;
+    }
     if (file.status === 'deleted' || file.hasError) continue;
     const text = captured.get(file);
     // No open model (a file an agent wrote, a new file nobody opened): it was sent from its local

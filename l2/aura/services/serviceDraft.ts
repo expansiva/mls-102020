@@ -826,7 +826,22 @@ export class ServiceDraft102020 extends ServiceBase {
             return;
         }
         await this._readRelease();
+        this._rememberBlockedReasons(project);
         this._phase = 'idle';
+    }
+
+    /** A reload keeps files the auto-save refused. The reason map is filled by `saveToDraft`. */
+    private _rememberBlockedReasons(project: number): void {
+        const extra: mls.stor.IFileInfo[] = [];
+        const seen = new Set(this._blocked);
+        for (const file of Object.values(mls.stor.files)) {
+            if (!file || file.project !== project || seen.has(file)) continue;
+            if (!draftBlockReason(file)) continue;
+            seen.add(file);
+            extra.push(file);
+        }
+        if (extra.length === 0) return;
+        this._blocked = [...this._blocked, ...extra];
     }
 
     private async _readRelease(): Promise<void> {
