@@ -84,18 +84,14 @@ test('only the closed domains are editable', () => {
 
 // ── Guards on the Studio "States" tab (plugins/pluginPageStates), which replaced the Scenario service ─────────────
 
-test('restoring puts back what the APP had, not the previous simulation', () => {
-  // The original is captured once. Overwriting it on the second change would make "restore" put back
-  // the first simulated value — which no one ever asked for.
-  const write = TAB.slice(TAB.indexOf('private _write('));
-  const body = write.slice(0, write.indexOf('\n  }'));
-  assert.match(body, /existing \? existing\.original : getState\(key\)/u);
-});
-
-test('what the tab publishes is plain data: the simulated keys', () => {
-  // Same discipline as `aura.edit`: `setState` keeps every value it is handed in a 10.000-entry log,
-  // so anything live parked there is pinned for the session.
-  assert.match(TAB, /setState\('aura\.scenario\.simulated', \[\.\.\.this\._simulated\.keys\(\)\]\)/u);
+test('the tab only draws the simulation: unmounting it restores nothing', () => {
+  // serviceGenome draws one panel per knob, so going to Molecules unmounts this tab — and that is not the end of the
+  // simulation (studio/studioPageSimulation owns it; its rules are in pageSimulationCore.test).
+  const disconnected = TAB.slice(TAB.indexOf('disconnectedCallback()'));
+  const body = disconnected.slice(0, disconnected.indexOf('\n  }'));
+  assert.doesNotMatch(body, /restoreAll/u);
+  assert.match(TAB, /pageSimulation\.setSituation\(/u);
+  assert.doesNotMatch(TAB, /setState\(/u, 'every write goes through the simulation');
 });
 
 test('the tab reads the page own files, and a load that lost the race does not write', () => {
