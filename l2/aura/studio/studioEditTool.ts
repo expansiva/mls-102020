@@ -331,8 +331,12 @@ export async function sendAutoSaveBatch(
       // Not written. A sent CRC here would hide the file from the next pass.
       // The file stays pending and is retried on every pass: log it once, not every few seconds.
       const reason = draftBlockReason(file);
-      if (refusalLogged.get(file) !== reason) {
-        refusalLogged.set(file, reason);
+      // The stored reason is a new object on every pass. Compare the fields so a file that stays refused is logged once.
+      const mark = reason === undefined
+        ? undefined
+        : `${reason.kind}\0${reason.path}\0${reason.bytes ?? ''}\0${reason.limit ?? ''}\0${reason.reason ?? ''}`;
+      if (refusalLogged.get(file) !== mark) {
+        refusalLogged.set(file, mark);
         console.error('[studio] auto-save did not send a file', file.shortName, reason);
       }
       onStillPending(file);

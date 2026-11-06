@@ -30,6 +30,7 @@ import {
     applyDraftUpload,
     COLLAB_DRAFT_UPLOAD,
     draftBlockReason,
+    formatDraftBlockReason,
     draftUploadLine,
     saveToDraft,
     slugForBranch,
@@ -48,6 +49,7 @@ import {
     type IPendingFile,
     type IPublishedRecord,
     type IVisibleTreeRow,
+    type DraftPanelLang,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { listedOwner, subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
 import { lockedDraftWrite } from '/_102020_/l2/aura/studio/studioModuleLock.js';
@@ -579,7 +581,7 @@ export class ServiceDraft102020 extends ServiceBase {
                 ${this._blocked.length
                     ? html`<div class="flex flex-col gap-0.5 px-4 py-3">
                         <p class="text-amber-700 dark:text-amber-300">${this.msg.blocked}</p>
-                        ${this._blocked.map((file) => html`<div>${draftBlockReason(file) ?? fileLabel(file)}</div>`)}
+                        ${this._blocked.map((file) => html`<div>${this._blockedLine(file)}</div>`)}
                     </div>`
                     : nothing}
                 ${this._renderTree(rows)}
@@ -853,6 +855,15 @@ export class ServiceDraft102020 extends ServiceBase {
         this._phase = 'idle';
     }
 
+    /** Sentence in the panel language. The reason itself has no language. */
+    private _blockedLine(file: mls.stor.IFileInfo): string {
+        const block = draftBlockReason(file);
+        if (!block) return fileLabel(file);
+        const key = this.getMessageKey(messages);
+        const lang: DraftPanelLang = key === 'pt' || key === 'es' ? key : 'en';
+        return formatDraftBlockReason(block, lang, this.msg.fileTooBig, this.msg.fileRefused);
+    }
+
     /** A reload keeps files the auto-save refused. The reason map is filled by `saveToDraft`. */
     private _rememberBlockedReasons(project: number): void {
         const extra: mls.stor.IFileInfo[] = [];
@@ -926,17 +937,11 @@ export class ServiceDraft102020 extends ServiceBase {
             return;
         }
         try {
-            const lang = this.getMessageKey(messages);
             const saved = await saveToDraft(
                 open,
                 comment,
                 (clean, text) => mls.stor.setContents(clean, text),
                 (file) => afterDraftSave(file),
-                {
-                    lang: lang === 'pt' || lang === 'es' ? lang : 'en',
-                    fileTooBig: this.msg.fileTooBig,
-                    fileRefused: this.msg.fileRefused,
-                },
             );
             this._blocked = saved.blocked;
             if (saved.blocked.length > 0) {

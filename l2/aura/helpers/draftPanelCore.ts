@@ -1067,16 +1067,17 @@ export function actionCounts(local: readonly ILocalEdit[], draftPaths: readonly 
   };
 }
 
-const blockedReasons = new WeakMap<IPanelStorFile, string>();
-
-export interface ISaveToDraftOptions {
-  /** Panel language. `en` when omitted. */
-  lang?: DraftPanelLang;
-  /** `{path}`, `{size}`, `{limit}`. The English sentence when omitted. */
-  fileTooBig?: string;
-  /** `{path}`, `{reason}`. The English sentence when omitted. `reason` is the server text. */
-  fileRefused?: string;
+/** Why a file stayed in the browser. The panel turns this into a sentence in its own language. */
+export interface IDraftBlockReason {
+  kind: 'tooBig' | 'refused';
+  path: string;
+  bytes?: number;
+  limit?: number;
+  /** Server text. Shown as-is inside `fileRefused`. */
+  reason?: string;
 }
+
+const blockedReasons = new WeakMap<IPanelStorFile, IDraftBlockReason>();
 
 /**
  * Files with `hasError` stay out of the write unless they are deletions (the server must see
@@ -1092,7 +1093,6 @@ export async function saveToDraft<T extends IPanelStorFile>(
   comment: string,
   setContents: (clean: T[], comment: string) => Promise<readonly ISetContentsResult[]>,
   clearLocal: (file: T) => unknown,
-  options?: ISaveToDraftOptions,
 ): Promise<{ blocked: T[] }> {
   const blocked: T[] = [];
   const clean: T[] = [];
@@ -1120,7 +1120,6 @@ export async function saveToDraft<T extends IPanelStorFile>(
       restoreFlags();
       throw err;
     }
-    const lang = options?.lang ?? 'en';
     const saved: T[] = [];
     const matched = new Set<string>();
     for (const file of clean) {
@@ -1129,19 +1128,19 @@ export async function saveToDraft<T extends IPanelStorFile>(
       if (hit) {
         matched.add(hit.path);
         restoreFlags([file]);
-        const message = draftFileTooBigMessage(hit.path, hit.bytes, hit.limit, lang, options?.fileTooBig);
-        blockedReasons.set(file, message);
+        const block: IDraftBlockReason = { kind: 'tooBig', path: hit.path, bytes: hit.bytes, limit: hit.limit };
+        blockedReasons.set(file, block);
         blocked.push(file);
-        console.error(`[draftPanel] ${message}`);
+        console.error(`[draftPanel] ${draftFileTooBigMessage(hit.path, hit.bytes, hit.limit, 'en')}`);
         continue;
       }
       if (refusal) {
         matched.add(refusal.path);
         restoreFlags([file]);
-        const message = draftFileRefusedMessage(refusal.path, refusal.reason, options?.fileRefused);
-        blockedReasons.set(file, message);
+        const block: IDraftBlockReason = { kind: 'refused', path: refusal.path, reason: refusal.reason };
+        blockedReasons.set(file, block);
         blocked.push(file);
-        console.error(`[draftPanel] ${message}`);
+        console.error(`[draftPanel] ${draftFileRefusedMessage(refusal.path, refusal.reason)}`);
         continue;
       }
       saved.push(file);
@@ -1217,8 +1216,29 @@ const defaultAfterSaveDeps: IAfterDraftSaveDeps = {
 const capturedDraftText = new WeakMap<IPanelStorFile, string>();
 
 /** Why a file is in `blocked` when the reason is not a compiler error. */
-export function draftBlockReason(file: IPanelStorFile): string | undefined {
+export function draftBlockReason(file: IPanelStorFile): IDraftBlockReason | undefined {
   return blockedReasons.get(file);
+}
+
+/** The sentence the panel shows. `fileTooBig` and `fileRefused` come from the active catalog. */
+export function formatDraftBlockReason(
+  block: IDraftBlockReason,
+  lang: DraftPanelLang,
+  fileTooBig: string,
+  fileRefused: string,
+): string {
+  if (block.kind === 'tooBig') {
+    if (block.bytes === undefined || block.limit === undefined) {
+      console.error('[draftPanel] tooBig block is missing sizes', block.path);
+      return block.path;
+    }
+    return draftFileTooBigMessage(block.path, block.bytes, block.limit, lang, fileTooBig);
+  }
+  if (!block.reason) {
+    console.error('[draftPanel] refused block is missing the server text', block.path);
+    return block.path;
+  }
+  return draftFileRefusedMessage(block.path, block.reason, fileRefused);
 }
 
 export type DraftPanelLang = 'en' | 'pt' | 'es';

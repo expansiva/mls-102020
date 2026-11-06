@@ -914,10 +914,12 @@ test('an auto-save batch records the CRC of the small files and leaves the overs
     assert.deepEqual(pendingFiles([two], 7), []);
     assert.deepEqual(pendingFiles([big], 7), [big]);
     assert.deepEqual(again, ['big']);
-    assert.equal(
-      draftBlockReason(big),
-      'l1/usecases/big.ts is 70 MB; the limit per send is 64 MB. The file stays in the browser.',
-    );
+    assert.deepEqual(draftBlockReason(big), {
+      kind: 'tooBig',
+      path: 'l1/usecases/big.ts',
+      bytes: 73400320,
+      limit: 67108864,
+    });
     assert.equal(draftBlockReason(one), undefined);
     assert.equal(draftBlockReason(two), undefined);
     assert.ok(logged.some((args) => args[2] === draftBlockReason(big)));
@@ -955,7 +957,11 @@ test('an auto-save batch leaves a refused part pending and still records the sma
     assert.deepEqual(pendingFiles([one], 7), []);
     assert.deepEqual(pendingFiles([big], 7), [big]);
     assert.deepEqual(again, ['big']);
-    assert.equal(draftBlockReason(big), 'l1/usecases/big.ts was not saved: missing part.');
+    assert.deepEqual(draftBlockReason(big), {
+      kind: 'refused',
+      path: 'l1/usecases/big.ts',
+      reason: 'missing part',
+    });
   } finally {
     host.mls.editor = previous.editor;
     host.mls.common = previous.common;

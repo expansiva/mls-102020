@@ -99,7 +99,9 @@ test('save shows the blocked list that the core returns', () => {
     const handler = methodOf(DRAFT, 'private async _onSave');
     assert.match(handler, /saveToDraft\(/);
     assert.match(handler, /this\._blocked = saved\.blocked/);
-    assert.match(handler, /fileRefused: this\.msg\.fileRefused/);
+    assert.doesNotMatch(handler, /fileTooBig|fileRefused|lang:/);
+    const line = methodOf(DRAFT, 'private _blockedLine');
+    assert.match(line, /formatDraftBlockReason\(block, lang, this\.msg\.fileTooBig, this\.msg\.fileRefused\)/);
 });
 
 test('the panel shows an upload part in en, pt and es and listens for collabDraftUpload', () => {
