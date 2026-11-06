@@ -27,6 +27,7 @@ import {
     publish,
     readPublished,
     saveDefaultDraft,
+    draftBlockReason,
     saveToDraft,
     slugForBranch,
     syncWithPublished,
@@ -73,6 +74,7 @@ const message_en = {
     promoting: 'Publishing the draft…',
     rebuilding: 'Rebuilding the release…',
     blocked: 'Not saved because of errors:',
+    fileTooBig: '{path} is {size}; the limit per send is {limit}. The file stays in the browser.',
     conflict: 'Publish conflict.',
     nothingToPromote: 'Nothing to publish.',
     emptyComment: 'A message is required.',
@@ -153,6 +155,7 @@ const messages: Record<string, MessageType> = {
         promoting: 'Publicando o rascunho…',
         rebuilding: 'Reconstruindo a release…',
         blocked: 'Não salvos por causa de erro:',
+        fileTooBig: '{path} tem {size}; o limite por envio é {limit}. O arquivo continua no navegador.',
         conflict: 'Conflito ao publicar.',
         nothingToPromote: 'Nada para publicar.',
         emptyComment: 'A mensagem é obrigatória.',
@@ -230,6 +233,7 @@ const messages: Record<string, MessageType> = {
         promoting: 'Publicando el borrador…',
         rebuilding: 'Reconstruyendo la release…',
         blocked: 'No se guardaron por errores:',
+        fileTooBig: '{path} tiene {size}; el límite por envío es {limit}. El archivo sigue en el navegador.',
         conflict: 'Conflicto al publicar.',
         nothingToPromote: 'Nada que publicar.',
         emptyComment: 'El mensaje es obligatorio.',
@@ -559,7 +563,7 @@ export class ServiceDraft102020 extends ServiceBase {
                 ${this._blocked.length
                     ? html`<div class="flex flex-col gap-0.5 px-4 py-3">
                         <p class="text-amber-700 dark:text-amber-300">${this.msg.blocked}</p>
-                        ${this._blocked.map((file) => html`<div>${fileLabel(file)}</div>`)}
+                        ${this._blocked.map((file) => html`<div>${draftBlockReason(file) ?? fileLabel(file)}</div>`)}
                     </div>`
                     : nothing}
                 ${this._renderTree(rows)}
@@ -884,11 +888,16 @@ export class ServiceDraft102020 extends ServiceBase {
             return;
         }
         try {
+            const lang = this.getMessageKey(messages);
             const saved = await saveToDraft(
                 open,
                 comment,
                 (clean, text) => mls.stor.setContents(clean, text),
                 (file) => afterDraftSave(file),
+                {
+                    lang: lang === 'pt' || lang === 'es' ? lang : 'en',
+                    fileTooBig: this.msg.fileTooBig,
+                },
             );
             this._blocked = saved.blocked;
             if (saved.blocked.length > 0) {
