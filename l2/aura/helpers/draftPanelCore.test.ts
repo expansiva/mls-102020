@@ -25,6 +25,12 @@ import {
   visibleTreeRows,
   readPublished,
   saveDefaultDraft,
+  applyDraftUpload,
+  draftBlockReason,
+  draftFileRefusedMessage,
+  draftFileTooBigMessage,
+  formatDraftBlockReason,
+  draftUploadLine,
   saveToDraft,
   slugForBranch,
   storeCapturedDraftText,
@@ -493,6 +499,152 @@ test('saveToDraft throws when setContents reports a refusal', async () => {
   );
   assert.equal(file.inLocalStorage, true);
   assert.equal(cleared, 0);
+});
+
+test('saveToDraft blocks one oversized file and clears the ones the driver wrote', async () => {
+  const smallA = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'a', extension: '.ts' };
+  const big = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'big', extension: '.ts' };
+  const smallB = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: 'aura', shortName: 'b', extension: '.ts' };
+  const cleared: string[] = [];
+  const pt = '{path} tem {size}; o limite por envio é {limit}. O arquivo continua no navegador.';
+  const saved = await saveToDraft(
+    [smallA, big, smallB],
+    'save',
+    async () => {
+      throw new Error('setContents: file exceeds the 2097152 byte limit: l2/big.ts (2621440 bytes)');
+    },
+    async (file) => { cleared.push(file.shortName ?? ''); },
+  );
+  assert.deepEqual(cleared, ['a', 'b']);
+  assert.equal(smallA.inLocalStorage, false);
+  assert.equal(smallB.inLocalStorage, false);
+  assert.equal(big.inLocalStorage, true);
+  assert.deepEqual(saved.blocked, [big]);
+  assert.deepEqual(draftBlockReason(big), { kind: 'tooBig', path: 'l2/big.ts', bytes: 2621440, limit: 2097152 });
+  assert.equal(
+    draftFileTooBigMessage('l2/foto.png', 4_928_307, 2_097_152, 'pt', pt),
+    'l2/foto.png tem 4,7 MB; o limite por envio é 2 MB. O arquivo continua no navegador.',
+  );
+});
+
+test('saveToDraft reads a 64 MB ceiling from the error and blocks a refused part beside it', async () => {
+  const limit = 64 * 1024 * 1024;
+  const hugeBytes = 70 * 1024 * 1024;
+  const small = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'a', extension: '.ts' };
+  const huge = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'huge', extension: '.ts' };
+  const refused = { project: 102047, inLocalStorage: true as boolean | undefined, level: 4, folder: 'tarefas', shortName: 'undo', extension: '.json' };
+  const mismatch = { project: 102047, inLocalStorage: true as boolean | undefined, level: 4, folder: 'tarefas', shortName: 'layers', extension: '.json' };
+  const cleared: string[] = [];
+  const saved = await saveToDraft(
+    [small, huge, refused, mismatch],
+    'save',
+    async () => {
+      throw new Error([
+        `setContents: file exceeds the ${limit} byte limit: l2/huge.ts (${hugeBytes} bytes)`,
+        'setContents: l4/tarefas/undo.json part 2/3 refused: missing part; not sent',
+        'setContents: l4/tarefas/layers.json refused: sha256 mismatch; not sent',
+      ].join('; '));
+    },
+    async (file) => { cleared.push(file.shortName ?? ''); },
+  );
+  assert.deepEqual(cleared, ['a']);
+  assert.equal(small.inLocalStorage, false);
+  assert.equal(huge.inLocalStorage, true);
+  assert.equal(refused.inLocalStorage, true);
+  assert.equal(mismatch.inLocalStorage, true);
+  assert.deepEqual(saved.blocked, [huge, refused, mismatch]);
+  assert.deepEqual(draftBlockReason(huge), { kind: 'tooBig', path: 'l2/huge.ts', bytes: hugeBytes, limit });
+  assert.deepEqual(draftBlockReason(refused), { kind: 'refused', path: 'l4/tarefas/undo.json', reason: 'missing part' });
+  assert.deepEqual(draftBlockReason(mismatch), { kind: 'refused', path: 'l4/tarefas/layers.json', reason: 'sha256 mismatch' });
+  assert.equal(
+    draftFileRefusedMessage('l4/tarefas/layers.json', 'invalid gzip', '{path} no se guardó: {reason}.'),
+    'l4/tarefas/layers.json no se guardó: invalid gzip.',
+  );
+});
+
+test('a block saved without a language is shown in the panel language', async () => {
+  const big = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'big', extension: '.ts' };
+  const refused = { project: 102047, inLocalStorage: true as boolean | undefined, level: 2, folder: '', shortName: 'nope', extension: '.ts' };
+  await saveToDraft(
+    [big, refused],
+    'autosave',
+    async () => {
+      throw new Error([
+        'setContents: file exceeds the 2097152 byte limit: l2/big.ts (2621440 bytes)',
+        'setContents: l2/nope.ts refused: missing part; not sent',
+      ].join('; '));
+    },
+    async () => {},
+  );
+  const tooBig = draftBlockReason(big);
+  const denial = draftBlockReason(refused);
+  assert.deepEqual(tooBig, { kind: 'tooBig', path: 'l2/big.ts', bytes: 2621440, limit: 2097152 });
+  assert.deepEqual(denial, { kind: 'refused', path: 'l2/nope.ts', reason: 'missing part' });
+  assert.ok(tooBig && denial);
+  const catalogs = {
+    en: {
+      fileTooBig: '{path} is {size}; the limit per send is {limit}. The file stays in the browser.',
+      fileRefused: '{path} was not saved: {reason}.',
+      tooBig: 'l2/big.ts is 2.5 MB; the limit per send is 2 MB. The file stays in the browser.',
+      refused: 'l2/nope.ts was not saved: missing part.',
+    },
+    pt: {
+      fileTooBig: '{path} tem {size}; o limite por envio é {limit}. O arquivo continua no navegador.',
+      fileRefused: '{path} não foi salvo: {reason}.',
+      tooBig: 'l2/big.ts tem 2,5 MB; o limite por envio é 2 MB. O arquivo continua no navegador.',
+      refused: 'l2/nope.ts não foi salvo: missing part.',
+    },
+    es: {
+      fileTooBig: '{path} tiene {size}; el límite por envío es {limit}. El archivo sigue en el navegador.',
+      fileRefused: '{path} no se guardó: {reason}.',
+      tooBig: 'l2/big.ts tiene 2,5 MB; el límite por envío es 2 MB. El archivo sigue en el navegador.',
+      refused: 'l2/nope.ts no se guardó: missing part.',
+    },
+  };
+  for (const lang of ['en', 'pt', 'es'] as const) {
+    const catalog = catalogs[lang];
+    assert.equal(formatDraftBlockReason(tooBig, lang, catalog.fileTooBig, catalog.fileRefused), catalog.tooBig);
+    assert.equal(formatDraftBlockReason(denial, lang, catalog.fileTooBig, catalog.fileRefused), catalog.refused);
+  }
+});
+
+test('a draft upload line names the file and the part, then clears when the file is done', () => {
+  const en = 'Sending {file} (part {part} of {total})';
+  const pt = 'Enviando {file} (parte {part} de {total})';
+  const es = 'Enviando {file} (parte {part} de {total})';
+  const first = applyDraftUpload(null, { project: 102047, shortPath: 'l4/tarefas/undo.json', part: 1, total: 3, done: false });
+  assert.ok(first);
+  assert.equal(draftUploadLine(first, en), 'Sending l4/tarefas/undo.json (part 1 of 3)');
+  assert.equal(draftUploadLine(first, pt), 'Enviando l4/tarefas/undo.json (parte 1 de 3)');
+  assert.equal(draftUploadLine(first, es), 'Enviando l4/tarefas/undo.json (parte 1 de 3)');
+  const next = applyDraftUpload(first, { project: 102047, shortPath: 'l4/tarefas/undo.json', part: 2, total: 3, done: false });
+  assert.equal(next && draftUploadLine(next, en), 'Sending l4/tarefas/undo.json (part 2 of 3)');
+  assert.equal(applyDraftUpload(next, { project: 102047, shortPath: 'l4/tarefas/undo.json', part: 3, total: 3, done: true }), null);
+  const other = applyDraftUpload(next, { project: 102047, shortPath: 'l2/a.ts', part: 1, total: 1, done: true });
+  assert.equal(other, next);
+});
+
+test('saveToDraft restores every file when the send fails on the network', async () => {
+  const files = ['a', 'b', 'c'].map((shortName) => ({
+    project: 102047,
+    inLocalStorage: true as boolean | undefined,
+    level: 2,
+    folder: '',
+    shortName,
+    extension: '.ts',
+  }));
+  let cleared = 0;
+  await assert.rejects(
+    () => saveToDraft(
+      files,
+      'save',
+      async () => [{ result: false }],
+      async () => { cleared += 1; },
+    ),
+    /setContents refused the draft save/,
+  );
+  assert.equal(cleared, 0);
+  assert.deepEqual(files.map((file) => file.inLocalStorage), [true, true, true]);
 });
 
 test('saveToDraft restores inLocalStorage when setContents throws and does not clear', async () => {

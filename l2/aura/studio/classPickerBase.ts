@@ -1131,7 +1131,7 @@ export abstract class ClassPickerBase extends StateLitElement {
   }
 
   /**
-   * The part selector of a molecule: `Interior | Na página | Slots ▾`.
+   * The part selector of a molecule: `Interior | Tag | Slots ▾`.
    *
    * The first two are always one click away — they are the common switch. The slots live behind the
    * third, because a table has 17 of them (measured on the 102047: 359 of 620 molecules have 0–1 slot,

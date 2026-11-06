@@ -62,6 +62,9 @@ export interface ISetContentsResult {
 /** Window event after a successful draft send. The shell listens; there is no import either way. */
 export const COLLAB_DRAFT_SAVED = 'collabDraftSaved';
 
+/** Window event while a large file is uploaded in parts. The driver dispatches it; this panel only listens. */
+export const COLLAB_DRAFT_UPLOAD = 'collabDraftUpload';
+
 export interface ICollabDraftSavedDetail {
   project: number;
   paths: string[];
@@ -1064,11 +1067,26 @@ export function actionCounts(local: readonly ILocalEdit[], draftPaths: readonly 
   };
 }
 
+/** Why a file stayed in the browser. The panel turns this into a sentence in its own language. */
+export interface IDraftBlockReason {
+  kind: 'tooBig' | 'refused';
+  path: string;
+  bytes?: number;
+  limit?: number;
+  /** Server text. Shown as-is inside `fileRefused`. */
+  reason?: string;
+}
+
+const blockedReasons = new WeakMap<IPanelStorFile, IDraftBlockReason>();
+
 /**
  * Files with `hasError` stay out of the write unless they are deletions (the server must see
  * the delete). `setContents` is called only with the clean files, and only when there is one.
  * Each clean file is sent with `inLocalStorage` false so the write hits the server driver.
- * Success calls `clearLocal` once per clean file; a throw or a refused `result` restores the flag.
+ * Success calls `clearLocal` once per clean file. A refused `result`, or a throw that is not a
+ * setContents ceiling or part refusal, restores every flag. A ceiling or part refusal means the
+ * driver already wrote the other files: the named files go back to the browser, and `clearLocal`
+ * runs for the rest.
  */
 export async function saveToDraft<T extends IPanelStorFile>(
   files: readonly T[],
@@ -1079,23 +1097,64 @@ export async function saveToDraft<T extends IPanelStorFile>(
   const blocked: T[] = [];
   const clean: T[] = [];
   for (const file of files) {
+    blockedReasons.delete(file);
     if (file.hasError && file.status !== 'deleted') blocked.push(file);
     else clean.push(file);
   }
   if (clean.length === 0) return { blocked };
   const flags = clean.map((file) => file.inLocalStorage);
-  const restoreFlags = (): void => {
-    clean.forEach((file, index) => {
+  const restoreFlags = (which: readonly T[] = clean): void => {
+    for (const file of which) {
+      const index = clean.indexOf(file);
+      if (index < 0) continue;
       file.inLocalStorage = flags[index];
-    });
+    }
   };
   for (const file of clean) file.inLocalStorage = false;
   let results: readonly ISetContentsResult[];
   try {
     results = await setContents(clean, comment);
   } catch (err) {
-    restoreFlags();
-    throw err;
+    const failure = parseSetContentsFailure(err);
+    if (!failure) {
+      restoreFlags();
+      throw err;
+    }
+    const saved: T[] = [];
+    const matched = new Set<string>();
+    for (const file of clean) {
+      const hit = failure.oversized.find((item) => sameOversizedPath(file, item.path));
+      const refusal = failure.refused.find((item) => sameOversizedPath(file, item.path));
+      if (hit) {
+        matched.add(hit.path);
+        restoreFlags([file]);
+        const block: IDraftBlockReason = { kind: 'tooBig', path: hit.path, bytes: hit.bytes, limit: hit.limit };
+        blockedReasons.set(file, block);
+        blocked.push(file);
+        console.error(`[draftPanel] ${draftFileTooBigMessage(hit.path, hit.bytes, hit.limit, 'en')}`);
+        continue;
+      }
+      if (refusal) {
+        matched.add(refusal.path);
+        restoreFlags([file]);
+        const block: IDraftBlockReason = { kind: 'refused', path: refusal.path, reason: refusal.reason };
+        blockedReasons.set(file, block);
+        blocked.push(file);
+        console.error(`[draftPanel] ${draftFileRefusedMessage(refusal.path, refusal.reason)}`);
+        continue;
+      }
+      saved.push(file);
+    }
+    for (const item of failure.oversized) {
+      if (!matched.has(item.path)) console.error(`[draftPanel] oversized file was not in this save: ${item.path}`);
+    }
+    for (const item of failure.refused) {
+      if (!matched.has(item.path)) console.error(`[draftPanel] refused file was not in this save: ${item.path}`);
+    }
+    for (const file of saved) await clearLocal(file);
+    const firstSaved = saved[0];
+    if (firstSaved) dispatchDraftSaved(firstSaved.project, saved.map((file) => shortPathOf(file)));
+    return { blocked };
   }
   if (results.some((row) => !row.result)) {
     restoreFlags();
@@ -1155,6 +1214,205 @@ const defaultAfterSaveDeps: IAfterDraftSaveDeps = {
 };
 
 const capturedDraftText = new WeakMap<IPanelStorFile, string>();
+
+/** Why a file is in `blocked` when the reason is not a compiler error. */
+export function draftBlockReason(file: IPanelStorFile): IDraftBlockReason | undefined {
+  return blockedReasons.get(file);
+}
+
+/** The sentence the panel shows. `fileTooBig` and `fileRefused` come from the active catalog. */
+export function formatDraftBlockReason(
+  block: IDraftBlockReason,
+  lang: DraftPanelLang,
+  fileTooBig: string,
+  fileRefused: string,
+): string {
+  if (block.kind === 'tooBig') {
+    if (block.bytes === undefined || block.limit === undefined) {
+      console.error('[draftPanel] tooBig block is missing sizes', block.path);
+      return block.path;
+    }
+    return draftFileTooBigMessage(block.path, block.bytes, block.limit, lang, fileTooBig);
+  }
+  if (!block.reason) {
+    console.error('[draftPanel] refused block is missing the server text', block.path);
+    return block.path;
+  }
+  return draftFileRefusedMessage(block.path, block.reason, fileRefused);
+}
+
+export type DraftPanelLang = 'en' | 'pt' | 'es';
+
+/** English sentence. The panel passes `fileTooBig` from its own en/pt/es catalogs. */
+const FILE_TOO_BIG_EN = '{path} is {size}; the limit per send is {limit}. The file stays in the browser.';
+
+/** English sentence. The panel passes `fileRefused` from its own en/pt/es catalogs. */
+const FILE_REFUSED_EN = '{path} was not saved: {reason}.';
+
+/** One decimal, dropped when the value is whole. `en` uses a dot; `pt` and `es` use a comma. */
+export function formatDraftMegabytes(bytes: number, lang: DraftPanelLang): string {
+  const rounded = Math.round((bytes / (1024 * 1024)) * 10) / 10;
+  const digits = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  const shown = lang === 'en' ? digits : digits.replace('.', ',');
+  return `${shown} MB`;
+}
+
+export function draftFileTooBigMessage(
+  path: string,
+  bytes: number,
+  limitBytes: number,
+  lang: DraftPanelLang,
+  template = FILE_TOO_BIG_EN,
+): string {
+  return template
+    .replaceAll('{path}', path)
+    .replaceAll('{size}', formatDraftMegabytes(bytes, lang))
+    .replaceAll('{limit}', formatDraftMegabytes(limitBytes, lang));
+}
+
+export function draftFileRefusedMessage(path: string, reason: string, template = FILE_REFUSED_EN): string {
+  return template.replaceAll('{path}', path).replaceAll('{reason}', reason);
+}
+
+/** One large file the driver is sending in parts. `part` counts from 1. */
+export interface IDraftUploadProgress {
+  project: number;
+  shortPath: string;
+  part: number;
+  total: number;
+}
+
+/** What `collabDraftUpload` carries. `done` ends the line; `failed` means the file was not saved. */
+export interface ICollabDraftUploadDetail {
+  project: number;
+  shortPath: string;
+  part: number;
+  total: number;
+  done: boolean;
+  failed?: boolean;
+}
+
+/**
+ * The line the panel shows while a part is in flight. `done` clears it.
+ * A bad detail is logged and the previous line stays.
+ */
+export function applyDraftUpload(
+  current: IDraftUploadProgress | null,
+  detail: ICollabDraftUploadDetail | null | undefined,
+): IDraftUploadProgress | null {
+  if (!detail || typeof detail.shortPath !== 'string' || detail.shortPath === '') {
+    console.error('[draftPanel] collabDraftUpload has no file');
+    return current;
+  }
+  if (detail.done) {
+    if (current && current.shortPath !== detail.shortPath) return current;
+    return null;
+  }
+  if (!Number.isInteger(detail.part) || !Number.isInteger(detail.total) || detail.part < 1 || detail.total < 1 || detail.part > detail.total) {
+    console.error('[draftPanel] collabDraftUpload has a bad part count', detail.shortPath, detail.part, detail.total);
+    return current;
+  }
+  return { project: detail.project, shortPath: detail.shortPath, part: detail.part, total: detail.total };
+}
+
+/** `{file}`, `{part}`, `{total}`. The panel passes the en/pt/es sentence. */
+export function draftUploadLine(progress: IDraftUploadProgress, template: string): string {
+  return template
+    .replaceAll('{file}', progress.shortPath)
+    .replaceAll('{part}', String(progress.part))
+    .replaceAll('{total}', String(progress.total));
+}
+
+/**
+ * One phrase of the error `DriverVm.setContents` throws after the files that fit were written
+ * (`mls-102033/l2/cbe/driverVm.ts`). Phrases are separated by `; ` and each starts with `setContents: `.
+ * The ceiling detail is `path (bytes bytes)` joined by `, `.
+ */
+const OVERSIZED_SAVE = /^setContents: file exceeds the (\d+) byte limit: (.*)$/;
+const PART_REFUSED = /^setContents: (.+?) part (\d+)\/(\d+) refused: (.*); not sent$/;
+const FILE_REFUSED = /^setContents: (.+?) refused: (.*); not sent$/;
+const PARTS_DO_NOT_FIT = /^setContents: (.+?) does not fit in (\d+) parts under the (\d+) byte limit; not sent$/;
+
+interface IOversizedFile {
+  path: string;
+  bytes: number;
+  limit: number;
+}
+
+interface IRefusedFile {
+  path: string;
+  reason: string;
+}
+
+function parseOversizedList(listed: string, limit: number): IOversizedFile[] | null {
+  const files: IOversizedFile[] = [];
+  for (const part of listed.split(', ')) {
+    const file = /^(.*) \((\d+) bytes\)$/.exec(part);
+    if (!file?.[1] || !file[2]) return null;
+    const bytes = Number(file[2]);
+    if (!Number.isFinite(bytes)) return null;
+    files.push({ path: file[1], bytes, limit });
+  }
+  return files.length > 0 ? files : null;
+}
+
+function parseSetContentsFailure(err: unknown): { oversized: IOversizedFile[]; refused: IRefusedFile[] } | null {
+  if (!(err instanceof Error)) return null;
+  const phrases = err.message
+    .split(/(?=setContents: )/u)
+    .map((phrase) => phrase.trim().replace(/;$/u, ''))
+    .filter((phrase) => phrase.startsWith('setContents: '));
+  if (phrases.length === 0) return null;
+  const oversized: IOversizedFile[] = [];
+  const refused: IRefusedFile[] = [];
+  for (const phrase of phrases) {
+    const over = OVERSIZED_SAVE.exec(phrase);
+    if (over?.[1] && over[2]) {
+      const limit = Number(over[1]);
+      if (!Number.isFinite(limit)) return null;
+      const files = parseOversizedList(over[2], limit);
+      if (!files) return null;
+      oversized.push(...files);
+      continue;
+    }
+    const part = PART_REFUSED.exec(phrase);
+    if (part?.[1] && part[4] !== undefined) {
+      refused.push({ path: part[1], reason: part[4] });
+      continue;
+    }
+    const fit = PARTS_DO_NOT_FIT.exec(phrase);
+    if (fit?.[1] && fit[2]) {
+      refused.push({ path: fit[1], reason: `does not fit in ${fit[2]} parts` });
+      continue;
+    }
+    const whole = FILE_REFUSED.exec(phrase);
+    if (whole?.[1] && whole[2] !== undefined) {
+      refused.push({ path: whole[1], reason: whole[2] });
+      continue;
+    }
+    return null;
+  }
+  return oversized.length > 0 || refused.length > 0 ? { oversized, refused } : null;
+}
+
+/**
+ * Path as `toShortPath` in `mls-102033/l2/cbe/driverVm.ts`: level 0 has no prefix,
+ * a missing dot on the extension is added. `shortPathOf` differs on level 0.
+ */
+function driverShortPath(file: IPanelStorFile): string {
+  const name = file.shortName ?? '';
+  const folder = (file.folder ?? '').replace(/\\/gu, '/');
+  const extension = file.extension ?? '';
+  if (file.level === undefined && folder === '' && extension === '') return name;
+  const folderSep = folder === '' || folder.endsWith('/') ? '' : '/';
+  const extSep = extension === '' || extension.startsWith('.') ? '' : '.';
+  const levelPath = file.level === undefined || file.level === 0 ? '' : `l${file.level}/`;
+  return `${levelPath}${folder}${folderSep}${name}${extSep}${extension}`;
+}
+
+function sameOversizedPath(file: IPanelStorFile, path: string): boolean {
+  return path === shortPathOf(file) || path === driverShortPath(file);
+}
 
 /** Text captured before `setContents`. `afterDraftSave` compares the model with it. */
 export function holdCapturedDraftText(file: IPanelStorFile, text: string): void {

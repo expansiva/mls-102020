@@ -15,24 +15,19 @@
 // in the simulated situation at once. The causality is one-way — an action method WRITES its status and nothing reads
 // a status to start a request — so simulating never calls the backend. The shared is not changed for this: its defs
 // say which requests run on open and which are commands, and the shared40 gate guarantees the members.
+//
+// THE SIMULATION IS NOT THIS TAB'S
+// It lives in studio/studioPageSimulation, and this tab only draws it: the tab is unmounted whenever serviceGenome shows
+// another knob (Molecules, to swap the molecule seen in the simulated situation), and that must not end the simulation.
 
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
-import { getAuraState, type IAuraPage } from '/_102020_/l2/aura/helpers/auraState.js';
+import { getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
+import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 import { scenesOf, situationsOfDefs, type IPageSituation } from '/_102020_/l2/aura/helpers/scenarioL2.js';
-import { onLiveUpdateApplied } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
-
-/**
- * How long after a live update a simulated value is put back when the app overwrites it.
- *
- * An edit in the Studio remounts the page and the new element runs its connectedCallback: it resets its states and the
- * initial queries write `loading` and then `success` over the situation being edited. Long enough for a query to come
- * back; after it, an overwrite is the app's and is only reported.
- */
-const REASSERT_MS = 10000;
+import { pageIdOf, pageSimulation } from '/_102020_/l2/aura/studio/studioPageSimulation.js';
 
 /// **collab_i18n_start**
 const message_en = {
@@ -101,12 +96,6 @@ const messages: Record<string, MessageType> = {
 };
 /// **collab_i18n_end**
 
-/** What was there before the first simulated write, so restoring is exact. */
-interface ISimulation {
-  original: unknown;
-  applied: unknown;
-}
-
 export const PAGE_STATES_TAG = 'aura--plugins--page-states-102020';
 
 @customElement(PAGE_STATES_TAG)
@@ -123,17 +112,12 @@ export class PluginPageStates extends StateLitElement {
   @state() private _hasDefs = false;
   @state() private _scenes: string[] = [];
   @state() private _situations: IPageSituation[] = [];
-  /** The situation on, or null for the page as the app left it. */
-  @state() private _active: string | null = null;
-  /** Keys this tab wrote, with what was there before. */
-  @state() private _simulated = new Map<string, ISimulation>();
 
-  private _reassertUntil = 0;
-  private _stopLiveUpdate: (() => void) | null = null;
+  private _stopSimulation: (() => void) | null = null;
   private _watched: string[] = [];
-  /** The subscriber of the page's keys: a plain object, so the element keeps its own handleIcaStateChange. */
+  /** The subscriber of the page's keys (only to redraw): a plain object, so the element keeps its own handleIcaStateChange. */
   private readonly _watcher = {
-    handleIcaStateChange: (key: string, value: unknown): void => this._onAppWrote(key, value),
+    handleIcaStateChange: (): void => this.requestUpdate(),
   };
 
   createRenderRoot() { return this; }
@@ -141,26 +125,22 @@ export class PluginPageStates extends StateLitElement {
   connectedCallback(): void {
     super.connectedCallback();
     subscribe('aura.actualPage', this);
-    this._stopLiveUpdate = onLiveUpdateApplied(() => this._reapply());
+    this._stopSimulation = pageSimulation.onChange(() => this.requestUpdate());
     void this._load();
   }
 
   disconnectedCallback(): void {
-    // Leaving for good (another page, the plugin closed) must not leave the app in a simulated situation.
-    this._restoreAll();
+    // Only the drawing goes: the simulation stays (studioPageSimulation ends it on another page or out of studio mode).
     this._watch([]);
     unsubscribe('aura.actualPage', this);
-    this._stopLiveUpdate?.();
-    this._stopLiveUpdate = null;
+    this._stopSimulation?.();
+    this._stopSimulation = null;
     super.disconnectedCallback();
   }
 
   handleIcaStateChange(key: string, _value: unknown): void {
     if (key !== 'aura.actualPage') return;
-    const page = getAuraState()?.actualPage ?? null;
-    if (this._idOf(page) === this._pageId) return;
-    // The simulation belongs to the page it was made on.
-    this._restoreAll();
+    if (pageIdOf(getAuraState()?.actualPage ?? null) === this._pageId) return;
     void this._load();
   }
 
@@ -168,8 +148,14 @@ export class PluginPageStates extends StateLitElement {
     return messages[this.getMessageKey(messages)];
   }
 
-  private _idOf(page: IAuraPage | null): string {
-    return page ? `${page.project}:${page.folder}:${page.shortName}` : '';
+  /** The situation on, or null for the page as the app left it. */
+  private get _active(): string | null {
+    return pageSimulation.activeFor(this._pageId);
+  }
+
+  /** The keys simulated on this page, with what was there before. */
+  private get _simulated() {
+    return pageSimulation.simulatedFor(this._pageId);
   }
 
   // ─── Loading ──────────────────────────────────────────────────────────────
@@ -177,7 +163,7 @@ export class PluginPageStates extends StateLitElement {
   private async _load(): Promise<void> {
     const page = getAuraState()?.actualPage ?? null;
     const token = (this._loadToken += 1);
-    this._pageId = this._idOf(page);
+    this._pageId = pageIdOf(page);
     this._watch([]);
     this._scenes = [];
     this._situations = [];
@@ -230,69 +216,23 @@ export class PluginPageStates extends StateLitElement {
   // ─── Simulating ───────────────────────────────────────────────────────────
 
   private _setScene(scene: string): void {
-    this._write(this._key('scenary'), scene);
-    this._publish();
+    pageSimulation.write(this._pageId, this._key('scenary'), scene);
   }
 
   /** Turns a situation on (null = normal): the previous one is undone first, the scene stays. */
   private _setSituation(id: string | null): void {
     const previous = this._situations.find(item => item.id === this._active);
-    if (previous) for (const member of Object.keys(previous.set)) this._restore(this._key(member));
-    this._active = id;
     const next = this._situations.find(item => item.id === id);
-    if (next) for (const [member, value] of Object.entries(next.set)) this._write(this._key(member), value);
-    this._publish();
-  }
-
-  private _write(key: string, value: unknown): void {
-    const existing = this._simulated.get(key);
-    // The ORIGINAL is captured once: a second write must not make "restore" put back the first simulation.
-    const original = existing ? existing.original : getState(key);
-    this._simulated.set(key, { original, applied: value });
-    setState(key, value);
-    this.requestUpdate();
-  }
-
-  private _restore(key: string): void {
-    const simulation = this._simulated.get(key);
-    if (!simulation) return;
-    this._simulated.delete(key);
-    setState(key, simulation.original);
-    this.requestUpdate();
+    pageSimulation.setSituation(
+      this._pageId,
+      next ? id : null,
+      Object.keys(previous?.set ?? {}).map(member => this._key(member)),
+      Object.fromEntries(Object.entries(next?.set ?? {}).map(([member, value]) => [this._key(member), value])),
+    );
   }
 
   private _restoreAll(): void {
-    this._active = null;
-    if (!this._simulated.size) return;
-    for (const key of [...this._simulated.keys()]) this._restore(key);
-    this._publish();
-  }
-
-  /** Which keys are simulated, so the fact is visible outside this tab (the class picker's badge). */
-  private _publish(): void {
-    setState('aura.scenario.simulated', [...this._simulated.keys()]);
-  }
-
-  /** A live update remounted the page: put every simulation back, and hold it for a while (REASSERT_MS). */
-  private _reapply(): void {
-    if (!this._simulated.size) return;
-    this._reassertUntil = Date.now() + REASSERT_MS;
-    for (const [key, simulation] of this._simulated) setState(key, simulation.applied);
-    this.requestUpdate();
-  }
-
-  /** A watched key changed: right after a live update a simulated one is put back, otherwise it is only shown. */
-  private _onAppWrote(key: string, value: unknown): void {
-    const simulation = this._simulated.get(key);
-    if (simulation && value !== simulation.applied && Date.now() < this._reassertUntil) {
-      // After the app's own write has finished, never inside it.
-      setTimeout(() => {
-        const current = this._simulated.get(key);
-        if (current && getState(key) !== current.applied) setState(key, current.applied);
-      }, 0);
-      return;
-    }
-    this.requestUpdate();
+    pageSimulation.restoreAll();
   }
 
   private _overwritten(members: string[]): boolean {

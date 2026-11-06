@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
 import { setAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { draftBlockReason } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { pendingFiles, recordSentContent } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 import { readFileSync } from 'node:fs';
 import { rememberCollabMode } from '/_102033_/l2/cbe/studioDraft.js';
@@ -872,6 +873,96 @@ test('a file with no open model (an agent wrote it) is sent without a console.er
     assert.deepEqual(errors, [], 'no console.error for a file without a model');
   } finally {
     console.error = original;
+    host.mls.editor = previous.editor;
+    host.mls.common = previous.common;
+    host.mls.stor = previous.stor;
+  }
+});
+
+test('an auto-save batch records the CRC of the small files and leaves the oversized one pending', async () => {
+  const host = globalThis as unknown as IHost;
+  const previous = { editor: host.mls.editor, common: host.mls.common, stor: host.mls.stor };
+  const bodies: Record<string, string> = { one: 'one-body', two: 'two-body', big: 'big-body' };
+  const again: string[] = [];
+  const logged: unknown[][] = [];
+  const previousError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  const one = storFile('one');
+  const two = storFile('two');
+  const big = storFile('big');
+  host.mls.editor = {
+    getKeyModel: (_project: number, shortName: string) => shortName,
+    models: {
+      one: { ts: { model: { getValue: () => bodies.one } } },
+      two: { ts: { model: { getValue: () => bodies.two } } },
+      big: { ts: { model: { getValue: () => bodies.big } } },
+    },
+  };
+  host.mls.common = { crc: { crc32: (value: string) => value.length } };
+  host.mls.stor = {
+    files: previous.stor.files,
+    setContents: async () => {
+      throw new Error('setContents: file exceeds the 67108864 byte limit: l1/usecases/big.ts (73400320 bytes)');
+    },
+    localStor: {
+      setContent: async () => true,
+    },
+  };
+  try {
+    await sendAutoSaveBatch([one, two, big], 7, (item) => { again.push(item.shortName); });
+    assert.deepEqual(pendingFiles([one], 7), []);
+    assert.deepEqual(pendingFiles([two], 7), []);
+    assert.deepEqual(pendingFiles([big], 7), [big]);
+    assert.deepEqual(again, ['big']);
+    assert.deepEqual(draftBlockReason(big), {
+      kind: 'tooBig',
+      path: 'l1/usecases/big.ts',
+      bytes: 73400320,
+      limit: 67108864,
+    });
+    assert.equal(draftBlockReason(one), undefined);
+    assert.equal(draftBlockReason(two), undefined);
+    assert.ok(logged.some((args) => args[2] === draftBlockReason(big)));
+  } finally {
+    console.error = previousError;
+    host.mls.editor = previous.editor;
+    host.mls.common = previous.common;
+    host.mls.stor = previous.stor;
+  }
+});
+
+test('an auto-save batch leaves a refused part pending and still records the small files', async () => {
+  const host = globalThis as unknown as IHost;
+  const previous = { editor: host.mls.editor, common: host.mls.common, stor: host.mls.stor };
+  const again: string[] = [];
+  const one = storFile('one');
+  const big = storFile('big');
+  host.mls.editor = {
+    getKeyModel: (_project: number, shortName: string) => shortName,
+    models: {
+      one: { ts: { model: { getValue: () => 'one-body' } } },
+      big: { ts: { model: { getValue: () => 'big-body' } } },
+    },
+  };
+  host.mls.common = { crc: { crc32: (value: string) => value.length } };
+  host.mls.stor = {
+    files: previous.stor.files,
+    setContents: async () => {
+      throw new Error('setContents: l1/usecases/big.ts part 2/3 refused: missing part; not sent');
+    },
+    localStor: { setContent: async () => true },
+  };
+  try {
+    await sendAutoSaveBatch([one, big], 7, (item) => { again.push(item.shortName); });
+    assert.deepEqual(pendingFiles([one], 7), []);
+    assert.deepEqual(pendingFiles([big], 7), [big]);
+    assert.deepEqual(again, ['big']);
+    assert.deepEqual(draftBlockReason(big), {
+      kind: 'refused',
+      path: 'l1/usecases/big.ts',
+      reason: 'missing part',
+    });
+  } finally {
     host.mls.editor = previous.editor;
     host.mls.common = previous.common;
     host.mls.stor = previous.stor;

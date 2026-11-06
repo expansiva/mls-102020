@@ -27,11 +27,18 @@ import {
     publish,
     readPublished,
     saveDefaultDraft,
+    applyDraftUpload,
+    COLLAB_DRAFT_UPLOAD,
+    draftBlockReason,
+    formatDraftBlockReason,
+    draftUploadLine,
     saveToDraft,
     slugForBranch,
     syncWithPublished,
     viewDiff,
     type FetchImpl,
+    type ICollabDraftUploadDetail,
+    type IDraftUploadProgress,
     type IDraftWaitResult,
     type DraftNodeAction,
     type IActionCounts,
@@ -42,6 +49,7 @@ import {
     type IPendingFile,
     type IPublishedRecord,
     type IVisibleTreeRow,
+    type DraftPanelLang,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { listedOwner, subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
 import { lockedDraftWrite } from '/_102020_/l2/aura/studio/studioModuleLock.js';
@@ -73,6 +81,9 @@ const message_en = {
     promoting: 'Publishing the draft…',
     rebuilding: 'Rebuilding the release…',
     blocked: 'Not saved because of errors:',
+    fileTooBig: '{path} is {size}; the limit per send is {limit}. The file stays in the browser.',
+    fileRefused: '{path} was not saved: {reason}.',
+    uploadingPart: 'Sending {file} (part {part} of {total})',
     conflict: 'Publish conflict.',
     nothingToPromote: 'Nothing to publish.',
     emptyComment: 'A message is required.',
@@ -153,6 +164,9 @@ const messages: Record<string, MessageType> = {
         promoting: 'Publicando o rascunho…',
         rebuilding: 'Reconstruindo a release…',
         blocked: 'Não salvos por causa de erro:',
+        fileTooBig: '{path} tem {size}; o limite por envio é {limit}. O arquivo continua no navegador.',
+        fileRefused: '{path} não foi salvo: {reason}.',
+        uploadingPart: 'Enviando {file} (parte {part} de {total})',
         conflict: 'Conflito ao publicar.',
         nothingToPromote: 'Nada para publicar.',
         emptyComment: 'A mensagem é obrigatória.',
@@ -230,6 +244,9 @@ const messages: Record<string, MessageType> = {
         promoting: 'Publicando el borrador…',
         rebuilding: 'Reconstruyendo la release…',
         blocked: 'No se guardaron por errores:',
+        fileTooBig: '{path} tiene {size}; el límite por envío es {limit}. El archivo sigue en el navegador.',
+        fileRefused: '{path} no se guardó: {reason}.',
+        uploadingPart: 'Enviando {file} (parte {part} de {total})',
         conflict: 'Conflicto al publicar.',
         nothingToPromote: 'Nada que publicar.',
         emptyComment: 'El mensaje es obligatorio.',
@@ -458,6 +475,7 @@ export class ServiceDraft102020 extends ServiceBase {
     private _autoSaveTimer = 0;
     private _unsubAutoSave: (() => void) | undefined;
     @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null, agentWorking: false };
+    @state() private _upload: IDraftUploadProgress | null = null;
     @state() private _open = new Set<string>(['draft']);
     @state() private _selected = '';
 
@@ -467,10 +485,12 @@ export class ServiceDraft102020 extends ServiceBase {
             this._autoSave = state;
             this._syncAutoSaveClock(this._sendClockRuns(state));
         });
+        window.addEventListener(COLLAB_DRAFT_UPLOAD, this._onDraftUpload);
         void this._load();
     }
 
     disconnectedCallback(): void {
+        window.removeEventListener(COLLAB_DRAFT_UPLOAD, this._onDraftUpload);
         this._unsubAutoSave?.();
         this._unsubAutoSave = undefined;
         this._syncAutoSaveClock(false);
@@ -547,9 +567,11 @@ export class ServiceDraft102020 extends ServiceBase {
             if (edit && file) byPath.set(edit.shortPath, file);
         }
         const busy = this._phase === 'loading' || this._phase === 'publishing';
+        const uploadLine = this._upload ? draftUploadLine(this._upload, this.msg.uploadingPart) : '';
         return html`
             <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
                 ${this._renderActions(counts, busy)}
+                ${uploadLine ? html`<p class="px-4 py-2 text-amber-700 dark:text-amber-300">${uploadLine}</p>` : nothing}
                 ${this._phase === 'loading' ? html`<p class="px-4 py-4">${this.msg.loading}</p>` : nothing}
                 ${this._phase === 'publishing' ? html`<p class="px-4 py-4">${this._pingText()}</p>` : nothing}
                 ${this._phase === 'error' ? html`<p class="px-4 py-4 text-amber-700 dark:text-amber-300">${this._error}</p>` : nothing}
@@ -559,7 +581,7 @@ export class ServiceDraft102020 extends ServiceBase {
                 ${this._blocked.length
                     ? html`<div class="flex flex-col gap-0.5 px-4 py-3">
                         <p class="text-amber-700 dark:text-amber-300">${this.msg.blocked}</p>
-                        ${this._blocked.map((file) => html`<div>${fileLabel(file)}</div>`)}
+                        ${this._blocked.map((file) => html`<div>${this._blockedLine(file)}</div>`)}
                     </div>`
                     : nothing}
                 ${this._renderTree(rows)}
@@ -606,6 +628,13 @@ export class ServiceDraft102020 extends ServiceBase {
             </div>
         `;
     }
+
+    private readonly _onDraftUpload = (event: Event): void => {
+        const detail = (event as CustomEvent<ICollabDraftUploadDetail>).detail;
+        const next = applyDraftUpload(this._upload, detail);
+        if (next === this._upload) return;
+        this._upload = next;
+    };
 
     private _autoSaveLine(): string {
         const state = this._autoSave;
@@ -822,7 +851,31 @@ export class ServiceDraft102020 extends ServiceBase {
             return;
         }
         await this._readRelease();
+        this._rememberBlockedReasons(project);
         this._phase = 'idle';
+    }
+
+    /** Sentence in the panel language. The reason itself has no language. */
+    private _blockedLine(file: mls.stor.IFileInfo): string {
+        const block = draftBlockReason(file);
+        if (!block) return fileLabel(file);
+        const key = this.getMessageKey(messages);
+        const lang: DraftPanelLang = key === 'pt' || key === 'es' ? key : 'en';
+        return formatDraftBlockReason(block, lang, this.msg.fileTooBig, this.msg.fileRefused);
+    }
+
+    /** A reload keeps files the auto-save refused. The reason map is filled by `saveToDraft`. */
+    private _rememberBlockedReasons(project: number): void {
+        const extra: mls.stor.IFileInfo[] = [];
+        const seen = new Set(this._blocked);
+        for (const file of Object.values(mls.stor.files)) {
+            if (!file || file.project !== project || seen.has(file)) continue;
+            if (!draftBlockReason(file)) continue;
+            seen.add(file);
+            extra.push(file);
+        }
+        if (extra.length === 0) return;
+        this._blocked = [...this._blocked, ...extra];
     }
 
     private async _readRelease(): Promise<void> {
