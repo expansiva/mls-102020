@@ -212,6 +212,20 @@ export const COLLAB_DRAFT_PENDING = 'collabDraftPending';
 export interface ICollabDraftPendingDetail {
   project: number;
   count: number;
+  /** Pending files Save refuses: compile error, and not a deletion. */
+  blocked: number;
+}
+
+/** Window event after Save asked from outside the draft panel. */
+export const COLLAB_DRAFT_SAVE_RESULT = 'collabDraftSaveResult';
+
+export interface ICollabDraftSaveResultDetail {
+  project: number;
+  /** True when at least one file was written. */
+  saved: boolean;
+  blocked: number;
+  /** Failure only. Catalog text for the document language. */
+  message?: string;
 }
 
 /** Window event from the preview layer. Same Save as the draft panel. */
@@ -224,6 +238,7 @@ interface ICollabDraftSaveRequestDetail {
 let pendingUnsub: (() => void) | undefined;
 let pendingProject: number | null = null;
 let pendingCount: number | null = null;
+let pendingBlocked: number | null = null;
 let saveRequestOn = false;
 let draftBridgeOn = false;
 
@@ -233,13 +248,23 @@ function siteProjectId(): number | null {
   return project;
 }
 
-function unsavedCount(project: number): number {
+/** Same refusal as `saveToDraft`: `hasError`, unless the file is a deletion. */
+function isCompileBlocked(file: { hasError?: boolean; status?: string }): boolean {
+  return file.hasError === true && file.status !== 'deleted';
+}
+
+function pendingTotals(project: number): { count: number; blocked: number } {
   const files = mls.stor?.files;
   if (!files) {
     console.error('[studio] collabDraftPending: mls.stor.files is missing');
-    return 0;
+    return { count: 0, blocked: 0 };
   }
-  return collectEditedFiles(files, project).length;
+  const edited = collectEditedFiles(files, project);
+  let blocked = 0;
+  for (const file of edited) {
+    if (isCompileBlocked(file)) blocked += 1;
+  }
+  return { count: edited.length, blocked };
 }
 
 function publishDraftPending(force: boolean): void {
@@ -248,16 +273,26 @@ function publishDraftPending(force: boolean): void {
     console.error('[studio] collabDraftPending: mls.actualProject is missing');
     return;
   }
-  const count = unsavedCount(project);
-  if (!force && pendingProject === project && pendingCount === count) return;
+  const totals = pendingTotals(project);
+  if (
+    !force
+    && pendingProject === project
+    && pendingCount === totals.count
+    && pendingBlocked === totals.blocked
+  ) return;
   pendingProject = project;
-  pendingCount = count;
+  pendingCount = totals.count;
+  pendingBlocked = totals.blocked;
   const target = (globalThis as { window?: EventTarget }).window;
   if (!target || typeof target.dispatchEvent !== 'function') {
     console.error('[studio] collabDraftPending was not dispatched: window is missing');
     return;
   }
-  const detail: ICollabDraftPendingDetail = { project, count };
+  const detail: ICollabDraftPendingDetail = {
+    project,
+    count: totals.count,
+    blocked: totals.blocked,
+  };
   try {
     target.dispatchEvent(new CustomEvent(COLLAB_DRAFT_PENDING, { detail }));
   } catch (err) {
@@ -275,6 +310,7 @@ function stopDraftPending(): void {
   pendingUnsub = undefined;
   pendingProject = null;
   pendingCount = null;
+  pendingBlocked = null;
 }
 
 /** After Save, the count may change without a file event. No-op outside Studio. */
@@ -290,23 +326,56 @@ function readSaveProject(ev: Event): number {
   return typeof project === 'number' && project > 0 ? project : 0;
 }
 
+function closedPanelFailure(outcome: IDraftSaveOutcome, blocked: number): string | undefined {
+  if (outcome.kind === 'error') return outcome.message;
+  if (outcome.kind === 'failed') return t('draft.saveFailed');
+  if (blocked > 0) return t('draft.blocked', { n: blocked });
+  return undefined;
+}
+
+function publishDraftSaveResult(project: number, outcome: IDraftSaveOutcome, wrote: boolean): void {
+  const blocked = outcome.kind === 'saved' ? outcome.blocked.length : 0;
+  const detail: ICollabDraftSaveResultDetail = {
+    project,
+    saved: outcome.kind === 'saved' && wrote,
+    blocked,
+  };
+  const message = closedPanelFailure(outcome, blocked);
+  if (message) detail.message = message;
+  const target = (globalThis as { window?: EventTarget }).window;
+  if (!target || typeof target.dispatchEvent !== 'function') {
+    console.error('[studio] collabDraftSaveResult was not dispatched: window is missing');
+    return;
+  }
+  try {
+    target.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_RESULT, { detail }));
+  } catch (err) {
+    console.error('[studio] collabDraftSaveResult was not dispatched:', err);
+  }
+}
+
 async function onDraftSaveRequest(ev: Event): Promise<void> {
   const project = readSaveProject(ev);
   if (!project) {
     console.error('[studio] collabDraftSaveRequest has no project');
     return;
   }
+  let panelOpen = false;
   try {
     const host = currentDraftSaveHost();
-    const samePanel = host !== null && host.project() === project;
+    panelOpen = host !== null && host.project() === project;
     const outcome = await runDraftSave(
       project,
-      samePanel && host ? host.messages() : draftSaveMessages(),
-      samePanel && host ? host.driver() : undefined,
+      panelOpen && host ? host.messages() : draftSaveMessages(),
+      panelOpen && host ? host.driver() : undefined,
+      !panelOpen,
     );
-    if (samePanel && host) await host.apply(outcome);
+    if (panelOpen && host) await host.apply(outcome);
   } catch (err) {
     console.error('[studio] collabDraftSaveRequest failed:', err);
+    if (!panelOpen) {
+      publishDraftSaveResult(project, { kind: 'failed', message: t('draft.saveFailed') }, false);
+    }
   }
 }
 
@@ -433,10 +502,15 @@ export async function runDraftSave(
   project: number,
   panelMessages: IDraftSaveMessages,
   knownDriver: { driverVersion?: string } | null | undefined,
+  reportClosedPanel = false,
 ): Promise<IDraftSaveOutcome> {
+  const done = (outcome: IDraftSaveOutcome, wrote = false): IDraftSaveOutcome => {
+    if (reportClosedPanel && outcome.kind !== 'idle') publishDraftSaveResult(project, outcome, wrote);
+    return outcome;
+  };
   if (!project) {
     console.error('[studio] save has no project');
-    return idleSave;
+    return done(idleSave);
   }
   const driverWasKnown = knownDriver !== undefined;
   let driver = knownDriver;
@@ -445,26 +519,26 @@ export async function runDraftSave(
       driver = await mls.stor.others.getDefaultDriver(project);
     } catch (err) {
       console.error('[studio] getDefaultDriver failed:', err);
-      return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
+      return done({ kind: 'failed', message: err instanceof Error ? err.message : String(err) });
     }
   }
   if (!isVmDriver(driver)) {
     if (!driverWasKnown) console.error('[studio] save request is not a VM project', project);
-    return idleSave;
+    return done(idleSave);
   }
   const asked = askDraftComment(panelMessages);
-  if (!asked) return idleSave;
-  if (!asked.ok) return { kind: 'error', message: panelMessages.emptyComment };
+  if (!asked) return done(idleSave);
+  if (!asked.ok) return done({ kind: 'error', message: panelMessages.emptyComment });
   await rememberLocalDraftText();
   const storFiles = mls.stor.files;
   if (!storFiles) {
     console.error('[studio] mls.stor.files is missing');
-    return { kind: 'failed', message: panelMessages.noFiles };
+    return done({ kind: 'failed', message: panelMessages.noFiles });
   }
   const files = collectEditedFiles(storFiles, project) as mls.stor.IFileInfo[];
   if (files.length === 0) {
     console.warn('[studio] no edited files to save');
-    return { kind: 'error', message: panelMessages.noFiles };
+    return done({ kind: 'error', message: panelMessages.noFiles });
   }
   const open: mls.stor.IFileInfo[] = [];
   let refused: string | null = null;
@@ -477,7 +551,7 @@ export async function runDraftSave(
     open.push(file);
   }
   if (open.length === 0) {
-    return { kind: 'error', message: refused ?? panelMessages.noFiles };
+    return done({ kind: 'error', message: refused ?? panelMessages.noFiles });
   }
   try {
     const saved = await saveToDraft(
@@ -490,10 +564,11 @@ export async function runDraftSave(
       console.warn('[studio] blocked files:', saved.blocked.map(draftFileLabel));
     }
     noteDraftPending();
-    return { kind: 'saved', blocked: saved.blocked as mls.stor.IFileInfo[], refused };
+    const wrote = open.length - saved.blocked.length > 0;
+    return done({ kind: 'saved', blocked: saved.blocked as mls.stor.IFileInfo[], refused }, wrote);
   } catch (err) {
     console.error('[studio] save failed:', err);
-    return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
+    return done({ kind: 'failed', message: err instanceof Error ? err.message : String(err) });
   }
 }
 

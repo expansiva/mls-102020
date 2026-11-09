@@ -10,12 +10,14 @@ import { AuraInitState, getAuraState, setAuraState } from '/_102020_/l2/aura/hel
 import {
   COLLAB_DRAFT_PENDING,
   COLLAB_DRAFT_SAVE_REQUEST,
+  COLLAB_DRAFT_SAVE_RESULT,
   deliverSharedEdit,
   listedOwner,
   noteSharedFile,
   subscribeDraftFiles,
   syncSharedEditNotice,
   type ICollabDraftPendingDetail,
+  type ICollabDraftSaveResultDetail,
   type IOtherDraftTouch,
   type ISharedEditSession,
 } from '/_102020_/l2/aura/studio/studioEditTool.js';
@@ -432,5 +434,146 @@ test('editing the front publishes the unsaved count, Save with the panel closed 
     host.mls.editor = previous.editor;
     host.window = previous.window;
     host.prompt = previous.prompt;
+  }
+});
+
+test('a compile error is blocked on the pending event, and Save with the panel closed reports it', async () => {
+  const host = globalThis as unknown as {
+    mls: {
+      actualProject?: number;
+      stor?: {
+        files?: Record<string, unknown>;
+        others?: { getDefaultDriver?: (project: number) => Promise<{ driverVersion: string }> };
+        setContents?: (files: unknown[], comment: string) => Promise<{ result: boolean }[]>;
+      };
+      events?: {
+        addListener: (level: number, type: string, fn: (ev: mls.events.IEvent) => void) => void;
+        removeEventListener: (levels: number[] | undefined, types: string[] | undefined, fn: (ev: mls.events.IEvent) => void) => void;
+      };
+      sites?: { getMode?: () => string };
+      common?: { crc?: { crc32: (value: string) => number } };
+      editor?: unknown;
+    };
+    window?: EventTarget;
+    prompt?: (message?: string) => string | null;
+  };
+  const previous = {
+    actualProject: host.mls.actualProject,
+    stor: host.mls.stor,
+    events: host.mls.events,
+    sites: host.mls.sites,
+    common: host.mls.common,
+    editor: host.mls.editor,
+    window: host.window,
+    prompt: host.prompt,
+  };
+  const listeners: IFileListener[] = [];
+  const pending: ICollabDraftPendingDetail[] = [];
+  const results: ICollabDraftSaveResultDetail[] = [];
+  const windowEvents = new EventTarget();
+  windowEvents.addEventListener(COLLAB_DRAFT_PENDING, (ev) => {
+    pending.push((ev as CustomEvent<ICollabDraftPendingDetail>).detail);
+  });
+  windowEvents.addEventListener(COLLAB_DRAFT_SAVE_RESULT, (ev) => {
+    results.push((ev as CustomEvent<ICollabDraftSaveResultDetail>).detail);
+  });
+  const file = (shortName: string, hasError: boolean): Record<string, unknown> => ({
+    project: 102047,
+    level: 2,
+    folder: 'aura',
+    shortName,
+    extension: '.ts',
+    status: 'changed',
+    hasError,
+    inLocalStorage: true,
+    getContent: async () => 'body',
+  });
+  const valid = file('keep', false);
+  const broken = file('broken', true);
+  const files: Record<string, unknown> = {};
+  host.mls.actualProject = 102047;
+  host.mls.stor = {
+    files,
+    others: { getDefaultDriver: async () => ({ driverVersion: '1.0.0-vm' }) },
+    setContents: async () => [{ result: true }],
+  };
+  host.mls.events = {
+    addListener(level, type, fn) { listeners.push({ level, type, fn }); },
+    removeEventListener(levels, types, fn) {
+      for (let index = listeners.length - 1; index >= 0; index -= 1) {
+        const item = listeners[index];
+        if (!item || item.fn !== fn) continue;
+        if (levels && !levels.includes(item.level)) continue;
+        if (types && !types.includes(item.type)) continue;
+        listeners.splice(index, 1);
+      }
+    },
+  };
+  host.mls.sites = { getMode: () => 'production' };
+  host.mls.common = {
+    crc: {
+      crc32: (value: string) => {
+        let hash = 0;
+        for (const ch of value) hash = (hash * 33 + ch.charCodeAt(0)) >>> 0;
+        return hash;
+      },
+    },
+  };
+  host.mls.editor = { getKeyModel: () => 'none', models: {} };
+  host.window = windowEvents;
+  host.prompt = () => 'ship it';
+  const doc = (globalThis as { document?: { documentElement?: { lang: string } } }).document;
+  const previousLang = doc?.documentElement?.lang;
+  if (doc?.documentElement) doc.documentElement.lang = 'en';
+  const studioHost: IStudioEditHost = {
+    host: { children: [] } as unknown as HTMLElement,
+    chromeHost: { children: [] } as unknown as HTMLElement,
+    studioMode: true,
+    editLevel: false,
+    level: 2,
+    panelVisible: false,
+  };
+  const fire = (): void => {
+    const fileEvent = listeners.find((item) => item.type === 'FileAction');
+    assert.ok(fileEvent, 'studio mode listens for a file edit');
+    fileEvent.fn({ level: fileEvent.level, type: 'FileAction', desc: '{}' });
+  };
+  try {
+    publishEditHost(studioHost);
+    files.page = valid;
+    files.broken = broken;
+    fire();
+    const withError = pending[pending.length - 1];
+    assert.equal(withError?.project, 102047);
+    assert.equal(withError?.count, 2);
+    assert.equal(withError?.blocked, 1);
+    broken.hasError = false;
+    fire();
+    const fixed = pending[pending.length - 1];
+    assert.equal(fixed?.count, 2);
+    assert.equal(fixed?.blocked, 0);
+    broken.hasError = true;
+    fire();
+    assert.equal(pending[pending.length - 1]?.blocked, 1);
+    windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_REQUEST, { detail: { project: 102047 } }));
+    for (let i = 0; i < 30 && results.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(results.length, 1);
+    assert.equal(results[0]?.project, 102047);
+    assert.equal(results[0]?.blocked, 1);
+    assert.equal(results[0]?.saved, true);
+    assert.equal(results[0]?.message, '1 file(s) with errors were not saved. Fix them.');
+  } finally {
+    publishEditHost(null);
+    host.mls.actualProject = previous.actualProject;
+    host.mls.stor = previous.stor;
+    host.mls.events = previous.events;
+    host.mls.sites = previous.sites;
+    host.mls.common = previous.common;
+    host.mls.editor = previous.editor;
+    host.window = previous.window;
+    host.prompt = previous.prompt;
+    if (doc?.documentElement && previousLang !== undefined) doc.documentElement.lang = previousLang;
   }
 });

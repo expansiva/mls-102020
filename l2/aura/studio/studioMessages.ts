@@ -737,10 +737,12 @@ const message_pt = {
   'inspect.noSource': 'Inspect: o código desta página não está carregado no editor.',
   'inspect.refused': 'Inspect: {reason}',
 
-  // Same three sentences as the draft panel (askComment, emptyComment, noFiles). es reads pt.
+  // Same sentences as the draft panel (askComment, emptyComment, noFiles). es reads pt.
   'draft.askComment': 'Mensagem',
   'draft.emptyComment': 'A mensagem é obrigatória.',
   'draft.noFiles': 'Nenhum arquivo tocado.',
+  'draft.saveFailed': 'O rascunho não foi salvo.',
+  'draft.blocked': '{n} arquivo(s) com erro não foram salvos. Corrija-os.',
 };
 /// **collab_i18n_end**
 
@@ -1445,6 +1447,8 @@ const message_en: typeof message_pt = {
   'draft.askComment': 'Message',
   'draft.emptyComment': 'A message is required.',
   'draft.noFiles': 'No touched files.',
+  'draft.saveFailed': 'The draft was not saved.',
+  'draft.blocked': '{n} file(s) with errors were not saved. Fix them.',
 };
 
 export type StudioMessageId = keyof typeof message_pt;
