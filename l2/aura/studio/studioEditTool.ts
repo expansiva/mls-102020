@@ -20,6 +20,7 @@ import {
 import { activeDraft, isVmDriver } from '/_102033_/l2/cbe/studioDraft.js';
 import {
   afterDraftSave,
+  COLLAB_DRAFT_SAVED,
   collectEditedFiles,
   loadPanel,
   rememberOpenedDraftText,
@@ -235,10 +236,14 @@ interface ICollabDraftSaveRequestDetail {
   project: number;
 }
 
+const DRAFT_PENDING_MS = 1000;
+
 let pendingUnsub: (() => void) | undefined;
 let pendingProject: number | null = null;
 let pendingCount: number | null = null;
 let pendingBlocked: number | null = null;
+let pendingTimer: ReturnType<typeof setInterval> | undefined;
+let pendingRefreshOn = false;
 let saveRequestOn = false;
 let draftBridgeOn = false;
 
@@ -300,12 +305,58 @@ function publishDraftPending(force: boolean): void {
   }
 }
 
+function onDraftPendingRefresh(): void {
+  publishDraftPending(false);
+}
+
+/** Recount while Studio is on. Undo, discard and the seeded CRC emit no file event. */
+function armDraftPendingRefresh(): void {
+  if (pendingTimer !== undefined || pendingRefreshOn) return;
+  const host = globalThis as {
+    window?: EventTarget;
+    setInterval?: (cb: () => void, ms: number) => ReturnType<typeof setInterval>;
+  };
+  const target = host.window;
+  const schedule = host.setInterval;
+  if (!target || typeof target.addEventListener !== 'function' || typeof schedule !== 'function') return;
+  target.addEventListener(COLLAB_DRAFT_SAVED, onDraftPendingRefresh);
+  target.addEventListener(COLLAB_DRAFT_SAVE_RESULT, onDraftPendingRefresh);
+  pendingRefreshOn = true;
+  pendingTimer = schedule(() => {
+    if (!pendingUnsub) return;
+    publishDraftPending(false);
+  }, DRAFT_PENDING_MS);
+}
+
+function disarmDraftPendingRefresh(): void {
+  const host = globalThis as {
+    window?: EventTarget;
+    clearInterval?: (id: ReturnType<typeof setInterval>) => void;
+  };
+  const target = host.window;
+  if (pendingRefreshOn && target && typeof target.removeEventListener === 'function') {
+    target.removeEventListener(COLLAB_DRAFT_SAVED, onDraftPendingRefresh);
+    target.removeEventListener(COLLAB_DRAFT_SAVE_RESULT, onDraftPendingRefresh);
+  }
+  pendingRefreshOn = false;
+  if (pendingTimer === undefined) return;
+  const clear = host.clearInterval;
+  if (typeof clear !== 'function') {
+    console.error('[studio] collabDraftPending timer was not cleared: clearInterval is missing');
+  } else {
+    clear(pendingTimer);
+  }
+  pendingTimer = undefined;
+}
+
 function startDraftPending(): void {
   if (pendingUnsub) return;
   pendingUnsub = subscribeDraftFiles(() => { publishDraftPending(false); });
+  armDraftPendingRefresh();
 }
 
 function stopDraftPending(): void {
+  disarmDraftPendingRefresh();
   pendingUnsub?.();
   pendingUnsub = undefined;
   pendingProject = null;

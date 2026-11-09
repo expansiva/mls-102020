@@ -7,6 +7,7 @@ import { installStudioModuleLock } from '/_102020_/l2/aura/studio/studioModuleLo
 import { rememberCollabMode, modeState } from '/_102033_/l2/cbe/studioDraft.js';
 import { publishEditHost, type IStudioEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { AuraInitState, getAuraState, setAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { COLLAB_DRAFT_SAVED } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import {
   COLLAB_DRAFT_PENDING,
   COLLAB_DRAFT_SAVE_REQUEST,
@@ -575,5 +576,139 @@ test('a compile error is blocked on the pending event, and Save with the panel c
     host.window = previous.window;
     host.prompt = previous.prompt;
     if (doc?.documentElement && previousLang !== undefined) doc.documentElement.lang = previousLang;
+  }
+});
+
+test('the unsaved count refreshes on a 1s timer without a file event, one timer only, cleared on stop', () => {
+  const host = globalThis as unknown as {
+    mls: {
+      actualProject?: number;
+      stor?: { files?: Record<string, unknown> };
+      events?: {
+        addListener: (level: number, type: string, fn: (ev: mls.events.IEvent) => void) => void;
+        removeEventListener: (levels: number[] | undefined, types: string[] | undefined, fn: (ev: mls.events.IEvent) => void) => void;
+      };
+      sites?: { getMode?: () => string };
+      editor?: unknown;
+    };
+    window?: EventTarget;
+    setInterval: typeof setInterval;
+    clearInterval: typeof clearInterval;
+  };
+  const previous = {
+    actualProject: host.mls.actualProject,
+    stor: host.mls.stor,
+    events: host.mls.events,
+    sites: host.mls.sites,
+    editor: host.mls.editor,
+    window: host.window,
+    setInterval: host.setInterval,
+    clearInterval: host.clearInterval,
+  };
+  const pending: ICollabDraftPendingDetail[] = [];
+  const windowEvents = new EventTarget();
+  windowEvents.addEventListener(COLLAB_DRAFT_PENDING, (ev) => {
+    pending.push((ev as CustomEvent<ICollabDraftPendingDetail>).detail);
+  });
+  const listeners: IFileListener[] = [];
+  const timers = new Map<number, { fn: () => void; ms: number }>();
+  let nextTimer = 1;
+  const page = {
+    project: 102047,
+    level: 2,
+    folder: 'aura',
+    shortName: 'page',
+    extension: '.ts',
+    status: 'changed',
+    hasError: false,
+    inLocalStorage: true,
+  };
+  const files: Record<string, unknown> = {};
+  host.mls.actualProject = 102047;
+  host.mls.stor = { files };
+  host.mls.events = {
+    addListener(level, type, fn) { listeners.push({ level, type, fn }); },
+    removeEventListener(levels, types, fn) {
+      for (let index = listeners.length - 1; index >= 0; index -= 1) {
+        const item = listeners[index];
+        if (!item || item.fn !== fn) continue;
+        if (levels && !levels.includes(item.level)) continue;
+        if (types && !types.includes(item.type)) continue;
+        listeners.splice(index, 1);
+      }
+    },
+  };
+  host.mls.sites = { getMode: () => 'production' };
+  host.mls.editor = { getKeyModel: () => 'none', models: {} };
+  host.window = windowEvents;
+  host.setInterval = ((fn: TimerHandler, ms?: number, ...args: unknown[]) => {
+    if (ms === 1000 && typeof fn === 'function') {
+      const id = nextTimer;
+      nextTimer += 1;
+      timers.set(id, { fn, ms });
+      return id as unknown as ReturnType<typeof setInterval>;
+    }
+    return previous.setInterval(fn, ms as number, ...args);
+  }) as typeof setInterval;
+  host.clearInterval = ((id?: ReturnType<typeof setInterval>) => {
+    if (typeof id === 'number' && timers.has(id)) {
+      timers.delete(id);
+      return;
+    }
+    previous.clearInterval(id as ReturnType<typeof setInterval>);
+  }) as typeof clearInterval;
+  const studioHost: IStudioEditHost = {
+    host: { children: [] } as unknown as HTMLElement,
+    chromeHost: { children: [] } as unknown as HTMLElement,
+    studioMode: true,
+    editLevel: false,
+    level: 2,
+    panelVisible: false,
+  };
+  const tick = (): void => {
+    const batch = [...timers.values()];
+    assert.equal(batch.length, 1);
+    assert.equal(batch[0]?.ms, 1000);
+    batch[0]?.fn();
+  };
+  try {
+    publishEditHost(studioHost);
+    publishEditHost(studioHost);
+    assert.equal(timers.size, 1);
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0]?.count, 0);
+    files.page = page;
+    tick();
+    assert.equal(pending[pending.length - 1]?.count, 1);
+    assert.equal(pending[pending.length - 1]?.project, 102047);
+    page.inLocalStorage = false;
+    tick();
+    assert.equal(pending[pending.length - 1]?.count, 0);
+    assert.equal(listeners.some((item) => item.type === 'FileAction'), true);
+    page.inLocalStorage = true;
+    windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, { detail: { project: 102047, paths: [] } }));
+    assert.equal(pending[pending.length - 1]?.count, 1);
+    page.inLocalStorage = false;
+    windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_RESULT, {
+      detail: { project: 102047, saved: true, blocked: 0 },
+    }));
+    assert.equal(pending[pending.length - 1]?.count, 0);
+    const beforeStop = pending.length;
+    publishEditHost(null);
+    assert.equal(timers.size, 0);
+    page.inLocalStorage = true;
+    assert.equal(pending.length, beforeStop);
+    publishEditHost(studioHost);
+    assert.equal(timers.size, 1);
+  } finally {
+    publishEditHost(null);
+    host.mls.actualProject = previous.actualProject;
+    host.mls.stor = previous.stor;
+    host.mls.events = previous.events;
+    host.mls.sites = previous.sites;
+    host.mls.editor = previous.editor;
+    host.window = previous.window;
+    host.setInterval = previous.setInterval;
+    host.clearInterval = previous.clearInterval;
   }
 });
