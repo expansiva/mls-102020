@@ -84,6 +84,37 @@ function dispatchDraftSaved(project: number, paths: string[]): void {
   }
 }
 
+/** Window event after Discard (whole draft or one module) was accepted. Not `collabDraftSaved`. */
+export const COLLAB_DRAFT_DISCARDED = 'collabDraftDiscarded';
+
+/** Window event while Discard is inside `saveL5File`, so that save does not reload the preview. */
+export const COLLAB_DRAFT_DISCARD_HOLD = 'collabDraftDiscardHold';
+
+export interface ICollabDraftDiscardedDetail {
+  project: number;
+}
+
+export interface ICollabDraftDiscardHoldDetail {
+  project: number;
+  hold: boolean;
+}
+
+function dispatchDraftNotice(
+  name: typeof COLLAB_DRAFT_DISCARDED | typeof COLLAB_DRAFT_DISCARD_HOLD,
+  detail: ICollabDraftDiscardedDetail | ICollabDraftDiscardHoldDetail,
+): void {
+  const target = (globalThis as { window?: EventTarget }).window;
+  if (!target || typeof target.dispatchEvent !== 'function') {
+    console.error(`[draftPanel] ${name} was not dispatched: window is missing`);
+    return;
+  }
+  try {
+    target.dispatchEvent(new CustomEvent(name, { detail }));
+  } catch (err) {
+    console.error(`[draftPanel] ${name} was not dispatched:`, err);
+  }
+}
+
 export interface IFetchResponse {
   status: number;
   json: () => Promise<unknown>;
@@ -455,6 +486,7 @@ export async function discard(
     }
   }
   requestDraftRecount(project);
+  dispatchDraftNotice(COLLAB_DRAFT_DISCARDED, { project });
   effects.reload();
 }
 
@@ -653,7 +685,16 @@ export async function discardModule(
   }
   const replaced = replaceModuleBlock(currentJson, publishedJson, project, moduleName);
   if (replaced.changed) {
-    const saved = await effects.saveL5File(project, 'config', replaced.content, `discard module ${moduleName}`);
+    // `saveL5File` emits `collabDraftSaved`. Hold that so the preview does not reload mid-discard.
+    dispatchDraftNotice(COLLAB_DRAFT_DISCARD_HOLD, { project, hold: true });
+    let saved = false;
+    try {
+      saved = await effects.saveL5File(project, 'config', replaced.content, `discard module ${moduleName}`);
+    } catch (err) {
+      dispatchDraftNotice(COLLAB_DRAFT_DISCARD_HOLD, { project, hold: false });
+      throw err;
+    }
+    dispatchDraftNotice(COLLAB_DRAFT_DISCARD_HOLD, { project, hold: false });
     if (!saved) return fail('saveL5File refused l5/config.json');
   }
   const failures: string[] = [];
@@ -676,6 +717,7 @@ export async function discardModule(
     console.error('[draftPanel]', `reloadLive: ${message}`);
     return fail(message);
   }
+  dispatchDraftNotice(COLLAB_DRAFT_DISCARDED, { project });
 }
 
 /** `DRAFT_CONFLICT: <files>` — the panel turns this into `syncConflict`. */

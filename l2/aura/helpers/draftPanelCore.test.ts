@@ -7,6 +7,8 @@ import {
   branchForSlug,
   callExec,
   collectEditedFiles,
+  COLLAB_DRAFT_DISCARD_HOLD,
+  COLLAB_DRAFT_DISCARDED,
   COLLAB_DRAFT_SAVED,
   discard,
   discardModule,
@@ -391,6 +393,115 @@ test('discardModule asks for a recount only after the local undo succeeds', asyn
       reloadLive: async () => { calls.push('reload'); },
     }, 102047, 'team-102047', 'orders', same, same);
     assert.deepEqual(calls, ['undo', 'recount:102047', 'reload']);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st62 s2: accepted discard emits one collabDraftDiscarded; a refusal emits none', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const notices: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, (ev) => {
+    const detail = (ev as CustomEvent<{ project: number }>).detail;
+    notices.push(`discarded:${detail.project}`);
+  });
+  host.window = windowEvents;
+  try {
+    await assert.rejects(
+      () => discard({
+        fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'BAD_DRAFT' }, 400),
+        reload: () => { notices.push('reload'); },
+        storFiles: {},
+        clearLocal: async () => {},
+      }, 102047, 'nope'),
+      /BAD_DRAFT/,
+    );
+    assert.deepEqual(notices, []);
+    await discard({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'discarded' }),
+      reload: () => { notices.push('reload'); },
+      storFiles: {},
+      clearLocal: async () => {},
+    }, 102047, 'team-102047');
+    assert.deepEqual(notices, ['discarded:102047', 'reload']);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st62 s2: discardModule holds across saveL5File and emits one collabDraftDiscarded only when it finishes', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const notices: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARD_HOLD, (ev) => {
+    const detail = (ev as CustomEvent<{ hold: boolean }>).detail;
+    notices.push(detail.hold ? 'hold:true' : 'hold:false');
+  });
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, (ev) => {
+    const detail = (ev as CustomEvent<{ project: number }>).detail;
+    notices.push(`discarded:${detail.project}`);
+  });
+  windowEvents.addEventListener(COLLAB_DRAFT_SAVED, () => { notices.push('saved'); });
+  host.window = windowEvents;
+  const current = moduleConfig('Draft orders', true);
+  const published = moduleConfig('Published orders', true);
+  const effects = {
+    fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'restored' }),
+    undoFile: async () => { notices.push('undo'); },
+    storFiles: {},
+    reloadLive: async () => { notices.push('reloadLive'); },
+  };
+  try {
+    await assert.rejects(
+      () => discardModule({
+        ...effects,
+        fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+        saveL5File: async () => { notices.push('save'); return true; },
+      }, 102047, 'team-102047', 'orders', current, published),
+      /draft\.not_owner/,
+    );
+    assert.deepEqual(notices, []);
+
+    await assert.rejects(
+      () => discardModule({
+        ...effects,
+        saveL5File: async () => {
+          notices.push('save');
+          windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, {
+            detail: { project: 102047, paths: ['l5/config.json'] },
+          }));
+          return false;
+        },
+      }, 102047, 'team-102047', 'orders', current, published),
+      /saveL5File refused/,
+    );
+    assert.deepEqual(notices, ['hold:true', 'save', 'saved', 'hold:false']);
+
+    notices.length = 0;
+    await assert.rejects(
+      () => discardModule({
+        ...effects,
+        saveL5File: async () => { notices.push('save'); throw new Error('config write down'); },
+      }, 102047, 'team-102047', 'orders', current, published),
+      /config write down/,
+    );
+    assert.deepEqual(notices, ['hold:true', 'save', 'hold:false']);
+
+    notices.length = 0;
+    await discardModule({
+      ...effects,
+      saveL5File: async () => {
+        notices.push('save');
+        windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, {
+          detail: { project: 102047, paths: ['l5/config.json'] },
+        }));
+        return true;
+      },
+    }, 102047, 'team-102047', 'orders', current, published);
+    assert.deepEqual(notices, ['hold:true', 'save', 'saved', 'hold:false', 'reloadLive', 'discarded:102047']);
   } finally {
     host.window = previous;
   }
