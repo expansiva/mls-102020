@@ -33,7 +33,7 @@ export function modelTextDiffers(file: IOpenModelFile, capturedText: string): bo
 }
 
 /** Text of this file's open model. Undefined when the model is not open or cannot be read. */
-function openModelText(file: IOpenModelFile): string | undefined {
+export function openModelText(file: IOpenModelFile): string | undefined {
   const slot = sourceModelSlot(file.extension);
   if (!slot) return undefined;
   const host = globalThis as {

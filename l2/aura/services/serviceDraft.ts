@@ -17,6 +17,7 @@ import {
     resetDraftDatabase,
     loadPanel,
     localEdits,
+    rememberOpenedDraftText,
     modulePendingCount,
     panelModel,
     draftCountText,
@@ -786,8 +787,18 @@ export class ServiceDraft102020 extends ServiceBase {
             return;
         }
         await this._readRelease();
+        await this._rememberLocalText();
         this._rememberBlockedReasons(project);
         this._phase = 'idle';
+    }
+
+    /** The unsaved count reads the open model, or the local copy when the model is closed. */
+    private async _rememberLocalText(): Promise<void> {
+        const opened: mls.stor.IFileInfo[] = [];
+        for (const file of Object.values(mls.stor.files)) {
+            if (file) opened.push(file);
+        }
+        await rememberOpenedDraftText(opened);
     }
 
     /** Sentence in the panel language. The reason itself has no language. */
@@ -847,6 +858,7 @@ export class ServiceDraft102020 extends ServiceBase {
         if (!project || !isVmDriver(this._driver)) return;
         const comment = this._askComment();
         if (!comment) return;
+        await this._rememberLocalText();
         const files = collectEditedFiles(mls.stor.files, project);
         if (files.length === 0) {
             console.warn('[serviceDraft] no edited files to save');

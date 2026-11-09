@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/draftPanelCore.test.ts" enhancement="_blank" />
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { draftContentCrc, rememberSentCrc } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import {
   afterDraftSave,
   branchForSlug,
@@ -31,8 +32,10 @@ import {
   draftFileTooBigMessage,
   formatDraftBlockReason,
   draftUploadLine,
+  rememberOpenedDraftText,
   saveToDraft,
   slugForBranch,
+  holdCapturedDraftText,
   storeCapturedDraftText,
   syncWithPublished,
   viewDiff,
@@ -924,9 +927,9 @@ test('afterDraftSave clears a deleted file and keeps changed and new after the s
     removeFromFiles: () => { changedCalls.push('removeFromFiles'); },
     resetRenameOrigin: () => { changedCalls.push('resetRenameOrigin'); },
   });
-  assert.deepEqual(changedCalls, ['setLocal:a:null']);
+  assert.deepEqual(changedCalls, []);
   assert.equal(changed.status, 'changed');
-  assert.equal(changed.inLocalStorage, false);
+  assert.equal(changed.inLocalStorage, true);
 
   const created = {
     project: 102047,
@@ -942,7 +945,7 @@ test('afterDraftSave clears a deleted file and keeps changed and new after the s
     resetRenameOrigin: () => {},
   });
   assert.equal(created.status, 'new');
-  assert.equal(created.inLocalStorage, false);
+  assert.equal(created.inLocalStorage, true);
 });
 
 test('afterDraftSave resets the origin of a renamed file and keeps it renamed', async () => {
@@ -960,9 +963,92 @@ test('afterDraftSave resets the origin of a renamed file and keeps it renamed', 
     removeFromFiles: () => { calls.push('removeFromFiles'); },
     resetRenameOrigin: (file) => { calls.push(`resetRenameOrigin:${file.shortName}`); },
   });
-  assert.deepEqual(calls, ['resetRenameOrigin:card', 'setLocal:card:null']);
+  assert.deepEqual(calls, ['resetRenameOrigin:card']);
   assert.equal(renamed.status, 'renamed');
-  assert.equal(renamed.inLocalStorage, false);
+  assert.equal(renamed.inLocalStorage, true);
+});
+
+test('save keeps the local row, and only a later edit is pending again', async () => {
+  const host = globalThis as { mls?: { common?: unknown; editor?: unknown } };
+  const previousCommon = host.mls?.common;
+  const previousEditor = host.mls?.editor;
+  if (!host.mls) host.mls = {};
+  host.mls.common = {
+    crc: {
+      crc32: (value: string) => {
+        let hash = 0;
+        for (const ch of value) hash = (hash * 33 + ch.charCodeAt(0)) >>> 0;
+        return hash;
+      },
+    },
+  };
+  let live = 'saved-body';
+  host.mls.editor = {
+    getKeyModel: (project: number, shortName: string, folder: string, level: number) =>
+      `${project}/${level}/${folder}/${shortName}`,
+    models: {
+      '102047/2/aura/page': { ts: { model: { getValue: () => live } } },
+    },
+  };
+  const saved = {
+    project: 102047,
+    status: 'changed' as const,
+    inLocalStorage: true as boolean | undefined,
+    level: 2,
+    folder: 'aura',
+    shortName: 'page',
+    extension: '.ts',
+  };
+  const tempObjects: Record<string, string> = { [fileKey(saved)]: 'saved-body' };
+  const deps = {
+    setLocal: async (_file: IPanelStorFile, content: null) => {
+      if (content === null) delete tempObjects[fileKey(saved)];
+    },
+    setCache: async () => {},
+    deleteModels: () => {},
+    removeFromFiles: () => {},
+    resetRenameOrigin: async () => {},
+  };
+  try {
+    holdCapturedDraftText(saved, 'saved-body');
+    await afterDraftSave(saved, deps);
+    assert.equal(tempObjects[fileKey(saved)], 'saved-body');
+    assert.equal(saved.inLocalStorage, true);
+    assert.equal(pendingFiles(localEdits({ page: saved }, 102047), []).length, 0);
+
+    live = 'saved-body\nmore';
+    assert.equal(pendingFiles(localEdits({ page: saved }, 102047), []).length, 1);
+
+    const reloaded = {
+      project: 102047,
+      inLocalStorage: true as boolean | undefined,
+      level: 2,
+      folder: 'aura',
+      shortName: 'kept',
+      extension: '.ts',
+      getContent: async () => 'from-draft',
+    };
+    tempObjects[fileKey(reloaded)] = 'from-draft';
+    rememberSentCrc(
+      { project: 102047, level: 2, folder: 'aura', shortName: 'kept', extension: '.ts' },
+      draftContentCrc('from-draft', '.ts'),
+    );
+    await rememberOpenedDraftText([reloaded]);
+    const pending = collectEditedFiles({ kept: reloaded }, 102047);
+    assert.equal(pendingFiles(localEdits({ kept: reloaded }, 102047), []).length, 0);
+    let resent = false;
+    await saveToDraft(pending, 'again', async () => {
+      resent = true;
+      return [];
+    }, async () => {});
+    assert.equal(resent, false);
+    assert.equal(tempObjects[fileKey(reloaded)], 'from-draft');
+  } finally {
+    if (host.mls) {
+      host.mls.common = previousCommon;
+      host.mls.editor = previousEditor;
+    }
+  }
 });
 
 test('storeCapturedDraftText writes the captured string and reports a failed write', async () => {
