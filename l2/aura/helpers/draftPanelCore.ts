@@ -146,6 +146,9 @@ export interface IPublishEffects {
   reload: () => void;
   /** Called only after a merge has landed and before `reload`. Absent → nothing is stored. */
   rememberPublished?: (record: IPublishedRecord) => void;
+  /** With `clearLocal`, a landed merge drops the browser copy of each path in `files`. */
+  storFiles?: Readonly<Record<string, IPanelStorFile | null | undefined>>;
+  clearLocal?: (file: IPanelStorFile) => Promise<void>;
 }
 
 export interface IReloadEffects {
@@ -328,8 +331,36 @@ export async function publish(
   const wait = await effects.waitForNew();
   if (!wait.changed) return fail(wait.reason);
   effects.rememberPublished?.({ files: [...files], at: Date.now() });
+  await clearTakenLocals(effects, project, files);
   effects.reload();
   return { outcome: 'merged' };
+}
+
+/** Browser rows of the paths this publish took. A clear that throws is logged; the reload still runs. */
+async function clearTakenLocals(
+  effects: IPublishEffects,
+  project: number,
+  files: readonly string[],
+): Promise<void> {
+  const clearLocal = effects.clearLocal;
+  const storFiles = effects.storFiles;
+  if (!clearLocal || !storFiles) return;
+  const taken = new Set(files);
+  const matches: IPanelStorFile[] = [];
+  for (const file of Object.values(storFiles)) {
+    if (!file || !isProjectFile(file, project) || !isStoredLocal(file)) continue;
+    if (!taken.has(shortPathOf(file))) continue;
+    matches.push(file);
+  }
+  matches.sort((a, b) => shortPathOf(a).localeCompare(shortPathOf(b)));
+  for (const file of matches) {
+    try {
+      await clearLocal(file);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[draftPanel]', `clearLocal ${shortPathOf(file)}: ${message}`);
+    }
+  }
 }
 
 /** Parses the published-record text the service stored. Invalid JSON or a wrong shape → null. */

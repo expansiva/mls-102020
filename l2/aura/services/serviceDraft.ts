@@ -964,6 +964,11 @@ export class ServiceDraft102020 extends ServiceBase {
                         console.error('[serviceDraft] sessionStorage write failed:', err);
                     }
                 },
+                storFiles: mls.stor.files,
+                clearLocal: async (file) => {
+                    await mls.stor.localStor.setContent(file as mls.stor.IFileInfo, { content: null });
+                    file.status = 'nochange';
+                },
             }, project, this._slug, comment, draftFiles);
             if (result.outcome === 'conflict') {
                 console.error('[serviceDraft] promote conflict:', result.files);

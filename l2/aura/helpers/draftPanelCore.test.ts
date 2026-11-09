@@ -831,6 +831,128 @@ test('publish does not remember on nothing, conflict, or failure', async () => {
   assert.deepEqual(remembered, []);
 });
 
+test('publish drops only the local rows it took, and only after the server lands', async () => {
+  const taken: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'a', level: 2, folder: '', extension: '.ts',
+  };
+  const alsoTaken: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'b', level: 2, folder: 'aura', extension: '.ts',
+  };
+  const kept: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'c', level: 2, folder: 'billing', extension: '.ts',
+  };
+  const storFiles = { a: taken, b: alsoTaken, c: kept };
+  const tempObjects: Record<string, string> = {
+    [fileKey(taken)]: 'body-a',
+    [fileKey(alsoTaken)]: 'body-b',
+    [fileKey(kept)]: 'body-c',
+  };
+  const calls: string[] = [];
+  const merged = await publish({
+    fetchImpl: async () => {
+      calls.push('promote');
+      return jsonResponse({ statusCode: 200, status: 'merged' });
+    },
+    waitForNew: async () => {
+      calls.push('wait');
+      return { changed: true, reason: 'released' };
+    },
+    rememberPublished: () => { calls.push('remember'); },
+    reload: () => { calls.push('reload'); },
+    storFiles,
+    clearLocal: async (file) => {
+      calls.push(`clear:${file.shortName}`);
+      file.inLocalStorage = false;
+      file.status = 'nochange';
+      delete tempObjects[fileKey(file)];
+    },
+  }, 102047, 'team-102047', 'ship', ['l2/a.ts', 'l2/aura/b.ts']);
+  assert.deepEqual(merged, { outcome: 'merged' });
+  assert.deepEqual(calls, ['promote', 'wait', 'remember', 'clear:a', 'clear:b', 'reload']);
+  assert.equal(taken.inLocalStorage, false);
+  assert.equal(alsoTaken.inLocalStorage, false);
+  assert.equal(kept.inLocalStorage, true);
+  assert.deepEqual(Object.keys(tempObjects), [fileKey(kept)]);
+
+  taken.inLocalStorage = true;
+  const failedRows: Record<string, string> = { [fileKey(taken)]: 'still' };
+  const failedCalls: string[] = [];
+  await assert.rejects(
+    () => publish({
+      fetchImpl: async () => jsonResponse({ statusCode: 409, code: 'MAIN_DIRTY' }, 409),
+      waitForNew: async () => { failedCalls.push('wait'); return { changed: true, reason: 'released' }; },
+      reload: () => { failedCalls.push('reload'); },
+      storFiles: { a: taken },
+      clearLocal: async (file) => {
+        failedCalls.push('clear');
+        delete failedRows[fileKey(file)];
+      },
+    }, 102047, 'team-102047', 'ship', ['l2/a.ts']),
+    /MAIN_DIRTY/,
+  );
+  assert.deepEqual(failedCalls, []);
+  assert.equal(failedRows[fileKey(taken)], 'still');
+  assert.equal(taken.inLocalStorage, true);
+
+  const waited: Record<string, string> = { [fileKey(taken)]: 'still' };
+  await assert.rejects(
+    () => publish({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
+      waitForNew: async () => ({ changed: false, reason: 'timeout' }),
+      reload: () => { failedCalls.push('reload'); },
+      storFiles: { a: taken },
+      clearLocal: async (file) => { delete waited[fileKey(file)]; },
+    }, 102047, 'team-102047', '', ['l2/a.ts']),
+    /timeout/,
+  );
+  assert.deepEqual(failedCalls, []);
+  assert.equal(waited[fileKey(taken)], 'still');
+});
+
+test('discardModule drops only that module local rows after the restore', async () => {
+  const orders: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'page', level: 2, folder: 'orders', extension: '.ts',
+  };
+  const billing: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'bill', level: 2, folder: 'billing', extension: '.ts',
+  };
+  const tempObjects: Record<string, string> = {
+    [fileKey(orders)]: 'orders-body',
+    [fileKey(billing)]: 'billing-body',
+  };
+  const same = moduleConfig('Published', true);
+  await discardModule({
+    fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'restored' }),
+    saveL5File: async () => { throw new Error('config should stay'); },
+    undoFile: async (file) => {
+      file.inLocalStorage = false;
+      file.status = 'nochange';
+      delete tempObjects[fileKey(file)];
+    },
+    storFiles: { orders, billing },
+    reloadLive: async () => {},
+  }, 102047, 'team-102047', 'orders', same, same);
+  assert.equal(orders.inLocalStorage, false);
+  assert.equal(billing.inLocalStorage, true);
+  assert.equal(tempObjects[fileKey(orders)], undefined);
+  assert.equal(tempObjects[fileKey(billing)], 'billing-body');
+
+  const keptRows: Record<string, string> = { [fileKey(orders)]: 'orders-body' };
+  orders.inLocalStorage = true;
+  await assert.rejects(
+    () => discardModule({
+      fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+      saveL5File: async () => true,
+      undoFile: async (file) => { delete keptRows[fileKey(file)]; },
+      storFiles: { orders },
+      reloadLive: async () => { throw new Error('reload should not run'); },
+    }, 102047, 'team-102047', 'orders', same, same),
+    /draft\.not_owner/,
+  );
+  assert.equal(keptRows[fileKey(orders)], 'orders-body');
+  assert.equal(orders.inLocalStorage, true);
+});
+
 test('readPublished returns the record, and invalid JSON is null', () => {
   assert.equal(readPublished(null), null);
   assert.equal(readPublished('not json'), null);
