@@ -25,6 +25,7 @@ import {
   panelModel,
   pendingFiles,
   publish,
+  siteUpdateClock,
   visibleTreeRows,
   readPublished,
   saveDefaultDraft,
@@ -157,18 +158,77 @@ test('409 DRAFT_CONFLICT returns the files and does not reload', async () => {
   assert.deepEqual(calls, []);
 });
 
-test('waitForNew changed:false is an error and does not reload', async () => {
+test('siteUpdateClock is mm:ss', () => {
+  assert.equal(siteUpdateClock(0), '00:00');
+  assert.equal(siteUpdateClock(59_999), '00:59');
+  assert.equal(siteUpdateClock(60_000), '01:00');
+  assert.equal(siteUpdateClock(-5), '00:00');
+  assert.equal(siteUpdateClock(Number.NaN), '00:00');
+});
+
+test('merged clears the local copy and enables buttons before a hanging release wait', async () => {
+  const file: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'a', level: 2, folder: '', extension: '.ts',
+  };
+  let resolveWait: (result: IDraftWaitResult) => void = () => {};
+  const wait = new Promise<IDraftWaitResult>((resolve) => { resolveWait = resolve; });
+  let releaseHung: () => void = () => {};
+  const hung = new Promise<void>((resolve) => { releaseHung = resolve; });
+  let buttons: 'busy' | 'active' = 'busy';
+  const calls: string[] = [];
+  const pending = publish({
+    fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
+    waitForNew: async () => {
+      calls.push('wait');
+      releaseHung();
+      return wait;
+    },
+    rememberPublished: () => { calls.push('remember'); },
+    onMerged: () => {
+      buttons = 'active';
+      calls.push('merged');
+    },
+    reload: () => { calls.push('reload'); },
+    storFiles: { a: file },
+    clearLocal: async (row) => {
+      calls.push('clear');
+      row.inLocalStorage = false;
+      row.status = 'nochange';
+    },
+  }, 102047, 'team-102047', 'ship', ['l2/a.ts']);
+
+  await hung;
+  assert.equal(file.inLocalStorage, false);
+  assert.equal(file.status, 'nochange');
+  assert.equal(buttons, 'active');
+  assert.deepEqual(calls, ['remember', 'clear', 'merged', 'wait']);
+
+  resolveWait({ changed: true, reason: 'released' });
+  assert.deepEqual(await pending, { outcome: 'merged' });
+  assert.deepEqual(calls, ['remember', 'clear', 'merged', 'wait', 'reload']);
+});
+
+test('timeout and build-failed report that the draft was published and do not reload', async () => {
   for (const reason of ['timeout', 'build-failed'] as const) {
+    const file: IPanelStorFile = {
+      project: 102047, inLocalStorage: true, shortName: 'a', level: 2, folder: '', extension: '.ts',
+    };
     const calls: string[] = [];
-    await assert.rejects(
-      () => publish({
-        fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
-        waitForNew: async () => { calls.push('waitForNew'); return { changed: false, reason }; },
-        reload: () => { calls.push('reload'); },
-      }, 102047, 'team-102047', ''),
-      (err: unknown) => err instanceof Error && err.message === reason,
-    );
-    assert.deepEqual(calls, ['waitForNew']);
+    const result = await publish({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
+      waitForNew: async () => { calls.push('wait'); return { changed: false, reason }; },
+      rememberPublished: () => { calls.push('remember'); },
+      onMerged: () => { calls.push('merged'); },
+      reload: () => { calls.push('reload'); },
+      storFiles: { a: file },
+      clearLocal: async (row) => {
+        calls.push('clear');
+        row.inLocalStorage = false;
+      },
+    }, 102047, 'team-102047', 'ship', ['l2/a.ts']);
+    assert.deepEqual(result, { outcome: 'release-pending', reason });
+    assert.equal(file.inLocalStorage, false);
+    assert.deepEqual(calls, ['remember', 'clear', 'merged', 'wait']);
   }
 });
 
@@ -939,7 +999,7 @@ test('localEdits is empty, one file, or many, and a deletion counts', () => {
   ]);
 });
 
-test('publish merged remembers the files after the wait and before reload', async () => {
+test('publish merged remembers the files before the release wait', async () => {
   const calls: string[] = [];
   let recorded: { files: string[]; at: number } | undefined;
   const files = ['l2/a.ts', 'l2/b.ts'];
@@ -961,7 +1021,7 @@ test('publish merged remembers the files after the wait and before reload', asyn
   }, 102047, 'team-102047', 'ship it', files);
   const after = Date.now();
   assert.deepEqual(result, { outcome: 'merged' });
-  assert.deepEqual(calls, ['promote', 'waitForNew', 'remember', 'reload']);
+  assert.deepEqual(calls, ['promote', 'remember', 'waitForNew', 'reload']);
   assert.deepEqual(recorded?.files, files);
   assert.ok(recorded !== undefined && recorded.at >= before && recorded.at <= after);
   files.push('l2/c.ts');
@@ -1005,16 +1065,6 @@ test('publish does not remember on nothing, conflict, or failure', async () => {
     ),
     /MAIN_DIRTY/,
   );
-
-  await assert.rejects(
-    () => publish({
-      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
-      waitForNew: async () => ({ changed: false, reason: 'timeout' }),
-      rememberPublished: () => { remembered.push('remember'); },
-      reload: () => { throw new Error('reload should not run'); },
-    }, 102047, 'team-102047', '', ['l2/a.ts']),
-    /timeout/,
-  );
   assert.deepEqual(remembered, []);
 });
 
@@ -1055,7 +1105,7 @@ test('publish drops only the local rows it took, and only after the server lands
     },
   }, 102047, 'team-102047', 'ship', ['l2/a.ts', 'l2/aura/b.ts']);
   assert.deepEqual(merged, { outcome: 'merged' });
-  assert.deepEqual(calls, ['promote', 'wait', 'remember', 'clear:a', 'clear:b', 'reload']);
+  assert.deepEqual(calls, ['promote', 'remember', 'clear:a', 'clear:b', 'wait', 'reload']);
   assert.equal(taken.inLocalStorage, false);
   assert.equal(alsoTaken.inLocalStorage, false);
   assert.equal(kept.inLocalStorage, true);
@@ -1082,18 +1132,20 @@ test('publish drops only the local rows it took, and only after the server lands
   assert.equal(taken.inLocalStorage, true);
 
   const waited: Record<string, string> = { [fileKey(taken)]: 'still' };
-  await assert.rejects(
-    () => publish({
-      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
-      waitForNew: async () => ({ changed: false, reason: 'timeout' }),
-      reload: () => { failedCalls.push('reload'); },
-      storFiles: { a: taken },
-      clearLocal: async (file) => { delete waited[fileKey(file)]; },
-    }, 102047, 'team-102047', '', ['l2/a.ts']),
-    /timeout/,
-  );
-  assert.deepEqual(failedCalls, []);
-  assert.equal(waited[fileKey(taken)], 'still');
+  const timeoutCalls: string[] = [];
+  const pending = await publish({
+    fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
+    waitForNew: async () => ({ changed: false, reason: 'timeout' }),
+    reload: () => { timeoutCalls.push('reload'); },
+    storFiles: { a: taken },
+    clearLocal: async (file) => {
+      timeoutCalls.push('clear');
+      delete waited[fileKey(file)];
+    },
+  }, 102047, 'team-102047', '', ['l2/a.ts']);
+  assert.deepEqual(pending, { outcome: 'release-pending', reason: 'timeout' });
+  assert.deepEqual(timeoutCalls, ['clear']);
+  assert.equal(waited[fileKey(taken)], undefined);
 });
 
 test('discardModule drops only that module local rows after the restore', async () => {

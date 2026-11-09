@@ -27,6 +27,7 @@ import {
     visibleTreeRows,
     publish,
     readPublished,
+    siteUpdateClock,
     saveDefaultDraft,
     applyDraftUpload,
     COLLAB_DRAFT_UPLOAD,
@@ -137,6 +138,11 @@ const message_en = {
     noPublished: 'Nothing published from this browser yet.',
     syncPublished: 'Bring in published changes',
     syncConflict: 'Conflicts with the published version in: {files}. Nothing was changed.',
+    siteUpdating: 'Published. Updating the site… ({time})',
+    releasePending: 'The draft was published, but the site has not been updated yet: {reason}.',
+    releaseTimeout: 'the update timed out',
+    releaseBuildFailed: 'the site build failed',
+    reloadSite: 'Reload',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -215,6 +221,11 @@ const messages: Record<string, MessageType> = {
         noPublished: 'Nada publicado a partir deste navegador.',
         syncPublished: 'Trazer o publicado',
         syncConflict: 'Conflito com o publicado em: {files}. Nada foi alterado.',
+        siteUpdating: 'Publicado. Atualizando o site… ({time})',
+        releasePending: 'O rascunho foi publicado, mas o site ainda não foi atualizado: {reason}.',
+        releaseTimeout: 'a atualização expirou',
+        releaseBuildFailed: 'a construção do site falhou',
+        reloadSite: 'Recarregar',
     },
     es: {
         svcTitle: 'Borrador',
@@ -290,6 +301,11 @@ const messages: Record<string, MessageType> = {
         noPublished: 'Nada publicado desde este navegador.',
         syncPublished: 'Traer lo publicado',
         syncConflict: 'Conflicto con lo publicado en: {files}. No se cambió nada.',
+        siteUpdating: 'Publicado. Actualizando el sitio… ({time})',
+        releasePending: 'El borrador se publicó, pero el sitio todavía no se actualizó: {reason}.',
+        releaseTimeout: 'la actualización expiró',
+        releaseBuildFailed: 'la construcción del sitio falló',
+        reloadSite: 'Recargar',
     },
 };
 /// **collab_i18n_end**
@@ -447,7 +463,7 @@ export class ServiceDraft102020 extends ServiceBase {
     };
 
     @state() private msg: MessageType = message_en;
-    @state() private _phase: 'loading' | 'idle' | 'publishing' | 'error' = 'loading';
+    @state() private _phase: 'loading' | 'idle' | 'publishing' | 'updating' | 'error' = 'loading';
     @state() private _driverChecked = false;
     @state() private _driver: IDriverView | null = null;
     @state() private _slug = '';
@@ -456,6 +472,8 @@ export class ServiceDraft102020 extends ServiceBase {
     @state() private _others: IListedDraft[] = [];
     @state() private _blocked: mls.stor.IFileInfo[] = [];
     @state() private _error = '';
+    @state() private _offerReload = false;
+    @state() private _updateElapsed = 0;
     @state() private _errorFiles: string[] = [];
     @state() private _note = '';
     @state() private _ping: IDraftPing | null = null;
@@ -466,6 +484,7 @@ export class ServiceDraft102020 extends ServiceBase {
     private _projectId: number | undefined;
     private _saveHost: IDraftSaveHost | null = null;
     private _pingTimer = 0;
+    private _updateStarted = 0;
     private _unsubDraftFiles: (() => void) | undefined;
     @state() private _upload: IDraftUploadProgress | null = null;
     @state() private _open = new Set<string>(['draft']);
@@ -571,7 +590,9 @@ export class ServiceDraft102020 extends ServiceBase {
                 ${uploadLine ? html`<p class="px-4 py-2 text-amber-700 dark:text-amber-300">${uploadLine}</p>` : nothing}
                 ${this._phase === 'loading' ? html`<p class="px-4 py-4">${this.msg.loading}</p>` : nothing}
                 ${this._phase === 'publishing' ? html`<p class="px-4 py-4">${this._pingText()}</p>` : nothing}
+                ${this._phase === 'updating' ? html`<p class="px-4 py-4">${this.msg.siteUpdating.replace('{time}', siteUpdateClock(this._updateElapsed))}</p>` : nothing}
                 ${this._phase === 'error' ? html`<p class="px-4 py-4 text-amber-700 dark:text-amber-300">${this._error}</p>` : nothing}
+                ${this._offerReload ? html`<div class="px-4 pb-4"><button type="button" class=${BUTTON} @click=${() => { location.reload(); }}>${this.msg.reloadSite}</button></div>` : nothing}
                 ${this._errorFiles.length
                     ? html`<div class="flex flex-col gap-0.5 px-4">${this._errorFiles.map((file) => html`<div>${file}</div>`)}</div>`
                     : nothing}
@@ -752,9 +773,10 @@ export class ServiceDraft102020 extends ServiceBase {
     }
 
     private async _load(keepBlocked = false): Promise<void> {
-        if (this._phase === 'publishing') return;
+        if (this._phase === 'publishing' || this._phase === 'updating') return;
         if (!keepBlocked) this._blocked = [];
         this._error = '';
+        this._offerReload = false;
         this._errorFiles = [];
         this._note = '';
         this._diffText = null;
@@ -936,6 +958,9 @@ export class ServiceDraft102020 extends ServiceBase {
         if (!comment) return;
         this._error = '';
         this._errorFiles = [];
+        this._offerReload = false;
+        this._updateStarted = 0;
+        this._updateElapsed = 0;
         this._ping = null;
         this._phase = 'publishing';
         this._startPing();
@@ -947,9 +972,17 @@ export class ServiceDraft102020 extends ServiceBase {
                     onTick: (ping) => {
                         this._ping = readPing(ping);
                         this._releaseId = releaseIdOf(ping);
+                        if (this._phase === 'updating' && this._updateStarted > 0) {
+                            this._updateElapsed = Date.now() - this._updateStarted;
+                        }
                     },
                 }),
                 reload: () => location.reload(),
+                onMerged: () => {
+                    this._updateStarted = Date.now();
+                    this._updateElapsed = 0;
+                    this._phase = 'updating';
+                },
                 rememberPublished: (record) => {
                     try {
                         sessionStorage.setItem(publishedStorageKey(project), JSON.stringify(record));
@@ -973,6 +1006,14 @@ export class ServiceDraft102020 extends ServiceBase {
             if (result.outcome === 'nothing') {
                 console.warn('[serviceDraft] nothing to promote');
                 this._error = this.msg.nothingToPromote;
+                this._phase = 'error';
+                return;
+            }
+            if (result.outcome === 'release-pending') {
+                console.error('[serviceDraft] published, site not updated:', result.reason);
+                const reason = result.reason === 'timeout' ? this.msg.releaseTimeout : this.msg.releaseBuildFailed;
+                this._error = this.msg.releasePending.replace('{reason}', reason);
+                this._offerReload = true;
                 this._phase = 'error';
                 return;
             }

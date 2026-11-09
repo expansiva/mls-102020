@@ -169,17 +169,29 @@ export type ExecResult = IExecSuccess | IExecFailure;
 export type PublishResult =
   | { outcome: 'merged' }
   | { outcome: 'nothing' }
-  | { outcome: 'conflict'; files: string[] };
+  | { outcome: 'conflict'; files: string[] }
+  /** The merge landed and the local copies are gone. The release did not. */
+  | { outcome: 'release-pending'; reason: 'timeout' | 'build-failed' };
 
 export interface IPublishEffects {
   fetchImpl: FetchImpl;
   waitForNew: () => Promise<IDraftWaitResult>;
   reload: () => void;
-  /** Called only after a merge has landed and before `reload`. Absent → nothing is stored. */
+  /** Called once the merge is stored, before the release wait. Absent → nothing is stored. */
   rememberPublished?: (record: IPublishedRecord) => void;
   /** With `clearLocal`, a landed merge drops the browser copy of each path in `files`. */
   storFiles?: Readonly<Record<string, IPanelStorFile | null | undefined>>;
   clearLocal?: (file: IPanelStorFile) => Promise<void>;
+  /** After the local copies are cleared, before the release wait. The panel enables its buttons here. */
+  onMerged?: () => void;
+}
+
+/** `mm:ss` for the site-update line. A negative or non-finite value reads as `00:00`. */
+export function siteUpdateClock(elapsedMs: number): string {
+  const total = Number.isFinite(elapsedMs) && elapsedMs > 0 ? Math.floor(elapsedMs / 1000) : 0;
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 export interface IReloadEffects {
@@ -359,12 +371,20 @@ export async function publish(
   if (result.status === 'nothing_to_promote') return { outcome: 'nothing' };
   if (result.status !== 'merged') return fail(result.status ?? 'promote failed');
 
-  const wait = await effects.waitForNew();
-  if (!wait.changed) return fail(wait.reason);
+  // The merge is the publish. The release is a later step and must not hold the local copies.
   effects.rememberPublished?.({ files: [...files], at: Date.now() });
   await clearTakenLocals(effects, project, files);
-  effects.reload();
-  return { outcome: 'merged' };
+  effects.onMerged?.();
+  const wait = await effects.waitForNew();
+  if (wait.changed) {
+    effects.reload();
+    return { outcome: 'merged' };
+  }
+  console.error('[draftPanel]', `published, site not updated: ${wait.reason}`);
+  if (wait.reason === 'timeout' || wait.reason === 'build-failed') {
+    return { outcome: 'release-pending', reason: wait.reason };
+  }
+  return fail(wait.reason);
 }
 
 /** Browser rows of the paths this publish took. A clear that throws is logged; the reload still runs. */

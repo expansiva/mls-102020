@@ -132,7 +132,7 @@ test('panel buttons use the Studio BUTTON classes', () => {
         assert.ok(mine.includes('disabled:cursor-not-allowed'), `${name} shows a disabled cursor`);
     }
     assert.doesNotMatch(DRAFT, /actionClass/);
-    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON\}/g)].length, 9);
+    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON\}/g)].length, 10);
     assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON_PRIMARY\}/g)].length, 1);
     const actions = methodOf(DRAFT, 'private _renderActions');
     const primaryAt = actions.indexOf('class=${BUTTON_PRIMARY}');
@@ -206,6 +206,36 @@ test('view, try and the project default go through the core', () => {
     assert.match(DRAFT, /saveDefaultDraft\(/);
     assert.match(DRAFT, /<pre class="diff">/);
     assert.doesNotMatch(DRAFT, /['"]\/exec['"]/);
+});
+
+test('a merged publish leaves the busy phase and a failed release offers reload', () => {
+    const handler = methodOf(DRAFT, 'private async _onPublish');
+    const mergedAt = handler.indexOf('onMerged:');
+    const phaseAt = handler.indexOf("this._phase = 'updating'");
+    assert.ok(mergedAt !== -1 && phaseAt > mergedAt, 'the buttons leave publishing when the merge lands');
+    assert.match(handler, /outcome === 'release-pending'/);
+    assert.match(handler, /this\.msg\.releasePending\.replace\('\{reason\}'/);
+    assert.match(handler, /this\.msg\.releaseTimeout/);
+    assert.match(handler, /this\.msg\.releaseBuildFailed/);
+    assert.match(handler, /this\._offerReload = true/);
+    assert.match(handler, /console\.error\(/);
+    const panel = methodOf(DRAFT, 'private _renderPanel');
+    const busyAt = panel.indexOf("this._phase === 'loading' || this._phase === 'publishing'");
+    assert.notEqual(busyAt, -1);
+    assert.doesNotMatch(panel.slice(busyAt, panel.indexOf('\n', busyAt)), /updating/);
+    assert.match(panel, /siteUpdateClock\(this\._updateElapsed\)/);
+    assert.match(panel, /this\.msg\.siteUpdating/);
+    assert.match(panel, /this\.msg\.reloadSite/);
+    assert.match(panel, /location\.reload\(\)/);
+    assert.match(DRAFT, /siteUpdating: 'Published\. Updating the site… \(\{time\}\)'/);
+    assert.match(DRAFT, /siteUpdating: 'Publicado\. Atualizando o site… \(\{time\}\)'/);
+    assert.match(DRAFT, /siteUpdating: 'Publicado\. Actualizando el sitio… \(\{time\}\)'/);
+    assert.match(DRAFT, /The draft was published, but the site has not been updated yet/);
+    assert.match(DRAFT, /O rascunho foi publicado, mas o site ainda não foi atualizado/);
+    assert.match(DRAFT, /El borrador se publicó, pero el sitio todavía no se actualizó/);
+    assert.match(DRAFT, /reloadSite: 'Reload'/);
+    assert.match(DRAFT, /reloadSite: 'Recarregar'/);
+    assert.match(DRAFT, /reloadSite: 'Recargar'/);
 });
 
 test('the three blocks come from localEdits, panelModel and readPublished', () => {
