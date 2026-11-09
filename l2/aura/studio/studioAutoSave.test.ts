@@ -1,218 +1,30 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioAutoSave.test.ts" enhancement="_blank" />
 import assert from 'node:assert/strict';
-import test, { mock } from 'node:test';
-import {
-  autosaveMessage,
-  buildAutoSaveStorFile,
-  createAutoSaver,
-  pendingFiles,
-  recordSentContent,
-  type IAutoSaveStorFile,
-} from '/_102020_/l2/aura/studio/studioAutoSave.js';
+import test from 'node:test';
+import { modelTextDiffers } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
-function file(over: Partial<IAutoSaveStorFile> = {}): IAutoSaveStorFile {
-  return buildAutoSaveStorFile({
-    project: 7,
-    level: 1,
-    shortName: 'order',
-    folder: 'usecases',
-    extension: '.ts',
-    status: 'changed',
-    hasError: false,
-    ...over,
-  });
-}
+const file = {
+  project: 7,
+  level: 1,
+  shortName: 'order',
+  folder: 'usecases',
+  extension: '.ts',
+};
 
-test('pending files are dirty l1–l3 and l5 of this project, including defs and tests', () => {
-  const keepTs = file();
-  const keepDefs = file({ shortName: 'order', extension: '.defs.ts', folder: '' });
-  const keepTest = file({ shortName: 'order', extension: '.test.ts', level: 2, folder: 'aura' });
-  const keepLess = file({ shortName: 'order', extension: '.less', level: 3, status: 'new' });
-  const keepL5 = file({ shortName: 'config', extension: '.json', level: 5, folder: '' });
-  const keepDeleted = file({ shortName: 'gone', status: 'deleted', folder: '' });
-  const keepDeletedWithError = file({ shortName: 'goneBroken', status: 'deleted', hasError: true, folder: '' });
-  const error = file({ shortName: 'broken', hasError: true });
-  const clean = file({ shortName: 'clean', status: 'nochange' });
-  const otherProject = file({ shortName: 'other', project: 8 });
-  const declaration = file({ shortName: 'types', extension: '.d.ts' });
-  const declarationViaShortName = file({ shortName: 'types.d', extension: '.ts' });
-  const level4 = file({ shortName: 'page', level: 4, folder: 'app' });
-
-  const pending = pendingFiles([
-    keepTs, error, clean, otherProject, declaration, keepDefs, keepTest, keepLess, keepL5,
-    declarationViaShortName, level4, keepDeleted, keepDeletedWithError,
-  ], 7);
-
-  assert.deepEqual(pending, [keepTs, keepDefs, keepTest, keepLess, keepL5, keepDeleted, keepDeletedWithError]);
-  assert.equal(pending.includes(error), false);
-});
-
-test('a sent file stays out of pending until its content leaves the last send', () => {
-  const sent = file({ status: 'changed', inLocalStorage: false, shortName: 'order', folder: 'usecases' });
-  const created = file({ status: 'new', inLocalStorage: false, shortName: 'order', folder: 'usecases' });
-  const renamed = file({ status: 'renamed', inLocalStorage: false, shortName: 'order', folder: 'usecases' });
-  const removed = file({ status: 'deleted', inLocalStorage: false, shortName: 'gone', folder: '' });
-  const host = globalThis as {
-    mls?: {
-      editor?: unknown;
-      common?: unknown;
-    };
-  };
-  const previousEditor = host.mls?.editor;
-  const previousCommon = host.mls?.common;
-  let text = 'hi';
-  const open = { originalCRC: 'published', model: { getValue: () => text } };
+test('modelTextDiffers is true only when the open model moved off the captured text', () => {
+  const host = globalThis as { mls?: { editor?: unknown } };
+  const previous = host.mls?.editor;
+  let text = 'captured';
   if (!host.mls) host.mls = {};
   host.mls.editor = {
-    getKeyModel: (project: number, shortName: string, folder: string, level: number) =>
-      `${project}/${level}/${folder}/${shortName}`,
-    models: {
-      '7/1/usecases/order': { ts: open },
-    },
+    getKeyModel: () => '7/1/usecases/order',
+    models: { '7/1/usecases/order': { ts: { model: { getValue: () => text } } } },
   };
-  host.mls.common = { crc: { crc32: (value: string) => value.length } };
   try {
-    recordSentContent(sent);
-    assert.equal(open.originalCRC, 'published');
-    assert.deepEqual(pendingFiles([sent, created, renamed], 7), []);
-    text = 'hello';
-    assert.deepEqual(pendingFiles([sent], 7), [sent]);
-    assert.deepEqual(pendingFiles([created], 7), [created]);
-    assert.deepEqual(pendingFiles([renamed], 7), [renamed]);
-    assert.deepEqual(pendingFiles([removed], 7), [removed]);
-    text = 'hi';
-    assert.deepEqual(pendingFiles([sent], 7), []);
-    assert.equal(sent.status, 'changed');
-    assert.equal(open.originalCRC, 'published');
-    const alreadyOnDraft = file({ status: 'changed', inLocalStorage: false, shortName: 'remote', folder: '' });
-    assert.deepEqual(pendingFiles([alreadyOnDraft], 7), []);
+    assert.equal(modelTextDiffers(file, 'captured'), false);
+    text = 'edited-after';
+    assert.equal(modelTextDiffers(file, 'captured'), true);
   } finally {
-    if (!host.mls) return;
-    host.mls.editor = previousEditor;
-    host.mls.common = previousCommon;
-  }
-});
-
-test('a sent file that returns to the published text is pending until that text is sent', () => {
-  const sent = file({ status: 'changed', inLocalStorage: false, shortName: 'rollback', folder: 'usecases' });
-  const host = globalThis as {
-    mls?: { editor?: unknown; common?: unknown };
-  };
-  const previousEditor = host.mls?.editor;
-  const previousCommon = host.mls?.common;
-  let text = 'edited';
-  const open = { originalCRC: 'published', model: { getValue: () => text } };
-  if (!host.mls) host.mls = {};
-  host.mls.editor = {
-    getKeyModel: () => '7/1/usecases/rollback',
-    models: { '7/1/usecases/rollback': { ts: open } },
-  };
-  host.mls.common = { crc: { crc32: (value: string) => value.length } };
-  try {
-    recordSentContent(sent);
-    assert.deepEqual(pendingFiles([sent], 7), []);
-    text = 'published';
-    sent.status = 'nochange';
-    assert.deepEqual(pendingFiles([sent], 7), [sent]);
-    recordSentContent(sent);
-    assert.deepEqual(pendingFiles([sent], 7), []);
-    assert.equal(sent.status, 'nochange');
-    assert.equal(open.originalCRC, 'published');
-  } finally {
-    if (!host.mls) return;
-    host.mls.editor = previousEditor;
-    host.mls.common = previousCommon;
-  }
-});
-
-test('the auto-save comment names every file', () => {
-  const files = [
-    file({ shortName: 'order' }),
-    file({ level: 2, folder: 'aura', shortName: 'panel', extension: '.ts' }),
-  ];
-  assert.equal(
-    autosaveMessage(files),
-    'autosave: 2 arquivo(s): l1/usecases/order.ts, l2/aura/panel.ts',
-  );
-});
-
-test('five notifies in a burst become one send, 3s after the last one', async () => {
-  mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    const sent: number[] = [];
-    const saver = createAutoSaver({
-      debounceMs: 3000,
-      now: () => 0,
-      hasDraft: () => true,
-      onError: () => {},
-      send: async (batch) => {
-        sent.push(batch.length);
-      },
-    });
-    const files = [1, 2, 3, 4, 5].map((n) => file({ shortName: `f${n}`, folder: '' }));
-    for (const item of files) saver.notify(item);
-    mock.timers.tick(2999);
-    assert.deepEqual(sent, []);
-    saver.notify(files[0]);
-    mock.timers.tick(2999);
-    assert.deepEqual(sent, []);
-    mock.timers.tick(1);
-    assert.deepEqual(sent, [5]);
-  } finally {
-    mock.timers.reset();
-  }
-});
-
-test('a failed send keeps the files pending and calls onError', async () => {
-  mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    const reasons: unknown[] = [];
-    const batches: IAutoSaveStorFile[][] = [];
-    let fail = true;
-    const saver = createAutoSaver({
-      debounceMs: 3000,
-      now: () => 0,
-      hasDraft: () => true,
-      onError: (reason) => {
-        reasons.push(reason);
-      },
-      send: async (batch) => {
-        if (fail) throw new Error('save refused');
-        batches.push([...batch]);
-      },
-    });
-    const pending = file({ shortName: 'order' });
-    saver.notify(pending);
-    await saver.flush();
-    assert.equal(reasons.length, 1);
-    assert.equal((reasons[0] as Error).message, 'save refused');
-    assert.deepEqual(batches, []);
-    fail = false;
-    await saver.flush();
-    assert.deepEqual(batches, [[pending]]);
-  } finally {
-    mock.timers.reset();
-  }
-});
-
-test('without a draft, notify sends nothing', async () => {
-  mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    let sends = 0;
-    const saver = createAutoSaver({
-      debounceMs: 3000,
-      now: () => 0,
-      hasDraft: () => false,
-      onError: () => {},
-      send: async () => {
-        sends += 1;
-      },
-    });
-    for (let n = 0; n < 5; n++) saver.notify(file({ shortName: `f${n}` }));
-    mock.timers.tick(3000);
-    await saver.flush();
-    assert.equal(sends, 0);
-  } finally {
-    mock.timers.reset();
+    if (host.mls) host.mls.editor = previous;
   }
 });

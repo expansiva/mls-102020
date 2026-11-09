@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/draftPanelCore.test.ts" enhancement="_blank" />
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { draftContentCrc, rememberSentCrc } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import {
   afterDraftSave,
   branchForSlug,
@@ -31,8 +32,10 @@ import {
   draftFileTooBigMessage,
   formatDraftBlockReason,
   draftUploadLine,
+  rememberOpenedDraftText,
   saveToDraft,
   slugForBranch,
+  holdCapturedDraftText,
   storeCapturedDraftText,
   syncWithPublished,
   viewDiff,
@@ -828,6 +831,128 @@ test('publish does not remember on nothing, conflict, or failure', async () => {
   assert.deepEqual(remembered, []);
 });
 
+test('publish drops only the local rows it took, and only after the server lands', async () => {
+  const taken: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'a', level: 2, folder: '', extension: '.ts',
+  };
+  const alsoTaken: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'b', level: 2, folder: 'aura', extension: '.ts',
+  };
+  const kept: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'c', level: 2, folder: 'billing', extension: '.ts',
+  };
+  const storFiles = { a: taken, b: alsoTaken, c: kept };
+  const tempObjects: Record<string, string> = {
+    [fileKey(taken)]: 'body-a',
+    [fileKey(alsoTaken)]: 'body-b',
+    [fileKey(kept)]: 'body-c',
+  };
+  const calls: string[] = [];
+  const merged = await publish({
+    fetchImpl: async () => {
+      calls.push('promote');
+      return jsonResponse({ statusCode: 200, status: 'merged' });
+    },
+    waitForNew: async () => {
+      calls.push('wait');
+      return { changed: true, reason: 'released' };
+    },
+    rememberPublished: () => { calls.push('remember'); },
+    reload: () => { calls.push('reload'); },
+    storFiles,
+    clearLocal: async (file) => {
+      calls.push(`clear:${file.shortName}`);
+      file.inLocalStorage = false;
+      file.status = 'nochange';
+      delete tempObjects[fileKey(file)];
+    },
+  }, 102047, 'team-102047', 'ship', ['l2/a.ts', 'l2/aura/b.ts']);
+  assert.deepEqual(merged, { outcome: 'merged' });
+  assert.deepEqual(calls, ['promote', 'wait', 'remember', 'clear:a', 'clear:b', 'reload']);
+  assert.equal(taken.inLocalStorage, false);
+  assert.equal(alsoTaken.inLocalStorage, false);
+  assert.equal(kept.inLocalStorage, true);
+  assert.deepEqual(Object.keys(tempObjects), [fileKey(kept)]);
+
+  taken.inLocalStorage = true;
+  const failedRows: Record<string, string> = { [fileKey(taken)]: 'still' };
+  const failedCalls: string[] = [];
+  await assert.rejects(
+    () => publish({
+      fetchImpl: async () => jsonResponse({ statusCode: 409, code: 'MAIN_DIRTY' }, 409),
+      waitForNew: async () => { failedCalls.push('wait'); return { changed: true, reason: 'released' }; },
+      reload: () => { failedCalls.push('reload'); },
+      storFiles: { a: taken },
+      clearLocal: async (file) => {
+        failedCalls.push('clear');
+        delete failedRows[fileKey(file)];
+      },
+    }, 102047, 'team-102047', 'ship', ['l2/a.ts']),
+    /MAIN_DIRTY/,
+  );
+  assert.deepEqual(failedCalls, []);
+  assert.equal(failedRows[fileKey(taken)], 'still');
+  assert.equal(taken.inLocalStorage, true);
+
+  const waited: Record<string, string> = { [fileKey(taken)]: 'still' };
+  await assert.rejects(
+    () => publish({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
+      waitForNew: async () => ({ changed: false, reason: 'timeout' }),
+      reload: () => { failedCalls.push('reload'); },
+      storFiles: { a: taken },
+      clearLocal: async (file) => { delete waited[fileKey(file)]; },
+    }, 102047, 'team-102047', '', ['l2/a.ts']),
+    /timeout/,
+  );
+  assert.deepEqual(failedCalls, []);
+  assert.equal(waited[fileKey(taken)], 'still');
+});
+
+test('discardModule drops only that module local rows after the restore', async () => {
+  const orders: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'page', level: 2, folder: 'orders', extension: '.ts',
+  };
+  const billing: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'bill', level: 2, folder: 'billing', extension: '.ts',
+  };
+  const tempObjects: Record<string, string> = {
+    [fileKey(orders)]: 'orders-body',
+    [fileKey(billing)]: 'billing-body',
+  };
+  const same = moduleConfig('Published', true);
+  await discardModule({
+    fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'restored' }),
+    saveL5File: async () => { throw new Error('config should stay'); },
+    undoFile: async (file) => {
+      file.inLocalStorage = false;
+      file.status = 'nochange';
+      delete tempObjects[fileKey(file)];
+    },
+    storFiles: { orders, billing },
+    reloadLive: async () => {},
+  }, 102047, 'team-102047', 'orders', same, same);
+  assert.equal(orders.inLocalStorage, false);
+  assert.equal(billing.inLocalStorage, true);
+  assert.equal(tempObjects[fileKey(orders)], undefined);
+  assert.equal(tempObjects[fileKey(billing)], 'billing-body');
+
+  const keptRows: Record<string, string> = { [fileKey(orders)]: 'orders-body' };
+  orders.inLocalStorage = true;
+  await assert.rejects(
+    () => discardModule({
+      fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+      saveL5File: async () => true,
+      undoFile: async (file) => { delete keptRows[fileKey(file)]; },
+      storFiles: { orders },
+      reloadLive: async () => { throw new Error('reload should not run'); },
+    }, 102047, 'team-102047', 'orders', same, same),
+    /draft\.not_owner/,
+  );
+  assert.equal(keptRows[fileKey(orders)], 'orders-body');
+  assert.equal(orders.inLocalStorage, true);
+});
+
 test('readPublished returns the record, and invalid JSON is null', () => {
   assert.equal(readPublished(null), null);
   assert.equal(readPublished('not json'), null);
@@ -924,9 +1049,9 @@ test('afterDraftSave clears a deleted file and keeps changed and new after the s
     removeFromFiles: () => { changedCalls.push('removeFromFiles'); },
     resetRenameOrigin: () => { changedCalls.push('resetRenameOrigin'); },
   });
-  assert.deepEqual(changedCalls, ['setLocal:a:null']);
+  assert.deepEqual(changedCalls, []);
   assert.equal(changed.status, 'changed');
-  assert.equal(changed.inLocalStorage, false);
+  assert.equal(changed.inLocalStorage, true);
 
   const created = {
     project: 102047,
@@ -942,7 +1067,7 @@ test('afterDraftSave clears a deleted file and keeps changed and new after the s
     resetRenameOrigin: () => {},
   });
   assert.equal(created.status, 'new');
-  assert.equal(created.inLocalStorage, false);
+  assert.equal(created.inLocalStorage, true);
 });
 
 test('afterDraftSave resets the origin of a renamed file and keeps it renamed', async () => {
@@ -960,9 +1085,92 @@ test('afterDraftSave resets the origin of a renamed file and keeps it renamed', 
     removeFromFiles: () => { calls.push('removeFromFiles'); },
     resetRenameOrigin: (file) => { calls.push(`resetRenameOrigin:${file.shortName}`); },
   });
-  assert.deepEqual(calls, ['resetRenameOrigin:card', 'setLocal:card:null']);
+  assert.deepEqual(calls, ['resetRenameOrigin:card']);
   assert.equal(renamed.status, 'renamed');
-  assert.equal(renamed.inLocalStorage, false);
+  assert.equal(renamed.inLocalStorage, true);
+});
+
+test('save keeps the local row, and only a later edit is pending again', async () => {
+  const host = globalThis as { mls?: { common?: unknown; editor?: unknown } };
+  const previousCommon = host.mls?.common;
+  const previousEditor = host.mls?.editor;
+  if (!host.mls) host.mls = {};
+  host.mls.common = {
+    crc: {
+      crc32: (value: string) => {
+        let hash = 0;
+        for (const ch of value) hash = (hash * 33 + ch.charCodeAt(0)) >>> 0;
+        return hash;
+      },
+    },
+  };
+  let live = 'saved-body';
+  host.mls.editor = {
+    getKeyModel: (project: number, shortName: string, folder: string, level: number) =>
+      `${project}/${level}/${folder}/${shortName}`,
+    models: {
+      '102047/2/aura/page': { ts: { model: { getValue: () => live } } },
+    },
+  };
+  const saved = {
+    project: 102047,
+    status: 'changed' as const,
+    inLocalStorage: true as boolean | undefined,
+    level: 2,
+    folder: 'aura',
+    shortName: 'page',
+    extension: '.ts',
+  };
+  const tempObjects: Record<string, string> = { [fileKey(saved)]: 'saved-body' };
+  const deps = {
+    setLocal: async (_file: IPanelStorFile, content: null) => {
+      if (content === null) delete tempObjects[fileKey(saved)];
+    },
+    setCache: async () => {},
+    deleteModels: () => {},
+    removeFromFiles: () => {},
+    resetRenameOrigin: async () => {},
+  };
+  try {
+    holdCapturedDraftText(saved, 'saved-body');
+    await afterDraftSave(saved, deps);
+    assert.equal(tempObjects[fileKey(saved)], 'saved-body');
+    assert.equal(saved.inLocalStorage, true);
+    assert.equal(pendingFiles(localEdits({ page: saved }, 102047), []).length, 0);
+
+    live = 'saved-body\nmore';
+    assert.equal(pendingFiles(localEdits({ page: saved }, 102047), []).length, 1);
+
+    const reloaded = {
+      project: 102047,
+      inLocalStorage: true as boolean | undefined,
+      level: 2,
+      folder: 'aura',
+      shortName: 'kept',
+      extension: '.ts',
+      getContent: async () => 'from-draft',
+    };
+    tempObjects[fileKey(reloaded)] = 'from-draft';
+    rememberSentCrc(
+      { project: 102047, level: 2, folder: 'aura', shortName: 'kept', extension: '.ts' },
+      draftContentCrc('from-draft', '.ts'),
+    );
+    await rememberOpenedDraftText([reloaded]);
+    const pending = collectEditedFiles({ kept: reloaded }, 102047);
+    assert.equal(pendingFiles(localEdits({ kept: reloaded }, 102047), []).length, 0);
+    let resent = false;
+    await saveToDraft(pending, 'again', async () => {
+      resent = true;
+      return [];
+    }, async () => {});
+    assert.equal(resent, false);
+    assert.equal(tempObjects[fileKey(reloaded)], 'from-draft');
+  } finally {
+    if (host.mls) {
+      host.mls.common = previousCommon;
+      host.mls.editor = previousEditor;
+    }
+  }
 });
 
 test('storeCapturedDraftText writes the captured string and reports a failed write', async () => {

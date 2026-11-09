@@ -10,7 +10,8 @@
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
 
 import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
-import { modelTextDiffers } from '/_102020_/l2/aura/studio/studioAutoSave.js';
+import { draftContentCrc, rememberSentCrc, sentCrcOf, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { modelTextDiffers, openModelText } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
 const SLUG_BODY = /^[a-z0-9_.-]{1,64}$/;
@@ -39,6 +40,8 @@ export interface IPanelStorFile {
   folder?: string;
   shortName?: string;
   extension?: string;
+  /** Present on a real stor file. The save reads it when no capture was held. */
+  getContent?(): Promise<string | Blob | null>;
 }
 
 /** One file sitting in the browser, not yet saved to the draft. */
@@ -143,6 +146,9 @@ export interface IPublishEffects {
   reload: () => void;
   /** Called only after a merge has landed and before `reload`. Absent → nothing is stored. */
   rememberPublished?: (record: IPublishedRecord) => void;
+  /** With `clearLocal`, a landed merge drops the browser copy of each path in `files`. */
+  storFiles?: Readonly<Record<string, IPanelStorFile | null | undefined>>;
+  clearLocal?: (file: IPanelStorFile) => Promise<void>;
 }
 
 export interface IReloadEffects {
@@ -325,8 +331,36 @@ export async function publish(
   const wait = await effects.waitForNew();
   if (!wait.changed) return fail(wait.reason);
   effects.rememberPublished?.({ files: [...files], at: Date.now() });
+  await clearTakenLocals(effects, project, files);
   effects.reload();
   return { outcome: 'merged' };
+}
+
+/** Browser rows of the paths this publish took. A clear that throws is logged; the reload still runs. */
+async function clearTakenLocals(
+  effects: IPublishEffects,
+  project: number,
+  files: readonly string[],
+): Promise<void> {
+  const clearLocal = effects.clearLocal;
+  const storFiles = effects.storFiles;
+  if (!clearLocal || !storFiles) return;
+  const taken = new Set(files);
+  const matches: IPanelStorFile[] = [];
+  for (const file of Object.values(storFiles)) {
+    if (!file || !isProjectFile(file, project) || !isStoredLocal(file)) continue;
+    if (!taken.has(shortPathOf(file))) continue;
+    matches.push(file);
+  }
+  matches.sort((a, b) => shortPathOf(a).localeCompare(shortPathOf(b)));
+  for (const file of matches) {
+    try {
+      await clearLocal(file);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[draftPanel]', `clearLocal ${shortPathOf(file)}: ${message}`);
+    }
+  }
 }
 
 /** Parses the published-record text the service stored. Invalid JSON or a wrong shape → null. */
@@ -411,7 +445,8 @@ export async function discard(
     const message = err instanceof Error ? err.message : String(err);
     console.error('[draftPanel]', `forgetStaleDraftL2: ${message}`);
   }
-  for (const file of collectEditedFiles(effects.storFiles, project)) {
+  for (const file of Object.values(effects.storFiles)) {
+    if (!file || !isProjectFile(file, project) || !isStoredLocal(file)) continue;
     try {
       await effects.clearLocal(file);
     } catch (err) {
@@ -666,8 +701,9 @@ export async function syncWithPublished(
 }
 
 /**
- * Dirty files of one project: `inLocalStorage` or `status === 'deleted'`, and `project !== 0`.
- * Same filter as serviceSave's save list — not the localDB prefix scan.
+ * Files the Save action sends. A deletion always counts. A local copy counts when its
+ * text CRC differs from the last accepted CRC, or when that CRC was never stored.
+ * `project !== 0`. Not the localDB prefix scan.
  */
 export function collectEditedFiles<T extends IPanelStorFile>(
   storFiles: Readonly<Record<string, T | null | undefined>>,
@@ -675,12 +711,128 @@ export function collectEditedFiles<T extends IPanelStorFile>(
 ): T[] {
   const edited: T[] = [];
   for (const file of Object.values(storFiles)) {
-    if (!file) continue;
-    if (!file.inLocalStorage && file.status !== 'deleted') continue;
-    if (file.project === 0 || file.project !== project) continue;
+    if (!file || !isProjectFile(file, project)) continue;
+    if (!fileNeedsSave(file)) continue;
     edited.push(file);
   }
   return edited;
+}
+
+function isProjectFile(file: IPanelStorFile, project: number): boolean {
+  return file.project !== 0 && file.project === project;
+}
+
+/** A row Discard still removes: every local copy, saved or not, plus a deletion. */
+function isStoredLocal(file: IPanelStorFile): boolean {
+  return file.inLocalStorage === true || file.status === 'deleted';
+}
+
+function draftIdentity(file: IPanelStorFile): DraftFileIdentity | undefined {
+  if (
+    file.level === undefined
+    || file.shortName === undefined
+    || file.folder === undefined
+    || file.extension === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    project: file.project,
+    level: file.level,
+    shortName: file.shortName,
+    folder: file.folder,
+    extension: file.extension,
+  };
+}
+
+const notedLocalText = new Map<string, string>();
+
+function notedKey(file: DraftFileIdentity): string {
+  return `${file.project}\u0000${file.level}\u0000${file.folder}\u0000${file.shortName}\u0000${file.extension}`;
+}
+
+function noteLocalText(file: IPanelStorFile, text: string): void {
+  const identity = draftIdentity(file);
+  if (!identity) return;
+  notedLocalText.set(notedKey(identity), text);
+}
+
+/** Open model when it is readable; otherwise the text last read from the local copy. */
+function currentDraftText(file: IPanelStorFile): string | undefined {
+  const identity = draftIdentity(file);
+  if (!identity) return undefined;
+  const live = openModelText(identity);
+  if (live !== undefined) return live;
+  return notedLocalText.get(notedKey(identity));
+}
+
+async function storedLocalText(file: IPanelStorFile): Promise<string | undefined> {
+  if (!file.getContent) return undefined;
+  try {
+    const content = await file.getContent();
+    if (typeof content === 'string') return content;
+    if (content != null) console.error('[draftPanel] local content is not text', file.shortName);
+    return undefined;
+  } catch (err) {
+    console.error('[draftPanel] could not read the local copy', file.shortName, err);
+    return undefined;
+  }
+}
+
+/**
+ * Remember the text of each local copy so the unsaved count can run without IndexedDB.
+ * The open model wins. Otherwise the file's `getContent` is the local copy.
+ */
+export async function rememberOpenedDraftText(files: readonly IPanelStorFile[]): Promise<void> {
+  for (const file of files) {
+    if (file.inLocalStorage !== true) continue;
+    const identity = draftIdentity(file);
+    if (identity) {
+      const live = openModelText(identity);
+      if (live !== undefined) {
+        noteLocalText(file, live);
+        continue;
+      }
+    }
+    const stored = await storedLocalText(file);
+    if (stored !== undefined) noteLocalText(file, stored);
+  }
+}
+
+function acceptSentText(file: IPanelStorFile, text: string): boolean {
+  const identity = draftIdentity(file);
+  if (!identity) {
+    console.error('[draftPanel] saved file has no path; the accepted crc was not stored', file.shortName);
+    return false;
+  }
+  try {
+    rememberSentCrc(identity, draftContentCrc(text, identity.extension));
+  } catch (err) {
+    console.error('[draftPanel] accepted crc failed', file.shortName, err);
+    return false;
+  }
+  return true;
+}
+
+/** True when Save must send this file. */
+function fileNeedsSave(file: IPanelStorFile): boolean {
+  if (file.status === 'deleted') return true;
+  if (file.inLocalStorage !== true) return false;
+  const identity = draftIdentity(file);
+  if (!identity) return true;
+  const accepted = sentCrcOf(identity);
+  if (accepted === undefined) return true;
+  const text = currentDraftText(file);
+  if (text === undefined) {
+    console.error('[draftPanel] saved local copy has no text to compare', file.shortName);
+    return true;
+  }
+  try {
+    return draftContentCrc(text, identity.extension) !== accepted;
+  } catch (err) {
+    console.error('[draftPanel] local crc failed', file.shortName, err);
+    return true;
+  }
 }
 
 /** `l<level>/<folder/>shortName<extension>`. With no level, folder, or extension, the short name. */
@@ -1459,32 +1611,42 @@ function takeCapturedDraftText(file: IPanelStorFile): string | undefined {
 }
 
 /**
- * Post-save for one draft file, same cleanup as `serviceSave.afterUpdate`.
- * `inLocalStorage` goes false. A deletion clears local, cache, models, and the index.
- * A renamed file resets the model origin, then clears local.
- * `changed`, `new`, and `renamed` stay as they are until publish.
- * A capture that no longer matches the model keeps the local copy: the send wrote the old text.
+ * Post-save for one draft file. A deletion still clears local, cache, models, and the index.
+ * Any other file keeps `inLocalStorage` and the IndexedDB row. The CRC of the text that was
+ * sent becomes the last accepted CRC, so the file stops counting as unsaved.
+ * A renamed file resets the model origin and still keeps the local copy.
+ * A capture that no longer matches the model keeps the local copy: the send wrote the old text,
+ * and that old text is the accepted CRC.
  */
 export async function afterDraftSave(
   file: IPanelStorFile,
   deps: IAfterDraftSaveDeps = defaultAfterSaveDeps,
 ): Promise<void> {
-  file.inLocalStorage = false;
   const captured = takeCapturedDraftText(file);
   if (file.status === 'deleted') {
+    file.inLocalStorage = false;
     await deps.setLocal(file, null);
     await deps.setCache(file, null);
     await deps.deleteModels(file);
     deps.removeFromFiles(file);
     return;
   }
+  file.inLocalStorage = true;
   if (file.status === 'renamed') await deps.resetRenameOrigin(file);
   if (captured !== undefined && localTextMoved(file, captured)) {
-    file.inLocalStorage = true;
+    acceptSentText(file, captured);
+    const identity = draftIdentity(file);
+    const live = identity ? openModelText(identity) : undefined;
+    if (live !== undefined) noteLocalText(file, live);
     console.warn('afterDraftSave: text changed during the send; keeping the local copy', file.shortName);
     return;
   }
-  await deps.setLocal(file, null);
+  const sent = captured ?? await storedLocalText(file);
+  if (sent === undefined) {
+    console.error('[draftPanel] save kept the local copy but there is no text to accept', file.shortName);
+    return;
+  }
+  if (acceptSentText(file, sent)) noteLocalText(file, sent);
 }
 
 function localTextMoved(file: IPanelStorFile, captured: string): boolean {
