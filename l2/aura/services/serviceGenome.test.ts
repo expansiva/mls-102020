@@ -104,28 +104,25 @@ test('the diagnosis prints the whole chain, not the step that gave up', () => {
   assert.match(GENOME, /auraGenomeDiagnose/u, 'and it can be asked for from the console');
 });
 
-// ── The selection moved surface (2026-09-11) ────────────────────────────────
+// ── The selection lives in the app ──────────────────────────────────────────
 //
-// The molecule knob was born reading `previewL3.selectedTagName`, written by the L3 preview
-// component. The selection now happens IN THE APP: the in-place editor publishes
-// `aura.edit.selection` and nobody writes the old key any more — so the knob sat disabled, not
-// because the element was not a molecule but because nothing ever told it anything was selected.
+// The in-place editor publishes `aura.edit.selection`; that is the knob's only selection channel.
+// The old `previewL3.selectedTagName` channel went away: the preview service now runs only on L2,
+// and the genome lives on L3.
 
-test('the genome listens to BOTH selection channels, and drops both on the way out', () => {
+test('the genome listens to the in-place editor selection, and drops it on the way out', () => {
   const connected = methodOf(GENOME, 'async connectedCallback');
-  for (const key of ["'previewL3.selectedTagName'", "'aura.edit.selection'"]) {
-    assert.ok(connected.includes(`subscribe(${key}, this)`), `subscribes ${key}`);
-  }
+  assert.ok(connected.includes("subscribe('aura.edit.selection', this)"), 'subscribes aura.edit.selection');
   const disconnected = GENOME.slice(GENOME.indexOf('disconnectedCallback()'), GENOME.indexOf('async firstUpdated'));
-  for (const key of ["'previewL3.selectedTagName'", "'aura.edit.selection'"]) {
-    assert.ok(disconnected.includes(`unsubscribe(${key}, this)`), `unsubscribes ${key}`);
-  }
+  assert.ok(disconnected.includes("unsubscribe('aura.edit.selection', this)"), 'unsubscribes aura.edit.selection');
+  // The L3 preview channel is gone for good.
+  assert.equal(GENOME.includes('previewL3'), false, 'no previewL3 key is read or subscribed');
 });
 
-test('both channels reach the SAME handler — one place decides whether the knob is on', () => {
+test('the selection reaches the handler with its file and occurrence intact', () => {
   const handler = GENOME.slice(GENOME.indexOf('handleIcaStateChange('), GENOME.indexOf('// ─── Layout init'));
-  assert.equal(handler.split('_onPreviewSelectedElementChanged').length - 1, 2, 'both call it');
-  // And the studio channel carries more than a tag: the file and the occurrence are what the swap
+  assert.equal(handler.split('_onPreviewSelectedElementChanged').length - 1, 1, 'one channel calls it');
+  // The studio channel carries more than a tag: the file and the occurrence are what the swap
   // needs, so they are kept instead of being reduced to the tag.
   assert.match(handler, /this\._studioSelection = selection/u);
 });
@@ -133,8 +130,6 @@ test('both channels reach the SAME handler — one place decides whether the kno
 test('the swap addresses ONE occurrence, in the shape the replacer already parses', () => {
   const selector = methodOf(GENOME, 'private _selectorForSwap');
   assert.match(selector, /nth-of-type\(\$\{studio\.occurrence \+ 1\}\)/u);
-  // The old channel keeps its own selector: it has a real DOM path and there is nothing to improve.
-  assert.match(selector, /getState\('previewL3\.selectedElement'\)/u);
 });
 
 test('the swap writes the file the editor resolved, not the one open in the l3', () => {
@@ -325,10 +320,9 @@ test('the swap resolves WHERE before deciding WHAT, and refuses when it cannot',
   assert.match(resolver, /resolved\.element\.tag !== expected/u);
 });
 
-test('the two routes that have no anchor keep the old targeting', () => {
+test('mode `all` and an absent selection pass through with no offset', () => {
   const resolver = methodOf(GENOME, 'private _swapTargetOffset');
-  // `all` targets nothing, and the L3 preview has a DOM path instead of an anchor. Both pass through
-  // with no offset, so `replaceComponentTag` behaves exactly as it did.
+  // `all` targets nothing, so `replaceComponentTag` gets no offset.
   assert.match(resolver, /if \(!studio \|\| this\._moleculeReplaceMode === 'all'\) return \{ ok: true \}/u);
 });
 
@@ -349,8 +343,9 @@ test('a swap the picker already refused repeats THAT reason', () => {
   assert.match(resolver, /tStudio\('swap\.noAnchorBecause', \{ reason: studio\.refusal \}\)/u);
 });
 
-test('the reselect key is written only on the route that reads it', () => {
+test('no reselect key is written — the in-place editor restores its own selection', () => {
   const changed = methodOf(GENOME, 'private async _onMoleculesChanged');
-  // The L3 preview reselects by tag; the in-place editor restores its own selection by position.
-  assert.match(changed, /if \(!this\._studioSelection\) setState\('preview\.pendingReselect', newTag\)/u);
+  // Only the preview on L3 read `preview.pendingReselect` (it is L2-only now); the in-place editor
+  // reselects by position.
+  assert.equal(changed.includes('pendingReselect'), false);
 });

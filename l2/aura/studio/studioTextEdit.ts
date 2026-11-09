@@ -1,21 +1,14 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioTextEdit.ts" enhancement="_blank" />
 // Maps a visible text back to its origin in the page SOURCE, and applies the edit there.
 //
-// PORT of `_102020_/l2/aura/services/preview/previewTextEditor.ts` (TASK-102033-app-como-preview,
-// part 2). The copy exists because 102020 is NOT part of the app build — the build compiles only
-// `config.projects` (102029/102033/102034/102025/102027/102036) and 102020 reaches the VM through
-// the CI's obj/compiled.zip. Referencing it from here would mean a runtime dynamic import on a path
+// This file has NO external dependency: 102020 is NOT part of the app build — the build compiles
+// only `config.projects` (102029/102033/102034/102025/102027/102036) and 102020 reaches the VM
+// through the CI's obj/compiled.zip. Importing from it would mean a runtime dynamic import on a path
 // that must work on a cold cache.
 //
-// Differences from the original, all subtractive:
-//  - `replaceComponentTag` / `ITagReplaceResult` dropped (molecule tag swap — not text editing).
-//    That was the ONLY thing importing `resolveTagToFile`, so this file has NO external dependency.
-//  - `findTextOriginByIndex` dropped (unused by the editor: it resolves by key or by occurrence).
-// One behavioural divergence, not subtractive: the entry regex in `parseObjectEntries` is FIXED
-// here — the original truncates i18n values containing an escaped quote and corrupts the source on
-// save (details at the regex). The original carries the same bug.
-// Everything else is the same logic, so a bug found in one file should be checked in the other —
-// the consolidation path is a shared lib, never a manual sync.
+// Scope: text editing only. The molecule tag swap lives in `aura/helpers/moleculeTagSwap.ts`.
+// The entry regex in `parseObjectEntries` reads escaped quotes correctly — a naive one truncates
+// i18n values containing an escaped quote and corrupts the source on save (details at the regex).
 //
 // Three cases:
 //   1. static  — literal text inside the html`...` template  -> editable
@@ -710,7 +703,7 @@ export function buildTemplateMap(source: string): ITemplateExpression[] {
  * i18n key of an expression like 'this.msg.login' or 'this.msg["login"]'.
  * Also recognizes the t() helper: t('login') / this.t('login'). Null when unrecognized.
  *
- * EXPORTED for the attribute edit (TASK-102020-attribute-text): the key of a `title=${msg['x']}` is
+ * EXPORTED for the attribute edit: the key of a `title=${msg['x']}` is
  * written at the element's own open tag, so the editor reads it there instead of guessing it back
  * from the sentence. It must be the same grammar as the one the template map uses — a second copy of
  * it in the editor would drift, and the two would disagree about which key an element names.

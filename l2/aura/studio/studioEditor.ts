@@ -1,21 +1,17 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioEditor.ts" enhancement="_blank" />
-// In-place visual editor for the page the user is navigating (TASK-102033-app-como-preview, part 2).
+// In-place visual editor for the page the user is navigating. 102020 is not part of the app build
+// (see studioTextEdit.ts), so this file stands on its own. Design rules:
 //
-// PORT of `_102020_/l2/aura/services/preview/previewEditorL3.ts`. The copy exists because 102020 is
-// not part of the app build (see studioTextEdit.ts). What it does differently:
-//
-//  1. HOST-BOUND, not a wrapper. The original is a custom element whose CHILDREN are the page; here
-//     the editor attaches to an existing host — `[data-region-host="content"]`. That is mandatory:
+//  1. HOST-BOUND, not a wrapper. The editor is not a custom element whose CHILDREN are the page; it
+//     attaches to an existing host — `[data-region-host="content"]`. That is mandatory:
 //     the shell's `mountRegion` reuses the mounted element by comparing
 //     `host.firstElementChild.tagName` to the route's tag and runs on EVERY shell render, so a node
 //     inserted between host and page would make the shell remount (and reset) the screen. Being
-//     host-bound also means it needs no Lit and no custom element: the original never rendered a
-//     template anyway (`createRenderRoot() { return this }` + direct DOM work).
-//  2. `off` IS THE DEFAULT and registers NO listeners. The original stops propagation in every mode
-//     ("Page NEVER receives pointer events in any mode") — fine inside a preview iframe, fatal in
-//     the client app, where the user has to navigate before editing.
-//  3. The source comes from `studioEditTarget` (the DOM tag), not from `preview.service` state.
-//  4. The language comes from the app runtime (`documentElement.lang`), not `preview.language`.
+//     host-bound also means it needs no Lit and no custom element (direct DOM work only).
+//  2. `off` IS THE DEFAULT and registers NO listeners. Stopping propagation in every mode would be
+//     fatal in the client app, where the user has to navigate before editing.
+//  3. The source comes from `studioEditTarget` (the DOM tag).
+//  4. The language comes from the app runtime (`documentElement.lang`).
 //  5. No postMessage: the owner gets a callback.
 //
 // TWO SEPARATE LAYERS, on purpose:
@@ -199,7 +195,7 @@ const CONTROL_CLASS = 'se-control';
 const RESELECT_ATTEMPTS = 5;
 
 /**
- * Attributes that hold TEXT THE USER READS (TASK-102020-attribute-text).
+ * Attributes that hold TEXT THE USER READS.
  *
  * A closed list, and that is the whole safety of the feature: `id`, `for`, `href`, `value` and
  * `data-*` also carry strings, but editing one of those is changing a LINK, not content. Measured on
@@ -249,7 +245,7 @@ function setChannel(el: HTMLElement, attribute: ClassChannel, value: string | nu
 }
 
 /**
- * A configuration attribute on the LIVE molecule (TASK-102020-picker-molecule-properties).
+ * A configuration attribute on the LIVE molecule.
  *
  * Setting the attribute is enough for a Lit property — `attributeChangedCallback` runs the setter. Two
  * cases need more. A REMOVAL hands the setter `null`, which is not the default the molecule declares,
@@ -408,7 +404,7 @@ type EditStep =
   }
   | {
     /**
-     * A whole element went IN (a duplication) or OUT (a removal) — TASK-102020-duplicate-remove.
+     * A whole element went IN (a duplication) or OUT (a removal).
      *
      * One kind for both because the undo of one is the other: the direction is a flip of `op`, and
      * the two revalidations travel together (the text for taking a slice out, the neighbourhood for
@@ -441,7 +437,7 @@ type EditStep =
   }
   | {
     /**
-     * A raw control became a molecule (TASK-102020-adopt-molecules).
+     * A raw control became a molecule.
      *
      * Two splices in ONE step — the markup and the side-effect import — because they were one write:
      * an undo that put the element back and left the import behind would leave a page importing a
@@ -462,7 +458,7 @@ type EditStep =
   }
   | {
     /**
-     * A molecule's configuration attribute (TASK-102020-picker-molecule-properties).
+     * A molecule's configuration attribute.
      *
      * Both directions are WRITES (`size="sm"`, bare, removed) and each is also the revalidation of the
      * other: the undo only runs when the open tag still says what the forward write left.
@@ -534,7 +530,7 @@ interface IAttrText {
 }
 
 /**
- * What the Molecules tab knows about the selection (TASK-102020-adopt-molecules).
+ * What the Molecules tab knows about the selection.
  *
  * Computed only when the tab ASKS: the molecule catalog is ~155 `.defs.ts` through collabImport, and
  * paying that on every selection would make the whole editor feel slow for a gesture most selections
@@ -560,7 +556,7 @@ interface IAdoptState {
 }
 
 /**
- * What the Properties tab knows about the selection (TASK-102020-picker-molecule-properties).
+ * What the Properties tab knows about the selection.
  *
  * `file` and `path` are where the molecule's open tag is; the rows are re-read from that file after
  * every write, and the write itself re-resolves the path — nothing here is an offset.
@@ -597,8 +593,8 @@ interface IChannelSide {
 }
 
 /**
- * One slot element of a molecule (`<Label>`, `<Column>`), edited through its `data-class`
- * (TASK-102020-picker-molecule-slots). The element is the HIDDEN one the page wrote — the molecule
+ * One slot element of a molecule (`<Label>`, `<Column>`), edited through its `data-class`.
+ * The element is the HIDDEN one the page wrote — the molecule
  * reads its `data-class` and applies it to what it renders for that slot.
  */
 interface ISlotSide extends IChannelSide {
@@ -618,7 +614,7 @@ interface ISlotSide extends IChannelSide {
 interface IClassPanelState {
   el: HTMLElement;
   /**
-   * The chain the breadcrumb offers, root-first, ending at `el` (TASK-102020-ancestor-breadcrumb).
+   * The chain the breadcrumb offers, root-first, ending at `el`.
    *
    * Lives HERE and not in a field of its own so it cannot drift from the selection it describes: the
    * panel is handed the index of a level, and this is what resolves it back — one panel, one chain.
@@ -627,8 +623,7 @@ interface IClassPanelState {
   /** The element's class attribute, exactly as authored — what has to be found in the source. */
   literal: string;
   /**
-   * The molecule's INNER box, through its `data-class` — null for anything that is not a molecule
-   * (TASK-102020-picker-molecule-data-class).
+   * The molecule's INNER box, through its `data-class` — null for anything that is not a molecule.
    *
    * A second side and not a replacement: the tag's own `class` (the fields above) is the box the
    * PARENT lays out — the flex or grid item, the `block` that lets a width apply — and `data-class` is
@@ -713,7 +708,7 @@ export class StudioEditor {
   private chromeHost: HTMLElement | null = null;
   private statusEl: HTMLDivElement | null = null;
 
-  /** The class picker (TASK-102033-class-picker): panel element + what the current selection resolved to. */
+  /** The class picker: panel element + what the current selection resolved to. */
   private classPanelEl: ClassPickerPanel | null = null;
   /**
    * The picker DOCKED in the Pages plugin (pageClassPickerPanel), when one is on screen.
@@ -742,7 +737,7 @@ export class StudioEditor {
   /** The molecule MOUNTED for the preview — a real element, built by importing the real module. */
   private adoptPreviewEl: HTMLElement | null = null;
   /**
-   * The Properties tab's answer (TASK-102020-picker-molecule-properties), for ONE element.
+   * The Properties tab's answer, for ONE element.
    *
    * Null means nobody asked — the panel asks when the tab opens, like the Molecules tab. The element
    * is part of the answer so a stale one is never shown for another selection.
@@ -1410,7 +1405,7 @@ export class StudioEditor {
   }
 
   /**
-   * Selects the n-th level of the breadcrumb (TASK-102020-ancestor-breadcrumb).
+   * Selects the n-th level of the breadcrumb.
    *
    * The handle is the INDEX and not the element: the panel is chrome and never holds a live node (the
    * same discipline `publishSelection` follows). Resolving it here also means a chain that aged out
@@ -1467,8 +1462,8 @@ export class StudioEditor {
    *
    * ONE accessor set for every layer that asks the ownership question — selection, scope, the
    * structural path and the breadcrumb. They used to walk `parentElement` on their own, and the
-   * moment they disagree the tool lies: the outline follows one element while the click selects another (the
-   * failure TASK-102020-select-inert-elements called worse than the bug it fixed), or the panel
+   * moment they disagree the tool lies: the outline follows one element while the click selects another (a
+   * failure worse than the bug it would fix), or the panel
    * names a file the write will not land in.
    */
   private ownerChainOf(el: HTMLElement, root?: HTMLElement | null): IOwnerChain<HTMLElement> {
@@ -1497,7 +1492,7 @@ export class StudioEditor {
   }
 
   /**
-   * Whether `el` is a slot element the PAGE wrote inside a molecule (TASK-102020-picker-molecule-slots).
+   * Whether `el` is a slot element the PAGE wrote inside a molecule.
    *
    * The walk goes up through slot tags only (`<Columns>` → `<Column>`) to the molecule that declares
    * them, and the top one must be a direct child the molecule HID (`_hideSlotTags`). The hiding is what
@@ -1808,7 +1803,7 @@ export class StudioEditor {
      * The optimistic change is the caller's — a text node's content, an attribute's value — so undoing
      * it is too. It is a callback and not the node itself because the text a user reads is not always
      * a text node: `placeholder`, `title` and `aria-label` carry a third of the sentences on a
-     * generated page (TASK-102020-attribute-text), and the write below is the same for all of them.
+     * generated page, and the write below is the same for all of them.
      */
     revert: (() => void) | null;
   }): Promise<ITextWrite> {
@@ -1992,7 +1987,7 @@ export class StudioEditor {
     }
   }
 
-  // --- Class picker (TASK-102033-class-picker / -picker-web-component) ---
+  // --- Class picker ---
 
   /**
    * The picker panel, next to the status toast, on the BODY.
@@ -2139,7 +2134,7 @@ export class StudioEditor {
     this.drawHover(el);
   };
 
-  // --- Adopting a molecule (TASK-102020-adopt-molecules) ---
+  // --- Adopting a molecule ---
 
   /** The tab was opened, or the selection changed while it was open: this is what pays the catalog. */
   private onPickerAdoptOpen = (): void => {
@@ -2344,7 +2339,7 @@ export class StudioEditor {
   }
 
   /**
-   * Whether this element has a molecule's inner box to edit (TASK-102020-picker-molecule-data-class).
+   * Whether this element has a molecule's inner box to edit.
    *
    * A molecule reads `data-class` and applies it to its inner root; its tag's own `class` stays on
    * the tag, the box its parent lays out. The runtime is asked only when the tag is defined: a custom
@@ -2403,8 +2398,7 @@ export class StudioEditor {
   }
 
   /**
-   * The molecule's slots that exist in the page, each with its `data-class` located in the source
-   * (TASK-102020-picker-molecule-slots).
+   * The molecule's slots that exist in the page, each with its `data-class` located in the source.
    *
    * One tree per candidate file for the whole molecule: a table has dozens of slot elements, and
    * scanning the file once per slot is what would make the selection slow. A source node rendered many
@@ -2980,7 +2974,7 @@ export class StudioEditor {
     };
   }
 
-  // --- A molecule's configuration attributes (TASK-102020-picker-molecule-properties) ---
+  // --- A molecule's configuration attributes ---
 
   /**
    * Answers the Properties tab: the group of the selected molecule, its configuration, and what the
@@ -3342,7 +3336,7 @@ export class StudioEditor {
   }
 
   /**
-   * Writes a new text into an ATTRIBUTE of the selection (TASK-102020-attribute-text).
+   * Writes a new text into an ATTRIBUTE of the selection.
    *
    * The screen first and then the source, like the class write — and the source part is the very
    * writer the text between tags uses: an attribute's sentence is a catalog entry, so what changes is
@@ -3594,7 +3588,7 @@ export class StudioEditor {
     this.publishEdited(file);
   }
 
-  // --- Moving an element among its siblings (TASK-102020-move-elements) ---
+  // --- Moving an element among its siblings ---
 
   /**
    * Where the selected element could go, and why it could not.
@@ -3934,7 +3928,7 @@ export class StudioEditor {
     }
   }
 
-  // --- Duplicating and removing (TASK-102020-duplicate-remove) ---
+  // --- Duplicating and removing ---
 
   /**
    * The selection's slice, fully resolved: which file, and which node of its tree.
@@ -4160,7 +4154,7 @@ export class StudioEditor {
     this.publishSelection(null);
   }
 
-  // --- Adopting a molecule (TASK-102020-adopt-molecules) ---
+  // --- Adopting a molecule ---
 
   /**
    * Answers the Molecules tab: which group claims the selection, and what the conversion would write.
@@ -4538,7 +4532,7 @@ export class StudioEditor {
     return true;
   }
 
-  // --- Undo (TASK-102033-picker-undo) ---
+  // --- Undo ---
 
   /** Undoes the last edit of this session. */
   public async undo(): Promise<void> {

@@ -10,7 +10,7 @@ import { getLastOpenedFiles } from '/_102027_/l2/libCommom.js';
 import { compileStyleUsingStorFile } from '/_102027_/l2/libCompileStyle.js';
 import { createModel } from '/_102027_/l2/libModel.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
-import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
+import { getThreadByName, type IDBThreadPerformanceCache } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { loadAgent, executeBeforePrompt } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
@@ -64,7 +64,9 @@ export class ServicePreview extends ServiceBase {
   private tasksInProgress: Map<string, Set<mls.msg.ExecutionContext>> = new Map();
   private monacoEditor: HTMLElement | undefined;
   private _ed1: monaco.editor.IStandaloneCodeEditor | undefined;
-  private threadCache = new Map<string, Promise<mls.msg.ThreadPerformanceCache | undefined>>();
+  // Typed after what `getThreadByName` returns: `mls.msg.ThreadPerformanceCache` (types/mls.d.ts)
+  // lags behind the shared interfaces (its ThreadGroup has no 'MOMENTS'), so it does not accept it.
+  private threadCache = new Map<string, Promise<IDBThreadPerformanceCache | undefined>>();
 
   @query('iframe') elPreview: HTMLIFrameElement | undefined;
 
@@ -90,9 +92,6 @@ export class ServicePreview extends ServiceBase {
 
   get confE() { return `l${this.level}_${this.position}`; }
 
-  get isL3(): boolean { return this.level === 3; }
-  get isL4(): boolean { return this.level === 4; }
-
   constructor() {
     super();
     (window as any).preview = {
@@ -101,8 +100,6 @@ export class ServicePreview extends ServiceBase {
       refresh: undefined
     };
     this.initStatesPreview();
-    this.initStatesPreviewL3();
-    this.initStatesPreviewL4();
   }
 
   public details: IService = {
@@ -112,7 +109,7 @@ export class ServicePreview extends ServiceBase {
     tooltip: 'Aura Preview',
     visible: true,
     widget: '_102020_/l2/aura/services/preview/servicePreview',
-    level: [2, 3, 4]
+    level: [2]
   }
 
   public onClickMain(op: string): void {
@@ -191,8 +188,8 @@ export class ServicePreview extends ServiceBase {
   }
 
   private setEvents() {
-    mls.events.addEventListener([2, 3, 4], ['FileAction'], this.onFileAction.bind(this));
-    mls.events.addEventListener([2, 3, 4], ['styleChanged' as any], this.onStyleChanged.bind(this));
+    mls.events.addEventListener([2], ['FileAction'], this.onFileAction.bind(this));
+    mls.events.addEventListener([2], ['styleChanged' as any], this.onStyleChanged.bind(this));
   }
 
   handleIcaStateChange(key: string, value: any) {
@@ -212,36 +209,7 @@ export class ServicePreview extends ServiceBase {
   }
 
   private initStatesPreview() {
-    const pendingReselect = getState('preview.pendingReselect')
-    initState('preview', { pausePreview: !this.watch, service: this, language: this.lang, pendingReselect });
-  }
-
-  private initStatesPreviewL3() {
-    initState('previewL3', {
-      selectedElement: null,       // selector do elemento selecionado
-      selectedTagName: '',
-      selectedAttributes: {},
-      selectedStyles: {},
-      selectedRect: null,
-      breadcrumb: [],
-      editMode: 'select',          // 'select' | 'text' | 'drag' | 'inspect'
-      hoveredElement: null,
-      panelVisible: true,
-    });
-  }
-
-  private initStatesPreviewL4() {
-    initState('previewL4', {
-      selectedElement: null,
-      selectedTagName: '',
-      selectedAttributes: {},
-      selectedStyles: {},
-      selectedRect: null,
-      breadcrumb: [],
-      editMode: 'select',
-      hoveredElement: null,
-      panelVisible: true,
-    });
+    initState('preview', { pausePreview: !this.watch, service: this, language: this.lang });
   }
 
   // Implementations
@@ -391,35 +359,14 @@ export class ServicePreview extends ServiceBase {
   private async setActualFileInfos() {
 
     this.setLastOpenedFile();
-    if (this.level === 2) {
-      if (!mls.actual[this.level].left) return;
-      const { project, shortName, folder } = mls.actual[this.level].left as mls.stor.IFileInfo;
-      this.project = project;
-      this.shortName = shortName;
-      this.folder = folder;
-    }
-
-    if (this.level === 3 || this.level === 4) {
-      const base = mls.actual[this.level].getStorFileBase();
-      let { project, shortName, folder } = base;
-      if (!project || !shortName) {
-        AuraInitState();
-        const page = getAuraState().actualPage;
-        if (page) {
-          project = page.project;
-          shortName = page.shortName;
-          folder = page.folder ?? '';
-        }
-      }
-      this.project = project;
-      this.shortName = shortName;
-      this.folder = folder;
-    }
+    if (!mls.actual[this.level].left) return;
+    const { project, shortName, folder } = mls.actual[this.level].left as mls.stor.IFileInfo;
+    this.project = project;
+    this.shortName = shortName;
+    this.folder = folder;
 
     await this.setActualFiles(this.project, this.shortName, this.folder);
     await this.setActualModels();
-
-
   }
 
   private setLastOpenedFile() {
@@ -441,13 +388,12 @@ export class ServicePreview extends ServiceBase {
   }
 
   private async setActualFiles(project: number, shortName: string, folder: string) {
-    const storLevel = (this.isL3 || this.isL4) ? 2 : this.level;
     const files = await mls.stor.getFiles({
       folder,
       project,
       shortName,
       loadContent: true,
-      level: storLevel
+      level: 2
     });
     this.actualFiles = { ...files };
   }
@@ -499,7 +445,6 @@ export class ServicePreview extends ServiceBase {
   private async _doCreatePreview() {
 
     this.initStatesPreview();
-    this.initStatesPreviewL3();
     this.clearPreview();
 
     const container = this.querySelector('#preview-container') as HTMLElement;
@@ -580,11 +525,6 @@ export class ServicePreview extends ServiceBase {
     const flag = html.match(/<meta\s+name=["']mls-preview["']\s+content=["'](shared|isolated)["']/i);
     if (flag) return (flag[1].toLowerCase() === 'shared') ? 'shared' : 'isolated';
 
-    // L3/L4 visual editor needs direct DOM access to the iframe (selection,
-    // inspection, inline editing) -> always shared. Loop protection there
-    // relies on Layer 1 (the notify circuit breaker).
-    if (this.level === 3 || this.level === 4) return 'shared';
-
     // A) by enhancement — read the PREVIEWED file's .ts content (per-file,
     // loaded by getFiles({loadContent:true})). Do NOT use a monaco model:
     // setActualModels() only sets actualModels.ts once and never refreshes it,
@@ -604,30 +544,11 @@ export class ServicePreview extends ServiceBase {
    * FileAction that triggered this preview.
    */
   private async _ensureActualFilesForMode() {
-    if (this.level === 2) {
-      if (!mls.actual[this.level].left) return;
-      const { project, shortName, folder } = mls.actual[this.level].left as mls.stor.IFileInfo;
-      this.project = project;
-      this.shortName = shortName;
-      this.folder = folder;
-    }
-
-    if (this.level === 3 || this.level === 4) {
-      const base = mls.actual[this.level].getStorFileBase();
-      let { project, shortName, folder } = base;
-      if (!project || !shortName) {
-        AuraInitState();
-        const page = getAuraState().actualPage;
-        if (page) {
-          project = page.project;
-          shortName = page.shortName;
-          folder = page.folder ?? '';
-        }
-      }
-      this.project = project;
-      this.shortName = shortName;
-      this.folder = folder;
-    }
+    if (!mls.actual[this.level].left) return;
+    const { project, shortName, folder } = mls.actual[this.level].left as mls.stor.IFileInfo;
+    this.project = project;
+    this.shortName = shortName;
+    this.folder = folder;
 
     await this.setActualFiles(this.project, this.shortName, this.folder);
     await this.setActualModels();
@@ -803,22 +724,9 @@ export class ServicePreview extends ServiceBase {
       domVirtual.innerHTML = this.actualFiles.htmlContent;
       doc.body.innerHTML = '';
 
-      if (this.isL3) {
-        const l3P = document.createElement('aura--services--preview--preview-editor-l3-102020');
-        l3P.innerHTML = domVirtual.innerHTML;
-        doc.body.appendChild(l3P);
-
-      } else if (this.isL4) {
-        const l4P = document.createElement('preview-editor-l4-102020');
-        l4P.innerHTML = domVirtual.innerHTML;
-        doc.body.appendChild(l4P);
-
-
-      } else {
-        const l2P = document.createElement('preview-editor-l2-102020');
-        l2P.innerHTML = domVirtual.innerHTML;
-        doc.body.appendChild(l2P);
-      }
+      const l2P = document.createElement('preview-editor-l2-102020');
+      l2P.innerHTML = domVirtual.innerHTML;
+      doc.body.appendChild(l2P);
 
       let ret = await getDependenciesByHtml(this.actualFiles.html, this.actualFiles.htmlContent, this.actualTheme, true);
       await this.modeSinglePage(ret, iframe);

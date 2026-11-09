@@ -52,11 +52,6 @@ async function getDependencies(storFile: mls.stor.IFileInfo, fileName: string, h
         modules,
     );
 
-    const previewEditorL3Import = '/_102020_/l2/aura/services/preview/previewEditorL3.js';
-    if (!importsJs.includes(previewEditorL3Import)) {
-        importsJs.push(previewEditorL3Import);
-    }
-
     // A page variation folder encodes its DS as `page<layout><ds>`; the generated
     // designSystem.ts keys that DS's tokens entry by the DS NAME (themeName). Pages
     // without a DS entry (e.g. default DS) fall back to the editor's active theme.

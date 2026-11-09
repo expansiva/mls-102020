@@ -3,10 +3,10 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
-import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
+import { subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { AuraInitState, getAuraState, getAuraEdit, setAuraState, saveAuraProject, moduleScopeTitle, IAuraPage, type IAuraEditSelection } from '/_102020_/l2/aura/helpers/auraState.js';
 import { skills as listOfGroups } from '/_102020_/l2/aura/molecules/skills/index.js';
-import { replaceComponentTag } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
+import { replaceComponentTag } from '/_102020_/l2/aura/helpers/moleculeTagSwap.js';
 import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
 import { getLastOpenedFiles, saveOpenedFile } from '/_102027_/l2/libCommom.js';
 import { createModel } from '/_102027_/l2/libModel.js';
@@ -196,27 +196,16 @@ export class ServiceGenome102020 extends ServiceBase {
     @state() private _moleculeReplaceMode: 'selected' | 'all' = 'selected';
     @state() private _actualPage: mls.editor.IModelBase | null = null;
 
-    // ─── Selection: TWO channels, because the surface moved ───────────
+    // ─── Selection ────────────────────────────────────────────────────
     //
-    // The molecule knob was born reading `previewL3.selectedTagName`, written by the L3 preview
-    // component (servicePreview). The selection now happens IN THE APP — the in-place editor
-    // (studioEditor) publishes `aura.edit.selection` instead, and nobody writes the old key any more.
-    // So the knob sat there disabled: not because the element was not a molecule, but because
-    // nothing ever told it anything was selected.
-    //
-    // Both are kept. The old one still works wherever the L3 preview is still mounted, and the new
-    // one carries more than a tag — the page's own file and WHICH occurrence of the tag it is, which
-    // is what the swap needs to rewrite the right one.
+    // The selection happens IN THE APP: the in-place editor (studioEditor) publishes
+    // `aura.edit.selection`, which carries more than a tag — the page's own file and WHICH occurrence
+    // of the tag it is, which is what the swap needs to rewrite the right one.
 
-    /** The last selection published by the in-place editor, when that is the live channel. */
+    /** The last selection published by the in-place editor. */
     @state() private _studioSelection: IAuraEditSelection | null = null;
 
     handleIcaStateChange(key: string, value: any) {
-        if (key === 'previewL3.selectedTagName') {
-            this._studioSelection = null;
-            this._oldSelectedTag = getState('previewL3.selectedTagName');
-            void this._onPreviewSelectedElementChanged(value);
-        }
         if (key === 'aura.edit.selection') {
             const selection = (value ?? getAuraEdit().selection) as IAuraEditSelection | null;
             this._studioSelection = selection;
@@ -393,9 +382,8 @@ export class ServiceGenome102020 extends ServiceBase {
 
     private async _onMoleculesChanged(value: number | null) {
 
-        // The FILE: the in-place editor already resolved which file renders the selection, so when it
-        // is the live channel that answer is used directly. The l3 route stays for the L3 preview,
-        // where the selection carries no file of its own.
+        // The FILE: the in-place editor already resolved which file renders the selection, so that
+        // answer is used directly. Without one, the l3 file open in the editor is the fallback.
         const studio = this._studioSelection;
         const file = studio?.file
             ? { project: studio.file.project, shortName: studio.file.shortName, folder: studio.file.folder }
@@ -474,11 +462,8 @@ export class ServiceGenome102020 extends ServiceBase {
         });
 
         this._oldSelectedTag = newTag;
-        // ONLY THE L3 PREVIEW READS THIS: it reselects by tag after re-rendering. The in-place
-        // editor restores its own selection by POSITION when the live update announces the remount,
-        // so writing the key for that channel left a value nobody would ever read — addressed by
-        // TAG, which is the kind of address that put the swap in the wrong button to begin with.
-        if (!this._studioSelection) setState('preview.pendingReselect', newTag);
+        // No reselect key is written: the in-place editor restores its own selection by POSITION
+        // when the live update announces the remount.
         mls.editor.forceModelUpdate(tsModel.model)
 
         if (!pageStorFile) {
@@ -516,8 +501,8 @@ export class ServiceGenome102020 extends ServiceBase {
      * the edited source, so the second arrival answers "already applied" instead of throwing the page
      * node away and building it again.
      *
-     * NO HOST is not an error: in the L3 preview route there is no running app to update, and the
-     * preview re-renders on its own. It is not a free pass either — the COMPILE runs on every exit
+     * NO HOST is not an error: when no app is running there is nothing to update. It is not a free
+     * pass either — the COMPILE runs on every exit
      * here, because the service worker cache is what a reload is served from, and for a long time
      * this method was the only place the swap was ever compiled. The persistence moved out to the
      * caller for the same reason: neither of them may depend on the host being armed.
@@ -525,7 +510,7 @@ export class ServiceGenome102020 extends ServiceBase {
     private async _applyToRunningPage(edited: IStudioEditTarget): Promise<void> {
         const host = currentEditHost()?.host;
         if (!host) {
-            // Legitimate — the L3 preview route has no running app, so this is not the knob's error
+            // Legitimate — there is no running app to update, so this is not the knob's error
             // line. The COMPILE still has to happen: it is what puts the new build in the service
             // worker cache, and a reload is served from there.
             await compileAfterEdit(edited);
@@ -606,7 +591,7 @@ export class ServiceGenome102020 extends ServiceBase {
     private async _diagnose(where: string): Promise<void> {
         const aura = getAuraState();
         const file = this._currentPageFile;
-        const tag = this._studioSelection?.tag ?? String(getState('previewL3.selectedTagName') ?? '');
+        const tag = this._studioSelection?.tag ?? '';
         const config = await this._loadProjectConfig();
         const groups = this._getMolecules();
         const group = this._extractGroupFromTag(tag);
@@ -635,7 +620,7 @@ export class ServiceGenome102020 extends ServiceBase {
         console.log('MOLECULES knob:', {
             'selection channel': this._studioSelection
                 ? 'aura.edit.selection (in-place editor)'
-                : (getState('previewL3.selectedTagName') ? 'previewL3 (l3 preview)' : '(nothing has spoken yet)'),
+                : '(nothing has spoken yet)',
             'studio selection': this._studioSelection
                 ? `<${this._studioSelection.tag}> #${this._studioSelection.occurrence} in ${this._studioSelection.file?.shortName ?? '(no file)'}`
                 : '(none)',
@@ -684,8 +669,7 @@ export class ServiceGenome102020 extends ServiceBase {
      * writing nowhere when the somewhere is wrong, and a silent wrong write is the hardest kind to
      * notice — it took a page whose two orders are almost reversed to expose this one.
      *
-     * TWO ROUTES KEEP THE INDEX. `all` does not target anything, and the L3 preview has a real DOM
-     * path and no anchor to offer; both fall through with no offset and behave exactly as before.
+     * `all` does not target anything, so it falls through with no offset.
      */
     private _swapTargetOffset(source: string): { ok: true; offset?: number } | { ok: false; reason: string } {
         const studio = this._studioSelection;
@@ -724,8 +708,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
     private _selectorForSwap(): string | undefined {
         const studio = this._studioSelection;
-        if (!studio) return getState('previewL3.selectedElement');
-        if (!studio.tag) return undefined;
+        if (!studio?.tag) return undefined;
         return studio.occurrence > 0 ? `${studio.tag}:nth-of-type(${studio.occurrence + 1})` : studio.tag;
     }
 
@@ -1048,7 +1031,6 @@ export class ServiceGenome102020 extends ServiceBase {
     async connectedCallback() {
         super.connectedCallback();
         AuraInitState();
-        subscribe('previewL3.selectedTagName', this);
         subscribe('aura.edit.selection', this);
         await this._loadModuleNames(); // warm the guard used by the menu title — BEFORE the knob
         await this.setLastOpenedFileIfNeeded();
@@ -1062,7 +1044,6 @@ export class ServiceGenome102020 extends ServiceBase {
     disconnectedCallback() {
         super.disconnectedCallback();
         delete (window as unknown as Record<string, unknown>).auraGenomeDiagnose;
-        unsubscribe('previewL3.selectedTagName', this);
         unsubscribe('aura.edit.selection', this);
         // @ts-ignore
         mls.events.removeEventListener([this.level], ['FileAction'], this._onFileActionGenome);
