@@ -12,6 +12,8 @@ import {
   COLLAB_DRAFT_SAVED,
   discard,
   discardModule,
+  filesByShortPath,
+  undoFile,
   resetDraftDatabase,
   loadPanel,
   modulePendingCount,
@@ -1577,6 +1579,161 @@ test('discardModule sends the four paths, swaps only that module block, and undo
     { path: 'l2/billing/bill.ts', inBrowser: false, inDraft: true, hasError: false },
     { path: 'l2/ordersExtra/no.ts', inBrowser: true, inDraft: false, hasError: false },
   ], 'orders'), 2);
+});
+
+test('st64 s1: undo of a saved change restores that path, clears the local copy, recounts and reloads', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const notices: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_RECOUNT, (ev) => {
+    const detail = (ev as CustomEvent<{ project: number }>).detail;
+    notices.push(`recount:${detail.project}`);
+  });
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, (ev) => {
+    const detail = (ev as CustomEvent<{ project: number }>).detail;
+    notices.push(`discarded:${detail.project}`);
+  });
+  host.window = windowEvents;
+  const changed: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'page', level: 2, folder: 'orders', extension: '.ts',
+  };
+  const draftPaths = ['l2/orders/page.ts', 'l2/billing/bill.ts'];
+  try {
+    const next = await undoFile({
+      fetchImpl: async (_input, init) => {
+        notices.push('fetch');
+        const body = JSON.parse(init.body) as { action: string; project: number; draft: string; ref: string; paths: string[] };
+        assert.equal(body.action, 'draftRestorePaths');
+        assert.equal(body.project, 102047);
+        assert.equal(body.draft, 'team-102047');
+        assert.equal(body.ref, 'main');
+        assert.deepEqual(body.paths, ['l2/orders/page.ts']);
+        return jsonResponse({ statusCode: 200, status: 'restored' });
+      },
+      file: changed,
+      clearLocal: async (file) => {
+        notices.push('clear');
+        file.inLocalStorage = false;
+        file.status = 'nochange';
+      },
+      removeNew: async () => { notices.push('remove'); },
+    }, 102047, 'team-102047', 'l2/orders/page.ts', true, draftPaths);
+    assert.deepEqual(next, ['l2/billing/bill.ts']);
+    assert.equal(changed.inLocalStorage, false);
+    assert.equal(changed.status, 'nochange');
+    assert.deepEqual(notices, ['fetch', 'clear', 'recount:102047', 'discarded:102047']);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st64 s1: undo of a saved new file removes it from the draft list', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const notices: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_RECOUNT, () => { notices.push('recount'); });
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, () => { notices.push('discarded'); });
+  host.window = windowEvents;
+  const created: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'new', shortName: 'fresh', level: 2, folder: 'orders', extension: '.ts',
+  };
+  const listed: IPanelStorFile[] = [created];
+  try {
+    const next = await undoFile({
+      fetchImpl: async (_input, init) => {
+        const body = JSON.parse(init.body) as { paths: string[] };
+        assert.deepEqual(body.paths, ['l2/orders/fresh.ts']);
+        notices.push('fetch');
+        return jsonResponse({ statusCode: 200, status: 'restored' });
+      },
+      file: created,
+      clearLocal: async () => { notices.push('clear'); },
+      removeNew: async (file) => {
+        notices.push('remove');
+        const index = listed.indexOf(file);
+        if (index >= 0) listed.splice(index, 1);
+      },
+    }, 102047, 'team-102047', 'l2/orders/fresh.ts', true, ['l2/orders/fresh.ts', 'l2/billing/bill.ts']);
+    assert.deepEqual(next, ['l2/billing/bill.ts']);
+    assert.deepEqual(listed, []);
+    assert.deepEqual(notices, ['fetch', 'remove', 'recount', 'discarded']);
+    const pending = pendingFiles([], next);
+    const tree = buildDraftTree(pending);
+    const fileNode = tree[0]?.children[0]?.children[0];
+    assert.equal(fileNode?.path, 'l2/billing/bill.ts');
+    const savedOnly = buildDraftTree(pendingFiles([], ['l2/orders/page.ts']));
+    const savedNode = savedOnly[0]?.children[0]?.children[0];
+    assert.ok(savedNode);
+    assert.equal(savedNode.inBrowser, 0);
+    assert.equal(savedNode.inDraft, 1);
+    assert.deepEqual(draftNodeActions(savedNode), ['undoFile']);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st64 s1: a browser-only undo clears the local copy and does not call the server', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const notices: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_RECOUNT, () => { notices.push('recount'); });
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, () => { notices.push('discarded'); });
+  host.window = windowEvents;
+  const local: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'page', level: 2, folder: 'orders', extension: '.ts',
+  };
+  const draftPaths = ['l2/billing/bill.ts'];
+  try {
+    const next = await undoFile({
+      fetchImpl: async () => { notices.push('fetch'); return jsonResponse({ statusCode: 200, status: 'restored' }); },
+      file: local,
+      clearLocal: async (file) => {
+        notices.push('clear');
+        file.inLocalStorage = false;
+        file.status = 'nochange';
+      },
+      removeNew: async () => { notices.push('remove'); },
+    }, 102047, 'team-102047', 'l2/orders/page.ts', false, draftPaths);
+    assert.deepEqual(next, draftPaths);
+    assert.equal(local.status, 'nochange');
+    assert.equal(local.inLocalStorage, false);
+    assert.deepEqual(notices, ['clear', 'recount']);
+    assert.equal(filesByShortPath({ page: local }, 102047).get('l2/orders/page.ts'), local);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st64 s1: a server refusal leaves the browser copy and shows the error', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const notices: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_RECOUNT, () => { notices.push('recount'); });
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, () => { notices.push('discarded'); });
+  host.window = windowEvents;
+  const changed: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'page', level: 2, folder: 'orders', extension: '.ts',
+  };
+  try {
+    await assert.rejects(
+      () => undoFile({
+        fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+        file: changed,
+        clearLocal: async () => { notices.push('clear'); },
+        removeNew: async () => { notices.push('remove'); },
+      }, 102047, 'team-102047', 'l2/orders/page.ts', true, ['l2/orders/page.ts']),
+      /draft\.not_owner/,
+    );
+    assert.equal(changed.inLocalStorage, true);
+    assert.equal(changed.status, 'changed');
+    assert.deepEqual(notices, []);
+  } finally {
+    host.window = previous;
+  }
 });
 
 test('discardModule shows the server reason and does not touch config or local copies', async () => {

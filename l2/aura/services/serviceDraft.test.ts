@@ -252,18 +252,26 @@ test('the three blocks come from localEdits, panelModel and readPublished', () =
     assert.ok(tryAt !== -1 && tryAt < writeAt, 'the published write sits in try/catch');
 });
 
-test('undo local calls setContent only after confirm', () => {
+test('undo asks, then restores a saved file through undoFile and still clears a browser copy only after confirm', () => {
     const undo = methodOf(DRAFT, 'private async _onUndoLocal');
     const confirmAt = undo.indexOf('confirm(');
+    const callAt = undo.indexOf('undoFile(');
     const setAt = undo.indexOf('setContent(');
-    assert.ok(confirmAt !== -1 && setAt > confirmAt, 'setContent sits behind confirm');
-    assert.match(undo, /if\s*\(\s*!confirm\(/);
-    assert.match(undo, /setContent\(file, \{ content: null \}\)/);
-    assert.match(undo, /file\.status = 'nochange'/);
-    const statusAt = undo.indexOf("file.status = 'nochange'");
-    const recountAt = undo.indexOf('requestDraftRecount(');
-    const catchAt = undo.indexOf('catch (err)');
-    assert.ok(statusAt !== -1 && recountAt > statusAt && catchAt > recountAt, 'undo asks for a recount only after the local copy is cleared');
+    assert.ok(confirmAt !== -1 && callAt > confirmAt && setAt > confirmAt, 'confirm, then undoFile; setContent stays behind confirm');
+    assert.match(undo, /confirmUndoPublished/);
+    assert.match(undo, /confirmUndoNew/);
+    assert.match(undo, /this\.msg\.confirmUndo\b/);
+    assert.match(undo, /setContent\(item as mls\.stor\.IFileInfo, \{ content: null \}\)/);
+    assert.match(undo, /item\.status = 'nochange'/);
+    assert.match(undo, /deleteFile\(/);
+    assert.match(undo, /_draftReason\(message\)/);
+    assert.match(DRAFT, /Undo \{file\}\? The file goes back to the published version, in the draft too\./);
+    assert.match(DRAFT, /Desfazer \{file\}\? O arquivo volta à versão publicada, também no rascunho\./);
+    assert.match(DRAFT, /¿Deshacer \{file\}\? El archivo vuelve a la versión publicada, también en el borrador\./);
+    assert.match(DRAFT, /Remove the new file \{file\} from the draft\?/);
+    assert.match(DRAFT, /Remover o arquivo novo \{file\} do rascunho\?/);
+    assert.match(DRAFT, /¿Quitar el archivo nuevo \{file\} del borrador\?/);
+    assert.doesNotMatch(undo, /draftRestorePaths/);
 });
 
 test('serviceDraft.less stays within 15 lines', () => {

@@ -740,6 +740,59 @@ export async function discardModule(
   dispatchDraftNotice(COLLAB_DRAFT_DISCARDED, { project });
 }
 
+export interface IUndoFileEffects {
+  fetchImpl: FetchImpl;
+  /** The stor row, when the browser still has one. Null when the path is only in the draft. */
+  file: IPanelStorFile | null;
+  clearLocal: (file: IPanelStorFile) => Promise<void>;
+  /** Drops a new file from the caller's list. Used only after the server accepts a saved new file. */
+  removeNew: (file: IPanelStorFile) => Promise<void>;
+}
+
+/**
+ * One path back to the published version, on the same route as `discardModule`.
+ * A path that is only in the browser clears the local copy and does not call the server.
+ * A path saved in the draft calls `draftRestorePaths` with that path alone (`ref` `main`):
+ * a changed file returns to the published text, a new file is removed.
+ * The server failure throws before the browser changes.
+ * After a restore, the path leaves `draftPaths`, the count is asked again, and the preview reloads.
+ */
+export async function undoFile(
+  effects: IUndoFileEffects,
+  project: number,
+  slug: string,
+  filePath: string,
+  inDraft: boolean,
+  draftPaths: readonly string[],
+): Promise<string[]> {
+  if (filePath.trim() === '') return fail('undo path is empty');
+  if (!inDraft) {
+    if (!effects.file) return fail(`undo has no browser file: ${filePath}`);
+    await effects.clearLocal(effects.file);
+    requestDraftRecount(project);
+    return [...draftPaths];
+  }
+  if (!SLUG_RE.test(slug)) return fail(`undo draft slug is invalid: ${slug}`);
+  const result = await callExec(effects.fetchImpl, 'draftRestorePaths', {
+    project,
+    draft: slug,
+    ref: 'main',
+    paths: [filePath],
+  });
+  if (!result.ok) return fail(result.msg ?? result.code);
+  if (result.status !== 'restored' && result.status !== 'unchanged') {
+    return fail(result.status ?? 'draftRestorePaths failed');
+  }
+  if (effects.file?.status === 'new') {
+    await effects.removeNew(effects.file);
+  } else if (effects.file) {
+    await effects.clearLocal(effects.file);
+  }
+  requestDraftRecount(project);
+  dispatchDraftNotice(COLLAB_DRAFT_DISCARDED, { project });
+  return draftPaths.filter((path) => path !== filePath);
+}
+
 /** `DRAFT_CONFLICT: <files>` — the panel turns this into `syncConflict`. */
 export async function syncWithPublished(
   effects: IReloadEffects,
@@ -908,6 +961,19 @@ function shortPathOf(file: IPanelStorFile): string {
   const levelPart = file.level === undefined ? '' : `l${file.level}/`;
   const folderPart = folder === '' ? '' : `${folder}/`;
   return `${levelPart}${folderPart}${name}${extension}`;
+}
+
+/** Every stor row of the project, keyed by the same short path the draft list uses. */
+export function filesByShortPath<T extends IPanelStorFile>(
+  storFiles: Readonly<Record<string, T | null | undefined>>,
+  project: number,
+): Map<string, T> {
+  const byPath = new Map<string, T>();
+  for (const file of Object.values(storFiles)) {
+    if (!file || !isProjectFile(file, project)) continue;
+    byPath.set(shortPathOf(file), file);
+  }
+  return byPath;
 }
 
 /** Browser edits of one project: same files as `collectEditedFiles`, as short path + error mark. */
@@ -1269,7 +1335,7 @@ export function draftNodeActions(node: IDraftTreeNode): DraftNodeAction[] {
   }
   if (node.kind === 'person') return ['view', 'experiment'];
   if (node.kind === 'module' && node.showUnsaved) return ['discardModule'];
-  if (node.kind === 'file' && node.showUnsaved && node.inBrowser > 0) return ['undoFile'];
+  if (node.kind === 'file' && node.showUnsaved && (node.inBrowser > 0 || node.inDraft > 0)) return ['undoFile'];
   return [];
 }
 

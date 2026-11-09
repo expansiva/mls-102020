@@ -14,6 +14,7 @@ import {
     buildPanelTree,
     collectEditedFiles,
     discard,
+    filesByShortPath,
     resetDraftDatabase,
     loadPanel,
     localEdits,
@@ -36,6 +37,7 @@ import {
     draftUploadLine,
     slugForBranch,
     syncWithPublished,
+    undoFile,
     viewDiff,
     type FetchImpl,
     type ICollabDraftUploadDetail,
@@ -62,6 +64,7 @@ import {
     type IDraftSaveOutcome,
 } from '/_102020_/l2/aura/studio/studioEditTool.js';
 import { lockedDraftWrite } from '/_102020_/l2/aura/studio/studioModuleLock.js';
+import { deleteFile } from '/_102027_/l2/libStor.js';
 
 /// **collab_i18n_start**
 const message_en = {
@@ -121,6 +124,8 @@ const message_en = {
     withError: 'with error',
     undoLocal: 'Undo',
     confirmUndo: 'Discard the local copy of {file}?',
+    confirmUndoPublished: 'Undo {file}? The file goes back to the published version, in the draft too.',
+    confirmUndoNew: 'Remove the new file {file} from the draft?',
     confirmDiscardModule: 'Discard {count} changes in {module}?',
     moduleDiscarded: 'Discarded module {module}.',
     draftRefInvalid: 'The published version to restore is not valid.',
@@ -204,6 +209,8 @@ const messages: Record<string, MessageType> = {
         withError: 'com erro',
         undoLocal: 'Desfazer',
         confirmUndo: 'Descartar a cópia local de {file}?',
+        confirmUndoPublished: 'Desfazer {file}? O arquivo volta à versão publicada, também no rascunho.',
+        confirmUndoNew: 'Remover o arquivo novo {file} do rascunho?',
         confirmDiscardModule: 'Descartar {count} alterações do módulo {module}?',
         moduleDiscarded: 'Módulo {module} descartado.',
         draftRefInvalid: 'A versão publicada para restaurar não é válida.',
@@ -284,6 +291,8 @@ const messages: Record<string, MessageType> = {
         withError: 'con error',
         undoLocal: 'Deshacer',
         confirmUndo: '¿Descartar la copia local de {file}?',
+        confirmUndoPublished: '¿Deshacer {file}? El archivo vuelve a la versión publicada, también en el borrador.',
+        confirmUndoNew: '¿Quitar el archivo nuevo {file} del borrador?',
         confirmDiscardModule: '¿Descartar {count} cambios del módulo {module}?',
         moduleDiscarded: 'Módulo {module} descartado.',
         draftRefInvalid: 'La versión publicada para restaurar no es válida.',
@@ -575,13 +584,9 @@ export class ServiceDraft102020 extends ServiceBase {
         const tree = buildPanelTree(this.msg.svcTitle, this._panelPeople(mineFiles), this.msg.unownedDrafts);
         const rows = visibleTreeRows([tree], this._open);
         const counts = actionCounts(model.local.files, model.draft.files);
-        const byPath = new Map<string, mls.stor.IFileInfo>();
-        const paired = Math.min(edited.length, local.length);
-        for (let index = 0; index < paired; index += 1) {
-            const edit = local[index];
-            const file = edited[index];
-            if (edit && file) byPath.set(edit.shortPath, file);
-        }
+        const byPath = project
+            ? filesByShortPath(mls.stor.files, project)
+            : new Map<string, mls.stor.IFileInfo>();
         const busy = this._phase === 'loading' || this._phase === 'publishing';
         const uploadLine = this._upload ? draftUploadLine(this._upload, this.msg.uploadingPart) : '';
         return html`
@@ -729,8 +734,9 @@ export class ServiceDraft102020 extends ServiceBase {
             return html`<button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onModuleDiscard(node.name); }}>${label}</button>`;
         }
         if (action === 'undoFile') {
-            const file = byPath.get(node.path);
-            return html`<button class=${BUTTON} ?disabled=${busy || !file} @click=${() => { if (file) void this._onUndoLocal(file, node.path); }}>${this.msg.undoLocal}</button>`;
+            const file = byPath.get(node.path) ?? null;
+            const canUndo = file !== null || node.inDraft > 0;
+            return html`<button class=${BUTTON} ?disabled=${busy || !canUndo} @click=${() => { if (canUndo) void this._onUndoLocal(file, node.path); }}>${this.msg.undoLocal}</button>`;
         }
         if (action === 'view') {
             return html`<button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onView(node.branch); }}>${this.msg.view}</button>`;
@@ -921,21 +927,49 @@ export class ServiceDraft102020 extends ServiceBase {
         }
     }
 
-    private async _onUndoLocal(file: mls.stor.IFileInfo, shortPath: string): Promise<void> {
-        const refused = lockedDraftWrite(file);
-        if (refused) {
-            this._error = refused;
+    private async _onUndoLocal(file: mls.stor.IFileInfo | null, shortPath: string): Promise<void> {
+        const project = this._projectId;
+        if (!project || !isVmDriver(this._driver)) return;
+        if (file) {
+            const refused = lockedDraftWrite(file);
+            if (refused) {
+                this._error = refused;
+                this._phase = 'error';
+                return;
+            }
+        }
+        const draftPaths = this._current ? this._current.files : [];
+        const inDraft = draftPaths.includes(shortPath);
+        if (inDraft && !this._slug) {
+            console.error('[serviceDraft] undo has no active draft', shortPath);
+            this._error = this.msg.noActiveDraft;
             this._phase = 'error';
             return;
         }
-        if (!confirm(this.msg.confirmUndo.replace('{file}', shortPath))) return;
+        const template = !inDraft
+            ? this.msg.confirmUndo
+            : (file?.status === 'new' ? this.msg.confirmUndoNew : this.msg.confirmUndoPublished);
+        if (!confirm(template.replace('{file}', shortPath))) return;
+        this._error = '';
+        this._note = '';
+        if (this._phase === 'error') this._phase = 'idle';
         try {
-            await mls.stor.localStor.setContent(file, { content: null });
-            file.status = 'nochange';
-            requestDraftRecount(file.project);
+            const next = await undoFile({
+                fetchImpl,
+                file,
+                clearLocal: async (item) => {
+                    await mls.stor.localStor.setContent(item as mls.stor.IFileInfo, { content: null });
+                    item.status = 'nochange';
+                },
+                removeNew: async (item) => {
+                    await deleteFile(item as mls.stor.IFileInfo);
+                },
+            }, project, this._slug ?? '', shortPath, inDraft, draftPaths);
+            if (this._current) this._current = { ...this._current, files: next };
         } catch (err) {
-            console.error('[serviceDraft] undo local failed:', err);
-            this._error = err instanceof Error ? err.message : String(err);
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[serviceDraft] undo local failed:', message);
+            this._error = this._draftReason(message);
             this._phase = 'error';
             return;
         }
