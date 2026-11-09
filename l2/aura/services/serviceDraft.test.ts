@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
-import { bindAutoSaveFactory, syncDraftAutoSave, type IDraftAutoSave } from '/_102020_/l2/aura/studio/studioEditTool.js';
+
 
 const SERVICES = fileURLToPath(new URL('.', import.meta.url));
 const DRAFT = readFileSync(`${SERVICES}serviceDraft.ts`, 'utf8');
@@ -238,100 +238,48 @@ test('serviceDraft.less stays within 15 lines', () => {
     assert.ok(lines <= 24, `serviceDraft.less has ${lines} lines`);
 });
 
-test('the send line under the four buttons shows pause, failure, sending, pending and the last time', () => {
-    const line = methodOf(DRAFT, 'private _autoSaveLine()');
-    const agentAt = line.indexOf('state.agentWorking');
-    const errorAt = line.indexOf('state.error');
-    const sendingAt = line.indexOf('autoSaveSending');
-    const pendingAt = line.indexOf('autoSavePending');
-    const lastAt = line.indexOf('autoSaveLast');
-    assert.ok(
-        agentAt !== -1 && errorAt > agentAt && sendingAt > errorAt && pendingAt > sendingAt && lastAt > pendingAt,
-        'pause, then the failure, then sending, then the pending count, then the last send',
-    );
-    assert.match(line, /autoSaveAgent/);
-    assert.match(line, /autoSaveFailed/);
-    assert.match(DRAFT, /Paused: agent working/);
-    assert.match(DRAFT, /Pausado: agente trabalhando/);
-    assert.match(DRAFT, /En pausa: el agente está trabajando/);
-    assert.match(DRAFT, /Sending…/);
-    assert.match(DRAFT, /Enviando…/);
-    assert.match(DRAFT, /\{count\} pending/);
-    assert.match(DRAFT, /\{count\} pendentes/);
-    assert.match(DRAFT, /\{count\} pendientes/);
-    assert.match(DRAFT, /Last send at \{time\}/);
-    assert.match(DRAFT, /Último envio às \{time\}/);
-    assert.match(DRAFT, /Último envío a las \{time\}/);
-    assert.match(DRAFT, /Not saved: \{reason\}/);
-    assert.match(DRAFT, /Não salvo: \{reason\}/);
-    assert.match(DRAFT, /No guardado: \{reason\}/);
+test('the panel has no auto-save status line and the Save button keeps the unsaved count', () => {
+    assert.doesNotMatch(DRAFT, /_autoSaveLine|autoSaveSending|autoSaveAgent|autoSavePending|autoSaveLast|autoSaveFailed/);
+    assert.doesNotMatch(DRAFT, /Sending…|Paused: agent working|Last send at/);
     const actions = methodOf(DRAFT, 'private _renderActions');
-    const resetAt = actions.lastIndexOf('_onResetDatabase');
-    const lineAt = actions.indexOf('_autoSaveLine()');
-    assert.ok(resetAt !== -1 && lineAt > resetAt, 'the send line sits under the four buttons');
+    assert.match(actions, /saveAll/);
+    assert.match(actions, /_onSave\(\)/);
+    assert.doesNotMatch(actions, /<p /);
+    assert.match(DRAFT, /Save all \(\{count\}\)/);
+    assert.match(DRAFT, /Salvar tudo \(\{count\}\)/);
+    assert.match(DRAFT, /Guardar todo \(\{count\}\)/);
 });
 
-test('auto-save sends through saveToDraft, not setContents on its own', () => {
-    const sendAt = TOOL.indexOf('await saveToDraft(');
-    assert.notEqual(sendAt, -1, 'the tool sends with saveToDraft');
-    const send = TOOL.slice(sendAt, TOOL.indexOf(');', sendAt) + 2);
-    assert.match(send, /autosaveMessage\(batch\)/);
-    assert.match(send, /\(clean, msg\) => mls\.stor\.setContents\(clean, msg\)/);
-    assert.match(send, /\(file\) => afterDraftSave\(file\)/);
-    const outside = TOOL.slice(0, sendAt) + TOOL.slice(sendAt + send.length);
-    assert.doesNotMatch(outside, /mls\.stor\.setContents\(/);
+test('manual Save still sends through saveToDraft and setContents', () => {
+    const save = methodOf(DRAFT, 'private async _onSave');
+    assert.match(save, /saveToDraft\(/);
+    assert.match(save, /\(clean, text\) => mls\.stor\.setContents\(clean, text\)/);
+    assert.match(save, /afterDraftSave\(file\)/);
+    assert.doesNotMatch(TOOL, /mls\.stor\.setContents\(/);
+    assert.doesNotMatch(TOOL, /saveToDraft\(/);
 });
 
-test('studio mode with the cookie starts the injected auto-saver and leaving stops it', () => {
-    const log: string[] = [];
-    const fake: IDraftAutoSave = {
-        start() { log.push('start'); },
-        stop() { log.push('stop'); },
-    };
-    bindAutoSaveFactory(() => fake);
-    try {
-        syncDraftAutoSave(true, true);
-        assert.deepEqual(log, ['start']);
-        syncDraftAutoSave(false, true);
-        assert.deepEqual(log, ['start', 'stop']);
-        syncDraftAutoSave(true, false);
-        assert.deepEqual(log, ['start', 'stop', 'stop']);
-    } finally {
-        bindAutoSaveFactory(null);
-    }
+test('a file change only asks the panel to recount', () => {
+    const connected = methodOf(DRAFT, 'connectedCallback()');
+    assert.match(connected, /subscribeDraftFiles\(\(\) => \{ this\.requestUpdate\(\); \}\)/);
+    assert.doesNotMatch(connected, /setContents|saveToDraft/);
+    const listen = TOOL.slice(TOOL.indexOf('function listenDraftFiles'), TOOL.indexOf('function stopDraftFiles'));
+    assert.match(TOOL, /const DRAFT_FILE_LEVELS = \[1, 2, 3, 5\]/);
+    assert.match(listen, /for \(const level of DRAFT_FILE_LEVELS\) events\.addListener\(level, 'FileAction'/);
+    assert.match(listen, /addListener\(2, 'styleChanged'/);
+    assert.doesNotMatch(listen, /setContents|saveToDraft|notify\(/);
+    assert.doesNotMatch(TOOL, /collabAgentChain|nr-implementation-state|DraftAutoSave|syncDraftAutoSave/);
 });
 
-test('auto-save listens to FileAction on levels 1, 2, 3 and 5', () => {
-    const startAt = TOOL.indexOf('public start(): void');
-    const stopAt = TOOL.indexOf('public stop(): void');
-    const onFileAt = TOOL.indexOf('private readonly onFileAction');
-    const onStyleAt = TOOL.indexOf('private readonly onStyleChanged');
-    assert.ok(startAt !== -1 && stopAt > startAt && onFileAt > stopAt && onStyleAt > onFileAt);
-    const start = TOOL.slice(startAt, stopAt);
-    const stop = TOOL.slice(stopAt, onFileAt);
-    const onFile = TOOL.slice(onFileAt, onStyleAt);
-    for (const level of [1, 2, 3, 5]) {
-        assert.match(start, new RegExp(`addListener\\(${level}, 'FileAction'`));
-    }
-    assert.match(stop, /removeEventListener\(\[1, 2, 3, 5\], \['FileAction'\]/);
-    assert.doesNotMatch(onFile, /ev\.level !== 2 \|\|/);
-    assert.match(onFile, /ev\.level !== 1 && ev\.level !== 2 && ev\.level !== 3 && ev\.level !== 5/);
-    assert.match(start, /addListener\(2, 'styleChanged'/);
-    assert.match(stop, /removeEventListener\(\[2\], \['styleChanged'/);
-});
-
-test('the watcher gate is the same start and stop', () => {
+test('the live-update watcher does not start a draft send', () => {
     const body = TOOL.slice(TOOL.indexOf('async function syncWatcher'), TOOL.indexOf('async function syncEditor'));
-    const offBranch = body.slice(0, body.indexOf('syncDraftAutoSave(true, studioDraftOn())'));
-    assert.match(offBranch, /if \(!state\.studioMode\)/);
-    assert.match(offBranch, /watcher\?\.stop\(\)/);
-    assert.match(offBranch, /syncDraftAutoSave\(false, false\)/);
-    assert.match(TOOL, /siteMode\(\) !== 'studio'/);
-    assert.match(TOOL, /activeDraft\(\)/);
+    assert.match(body, /if \(!state\.studioMode\)/);
+    assert.match(body, /watcher\?\.stop\(\)/);
+    assert.doesNotMatch(body, /syncDraftAutoSave|setContents|saveToDraft/);
     assert.doesNotMatch(TOOL, /document\.cookie/);
     assert.doesNotMatch(TOOL, /readDraftCookie/);
     const teardown = TOOL.slice(TOOL.indexOf('function teardown'), TOOL.indexOf('async function apply'));
-    assert.match(teardown, /syncDraftAutoSave\(false, false\)/);
+    assert.doesNotMatch(teardown, /syncDraftAutoSave|setContents/);
 });
 
 test('the draft panel has no GitHub sources option', () => {

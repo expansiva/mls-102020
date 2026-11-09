@@ -51,7 +51,7 @@ import {
     type IVisibleTreeRow,
     type DraftPanelLang,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
-import { listedOwner, subscribeAutoSave, type IAutoSavePanelState } from '/_102020_/l2/aura/studio/studioEditTool.js';
+import { listedOwner, subscribeDraftFiles } from '/_102020_/l2/aura/studio/studioEditTool.js';
 import { lockedDraftWrite } from '/_102020_/l2/aura/studio/studioModuleLock.js';
 
 /// **collab_i18n_start**
@@ -127,11 +127,6 @@ const message_en = {
     release: 'Release',
     noLocal: 'No files in the browser.',
     noPublished: 'Nothing published from this browser yet.',
-    autoSaveSending: 'Sending…',
-    autoSaveAgent: 'Paused: agent working',
-    autoSavePending: '{count} pending',
-    autoSaveLast: 'Last send at {time}',
-    autoSaveFailed: 'Not saved: {reason}',
     syncPublished: 'Bring in published changes',
     syncConflict: 'Conflicts with the published version in: {files}. Nothing was changed.',
 };
@@ -210,11 +205,6 @@ const messages: Record<string, MessageType> = {
         release: 'Release',
         noLocal: 'Nenhum arquivo no navegador.',
         noPublished: 'Nada publicado a partir deste navegador.',
-        autoSaveSending: 'Enviando…',
-        autoSaveAgent: 'Pausado: agente trabalhando',
-        autoSavePending: '{count} pendentes',
-        autoSaveLast: 'Último envio às {time}',
-        autoSaveFailed: 'Não salvo: {reason}',
         syncPublished: 'Trazer o publicado',
         syncConflict: 'Conflito com o publicado em: {files}. Nada foi alterado.',
     },
@@ -290,11 +280,6 @@ const messages: Record<string, MessageType> = {
         release: 'Release',
         noLocal: 'Ningún archivo en el navegador.',
         noPublished: 'Nada publicado desde este navegador.',
-        autoSaveSending: 'Enviando…',
-        autoSaveAgent: 'En pausa: el agente está trabajando',
-        autoSavePending: '{count} pendientes',
-        autoSaveLast: 'Último envío a las {time}',
-        autoSaveFailed: 'No guardado: {reason}',
         syncPublished: 'Traer lo publicado',
         syncConflict: 'Conflicto con lo publicado en: {files}. No se cambió nada.',
     },
@@ -472,28 +457,22 @@ export class ServiceDraft102020 extends ServiceBase {
 
     private _projectId: number | undefined;
     private _pingTimer = 0;
-    private _autoSaveTimer = 0;
-    private _unsubAutoSave: (() => void) | undefined;
-    @state() private _autoSave: IAutoSavePanelState = { on: false, lastSentAt: null, pending: 0, error: null, agentWorking: false };
+    private _unsubDraftFiles: (() => void) | undefined;
     @state() private _upload: IDraftUploadProgress | null = null;
     @state() private _open = new Set<string>(['draft']);
     @state() private _selected = '';
 
     connectedCallback(): void {
         super.connectedCallback();
-        this._unsubAutoSave = subscribeAutoSave((state) => {
-            this._autoSave = state;
-            this._syncAutoSaveClock(this._sendClockRuns(state));
-        });
+        this._unsubDraftFiles = subscribeDraftFiles(() => { this.requestUpdate(); });
         window.addEventListener(COLLAB_DRAFT_UPLOAD, this._onDraftUpload);
         void this._load();
     }
 
     disconnectedCallback(): void {
         window.removeEventListener(COLLAB_DRAFT_UPLOAD, this._onDraftUpload);
-        this._unsubAutoSave?.();
-        this._unsubAutoSave = undefined;
-        this._syncAutoSaveClock(false);
+        this._unsubDraftFiles?.();
+        this._unsubDraftFiles = undefined;
         this._stopPing();
         super.disconnectedCallback();
     }
@@ -595,16 +574,12 @@ export class ServiceDraft102020 extends ServiceBase {
         const save = this.msg.saveAll.replace('{count}', String(counts.save));
         const publish = this.msg.publishAll.replace('{count}', String(counts.publish));
         const discard = this.msg.discardAll.replace('{count}', String(counts.discard));
-        const tone = !this._autoSave.agentWorking && this._autoSave.error
-            ? 'text-amber-700 dark:text-amber-300'
-            : 'text-gray-600 dark:text-gray-400';
         return html`
             <div class="draft-actions flex flex-wrap gap-3 px-4 py-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
                 <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onSave(); }}>${save}</button>
                 <button class=${BUTTON_PRIMARY} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
                 <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
                 <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onResetDatabase(); }}>${this.msg.resetDatabase}</button>
-                <p class="w-full text-sm ${tone}">${this._autoSaveLine()}</p>
             </div>
         `;
     }
@@ -635,46 +610,6 @@ export class ServiceDraft102020 extends ServiceBase {
         if (next === this._upload) return;
         this._upload = next;
     };
-
-    private _autoSaveLine(): string {
-        const state = this._autoSave;
-        if (state.agentWorking) return this.msg.autoSaveAgent;
-        if (state.error) return this.msg.autoSaveFailed.replace('{reason}', state.error);
-        if (state.on && state.pending > 0) return this.msg.autoSaveSending;
-        if (state.pending > 0 || state.lastSentAt === null) {
-            return this.msg.autoSavePending.replace('{count}', String(state.pending));
-        }
-        return this.msg.autoSaveLast.replace('{time}', this._sendClock(state.lastSentAt));
-    }
-
-    /** The last-send line is the only one that names a clock time. */
-    private _sendClockRuns(state: IAutoSavePanelState): boolean {
-        if (state.agentWorking || state.error) return false;
-        if (state.pending > 0) return false;
-        return state.lastSentAt !== null;
-    }
-
-    private _sendClock(at: number): string {
-        const date = new Date(at);
-        if (Number.isNaN(date.getTime())) {
-            console.error('[serviceDraft] last send time is not a date', at);
-            return '--:--';
-        }
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${hours}:${minutes}`;
-    }
-
-    private _syncAutoSaveClock(running: boolean): void {
-        if (!running) {
-            if (!this._autoSaveTimer) return;
-            clearInterval(this._autoSaveTimer);
-            this._autoSaveTimer = 0;
-            return;
-        }
-        if (this._autoSaveTimer) return;
-        this._autoSaveTimer = window.setInterval(() => { this.requestUpdate(); }, 1000);
-    }
 
     private _panelPeople(mineFiles: readonly IPendingFile[]): IPanelPersonInput[] {
         const current = this._current;
