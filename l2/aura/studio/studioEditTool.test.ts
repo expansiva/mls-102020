@@ -5,13 +5,17 @@ import { readFileSync } from 'node:fs';
 import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
 import { installStudioModuleLock } from '/_102020_/l2/aura/studio/studioModuleLock.js';
 import { rememberCollabMode, modeState } from '/_102033_/l2/cbe/studioDraft.js';
+import { publishEditHost, type IStudioEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { AuraInitState, getAuraState, setAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import {
+  COLLAB_DRAFT_PENDING,
+  COLLAB_DRAFT_SAVE_REQUEST,
   deliverSharedEdit,
   listedOwner,
   noteSharedFile,
   subscribeDraftFiles,
   syncSharedEditNotice,
+  type ICollabDraftPendingDetail,
   type IOtherDraftTouch,
   type ISharedEditSession,
 } from '/_102020_/l2/aura/studio/studioEditTool.js';
@@ -145,7 +149,7 @@ interface IEventHost {
 }
 
 test('FileAction, the end of an agent chain and the end of Apply do not call setContents', () => {
-  assert.doesNotMatch(TOOL, /setContents|saveToDraft|sendAutoSaveBatch|DraftAutoSave|syncDraftAutoSave/);
+  assert.doesNotMatch(TOOL, /sendAutoSaveBatch|DraftAutoSave|syncDraftAutoSave/);
   const host = globalThis as unknown as IEventHost;
   const previous = { events: host.mls.events, stor: host.mls.stor, window: host.window };
   const listeners: IFileListener[] = [];
@@ -301,5 +305,132 @@ test('an edit of a file another draft also touches warns once and does not call 
     rememberCollabMode(previous.mode);
     setAuraState('actualProject', previous.project);
     if (doc?.documentElement && previousLang !== undefined) doc.documentElement.lang = previousLang;
+  }
+});
+
+test('editing the front publishes the unsaved count, Save with the panel closed clears it, and the preview is not swapped', async () => {
+  const watcherBody = TOOL.slice(TOOL.indexOf('async function syncWatcher'), TOOL.indexOf('async function syncEditor'));
+  assert.doesNotMatch(watcherBody, /watcher\.start\(/);
+  assert.doesNotMatch(watcherBody, /applyLiveUpdate\(/);
+  assert.doesNotMatch(TOOL, /applyChangedOnMounted/);
+  const watcher = readFileSync(new URL('studioLiveUpdateWatcher.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(watcher, /applyLiveUpdate\(/);
+
+  const host = globalThis as unknown as {
+    mls: {
+      actualProject?: number;
+      stor?: {
+        files?: Record<string, unknown>;
+        others?: { getDefaultDriver?: (project: number) => Promise<{ driverVersion: string }> };
+        setContents?: (files: unknown[], comment: string) => Promise<{ result: boolean }[]>;
+      };
+      events?: {
+        addListener: (level: number, type: string, fn: (ev: mls.events.IEvent) => void) => void;
+        removeEventListener: (levels: number[] | undefined, types: string[] | undefined, fn: (ev: mls.events.IEvent) => void) => void;
+      };
+      sites?: { getMode?: () => string };
+      common?: { crc?: { crc32: (value: string) => number } };
+      editor?: unknown;
+    };
+    window?: EventTarget;
+    prompt?: (message?: string) => string | null;
+  };
+  const previous = {
+    actualProject: host.mls.actualProject,
+    stor: host.mls.stor,
+    events: host.mls.events,
+    sites: host.mls.sites,
+    common: host.mls.common,
+    editor: host.mls.editor,
+    window: host.window,
+    prompt: host.prompt,
+  };
+  const listeners: IFileListener[] = [];
+  const counts: number[] = [];
+  const written: string[] = [];
+  const windowEvents = new EventTarget();
+  windowEvents.addEventListener(COLLAB_DRAFT_PENDING, (ev) => {
+    const detail = (ev as CustomEvent<ICollabDraftPendingDetail>).detail;
+    counts.push(detail.count);
+    assert.equal(detail.project, 102047);
+  });
+  const page = {
+    project: 102047,
+    level: 2,
+    folder: 'aura',
+    shortName: 'page',
+    extension: '.ts',
+    status: 'changed',
+    hasError: false,
+    inLocalStorage: true,
+    getContent: async () => 'edited-body',
+  };
+  const files: Record<string, unknown> = {};
+  host.mls.actualProject = 102047;
+  host.mls.stor = {
+    files,
+    others: { getDefaultDriver: async () => ({ driverVersion: '1.0.0-vm' }) },
+    setContents: async (_clean, comment) => {
+      written.push(comment);
+      return [{ result: true }];
+    },
+  };
+  host.mls.events = {
+    addListener(level, type, fn) { listeners.push({ level, type, fn }); },
+    removeEventListener(levels, types, fn) {
+      for (let index = listeners.length - 1; index >= 0; index -= 1) {
+        const item = listeners[index];
+        if (!item || item.fn !== fn) continue;
+        if (levels && !levels.includes(item.level)) continue;
+        if (types && !types.includes(item.type)) continue;
+        listeners.splice(index, 1);
+      }
+    },
+  };
+  host.mls.sites = { getMode: () => 'production' };
+  host.mls.common = {
+    crc: {
+      crc32: (value: string) => {
+        let hash = 0;
+        for (const ch of value) hash = (hash * 33 + ch.charCodeAt(0)) >>> 0;
+        return hash;
+      },
+    },
+  };
+  host.mls.editor = { getKeyModel: () => 'none', models: {} };
+  host.window = windowEvents;
+  host.prompt = () => 'ship it';
+  const studioHost: IStudioEditHost = {
+    host: { children: [] } as unknown as HTMLElement,
+    chromeHost: { children: [] } as unknown as HTMLElement,
+    studioMode: true,
+    editLevel: false,
+    level: 2,
+    panelVisible: false,
+  };
+  try {
+    publishEditHost(studioHost);
+    assert.deepEqual(counts, [0]);
+    files.page = page;
+    const fileEvent = listeners.find((item) => item.type === 'FileAction');
+    assert.ok(fileEvent, 'studio mode listens for a file edit');
+    fileEvent.fn({ level: fileEvent.level, type: 'FileAction', desc: '{}' });
+    assert.deepEqual(counts, [0, 1]);
+    windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_REQUEST, { detail: { project: 102047 } }));
+    for (let i = 0; i < 30 && written.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.deepEqual(written, ['ship it']);
+    assert.deepEqual(counts, [0, 1, 0]);
+  } finally {
+    publishEditHost(null);
+    host.mls.actualProject = previous.actualProject;
+    host.mls.stor = previous.stor;
+    host.mls.events = previous.events;
+    host.mls.sites = previous.sites;
+    host.mls.common = previous.common;
+    host.mls.editor = previous.editor;
+    host.window = previous.window;
+    host.prompt = previous.prompt;
   }
 });

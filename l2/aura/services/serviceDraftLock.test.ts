@@ -36,10 +36,11 @@ test('undo and save of a locked file refuse with the Apply message', () => {
   (globalThis as { window?: EventTarget }).window = new EventTarget();
   installStudioModuleLock();
   const source = readFileSync(fileURLToPath(new URL('./serviceDraft.ts', import.meta.url)), 'utf8');
-  const saveStart = source.indexOf('private async _onSave');
-  const saveEnd = source.indexOf('private async _onUndoLocal', saveStart);
-  const save = source.slice(saveStart, saveEnd);
-  const undoStart = saveEnd;
+  const tool = readFileSync(fileURLToPath(new URL('../studio/studioEditTool.ts', import.meta.url)), 'utf8');
+  const saveStart = tool.indexOf('export async function runDraftSave');
+  const saveEnd = tool.indexOf('let editor:', saveStart);
+  const save = tool.slice(saveStart, saveEnd);
+  const undoStart = source.indexOf('private async _onUndoLocal');
   const undoEnd = source.indexOf('\n    private async ', undoStart + 1);
   const undo = source.slice(undoStart, undoEnd);
 

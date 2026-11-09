@@ -736,6 +736,11 @@ const message_pt = {
   'inspect.otherPage': 'Inspect: o app não está mostrando esta página. Use "Abrir página" primeiro.',
   'inspect.noSource': 'Inspect: o código desta página não está carregado no editor.',
   'inspect.refused': 'Inspect: {reason}',
+
+  // Same three sentences as the draft panel (askComment, emptyComment, noFiles). es reads pt.
+  'draft.askComment': 'Mensagem',
+  'draft.emptyComment': 'A mensagem é obrigatória.',
+  'draft.noFiles': 'Nenhum arquivo tocado.',
 };
 /// **collab_i18n_end**
 
@@ -1436,6 +1441,10 @@ const message_en: typeof message_pt = {
   'inspect.otherPage': 'Inspect: the app is not showing this page. Use "Abrir página" first.',
   'inspect.noSource': 'Inspect: the code of this page is not loaded in the editor.',
   'inspect.refused': 'Inspect: {reason}',
+
+  'draft.askComment': 'Message',
+  'draft.emptyComment': 'A message is required.',
+  'draft.noFiles': 'No touched files.',
 };
 
 export type StudioMessageId = keyof typeof message_pt;

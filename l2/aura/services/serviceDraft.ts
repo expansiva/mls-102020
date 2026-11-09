@@ -8,7 +8,6 @@ import { activeDraft, enterDraft, isVmDriver, postDraftEnter, requestModeChange,
 import { loadProjectDefinitions } from '/_102033_/l2/cbe/initStudio.js';
 import { discardModuleInStudio } from '/_102020_/l2/aura/helpers/draftModuleDiscard.js';
 import {
-    afterDraftSave,
     branchForSlug,
     actionCounts,
     buildPanelTree,
@@ -33,7 +32,6 @@ import {
     draftBlockReason,
     formatDraftBlockReason,
     draftUploadLine,
-    saveToDraft,
     slugForBranch,
     syncWithPublished,
     viewDiff,
@@ -52,7 +50,15 @@ import {
     type IVisibleTreeRow,
     type DraftPanelLang,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
-import { listedOwner, subscribeDraftFiles } from '/_102020_/l2/aura/studio/studioEditTool.js';
+import {
+    bindDraftSaveHost,
+    listedOwner,
+    releaseDraftSaveHost,
+    runDraftSave,
+    subscribeDraftFiles,
+    type IDraftSaveHost,
+    type IDraftSaveOutcome,
+} from '/_102020_/l2/aura/studio/studioEditTool.js';
 import { lockedDraftWrite } from '/_102020_/l2/aura/studio/studioModuleLock.js';
 
 /// **collab_i18n_start**
@@ -457,6 +463,7 @@ export class ServiceDraft102020 extends ServiceBase {
     @state() private _diffText: string | null = null;
 
     private _projectId: number | undefined;
+    private _saveHost: IDraftSaveHost | null = null;
     private _pingTimer = 0;
     private _unsubDraftFiles: (() => void) | undefined;
     @state() private _upload: IDraftUploadProgress | null = null;
@@ -465,6 +472,13 @@ export class ServiceDraft102020 extends ServiceBase {
 
     connectedCallback(): void {
         super.connectedCallback();
+        this._saveHost = {
+            project: () => this._projectId,
+            driver: () => this._driver,
+            messages: () => this.msg,
+            apply: (outcome) => this.applyDraftSave(outcome),
+        };
+        bindDraftSaveHost(this._saveHost);
         this._unsubDraftFiles = subscribeDraftFiles(() => { this.requestUpdate(); });
         window.addEventListener(COLLAB_DRAFT_UPLOAD, this._onDraftUpload);
         void this._load();
@@ -472,6 +486,8 @@ export class ServiceDraft102020 extends ServiceBase {
 
     disconnectedCallback(): void {
         window.removeEventListener(COLLAB_DRAFT_UPLOAD, this._onDraftUpload);
+        if (this._saveHost) releaseDraftSaveHost(this._saveHost);
+        this._saveHost = null;
         this._unsubDraftFiles?.();
         this._unsubDraftFiles = undefined;
         this._stopPing();
@@ -856,53 +872,28 @@ export class ServiceDraft102020 extends ServiceBase {
     private async _onSave(): Promise<void> {
         const project = this._projectId;
         if (!project || !isVmDriver(this._driver)) return;
-        const comment = this._askComment();
-        if (!comment) return;
-        await this._rememberLocalText();
-        const files = collectEditedFiles(mls.stor.files, project);
-        if (files.length === 0) {
-            console.warn('[serviceDraft] no edited files to save');
+        const saved = await runDraftSave(project, this.msg, this._driver);
+        await this.applyDraftSave(saved);
+    }
+
+    /** What the panel shows after Save. The window request uses the same outcome when this panel is open. */
+    private async applyDraftSave(saved: IDraftSaveOutcome): Promise<void> {
+        if (saved.kind === 'idle') return;
+        if (saved.kind === 'failed') {
+            this._error = saved.message;
+            this._phase = 'error';
+            return;
+        }
+        if (saved.kind === 'error') {
             this._blocked = [];
-            this._error = this.msg.noFiles;
+            this._error = saved.message;
             this._phase = 'error';
             return;
         }
-        const open: typeof files = [];
-        let refused: string | null = null;
-        for (const file of files) {
-            const message = lockedDraftWrite(file);
-            if (message) {
-                refused = message;
-                continue;
-            }
-            open.push(file);
-        }
-        if (open.length === 0) {
-            this._blocked = [];
-            this._error = refused ?? this.msg.noFiles;
-            this._phase = 'error';
-            return;
-        }
-        try {
-            const saved = await saveToDraft(
-                open,
-                comment,
-                (clean, text) => mls.stor.setContents(clean, text),
-                (file) => afterDraftSave(file),
-            );
-            this._blocked = saved.blocked;
-            if (saved.blocked.length > 0) {
-                console.warn('[serviceDraft] blocked files:', saved.blocked.map(fileLabel));
-            }
-        } catch (err) {
-            console.error('[serviceDraft] save failed:', err);
-            this._error = err instanceof Error ? err.message : String(err);
-            this._phase = 'error';
-            return;
-        }
+        this._blocked = saved.blocked;
         await this._load(true);
-        if (refused && this._phase !== 'error') {
-            this._error = refused;
+        if (saved.refused && this._phase !== 'error') {
+            this._error = saved.refused;
             this._phase = 'error';
         }
     }

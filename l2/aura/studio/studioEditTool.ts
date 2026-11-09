@@ -17,13 +17,19 @@ import {
   currentEditHost,
   type IStudioEditHost,
 } from '/_102033_/l2/cbe/studioEditSlot.js';
-import { activeDraft } from '/_102033_/l2/cbe/studioDraft.js';
-import { loadPanel, type FetchImpl } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
+import { activeDraft, isVmDriver } from '/_102033_/l2/cbe/studioDraft.js';
+import {
+  afterDraftSave,
+  collectEditedFiles,
+  loadPanel,
+  rememberOpenedDraftText,
+  saveToDraft,
+  type FetchImpl,
+} from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { resetAuraSeed, seedActiveHeader, seedAuraStateFromHost } from '/_102020_/l2/aura/studio/studioAuraSeed.js';
-import { installStudioModuleLock } from '/_102020_/l2/aura/studio/studioModuleLock.js';
+import { installStudioModuleLock, lockedDraftWrite } from '/_102020_/l2/aura/studio/studioModuleLock.js';
 import type { StudioEditor } from '/_102020_/l2/aura/studio/studioEditor.js';
-import type { StudioLiveUpdateWatcher } from '/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js';
 import { t } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 const fetchImpl: FetchImpl = (input, init) => fetch(input, init);
@@ -200,8 +206,299 @@ export function subscribeDraftFiles(listener: DraftFileListener): () => void {
   };
 }
 
+/** Window event with how many files of the site project still need Save. */
+export const COLLAB_DRAFT_PENDING = 'collabDraftPending';
+
+export interface ICollabDraftPendingDetail {
+  project: number;
+  count: number;
+}
+
+/** Window event from the preview layer. Same Save as the draft panel. */
+export const COLLAB_DRAFT_SAVE_REQUEST = 'collabDraftSaveRequest';
+
+interface ICollabDraftSaveRequestDetail {
+  project: number;
+}
+
+let pendingUnsub: (() => void) | undefined;
+let pendingProject: number | null = null;
+let pendingCount: number | null = null;
+let saveRequestOn = false;
+let draftBridgeOn = false;
+
+function siteProjectId(): number | null {
+  const project = mls.actualProject;
+  if (typeof project !== 'number' || project <= 0) return null;
+  return project;
+}
+
+function unsavedCount(project: number): number {
+  const files = mls.stor?.files;
+  if (!files) {
+    console.error('[studio] collabDraftPending: mls.stor.files is missing');
+    return 0;
+  }
+  return collectEditedFiles(files, project).length;
+}
+
+function publishDraftPending(force: boolean): void {
+  const project = siteProjectId();
+  if (project === null) {
+    console.error('[studio] collabDraftPending: mls.actualProject is missing');
+    return;
+  }
+  const count = unsavedCount(project);
+  if (!force && pendingProject === project && pendingCount === count) return;
+  pendingProject = project;
+  pendingCount = count;
+  const target = (globalThis as { window?: EventTarget }).window;
+  if (!target || typeof target.dispatchEvent !== 'function') {
+    console.error('[studio] collabDraftPending was not dispatched: window is missing');
+    return;
+  }
+  const detail: ICollabDraftPendingDetail = { project, count };
+  try {
+    target.dispatchEvent(new CustomEvent(COLLAB_DRAFT_PENDING, { detail }));
+  } catch (err) {
+    console.error('[studio] collabDraftPending was not dispatched:', err);
+  }
+}
+
+function startDraftPending(): void {
+  if (pendingUnsub) return;
+  pendingUnsub = subscribeDraftFiles(() => { publishDraftPending(false); });
+}
+
+function stopDraftPending(): void {
+  pendingUnsub?.();
+  pendingUnsub = undefined;
+  pendingProject = null;
+  pendingCount = null;
+}
+
+/** After Save, the count may change without a file event. No-op outside Studio. */
+export function noteDraftPending(): void {
+  if (!pendingUnsub) return;
+  publishDraftPending(false);
+}
+
+function readSaveProject(ev: Event): number {
+  const detail = (ev as CustomEvent<unknown>).detail;
+  if (!detail || typeof detail !== 'object' || !('project' in detail)) return 0;
+  const project = (detail as ICollabDraftSaveRequestDetail).project;
+  return typeof project === 'number' && project > 0 ? project : 0;
+}
+
+async function onDraftSaveRequest(ev: Event): Promise<void> {
+  const project = readSaveProject(ev);
+  if (!project) {
+    console.error('[studio] collabDraftSaveRequest has no project');
+    return;
+  }
+  try {
+    const host = currentDraftSaveHost();
+    const samePanel = host !== null && host.project() === project;
+    const outcome = await runDraftSave(
+      project,
+      samePanel && host ? host.messages() : draftSaveMessages(),
+      samePanel && host ? host.driver() : undefined,
+    );
+    if (samePanel && host) await host.apply(outcome);
+  } catch (err) {
+    console.error('[studio] collabDraftSaveRequest failed:', err);
+  }
+}
+
+function startSaveRequest(): void {
+  if (saveRequestOn) return;
+  const target = (globalThis as { window?: EventTarget }).window;
+  if (!target || typeof target.addEventListener !== 'function') {
+    console.error('[studio] collabDraftSaveRequest was not armed: window is missing');
+    return;
+  }
+  target.addEventListener(COLLAB_DRAFT_SAVE_REQUEST, onDraftSaveRequest);
+  saveRequestOn = true;
+}
+
+function stopSaveRequest(): void {
+  if (!saveRequestOn) return;
+  const target = (globalThis as { window?: EventTarget }).window;
+  if (!target || typeof target.removeEventListener !== 'function') {
+    console.error('[studio] collabDraftSaveRequest was not removed: window is missing');
+    saveRequestOn = false;
+    return;
+  }
+  target.removeEventListener(COLLAB_DRAFT_SAVE_REQUEST, onDraftSaveRequest);
+  saveRequestOn = false;
+}
+
+/** Pending count and the Save request. Both run while Studio is on, panel open or not. */
+function syncStudioDraftBridge(studioMode: boolean): void {
+  if (!studioMode) {
+    if (!draftBridgeOn) return;
+    draftBridgeOn = false;
+    stopDraftPending();
+    stopSaveRequest();
+    return;
+  }
+  if (draftBridgeOn) return;
+  draftBridgeOn = true;
+  startDraftPending();
+  startSaveRequest();
+}
+
+export interface IDraftSaveMessages {
+  askComment: string;
+  emptyComment: string;
+  noFiles: string;
+}
+
+export type IDraftSaveOutcome =
+  | { kind: 'idle' }
+  | { kind: 'failed'; message: string }
+  | { kind: 'error'; message: string }
+  | { kind: 'saved'; blocked: mls.stor.IFileInfo[]; refused: string | null };
+
+export interface IDraftSaveHost {
+  project(): number | undefined;
+  driver(): { driverVersion?: string } | null;
+  messages(): IDraftSaveMessages;
+  apply(outcome: IDraftSaveOutcome): Promise<void>;
+}
+
+const idleSave: IDraftSaveOutcome = { kind: 'idle' };
+let draftSaveHost: IDraftSaveHost | null = null;
+
+export function bindDraftSaveHost(host: IDraftSaveHost): void {
+  draftSaveHost = host;
+}
+
+export function releaseDraftSaveHost(host: IDraftSaveHost): void {
+  if (draftSaveHost === host) draftSaveHost = null;
+}
+
+export function currentDraftSaveHost(): IDraftSaveHost | null {
+  return draftSaveHost;
+}
+
+/** Language for a Save that runs with the draft panel closed. Same catalog as the rest of Studio. */
+export function draftSaveMessages(): IDraftSaveMessages {
+  return {
+    askComment: t('draft.askComment'),
+    emptyComment: t('draft.emptyComment'),
+    noFiles: t('draft.noFiles'),
+  };
+}
+
+type CommentAsk = { ok: true; comment: string } | { ok: false; empty: true };
+
+function askDraftComment(panelMessages: IDraftSaveMessages): CommentAsk | null {
+  if (typeof prompt !== 'function') {
+    console.error('[studio] prompt is missing; the draft was not saved');
+    return null;
+  }
+  const comment = prompt(panelMessages.askComment);
+  if (comment === null) return null;
+  const trimmed = comment.trim();
+  if (!trimmed) {
+    console.warn('[studio] empty message');
+    return { ok: false, empty: true };
+  }
+  return { ok: true, comment: trimmed };
+}
+
+function draftFileLabel(file: mls.stor.IFileInfo): string {
+  return `${file.folder}/${file.shortName}${file.extension}`;
+}
+
+async function rememberLocalDraftText(): Promise<void> {
+  const files = mls.stor?.files;
+  if (!files) {
+    console.error('[studio] mls.stor.files is missing');
+    return;
+  }
+  const opened: mls.stor.IFileInfo[] = [];
+  for (const file of Object.values(files)) {
+    if (file) opened.push(file);
+  }
+  await rememberOpenedDraftText(opened);
+}
+
+/**
+ * The panel Save and `collabDraftSaveRequest` both come here.
+ * `knownDriver === undefined` reads the driver (the panel is closed). A passed driver is not read again.
+ */
+export async function runDraftSave(
+  project: number,
+  panelMessages: IDraftSaveMessages,
+  knownDriver: { driverVersion?: string } | null | undefined,
+): Promise<IDraftSaveOutcome> {
+  if (!project) {
+    console.error('[studio] save has no project');
+    return idleSave;
+  }
+  const driverWasKnown = knownDriver !== undefined;
+  let driver = knownDriver;
+  if (!driverWasKnown) {
+    try {
+      driver = await mls.stor.others.getDefaultDriver(project);
+    } catch (err) {
+      console.error('[studio] getDefaultDriver failed:', err);
+      return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (!isVmDriver(driver)) {
+    if (!driverWasKnown) console.error('[studio] save request is not a VM project', project);
+    return idleSave;
+  }
+  const asked = askDraftComment(panelMessages);
+  if (!asked) return idleSave;
+  if (!asked.ok) return { kind: 'error', message: panelMessages.emptyComment };
+  await rememberLocalDraftText();
+  const storFiles = mls.stor.files;
+  if (!storFiles) {
+    console.error('[studio] mls.stor.files is missing');
+    return { kind: 'failed', message: panelMessages.noFiles };
+  }
+  const files = collectEditedFiles(storFiles, project) as mls.stor.IFileInfo[];
+  if (files.length === 0) {
+    console.warn('[studio] no edited files to save');
+    return { kind: 'error', message: panelMessages.noFiles };
+  }
+  const open: mls.stor.IFileInfo[] = [];
+  let refused: string | null = null;
+  for (const file of files) {
+    const message = lockedDraftWrite(file);
+    if (message) {
+      refused = message;
+      continue;
+    }
+    open.push(file);
+  }
+  if (open.length === 0) {
+    return { kind: 'error', message: refused ?? panelMessages.noFiles };
+  }
+  try {
+    const saved = await saveToDraft(
+      open,
+      asked.comment,
+      (clean, text) => mls.stor.setContents(clean, text),
+      (file) => afterDraftSave(file),
+    );
+    if (saved.blocked.length > 0) {
+      console.warn('[studio] blocked files:', saved.blocked.map(draftFileLabel));
+    }
+    noteDraftPending();
+    return { kind: 'saved', blocked: saved.blocked as mls.stor.IFileInfo[], refused };
+  } catch (err) {
+    console.error('[studio] save failed:', err);
+    return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 let editor: StudioEditor | undefined;
-let watcher: StudioLiveUpdateWatcher | undefined;
+let watcher: { stop(): void } | undefined;
 let armed = false;
 /** Guard against re-entrancy: loading the editor is async and the slot can publish again meanwhile. */
 let arming = false;
@@ -368,10 +665,9 @@ function syncAuraState(state: IStudioEditHost): void {
 }
 
 /**
- * Bridges edits made through the studio's OWN file editor (ServiceSource) to the running page.
- *
- * Gated on studio mode alone, NOT on the edit level: someone editing exclusively through the file
- * editor never arms the inline overlay, and the hot swap must still reach the running page.
+ * Studio mode used to start the live-update watcher so a file edit reached the preview before Save.
+ * That swap is off. Level 3 still updates the screen from the in-place editor.
+ * Leaving Studio stops a watcher if one was started.
  */
 async function syncWatcher(state: IStudioEditHost): Promise<void> {
   if (!state.studioMode) {
@@ -379,13 +675,9 @@ async function syncWatcher(state: IStudioEditHost): Promise<void> {
     syncSharedEditNotice(false, false);
     return;
   }
-  // The active draft is required for the notice and irrelevant for the live update, so the two gates stay apart.
+  // The active draft is required for the notice. The preview is not swapped from this path.
   syncSharedEditNotice(true, studioDraftOn());
-  if (!watcher) {
-    const { StudioLiveUpdateWatcher } = await import('/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js');
-    watcher = new StudioLiveUpdateWatcher();
-  }
-  watcher.start(state.host);
+  watcher?.stop();
 }
 
 /**
@@ -436,6 +728,7 @@ function teardown(): void {
   armed = false;
   watcher?.stop();
   watcher = undefined;
+  syncStudioDraftBridge(false);
   syncSharedEditNotice(false, false);
   resetSharedEditSession();
   // The next entry must seed again: the app region coming back can bring another page.
@@ -449,6 +742,7 @@ async function apply(state: IStudioEditHost | null): Promise<void> {
     teardown();
     return;
   }
+  syncStudioDraftBridge(state.studioMode);
   syncAuraState(state);
   await syncWatcher(state);
   await syncEditor(state);
@@ -458,11 +752,14 @@ registerStudioEditTool((state) => {
   void apply(state);
 });
 
-// The Studio entry (102033) asks for the live swap of the screens the draft changed. The watcher
-// owns the "is it the mounted screen or its shared base" decision.
+// The Studio entry still asks for a live swap of screens the draft changed. The preview now waits
+// for Save, so the request is acknowledged and not applied.
 registerVisibleScreenSwap(async (ref) => {
-  const { applyChangedOnMounted } = await import('/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js');
-  await applyChangedOnMounted(ref);
+  console.info('[studio] preview live swap is off until Save', {
+    project: ref.project,
+    folder: ref.folder,
+    shortName: ref.shortName,
+  });
 });
 
 installStudioModuleLock();

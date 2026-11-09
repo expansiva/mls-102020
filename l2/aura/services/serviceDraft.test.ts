@@ -96,8 +96,8 @@ test('discard confirms the draft file count and clears local copies the same way
 });
 
 test('save shows the blocked list that the core returns', () => {
-    const handler = methodOf(DRAFT, 'private async _onSave');
-    assert.match(handler, /saveToDraft\(/);
+    const handler = methodOf(DRAFT, 'private async applyDraftSave');
+    assert.match(methodOf(DRAFT, 'private async _onSave'), /runDraftSave\(/);
     assert.match(handler, /this\._blocked = saved\.blocked/);
     assert.doesNotMatch(handler, /fileTooBig|fileRefused|lang:/);
     const line = methodOf(DRAFT, 'private _blockedLine');
@@ -251,12 +251,15 @@ test('the panel has no auto-save status line and the Save button keeps the unsav
 });
 
 test('manual Save still sends through saveToDraft and setContents', () => {
-    const save = methodOf(DRAFT, 'private async _onSave');
+    const saveStart = TOOL.indexOf('export async function runDraftSave');
+    const saveEnd = TOOL.indexOf('let editor:', saveStart);
+    const save = TOOL.slice(saveStart, saveEnd);
     assert.match(save, /saveToDraft\(/);
     assert.match(save, /\(clean, text\) => mls\.stor\.setContents\(clean, text\)/);
     assert.match(save, /afterDraftSave\(file\)/);
-    assert.doesNotMatch(TOOL, /mls\.stor\.setContents\(/);
-    assert.doesNotMatch(TOOL, /saveToDraft\(/);
+    assert.match(save, /lockedDraftWrite\(/);
+    assert.match(methodOf(DRAFT, 'private async _onSave'), /runDraftSave\(/);
+    assert.doesNotMatch(TOOL, /sendAutoSaveBatch|DraftAutoSave|syncDraftAutoSave/);
 });
 
 test('a file change only asks the panel to recount', () => {
