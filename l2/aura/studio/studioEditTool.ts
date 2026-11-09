@@ -18,6 +18,7 @@ import {
   type IStudioEditHost,
 } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { activeDraft, isVmDriver } from '/_102033_/l2/cbe/studioDraft.js';
+import { COLLAB_DRAFT_RECOUNT } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import {
   afterDraftSave,
   COLLAB_DRAFT_SAVED,
@@ -236,13 +237,10 @@ interface ICollabDraftSaveRequestDetail {
   project: number;
 }
 
-const DRAFT_PENDING_MS = 1000;
-
 let pendingUnsub: (() => void) | undefined;
 let pendingProject: number | null = null;
 let pendingCount: number | null = null;
 let pendingBlocked: number | null = null;
-let pendingTimer: ReturnType<typeof setInterval> | undefined;
 let pendingRefreshOn = false;
 let saveRequestOn = false;
 let draftBridgeOn = false;
@@ -309,44 +307,25 @@ function onDraftPendingRefresh(): void {
   publishDraftPending(false);
 }
 
-/** Recount while Studio is on. Undo, discard and the seeded CRC emit no file event. */
+/** Recount while Studio is on. Undo, discard and the seeded CRC emit `collabDraftRecount`. */
 function armDraftPendingRefresh(): void {
-  if (pendingTimer !== undefined || pendingRefreshOn) return;
-  const host = globalThis as {
-    window?: EventTarget;
-    setInterval?: (cb: () => void, ms: number) => ReturnType<typeof setInterval>;
-  };
-  const target = host.window;
-  const schedule = host.setInterval;
-  if (!target || typeof target.addEventListener !== 'function' || typeof schedule !== 'function') return;
+  if (pendingRefreshOn) return;
+  const target = (globalThis as { window?: EventTarget }).window;
+  if (!target || typeof target.addEventListener !== 'function') return;
   target.addEventListener(COLLAB_DRAFT_SAVED, onDraftPendingRefresh);
   target.addEventListener(COLLAB_DRAFT_SAVE_RESULT, onDraftPendingRefresh);
+  target.addEventListener(COLLAB_DRAFT_RECOUNT, onDraftPendingRefresh);
   pendingRefreshOn = true;
-  pendingTimer = schedule(() => {
-    if (!pendingUnsub) return;
-    publishDraftPending(false);
-  }, DRAFT_PENDING_MS);
 }
 
 function disarmDraftPendingRefresh(): void {
-  const host = globalThis as {
-    window?: EventTarget;
-    clearInterval?: (id: ReturnType<typeof setInterval>) => void;
-  };
-  const target = host.window;
+  const target = (globalThis as { window?: EventTarget }).window;
   if (pendingRefreshOn && target && typeof target.removeEventListener === 'function') {
     target.removeEventListener(COLLAB_DRAFT_SAVED, onDraftPendingRefresh);
     target.removeEventListener(COLLAB_DRAFT_SAVE_RESULT, onDraftPendingRefresh);
+    target.removeEventListener(COLLAB_DRAFT_RECOUNT, onDraftPendingRefresh);
   }
   pendingRefreshOn = false;
-  if (pendingTimer === undefined) return;
-  const clear = host.clearInterval;
-  if (typeof clear !== 'function') {
-    console.error('[studio] collabDraftPending timer was not cleared: clearInterval is missing');
-  } else {
-    clear(pendingTimer);
-  }
-  pendingTimer = undefined;
 }
 
 function startDraftPending(): void {

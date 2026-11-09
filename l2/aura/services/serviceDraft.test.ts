@@ -230,6 +230,10 @@ test('undo local calls setContent only after confirm', () => {
     assert.match(undo, /if\s*\(\s*!confirm\(/);
     assert.match(undo, /setContent\(file, \{ content: null \}\)/);
     assert.match(undo, /file\.status = 'nochange'/);
+    const statusAt = undo.indexOf("file.status = 'nochange'");
+    const recountAt = undo.indexOf('requestDraftRecount(');
+    const catchAt = undo.indexOf('catch (err)');
+    assert.ok(statusAt !== -1 && recountAt > statusAt && catchAt > recountAt, 'undo asks for a recount only after the local copy is cleared');
 });
 
 test('serviceDraft.less stays within 15 lines', () => {

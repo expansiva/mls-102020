@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/draftPanelCore.test.ts" enhancement="_blank" />
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { draftContentCrc, rememberSentCrc } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { COLLAB_DRAFT_RECOUNT, draftContentCrc, rememberSentCrc } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import {
   afterDraftSave,
   branchForSlug,
@@ -318,6 +318,82 @@ test('discard logs a failed local clear with the file and still reloads', async 
   assert.deepEqual(calls, ['reload']);
   assert.ok(logs.some((line) => line.includes('l2/aura/a.ts') && line.includes('idb down')));
   assert.equal(dirty.inLocalStorage, true);
+});
+
+test('discard asks for a recount only after the server accepts', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const calls: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_RECOUNT, (ev) => {
+    const detail = (ev as CustomEvent<{ project: number }>).detail;
+    calls.push(`recount:${detail.project}`);
+  });
+  host.window = windowEvents;
+  try {
+    await assert.rejects(
+      () => discard({
+        fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'BAD_DRAFT' }, 400),
+        reload: () => { calls.push('reload'); },
+        storFiles: {},
+        clearLocal: async () => {},
+      }, 102047, 'nope'),
+      /BAD_DRAFT/,
+    );
+    assert.deepEqual(calls, []);
+    await discard({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'discarded' }),
+      reload: () => { calls.push('reload'); },
+      storFiles: {},
+      clearLocal: async () => {},
+    }, 102047, 'team-102047');
+    assert.deepEqual(calls, ['recount:102047', 'reload']);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('discardModule asks for a recount only after the local undo succeeds', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const calls: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_RECOUNT, (ev) => {
+    const detail = (ev as CustomEvent<{ project: number }>).detail;
+    calls.push(`recount:${detail.project}`);
+  });
+  host.window = windowEvents;
+  const same = moduleConfig('Published', true);
+  const orders: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'page', level: 2, folder: 'orders', extension: '.ts',
+  };
+  try {
+    await assert.rejects(
+      () => discardModule({
+        fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+        saveL5File: async () => true,
+        undoFile: async () => { calls.push('undo'); },
+        storFiles: { orders },
+        reloadLive: async () => { calls.push('reload'); },
+      }, 102047, 'team-102047', 'orders', same, same),
+      /draft\.not_owner/,
+    );
+    assert.deepEqual(calls, []);
+    await discardModule({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'restored' }),
+      saveL5File: async () => true,
+      undoFile: async (file) => {
+        calls.push('undo');
+        file.inLocalStorage = false;
+        file.status = 'nochange';
+      },
+      storFiles: { orders },
+      reloadLive: async () => { calls.push('reload'); },
+    }, 102047, 'team-102047', 'orders', same, same);
+    assert.deepEqual(calls, ['undo', 'recount:102047', 'reload']);
+  } finally {
+    host.window = previous;
+  }
 });
 
 test('syncWithPublished reloads on merged and rejects DRAFT_CONFLICT with the files', async () => {

@@ -7,7 +7,8 @@ import { installStudioModuleLock } from '/_102020_/l2/aura/studio/studioModuleLo
 import { rememberCollabMode, modeState } from '/_102033_/l2/cbe/studioDraft.js';
 import { publishEditHost, type IStudioEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { AuraInitState, getAuraState, setAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
-import { COLLAB_DRAFT_SAVED } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
+import { COLLAB_DRAFT_SAVED, rememberOpenedDraftText } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
+import { COLLAB_DRAFT_RECOUNT, rememberSentCrc } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import {
   COLLAB_DRAFT_PENDING,
   COLLAB_DRAFT_SAVE_REQUEST,
@@ -579,7 +580,7 @@ test('a compile error is blocked on the pending event, and Save with the panel c
   }
 });
 
-test('the unsaved count refreshes on a 1s timer without a file event, one timer only, cleared on stop', () => {
+test('the unsaved count refreshes on collabDraftRecount, not on a 1s timer, and stops with Studio', () => {
   const host = globalThis as unknown as {
     mls: {
       actualProject?: number;
@@ -665,24 +666,21 @@ test('the unsaved count refreshes on a 1s timer without a file event, one timer 
     level: 2,
     panelVisible: false,
   };
-  const tick = (): void => {
-    const batch = [...timers.values()];
-    assert.equal(batch.length, 1);
-    assert.equal(batch[0]?.ms, 1000);
-    batch[0]?.fn();
+  const recount = (): void => {
+    windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: 102047 } }));
   };
   try {
     publishEditHost(studioHost);
     publishEditHost(studioHost);
-    assert.equal(timers.size, 1);
+    assert.equal(timers.size, 0);
     assert.equal(pending.length, 1);
     assert.equal(pending[0]?.count, 0);
     files.page = page;
-    tick();
+    recount();
     assert.equal(pending[pending.length - 1]?.count, 1);
     assert.equal(pending[pending.length - 1]?.project, 102047);
     page.inLocalStorage = false;
-    tick();
+    recount();
     assert.equal(pending[pending.length - 1]?.count, 0);
     assert.equal(listeners.some((item) => item.type === 'FileAction'), true);
     page.inLocalStorage = true;
@@ -695,17 +693,173 @@ test('the unsaved count refreshes on a 1s timer without a file event, one timer 
     assert.equal(pending[pending.length - 1]?.count, 0);
     const beforeStop = pending.length;
     publishEditHost(null);
-    assert.equal(timers.size, 0);
     page.inLocalStorage = true;
+    recount();
     assert.equal(pending.length, beforeStop);
     publishEditHost(studioHost);
-    assert.equal(timers.size, 1);
+    recount();
+    assert.equal(pending[pending.length - 1]?.count, 1);
   } finally {
     publishEditHost(null);
     host.mls.actualProject = previous.actualProject;
     host.mls.stor = previous.stor;
     host.mls.events = previous.events;
     host.mls.sites = previous.sites;
+    host.mls.editor = previous.editor;
+    host.window = previous.window;
+    host.setInterval = previous.setInterval;
+    host.clearInterval = previous.clearInterval;
+  }
+});
+
+/** Same lookup table as `mls.common.crc.crc32` in `static/libs/mls.js`. */
+const crc32Table = new Uint32Array(256);
+for (let i = 0; i < 256; ++i) {
+  let value = i;
+  for (let j = 0; j < 8; ++j) {
+    value = value & 1 ? 3988292384 ^ value >>> 1 : value >>> 1;
+  }
+  crc32Table[i] = value;
+}
+
+function productionCrc32(text: string): number {
+  let crc = -1;
+  for (let i = 0; i < text.length; ++i) {
+    crc = crc >>> 8 ^ crc32Table[(crc ^ text.charCodeAt(i)) & 255];
+  }
+  crc ^= -1;
+  return crc >>> 0;
+}
+
+test('one publishDraftPending over 457 pending files of 5 KB costs more than 2 ms, so the recount is an event', async () => {
+  const fileCount = 457;
+  const text = `${'a'.repeat(5119)}\n`;
+  assert.equal(text.length, 5120);
+  const host = globalThis as unknown as {
+    mls: {
+      actualProject?: number;
+      stor?: { files?: Record<string, unknown> };
+      events?: {
+        addListener: (level: number, type: string, fn: (ev: mls.events.IEvent) => void) => void;
+        removeEventListener: (levels: number[] | undefined, types: string[] | undefined, fn: (ev: mls.events.IEvent) => void) => void;
+      };
+      sites?: { getMode?: () => string };
+      common?: { crc?: { crc32: (value: string) => number } };
+      editor?: unknown;
+    };
+    window?: EventTarget;
+    setInterval: typeof setInterval;
+    clearInterval: typeof clearInterval;
+  };
+  const previous = {
+    actualProject: host.mls.actualProject,
+    stor: host.mls.stor,
+    events: host.mls.events,
+    sites: host.mls.sites,
+    common: host.mls.common,
+    editor: host.mls.editor,
+    window: host.window,
+    setInterval: host.setInterval,
+    clearInterval: host.clearInterval,
+  };
+  const pending: ICollabDraftPendingDetail[] = [];
+  const windowEvents = new EventTarget();
+  windowEvents.addEventListener(COLLAB_DRAFT_PENDING, (ev) => {
+    pending.push((ev as CustomEvent<ICollabDraftPendingDetail>).detail);
+  });
+  const listeners: IFileListener[] = [];
+  const timers = new Map<number, { fn: () => void; ms: number }>();
+  let nextTimer = 1;
+  const files: Record<string, unknown> = {};
+  const rows: mls.stor.IFileInfo[] = [];
+  for (let index = 0; index < fileCount; index += 1) {
+    const shortName = `bench${index}`;
+    const row = {
+      project: 102047,
+      level: 2,
+      folder: 'bench',
+      shortName,
+      extension: '.ts',
+      status: 'changed',
+      hasError: false,
+      inLocalStorage: true,
+      getContent: async () => text,
+    } as mls.stor.IFileInfo;
+    files[shortName] = row;
+    rows.push(row);
+    rememberSentCrc(
+      { project: 102047, level: 2, folder: 'bench', shortName, extension: '.ts' },
+      '0',
+    );
+  }
+  await rememberOpenedDraftText(rows);
+  host.mls.actualProject = 102047;
+  host.mls.stor = { files };
+  host.mls.events = {
+    addListener(level, type, fn) { listeners.push({ level, type, fn }); },
+    removeEventListener(levels, types, fn) {
+      for (let index = listeners.length - 1; index >= 0; index -= 1) {
+        const item = listeners[index];
+        if (!item || item.fn !== fn) continue;
+        if (levels && !levels.includes(item.level)) continue;
+        if (types && !types.includes(item.type)) continue;
+        listeners.splice(index, 1);
+      }
+    },
+  };
+  host.mls.sites = { getMode: () => 'production' };
+  host.mls.common = { crc: { crc32: productionCrc32 } };
+  host.mls.editor = { getKeyModel: () => 'none', models: {} };
+  host.window = windowEvents;
+  host.setInterval = ((fn: TimerHandler, ms?: number, ...args: unknown[]) => {
+    if (ms === 1000 && typeof fn === 'function') {
+      const id = nextTimer;
+      nextTimer += 1;
+      timers.set(id, { fn, ms });
+      return id as unknown as ReturnType<typeof setInterval>;
+    }
+    return previous.setInterval(fn, ms as number, ...args);
+  }) as typeof setInterval;
+  host.clearInterval = ((id?: ReturnType<typeof setInterval>) => {
+    if (typeof id === 'number' && timers.has(id)) {
+      timers.delete(id);
+      return;
+    }
+    previous.clearInterval(id as ReturnType<typeof setInterval>);
+  }) as typeof clearInterval;
+  const studioHost: IStudioEditHost = {
+    host: { children: [] } as unknown as HTMLElement,
+    chromeHost: { children: [] } as unknown as HTMLElement,
+    studioMode: true,
+    editLevel: false,
+    level: 2,
+    panelVisible: false,
+  };
+  try {
+    publishEditHost(studioHost);
+    assert.equal(timers.size, 0);
+    const samples: number[] = [];
+    for (let sample = 0; sample < 3; sample += 1) {
+      const started = performance.now();
+      windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: 102047 } }));
+      samples.push(performance.now() - started);
+    }
+    samples.sort((left, right) => left - right);
+    const elapsed = samples[1] ?? samples[0] ?? 0;
+    console.log(`[st62 s1] publishDraftPending ${fileCount} files × ${text.length} chars: ${elapsed.toFixed(3)} ms`);
+    assert.equal(pending[pending.length - 1]?.count, fileCount);
+    assert.equal(pending[pending.length - 1]?.project, 102047);
+    assert.ok(elapsed > 2, `publishDraftPending took ${elapsed.toFixed(3)} ms`);
+    const refresh = TOOL.slice(TOOL.indexOf('function armDraftPendingRefresh'), TOOL.indexOf('function disarmDraftPendingRefresh'));
+    assert.doesNotMatch(refresh, /setInterval/);
+    assert.match(refresh, /COLLAB_DRAFT_RECOUNT/);
+  } finally {
+    publishEditHost(null);
+    host.mls.actualProject = previous.actualProject;
+    host.mls.stor = previous.stor;
+    host.mls.events = previous.events;
+    host.mls.sites = previous.sites;
+    host.mls.common = previous.common;
     host.mls.editor = previous.editor;
     host.window = previous.window;
     host.setInterval = previous.setInterval;

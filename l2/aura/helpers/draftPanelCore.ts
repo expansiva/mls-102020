@@ -10,7 +10,7 @@
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
 
 import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
-import { draftContentCrc, rememberSentCrc, sentCrcOf, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { draftContentCrc, rememberSentCrc, requestDraftRecount, sentCrcOf, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import { modelTextDiffers, openModelText } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
@@ -454,6 +454,7 @@ export async function discard(
       console.error('[draftPanel]', `clearLocal ${shortPathOf(file)}: ${message}`);
     }
   }
+  requestDraftRecount(project);
   effects.reload();
 }
 
@@ -667,6 +668,7 @@ export async function discardModule(
     }
   }
   if (failures.length > 0) return fail(failures.join('; '));
+  requestDraftRecount(project);
   try {
     await effects.reloadLive();
   } catch (err) {

@@ -5,6 +5,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
 import { activeDraft, enterDraft, isVmDriver, postDraftEnter, requestModeChange, sendServiceWorkerMode } from '/_102033_/l2/cbe/studioDraft.js';
+import { requestDraftRecount } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import { loadProjectDefinitions } from '/_102033_/l2/cbe/initStudio.js';
 import { discardModuleInStudio } from '/_102020_/l2/aura/helpers/draftModuleDiscard.js';
 import {
@@ -909,6 +910,7 @@ export class ServiceDraft102020 extends ServiceBase {
         try {
             await mls.stor.localStor.setContent(file, { content: null });
             file.status = 'nochange';
+            requestDraftRecount(file.project);
         } catch (err) {
             console.error('[serviceDraft] undo local failed:', err);
             this._error = err instanceof Error ? err.message : String(err);
