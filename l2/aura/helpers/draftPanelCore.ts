@@ -418,10 +418,9 @@ export async function publish(
   await clearTakenLocals(effects, project, files);
   effects.onMerged?.();
   const wait = await effects.waitForNew();
-  if (wait.changed) {
-    dispatchDraftSaved(project, [...files]);
-    return { outcome: 'merged' };
-  }
+  // The open preview already shows this text. Notifying it would drop the draft
+  // cache and fetch the release this browser still has, the one from before the edit.
+  if (wait.changed) return { outcome: 'merged' };
   console.error('[draftPanel]', `published, site not updated: ${wait.reason}`);
   if (wait.reason === 'timeout' || wait.reason === 'build-failed') {
     return { outcome: 'release-pending', reason: wait.reason };

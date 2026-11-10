@@ -113,7 +113,7 @@ test('loadPanel picks the current branch and leaves the rest as others', async (
   assert.deepEqual(missing.others.map((item) => item.branch), ['user/ada@example.com', 'team/102047']);
 });
 
-test('st66 s4c: publish merged asks the open tabs for the published files and does not reload', async () => {
+test('st66 s9b: publish merged does not ask the open tabs to update', async () => {
   const host = globalThis as { window?: EventTarget };
   const previous = host.window;
   const windowEvents = new EventTarget();
@@ -139,7 +139,13 @@ test('st66 s4c: publish merged asks the open tabs for the published files and do
     }, 102047, 'team-102047', 'ship it', ['l2/a.ts', 'l2/b.ts']);
     assert.deepEqual(result, { outcome: 'merged' });
     assert.deepEqual(calls, ['promote', 'waitForNew']);
-    assert.deepEqual(saved, [{ project: 102047, paths: ['l2/a.ts', 'l2/b.ts'] }]);
+    assert.deepEqual(saved, []);
+
+    const page: IPanelStorFile = {
+      project: 102047, inLocalStorage: true, level: 2, folder: '', shortName: 'page', extension: '.ts',
+    };
+    await saveToDraft([page], 'save page', async () => [{ result: true }], async () => {});
+    assert.deepEqual(saved, [{ project: 102047, paths: ['l2/page.ts'] }]);
   } finally {
     host.window = previous;
   }
