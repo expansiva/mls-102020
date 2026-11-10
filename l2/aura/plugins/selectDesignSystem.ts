@@ -15,6 +15,7 @@ import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { ITask, setTask, getTask, getTasksByScope, hasRunning, clearScope, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
 import { canPreview, createLivePreview } from '/_102020_/l2/aura/plugins/helpers/dsLivePreview.js';
 import { collectUsedTokens, pageRegion } from '/_102020_/l2/aura/plugins/helpers/dsUsedTokens.js';
+import { NAV3_TAB_CHANGE_EVENT } from '/_102033_/l2/shared/nav3ActiveTab.js';
 import { groupColorRows, splitState, type ColorGroup } from '/_102020_/l2/aura/plugins/helpers/dsColorGroups.js';
 import { createHighlighter, elementsUsingTokens, tokensForElement } from '/_102020_/l2/aura/plugins/helpers/dsTokenInspect.js';
 import { baseName, colorRowsToMap, countByKind, diffTokens, tokenStatus, valueRowsToMap, type ChangeKind, type KeyChange, type TokenMaps, type TokenSection } from '/_102020_/l2/aura/plugins/helpers/dsDiff.js';
@@ -467,7 +468,19 @@ export class PluginSelectDesignSystem extends StateLitElement {
         if (this.projectId) this._load(this.projectId);
         this._startUsedScan();
         this.addEventListener('keydown', this._onEditorKeydown);
+        window.addEventListener(NAV3_TAB_CHANGE_EVENT, this._onTabChange);
     }
+
+    /**
+     * Another nav3 tab on screen is another page: the scan, the highlight and the inspection all belong to the page
+     * they were made on. Only local state changes here — nothing is written to the Aura state.
+     */
+    private _onTabChange = () => {
+        this._stopInspect();
+        this._hl.clear();
+        this._stopUsedScan();
+        this._startUsedScan();
+    };
 
     /** Ctrl/Cmd+F while focus is INSIDE the editor jumps to the token search (the browser's find elsewhere). */
     private _onEditorKeydown = (e: KeyboardEvent) => {
@@ -485,6 +498,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._revertLivePreview();
         this._stopUsedScan();
         this.removeEventListener('keydown', this._onEditorKeydown);
+        window.removeEventListener(NAV3_TAB_CHANGE_EVENT, this._onTabChange);
         this._stopInspect();
         this._hl.destroy();
     }
@@ -606,7 +620,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
     /** Scan now and again whenever the page region changes (navigation, re-render, class swaps). */
     private _startUsedScan(): void {
         const region = pageRegion(document);
-        if (!region) return;   // studio without the app — nothing to mark
+        // Studio without the app, or a tab with nothing in it: nothing to mark, and no stale marks either.
+        if (!region) { this._used = new Set(); return; }
         this._usedObserver = new MutationObserver(() => this._scheduleUsedScan());
         this._usedObserver.observe(region, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
         this._scheduleUsedScan();

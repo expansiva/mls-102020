@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { cleanSelector, expandRefs, tokenGraph, varRefs } from './dsUsedTokens.js';
+import { cleanSelector, expandRefs, pageRegion, tokenGraph, varRefs } from './dsUsedTokens.js';
 
 test('varRefs reads every var(--name), fallbacks included', () => {
   assert.deepEqual(
@@ -41,4 +41,16 @@ test('tokenGraph + expandRefs follow reconciliation and calc indirections', () =
 test('expandRefs survives cycles', () => {
   const graph = tokenGraph(':root{--a:var(--b);--b:var(--a);}');
   assert.deepEqual([...expandRefs(['a'], graph)].sort(), ['a', 'b']);
+});
+
+test('pageRegion is the host of the nav3 tab on screen, and the app host without one', () => {
+  const appHost = { querySelectorAll: () => [], name: 'app host' };
+  const tabHost = { querySelectorAll: () => [], name: 'module tab div' };
+  const doc = { querySelector: (selector: string) => (selector === '[data-region-host="content"]' ? appHost : null) } as unknown as Document;
+  assert.equal(pageRegion(doc, { activeTabElement: () => tabHost }), tabHost);
+  // No nav3, a nav3 without the method, or a tab whose element is not there yet: the app's content host.
+  assert.equal(pageRegion(doc, undefined), appHost);
+  assert.equal(pageRegion(doc, {}), appHost);
+  assert.equal(pageRegion(doc, { activeTabElement: () => null }), appHost);
+  assert.equal(pageRegion(doc, { activeTabElement: () => 'not an element' }), appHost);
 });

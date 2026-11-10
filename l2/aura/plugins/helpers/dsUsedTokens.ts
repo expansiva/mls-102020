@@ -147,10 +147,18 @@ export function collectUsedTokens(root: Element, doc: Document, tokensCss: strin
   return expandRefs(direct, tokenGraph(tokensCss));
 }
 
+/** The nav3 tab API, as much as `pageRegion` needs (the window in the app, a fake in the tests). */
+export interface IPageRegionNav {
+  activeTabElement?: () => unknown;
+}
+
 /**
- * The page of the running app: the content HOST, not the whole region — the region also holds the
- * nav3 tab bar and the studio panels opened as tabs.
+ * The page of the running app: the host of the nav3 tab ON SCREEN — the app's content host on the `app` tab, the
+ * element a module tab renders its page into otherwise. Never the whole region: it also holds the tab bar and the
+ * other tabs' panels. Without nav3 (or before the tab's element exists) it is the app's content host.
  */
-export function pageRegion(doc: Document): Element | null {
+export function pageRegion(doc: Document, nav: IPageRegionNav | undefined = globalThis.window?.collabRuntimeNav3): Element | null {
+  const active = nav?.activeTabElement?.();
+  if (active && typeof active === 'object' && 'querySelectorAll' in active) return active as Element;
   return doc.querySelector('[data-region-host="content"]') ?? doc.querySelector('main[data-region="content"]');
 }

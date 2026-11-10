@@ -3,6 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
+import { subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { AuraInitState, getAuraState, setAuraState, saveAuraProject, projectScopeTitle } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
@@ -107,6 +108,9 @@ const DEVICE_PATH_MAP: Record<number, string> = {
 };
 
 // ─── Service ─────────────────────────────────────────────────────────
+
+/** The Aura keys a nav3 tab switch re-seeds and the knobs of this service show. */
+const FOLLOWED_STATE = ['aura.actualProject', 'aura.actualModule', 'aura.actualDesignSystem', 'aura.actualDevice'];
 
 @customElement('aura--services--service-project-102020')
 export class ServiceProject102020 extends ServiceBase {
@@ -392,10 +396,54 @@ export class ServiceProject102020 extends ServiceBase {
     connectedCallback() {
         super.connectedCallback();
         AuraInitState();
+        this._listsProject = getAuraState()?.actualProject ?? null;
         this._loadModules();
         this._initDsConfig();
         this._initHeaderConfig();
         this._updateMenuTitle();
+        subscribe(FOLLOWED_STATE, this);
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        unsubscribe(FOLLOWED_STATE, this);
+    }
+
+    // ─── Following the page on screen ─────────────────────────────────
+
+    /** The project whose lists (modules, UI, headers) were asked for — written BEFORE any await. */
+    private _listsProject: number | null = null;
+
+    /**
+     * The page on screen changed (switching nav3 tabs re-seeds the Aura state from the tab's page, one key at a time):
+     * the knobs move to it. READ ONLY — nothing here writes the Aura state, so a write of it can never come back here
+     * as a loop. Another project reloads the lists; within the project only the values move.
+     */
+    handleIcaStateChange(key: string, _value: unknown) {
+        if (!FOLLOWED_STATE.includes(key)) return;
+        const project = getAuraState()?.actualProject ?? null;
+        if (project && project !== this._listsProject) {
+            this._listsProject = project;
+            this._loadModules();
+            this._initDsConfig();
+            this._initHeaderConfig();
+            this._updateMenuTitle();
+            return;
+        }
+        this._syncKnobValues();
+    }
+
+    /** Module, UI and device knobs on the values of the Aura state, inside the lists already loaded. */
+    private _syncKnobValues(): void {
+        const state = getAuraState();
+        const moduleIndex = state?.actualModule ? this._modules.findIndex(m => m.name === state.actualModule) : -1;
+        this._moduleValue = moduleIndex >= 0 ? moduleIndex + 1 : 0;
+        const ds = state?.actualDesignSystem ?? null;
+        if (ds !== null && ds > 0 && ds < this._dsConfig.max) this._dsValue = ds;
+        const device = Object.entries(DEVICE_PATH_MAP).find(([, path]) => path === state?.actualDevice);
+        if (device) this._deviceValue = Number(device[0]);
+        this._updateMenuTitle();
+        this.requestUpdate();
     }
 
     // ─── Render ───────────────────────────────────────────────────────
