@@ -1339,11 +1339,37 @@ export function draftNodeActions(node: IDraftTreeNode): DraftNodeAction[] {
   return [];
 }
 
-/** Save counts browser files, publish counts draft paths, discard counts the union. */
-export function actionCounts(local: readonly ILocalEdit[], draftPaths: readonly string[] | null): IActionCounts {
+/** How many files Save still sends, and how many of those it will refuse. */
+export interface IDraftSaveTotals {
+  count: number;
+  blocked: number;
+}
+
+/**
+ * The only "still to save" count. The panel button and `collabDraftPending` both read it.
+ * The rule is the text CRC against the last accepted CRC (`collectEditedFiles`).
+ */
+export function draftSaveTotals<T extends IPanelStorFile>(
+  storFiles: Readonly<Record<string, T | null | undefined>>,
+  project: number,
+): IDraftSaveTotals {
+  const edited = collectEditedFiles(storFiles, project);
+  let blocked = 0;
+  for (const file of edited) {
+    if (file.hasError === true && file.status !== 'deleted') blocked += 1;
+  }
+  return { count: edited.length, blocked };
+}
+
+/** `save` is `draftSaveTotals.count` when the caller passes it. Publish counts draft paths. Discard counts the union. */
+export function actionCounts(
+  local: readonly ILocalEdit[],
+  draftPaths: readonly string[] | null,
+  saveCount = local.length,
+): IActionCounts {
   const draft = draftPaths ?? [];
   return {
-    save: local.length,
+    save: saveCount,
     publish: draft.length,
     discard: pendingFiles(local, draft).length,
   };

@@ -7,14 +7,25 @@ import { installStudioModuleLock } from '/_102020_/l2/aura/studio/studioModuleLo
 import { rememberCollabMode, modeState } from '/_102033_/l2/cbe/studioDraft.js';
 import { publishEditHost, type IStudioEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { AuraInitState, getAuraState, setAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
-import { COLLAB_DRAFT_SAVED, rememberOpenedDraftText } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
-import { COLLAB_DRAFT_RECOUNT, rememberSentCrc } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import {
+  COLLAB_DRAFT_SAVED,
+  actionCounts,
+  discard,
+  discardModule,
+  draftSaveTotals,
+  localEdits,
+  rememberOpenedDraftText,
+  undoFile,
+  type IPanelStorFile,
+} from '/_102020_/l2/aura/helpers/draftPanelCore.js';
+import { COLLAB_DRAFT_RECOUNT, draftContentCrc, rememberSentCrc } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import {
   COLLAB_DRAFT_PENDING,
   COLLAB_DRAFT_SAVE_REQUEST,
   COLLAB_DRAFT_SAVE_RESULT,
   deliverSharedEdit,
   listedOwner,
+  noteDraftPending,
   noteSharedFile,
   runDraftSave,
   subscribeDraftFiles,
@@ -948,4 +959,314 @@ test('an armed editor moves to the host of the nav3 tab on screen', () => {
   // The arm path binds to the host published LAST, not to the one of the call that started the import.
   assert.match(sync, /editor\.attach\(fresh\.host, fresh\.chromeHost\)/u);
   assert.doesNotMatch(sync, /fresh\.host !== state\.host/u);
+});
+
+const ST65_PROJECT = 102047;
+
+function st65Hash(value: string): number {
+  let hash = 0;
+  for (const ch of value) hash = (hash * 33 + ch.charCodeAt(0)) >>> 0;
+  return hash;
+}
+
+function st65Json(body: unknown, status = 200): { status: number; json: () => Promise<unknown> } {
+  return { status, json: async () => body };
+}
+
+function st65ModuleConfig(): string {
+  return JSON.stringify({
+    studio: { defaultDraft: 'team-102047' },
+    projects: {
+      '102047': {
+        root: '../mls-102047',
+        modules: [{ moduleId: 'orders', navigation: [{ id: 'orders', label: 'Orders' }], shellMode: 'spa' }],
+        persistenceModules: [{ moduleId: 'orders', tableDefsDir: './keep' }],
+      },
+      '102099': { modules: [{ moduleId: 'other', navigation: [{ id: 'other' }] }] },
+    },
+  });
+}
+
+interface ISt65File extends IPanelStorFile {
+  getContent?: () => Promise<string>;
+}
+
+function st65File(shortName: string, folder = 'aura'): ISt65File {
+  return {
+    project: ST65_PROJECT,
+    level: 2,
+    folder,
+    shortName,
+    extension: '.ts',
+    status: 'changed',
+    hasError: false,
+    inLocalStorage: true,
+    getContent: async () => `body-${shortName}`,
+  };
+}
+
+interface ISt65Harness {
+  files: Record<string, ISt65File>;
+  pending: ICollabDraftPendingDetail[];
+  windowEvents: EventTarget;
+  written: string[];
+  panelSave: () => number;
+  last: () => number;
+  enter: () => void;
+  restore: () => void;
+}
+
+function armSt65(): ISt65Harness {
+  const host = globalThis as unknown as {
+    mls: {
+      actualProject?: number;
+      stor?: {
+        files?: Record<string, ISt65File>;
+        others?: { getDefaultDriver?: (project: number) => Promise<{ driverVersion: string }> };
+        setContents?: (files: unknown[], comment: string) => Promise<{ result: boolean }[]>;
+      };
+      events?: {
+        addListener: (level: number, type: string, fn: (ev: mls.events.IEvent) => void) => void;
+        removeEventListener: (levels: number[] | undefined, types: string[] | undefined, fn: (ev: mls.events.IEvent) => void) => void;
+      };
+      sites?: { getMode?: () => string };
+      common?: { crc?: { crc32: (value: string) => number } };
+      editor?: unknown;
+    };
+    window?: EventTarget;
+    prompt?: (message?: string) => string | null;
+  };
+  const previous = {
+    actualProject: host.mls.actualProject,
+    stor: host.mls.stor,
+    events: host.mls.events,
+    sites: host.mls.sites,
+    common: host.mls.common,
+    editor: host.mls.editor,
+    window: host.window,
+    prompt: host.prompt,
+  };
+  const pending: ICollabDraftPendingDetail[] = [];
+  const windowEvents = new EventTarget();
+  windowEvents.addEventListener(COLLAB_DRAFT_PENDING, (ev) => {
+    pending.push((ev as CustomEvent<ICollabDraftPendingDetail>).detail);
+  });
+  const listeners: IFileListener[] = [];
+  const files: Record<string, ISt65File> = {};
+  const written: string[] = [];
+  host.mls.actualProject = ST65_PROJECT;
+  host.mls.stor = {
+    files,
+    others: { getDefaultDriver: async () => ({ driverVersion: '1.0.0-vm' }) },
+    setContents: async (_clean, comment) => {
+      written.push(comment);
+      return [{ result: true }];
+    },
+  };
+  host.mls.events = {
+    addListener(level, type, fn) { listeners.push({ level, type, fn }); },
+    removeEventListener(levels, types, fn) {
+      for (let index = listeners.length - 1; index >= 0; index -= 1) {
+        const item = listeners[index];
+        if (!item || item.fn !== fn) continue;
+        if (levels && !levels.includes(item.level)) continue;
+        if (types && !types.includes(item.type)) continue;
+        listeners.splice(index, 1);
+      }
+    },
+  };
+  host.mls.sites = { getMode: () => 'production' };
+  host.mls.common = { crc: { crc32: st65Hash } };
+  host.mls.editor = { getKeyModel: () => 'none', models: {} };
+  host.window = windowEvents;
+  host.prompt = () => {
+    throw new Error('save must not prompt');
+  };
+  const studioHost: IStudioEditHost = {
+    host: { children: [] } as unknown as HTMLElement,
+    chromeHost: { children: [] } as unknown as HTMLElement,
+    studioMode: true,
+    editLevel: false,
+    level: 2,
+    panelVisible: false,
+  };
+  return {
+    files,
+    pending,
+    windowEvents,
+    written,
+    panelSave: () => {
+      const totals = draftSaveTotals(files, ST65_PROJECT);
+      return actionCounts(localEdits(files, ST65_PROJECT), [], totals.count).save;
+    },
+    last: () => pending[pending.length - 1]?.count ?? -1,
+    enter: () => { publishEditHost(studioHost); },
+    restore: () => {
+      publishEditHost(null);
+      host.mls.actualProject = previous.actualProject;
+      host.mls.stor = previous.stor;
+      host.mls.events = previous.events;
+      host.mls.sites = previous.sites;
+      host.mls.common = previous.common;
+      host.mls.editor = previous.editor;
+      host.window = previous.window;
+      host.prompt = previous.prompt;
+    },
+  };
+}
+
+function assertPanelMatches(h: ISt65Harness, count: number): void {
+  assert.equal(h.panelSave(), count);
+  assert.equal(h.last(), count);
+}
+
+test('st65 s2: a saved file that is not open after F5 — the panel is 0 and the cover follows it', async () => {
+  const h = armSt65();
+  const body = 'saved-and-closed';
+  const file = st65File('st65f5');
+  file.getContent = async () => body;
+  h.files.page = file;
+  rememberSentCrc(
+    { project: ST65_PROJECT, level: 2, folder: 'aura', shortName: 'st65f5', extension: '.ts' },
+    draftContentCrc(body, '.ts'),
+  );
+  try {
+    h.enter();
+    assertPanelMatches(h, 1);
+    await rememberOpenedDraftText([file]);
+    assert.equal(actionCounts(localEdits(h.files, ST65_PROJECT), []).save, 0);
+    assert.equal(h.last(), 1);
+    noteDraftPending();
+    assertPanelMatches(h, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test('st65 s2: Save from the layer leaves the panel and the cover at 0', async () => {
+  const h = armSt65();
+  h.files.page = st65File('st65layer');
+  try {
+    h.enter();
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
+    assertPanelMatches(h, 1);
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_REQUEST, { detail: { project: ST65_PROJECT } }));
+    for (let i = 0; i < 30 && h.written.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.deepEqual(h.written, ['save: 1 file(s): aura/st65layer.ts']);
+    assertPanelMatches(h, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test('st65 s2: Save all from the panel leaves the panel and the cover at 0', async () => {
+  const h = armSt65();
+  h.files.page = st65File('st65panel');
+  try {
+    h.enter();
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
+    assertPanelMatches(h, 1);
+    const outcome = await runDraftSave(ST65_PROJECT, { noFiles: 'No touched files.' }, { driverVersion: '1.0.0-vm' });
+    assert.equal(outcome.kind, 'saved');
+    assert.deepEqual(h.written, ['save: 1 file(s): aura/st65panel.ts']);
+    assertPanelMatches(h, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test('st65 s2: Undo from the panel leaves the panel and the cover at 0', async () => {
+  const h = armSt65();
+  const file = st65File('st65undo');
+  h.files.undo = file;
+  try {
+    h.enter();
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
+    assertPanelMatches(h, 1);
+    await undoFile({
+      fetchImpl: async () => { throw new Error('a browser undo does not call the server'); },
+      file,
+      clearLocal: async (item) => {
+        item.inLocalStorage = false;
+        item.status = 'nochange';
+      },
+      removeNew: async () => { throw new Error('not a new file'); },
+    }, ST65_PROJECT, 'team-102047', 'l2/aura/st65undo.ts', false, []);
+    assertPanelMatches(h, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test('st65 s2: Discard all leaves the panel and the cover at 0', async () => {
+  const h = armSt65();
+  h.files.page = st65File('st65discard');
+  try {
+    h.enter();
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
+    assertPanelMatches(h, 1);
+    await discard({
+      fetchImpl: async () => st65Json({ statusCode: 200, status: 'discarded' }),
+      reload: () => {},
+      storFiles: h.files,
+      clearLocal: async (item) => {
+        item.inLocalStorage = false;
+        item.status = 'nochange';
+      },
+    }, ST65_PROJECT, 'team-102047');
+    assertPanelMatches(h, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test('st65 s2: Discard module leaves the panel and the cover at 0', async () => {
+  const h = armSt65();
+  const file = st65File('st65module', 'orders');
+  h.files.page = file;
+  const config = st65ModuleConfig();
+  try {
+    h.enter();
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
+    assertPanelMatches(h, 1);
+    await discardModule({
+      fetchImpl: async () => st65Json({ statusCode: 200, status: 'restored' }),
+      saveL5File: async () => true,
+      undoFile: async (item) => {
+        item.inLocalStorage = false;
+        item.status = 'nochange';
+      },
+      storFiles: h.files,
+      reloadLive: async () => {},
+    }, ST65_PROJECT, 'team-102047', 'orders', config, config);
+    assertPanelMatches(h, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test('st65 s2: collabDraftRecount makes the panel and the cover agree', () => {
+  const service = readFileSync(new URL('../services/serviceDraft.ts', import.meta.url), 'utf8');
+  const render = service.slice(service.indexOf('private _renderPanel'), service.indexOf('private _renderActions'));
+  assert.match(render, /draftSaveTotals\(/);
+  assert.match(render, /noteDraftPending\(\)/);
+  assert.match(render, /actionCounts\(model\.local\.files, model\.draft\.files, saveCount\)/);
+  const totalsFn = TOOL.slice(TOOL.indexOf('function pendingTotals'), TOOL.indexOf('function publishDraftPending'));
+  assert.match(totalsFn, /draftSaveTotals\(/);
+
+  const h = armSt65();
+  const file = st65File('st65recount');
+  h.files.page = file;
+  try {
+    h.enter();
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
+    assertPanelMatches(h, 1);
+    file.inLocalStorage = false;
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
+    assertPanelMatches(h, 0);
+  } finally {
+    h.restore();
+  }
 });

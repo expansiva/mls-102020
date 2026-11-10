@@ -11,6 +11,7 @@ import { discardModuleInStudio } from '/_102020_/l2/aura/helpers/draftModuleDisc
 import {
     branchForSlug,
     actionCounts,
+    draftSaveTotals,
     buildPanelTree,
     collectEditedFiles,
     discard,
@@ -57,6 +58,7 @@ import {
 import {
     bindDraftSaveHost,
     listedOwner,
+    noteDraftPending,
     releaseDraftSaveHost,
     runDraftSave,
     subscribeDraftFiles,
@@ -583,7 +585,9 @@ export class ServiceDraft102020 extends ServiceBase {
         const mineFiles = pendingFiles(model.local.files, model.draft.files);
         const tree = buildPanelTree(this.msg.svcTitle, this._panelPeople(mineFiles), this.msg.unownedDrafts);
         const rows = visibleTreeRows([tree], this._open);
-        const counts = actionCounts(model.local.files, model.draft.files);
+        const saveCount = project ? draftSaveTotals(mls.stor.files, project).count : 0;
+        const counts = actionCounts(model.local.files, model.draft.files, saveCount);
+        noteDraftPending();
         const byPath = project
             ? filesByShortPath(mls.stor.files, project)
             : new Map<string, mls.stor.IFileInfo>();

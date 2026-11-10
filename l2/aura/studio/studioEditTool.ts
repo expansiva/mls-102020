@@ -23,6 +23,7 @@ import {
   afterDraftSave,
   COLLAB_DRAFT_SAVED,
   collectEditedFiles,
+  draftSaveTotals,
   loadPanel,
   rememberOpenedDraftText,
   saveToDraft,
@@ -251,23 +252,13 @@ function siteProjectId(): number | null {
   return project;
 }
 
-/** Same refusal as `saveToDraft`: `hasError`, unless the file is a deletion. */
-function isCompileBlocked(file: { hasError?: boolean; status?: string }): boolean {
-  return file.hasError === true && file.status !== 'deleted';
-}
-
 function pendingTotals(project: number): { count: number; blocked: number } {
   const files = mls.stor?.files;
   if (!files) {
     console.error('[studio] collabDraftPending: mls.stor.files is missing');
     return { count: 0, blocked: 0 };
   }
-  const edited = collectEditedFiles(files, project);
-  let blocked = 0;
-  for (const file of edited) {
-    if (isCompileBlocked(file)) blocked += 1;
-  }
-  return { count: edited.length, blocked };
+  return draftSaveTotals(files, project);
 }
 
 function publishDraftPending(force: boolean): void {

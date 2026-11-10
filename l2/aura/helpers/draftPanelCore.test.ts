@@ -19,6 +19,7 @@ import {
   modulePendingCount,
   localEdits,
   actionCounts,
+  draftSaveTotals,
   buildDraftTree,
   buildPanelTree,
   draftCountText,
@@ -1453,6 +1454,83 @@ test('storeCapturedDraftText writes the captured string and reports a failed wri
   } finally {
     console.error = previousError;
     host.mls.stor.localStor = previous;
+  }
+});
+
+test('st65 s2: draftSaveTotals is the save count; a saved file counts only until its text is read', async () => {
+  const host = globalThis as { mls?: { common?: unknown; editor?: unknown } };
+  const previousCommon = host.mls?.common;
+  const previousEditor = host.mls?.editor;
+  if (!host.mls) host.mls = {};
+  host.mls.common = {
+    crc: {
+      crc32: (value: string) => {
+        let hash = 0;
+        for (const ch of value) hash = (hash * 33 + ch.charCodeAt(0)) >>> 0;
+        return hash;
+      },
+    },
+  };
+  host.mls.editor = { getKeyModel: () => 'none', models: {} };
+  const body = 'saved-body';
+  const saved = {
+    project: 102047,
+    status: 'changed' as const,
+    inLocalStorage: true as boolean | undefined,
+    hasError: false,
+    level: 2,
+    folder: 'aura',
+    shortName: 'st65saved',
+    extension: '.ts',
+    getContent: async () => body,
+  };
+  const broken = {
+    project: 102047,
+    status: 'changed' as const,
+    inLocalStorage: true as boolean | undefined,
+    hasError: true,
+    level: 2,
+    folder: 'aura',
+    shortName: 'st65broken',
+    extension: '.ts',
+    getContent: async () => 'broken-body',
+  };
+  const removed = {
+    project: 102047,
+    status: 'deleted' as const,
+    inLocalStorage: false as boolean | undefined,
+    hasError: true,
+    level: 2,
+    folder: 'aura',
+    shortName: 'st65gone',
+    extension: '.ts',
+  };
+  try {
+    rememberSentCrc(
+      { project: 102047, level: 2, folder: 'aura', shortName: 'st65saved', extension: '.ts' },
+      draftContentCrc(body, '.ts'),
+    );
+    const beforeRead = draftSaveTotals({ saved }, 102047);
+    assert.equal(beforeRead.count, 1, 'no text yet, so the file still counts');
+    assert.equal(beforeRead.blocked, 0);
+    await rememberOpenedDraftText([saved]);
+    const afterRead = draftSaveTotals({ saved }, 102047);
+    assert.equal(afterRead.count, 0, 'local text CRC matches the accepted CRC');
+    assert.deepEqual(
+      actionCounts(localEdits({ saved }, 102047), [], afterRead.count),
+      { save: 0, publish: 0, discard: 0 },
+    );
+    const refused = draftSaveTotals({ broken }, 102047);
+    assert.equal(refused.count, 1);
+    assert.equal(refused.blocked, 1);
+    const deletion = draftSaveTotals({ removed }, 102047);
+    assert.equal(deletion.count, 1);
+    assert.equal(deletion.blocked, 0);
+  } finally {
+    if (host.mls) {
+      host.mls.common = previousCommon;
+      host.mls.editor = previousEditor;
+    }
   }
 });
 
