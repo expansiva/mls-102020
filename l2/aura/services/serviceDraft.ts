@@ -40,6 +40,9 @@ import {
     syncWithPublished,
     undoFile,
     viewDiff,
+    notifyDraftDiscarded,
+    readPreviewUpdateFailure,
+    COLLAB_PREVIEW_UPDATE_FAILED,
     type FetchImpl,
     type ICollabDraftUploadDetail,
     type IDraftUploadProgress,
@@ -149,7 +152,6 @@ const message_en = {
     releasePending: 'The draft was published, but the site has not been updated yet: {reason}.',
     releaseTimeout: 'the update timed out',
     releaseBuildFailed: 'the site build failed',
-    reloadSite: 'Reload',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -234,7 +236,6 @@ const messages: Record<string, MessageType> = {
         releasePending: 'O rascunho foi publicado, mas o site ainda não foi atualizado: {reason}.',
         releaseTimeout: 'a atualização expirou',
         releaseBuildFailed: 'a construção do site falhou',
-        reloadSite: 'Recarregar',
     },
     es: {
         svcTitle: 'Borrador',
@@ -316,7 +317,6 @@ const messages: Record<string, MessageType> = {
         releasePending: 'El borrador se publicó, pero el sitio todavía no se actualizó: {reason}.',
         releaseTimeout: 'la actualización expiró',
         releaseBuildFailed: 'la construcción del sitio falló',
-        reloadSite: 'Recargar',
     },
 };
 /// **collab_i18n_end**
@@ -483,7 +483,6 @@ export class ServiceDraft102020 extends ServiceBase {
     @state() private _others: IListedDraft[] = [];
     @state() private _blocked: mls.stor.IFileInfo[] = [];
     @state() private _error = '';
-    @state() private _offerReload = false;
     @state() private _updateElapsed = 0;
     @state() private _errorFiles: string[] = [];
     @state() private _note = '';
@@ -493,6 +492,8 @@ export class ServiceDraft102020 extends ServiceBase {
     @state() private _diffText: string | null = null;
 
     private _projectId: number | undefined;
+    /** Set while a tab update fails during `_load`, which would otherwise hide the line. */
+    private _previewFailure = '';
     private _saveHost: IDraftSaveHost | null = null;
     private _pingTimer = 0;
     private _updateStarted = 0;
@@ -512,11 +513,13 @@ export class ServiceDraft102020 extends ServiceBase {
         bindDraftSaveHost(this._saveHost);
         this._unsubDraftFiles = subscribeDraftFiles(() => { this.requestUpdate(); });
         window.addEventListener(COLLAB_DRAFT_UPLOAD, this._onDraftUpload);
+        window.addEventListener(COLLAB_PREVIEW_UPDATE_FAILED, this._onPreviewUpdateFailed);
         void this._load();
     }
 
     disconnectedCallback(): void {
         window.removeEventListener(COLLAB_DRAFT_UPLOAD, this._onDraftUpload);
+        window.removeEventListener(COLLAB_PREVIEW_UPDATE_FAILED, this._onPreviewUpdateFailed);
         if (this._saveHost) releaseDraftSaveHost(this._saveHost);
         this._saveHost = null;
         this._unsubDraftFiles?.();
@@ -601,7 +604,6 @@ export class ServiceDraft102020 extends ServiceBase {
                 ${this._phase === 'publishing' ? html`<p class="px-4 py-4">${this._pingText()}</p>` : nothing}
                 ${this._phase === 'updating' ? html`<p class="px-4 py-4">${this.msg.siteUpdating.replace('{time}', siteUpdateClock(this._updateElapsed))}</p>` : nothing}
                 ${this._phase === 'error' ? html`<p class="px-4 py-4 text-amber-700 dark:text-amber-300">${this._error}</p>` : nothing}
-                ${this._offerReload ? html`<div class="px-4 pb-4"><button type="button" class=${BUTTON} @click=${() => { location.reload(); }}>${this.msg.reloadSite}</button></div>` : nothing}
                 ${this._errorFiles.length
                     ? html`<div class="flex flex-col gap-0.5 px-4">${this._errorFiles.map((file) => html`<div>${file}</div>`)}</div>`
                     : nothing}
@@ -782,18 +784,17 @@ export class ServiceDraft102020 extends ServiceBase {
         return project;
     }
 
-    private async _load(keepBlocked = false): Promise<void> {
-        if (this._phase === 'publishing' || this._phase === 'updating') return;
+    private async _load(keepBlocked = false): Promise<boolean> {
+        if (this._phase === 'publishing' || this._phase === 'updating') return false;
         if (!keepBlocked) this._blocked = [];
         this._error = '';
-        this._offerReload = false;
         this._errorFiles = [];
         this._note = '';
         this._diffText = null;
         this._diffBranch = '';
         this._phase = 'loading';
         const project = this._project();
-        if (!project) return;
+        if (!project) return false;
         this._projectId = project;
 
         let driver: IDriverView | null;
@@ -803,13 +804,13 @@ export class ServiceDraft102020 extends ServiceBase {
             console.error('[serviceDraft] getDefaultDriver failed:', err);
             this._error = err instanceof Error ? err.message : String(err);
             this._phase = 'error';
-            return;
+            return false;
         }
         this._driver = driver;
         this._driverChecked = true;
         if (!isVmDriver(driver)) {
             this._phase = 'idle';
-            return;
+            return true;
         }
 
         const mode = siteMode();
@@ -833,13 +834,40 @@ export class ServiceDraft102020 extends ServiceBase {
             console.error('[serviceDraft] loadPanel failed:', err);
             this._error = err instanceof Error ? err.message : String(err);
             this._phase = 'error';
-            return;
+            return false;
         }
         await this._readRelease();
         await this._rememberLocalText();
         this._rememberBlockedReasons(project);
+        this._showPreviewFailureOrIdle();
+        return true;
+    }
+
+    /** A tab update that failed while the list was loading stays on the panel. */
+    private _showPreviewFailureOrIdle(): void {
+        if (this._previewFailure.length > 0) {
+            this._error = this._previewFailure;
+            this._previewFailure = '';
+            this._phase = 'error';
+            return;
+        }
         this._phase = 'idle';
     }
+
+    private readonly _onPreviewUpdateFailed = (event: Event): void => {
+        const detail = readPreviewUpdateFailure((event as CustomEvent<unknown>).detail);
+        if (!detail) {
+            console.error('[serviceDraft] collabPreviewUpdateFailed detail is invalid; the panel was not updated');
+            return;
+        }
+        if (this._projectId !== undefined && detail.project !== this._projectId) return;
+        console.error('[serviceDraft] preview tabs were not updated:', detail.message);
+        this._previewFailure = detail.message;
+        if (this._phase !== 'loading') {
+            this._error = detail.message;
+            this._phase = 'error';
+        }
+    };
 
     /** The unsaved count reads the open model, or the local copy when the model is closed. */
     private async _rememberLocalText(): Promise<void> {
@@ -996,7 +1024,7 @@ export class ServiceDraft102020 extends ServiceBase {
         if (!comment) return;
         this._error = '';
         this._errorFiles = [];
-        this._offerReload = false;
+        this._previewFailure = '';
         this._updateStarted = 0;
         this._updateElapsed = 0;
         this._ping = null;
@@ -1015,7 +1043,6 @@ export class ServiceDraft102020 extends ServiceBase {
                         }
                     },
                 }),
-                reload: () => location.reload(),
                 onMerged: () => {
                     this._updateStarted = Date.now();
                     this._updateElapsed = 0;
@@ -1047,11 +1074,15 @@ export class ServiceDraft102020 extends ServiceBase {
                 this._phase = 'error';
                 return;
             }
+            if (result.outcome === 'merged') {
+                this._phase = 'idle';
+                await this._load(true);
+                return;
+            }
             if (result.outcome === 'release-pending') {
                 console.error('[serviceDraft] published, site not updated:', result.reason);
                 const reason = result.reason === 'timeout' ? this.msg.releaseTimeout : this.msg.releaseBuildFailed;
                 this._error = this.msg.releasePending.replace('{reason}', reason);
-                this._offerReload = true;
                 this._phase = 'error';
                 return;
             }
@@ -1212,9 +1243,11 @@ export class ServiceDraft102020 extends ServiceBase {
         if (!confirm(question)) return;
         this._error = '';
         this._note = '';
+        this._previewFailure = '';
         this._phase = 'loading';
+        const draftFiles = this._current ? [...this._current.files] : [];
         try {
-            await discardModuleInStudio(project, moduleName);
+            await discardModuleInStudio(project, moduleName, draftFiles);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             console.error('[serviceDraft] discard module failed:', message);
@@ -1237,16 +1270,18 @@ export class ServiceDraft102020 extends ServiceBase {
         if (!project || !this._slug || !isVmDriver(this._driver)) return;
         const n = this._current ? this._current.files.length : 0;
         if (!confirm(this.msg.confirmDiscard.replace('{count}', String(n)))) return;
+        const changed = this._current ? [...this._current.files] : [];
+        this._previewFailure = '';
         try {
             await discard({
                 fetchImpl,
-                reload: () => location.reload(),
                 storFiles: mls.stor.files,
                 clearLocal: async (file) => {
                     await mls.stor.localStor.setContent(file as mls.stor.IFileInfo, { content: null });
                     file.status = 'nochange';
                 },
-            }, project, this._slug);
+            }, project, this._slug, changed);
+            await this._load(true);
         } catch (err) {
             console.error('[serviceDraft] discard failed:', err);
             this._error = err instanceof Error ? err.message : String(err);
@@ -1285,11 +1320,14 @@ export class ServiceDraft102020 extends ServiceBase {
     private async _onSyncPublished(): Promise<void> {
         const project = this._projectId;
         if (!project || !this._slug || !isVmDriver(this._driver)) return;
+        const before = this._current ? [...this._current.files] : [];
+        this._previewFailure = '';
         try {
-            await syncWithPublished({
-                fetchImpl,
-                reload: () => location.reload(),
-            }, project, this._slug);
+            await syncWithPublished({ fetchImpl }, project, this._slug);
+            const listed = await this._load(true);
+            if (!listed) console.error('[serviceDraft] draft sync landed but the panel list was not reread');
+            const after = listed && this._current ? [...this._current.files] : [];
+            notifyDraftDiscarded(project, before, after);
         } catch (err) {
             console.error('[serviceDraft] draft sync failed:', err);
             const message = err instanceof Error ? err.message : String(err);

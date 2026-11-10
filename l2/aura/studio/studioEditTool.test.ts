@@ -1241,7 +1241,6 @@ test('st65 s2: Discard all leaves the panel and the cover at 0', async () => {
     await assertPanelMatches(h, 1);
     await discard({
       fetchImpl: async () => st65Json({ statusCode: 200, status: 'discarded' }),
-      reload: () => {},
       storFiles: h.files,
       clearLocal: async (item) => {
         item.inLocalStorage = false;

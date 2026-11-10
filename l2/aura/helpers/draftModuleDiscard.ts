@@ -86,7 +86,11 @@ async function readPublishedConfig(project: number, slug: string): Promise<strin
  * Restores one module on the active draft: the four directories, that module's block
  * in `l5/config.json`, and the local copies. Throws `draft.*` for the caller to show.
  */
-export async function discardModuleInStudio(project: number, moduleName: string): Promise<void> {
+export async function discardModuleInStudio(
+    project: number,
+    moduleName: string,
+    draftFiles: readonly string[] = [],
+): Promise<void> {
     const slug = activeDraft();
     if (!slug) {
         console.error(`[draftModuleDiscard] no active draft for project ${project}`);
@@ -100,5 +104,5 @@ export async function discardModuleInStudio(project: number, moduleName: string)
         undoFile: (file) => undoFile(file as mls.stor.IFileInfo),
         storFiles: mls.stor.files,
         reloadLive: () => loadProjectDefinitions(project),
-    }, project, slug, moduleName, current, published);
+    }, project, slug, moduleName, current, published, draftFiles);
 }

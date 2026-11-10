@@ -37,7 +37,9 @@ test('discardModuleInStudio wires the same effects the panel used to call', () =
     assert.doesNotMatch(SOURCE, /read\.call\(driver, file, 'main'\)/);
     assert.match(body, /saveL5File\(id, shortName, content, comment\)/);
     assert.match(body, /undoFile\(file as mls\.stor\.IFileInfo\)/);
-    assert.match(body, /loadProjectDefinitions\(project\)/);
+    assert.match(body, /draftFiles/);
+    // Not a page reload: it enters the draft again, which republishes the draft l2 to the service worker.
+    assert.match(body, /reloadLive: \(\) => loadProjectDefinitions\(project\)/);
     assert.match(body, /storFiles: mls\.stor\.files/);
     assert.match(body, /await discardModule\(/);
     assert.doesNotMatch(body, /\bcatch\b/);

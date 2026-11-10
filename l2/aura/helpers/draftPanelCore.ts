@@ -1,5 +1,5 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/draftPanelCore.ts" enhancement="_blank" />
-// Pure decisions for the Studio draft panel. No Lit. fetch, the release wait, reload,
+// Pure decisions for the Studio draft panel. No Lit. fetch, the release wait,
 // setContents, saveL5File, and the stor snapshot all come in as arguments.
 // `listLocalFiles` is the caller's injection — its return value is `storFiles` here.
 // `afterDraftSave` is the one default that calls `mls`, the same cleanup as
@@ -75,7 +75,10 @@ export interface ICollabDraftSavedDetail {
 
 function dispatchDraftSaved(project: number, paths: string[]): void {
   const target = (globalThis as { window?: EventTarget }).window;
-  if (!target || typeof target.dispatchEvent !== 'function') return;
+  if (!target || typeof target.dispatchEvent !== 'function') {
+    console.error('[draftPanel] collabDraftSaved was not dispatched: window is missing');
+    return;
+  }
   const detail: ICollabDraftSavedDetail = { project, paths };
   try {
     target.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, { detail }));
@@ -92,6 +95,47 @@ export const COLLAB_DRAFT_DISCARD_HOLD = 'collabDraftDiscardHold';
 
 export interface ICollabDraftDiscardedDetail {
   project: number;
+  /** Paths in the diff before this change. */
+  before: string[];
+  /** Paths still in the diff after this change. */
+  after: string[];
+}
+
+/** The preview service emits this when the open tabs could not be updated. The panel shows the same text. */
+export const COLLAB_PREVIEW_UPDATE_FAILED = 'collabPreviewUpdateFailed';
+
+export interface IPreviewUpdateFailure {
+  project: number;
+  message: string;
+}
+
+export function readPreviewUpdateFailure(value: unknown): IPreviewUpdateFailure | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as { project?: unknown; message?: unknown };
+  if (typeof record.project !== 'number' || !Number.isInteger(record.project) || record.project <= 0) return null;
+  if (typeof record.message !== 'string' || record.message.length === 0) return null;
+  return { project: record.project, message: record.message };
+}
+
+function uniquePaths(paths: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const path of paths) {
+    if (path.length === 0 || seen.has(path)) continue;
+    seen.add(path);
+    out.push(path);
+  }
+  return out;
+}
+
+/** Discard, undo and bring-published. The preview service updates the open tabs from this. */
+export function notifyDraftDiscarded(project: number, before: readonly string[], after: readonly string[]): void {
+  const detail: ICollabDraftDiscardedDetail = {
+    project,
+    before: uniquePaths(before),
+    after: uniquePaths(after),
+  };
+  dispatchDraftNotice(COLLAB_DRAFT_DISCARDED, detail);
 }
 
 export interface ICollabDraftDiscardHoldDetail {
@@ -176,7 +220,6 @@ export type PublishResult =
 export interface IPublishEffects {
   fetchImpl: FetchImpl;
   waitForNew: () => Promise<IDraftWaitResult>;
-  reload: () => void;
   /** Called once the merge is stored, before the release wait. Absent → nothing is stored. */
   rememberPublished?: (record: IPublishedRecord) => void;
   /** With `clearLocal`, a landed merge drops the browser copy of each path in `files`. */
@@ -196,7 +239,6 @@ export function siteUpdateClock(elapsedMs: number): string {
 
 export interface IReloadEffects {
   fetchImpl: FetchImpl;
-  reload: () => void;
 }
 
 export interface IDiscardEffects extends IReloadEffects {
@@ -377,7 +419,7 @@ export async function publish(
   effects.onMerged?.();
   const wait = await effects.waitForNew();
   if (wait.changed) {
-    effects.reload();
+    dispatchDraftSaved(project, [...files]);
     return { outcome: 'merged' };
   }
   console.error('[draftPanel]', `published, site not updated: ${wait.reason}`);
@@ -486,10 +528,16 @@ export async function discard(
   effects: IDiscardEffects,
   project: number,
   slug: string,
+  changed: readonly string[] = [],
 ): Promise<void> {
   const result = await callExec(effects.fetchImpl, 'discardDraft', { project, draft: slug });
   if (!result.ok) return fail(result.code);
   if (result.status !== 'discarded') return fail(result.status ?? 'discard failed');
+  const locals: string[] = [];
+  for (const file of Object.values(effects.storFiles)) {
+    if (!file || !isProjectFile(file, project) || !isStoredLocal(file)) continue;
+    locals.push(shortPathOf(file));
+  }
   try {
     await forgetStaleDraftL2(project, slug, new Set<string>());
   } catch (err) {
@@ -506,8 +554,7 @@ export async function discard(
     }
   }
   requestDraftRecount(project);
-  dispatchDraftNotice(COLLAB_DRAFT_DISCARDED, { project });
-  effects.reload();
+  notifyDraftDiscarded(project, [...changed, ...locals], []);
 }
 
 /** Drops the draft test database and recreates it from the seed. Sources stay. */
@@ -563,7 +610,7 @@ export interface IDiscardModuleEffects {
   /** Same undo as one file: `undoFile` in the stor lib, which drops a `new` file. */
   undoFile: (file: IPanelStorFile) => Promise<void>;
   storFiles: Readonly<Record<string, IPanelStorFile | null | undefined>>;
-  /** Reread the project and swap the visible screen. */
+  /** Enter the draft again: republish the draft l2 to the service worker and swap the visible screen. Not a page reload. */
   reloadLive: () => Promise<void>;
 }
 
@@ -690,6 +737,7 @@ export async function discardModule(
   moduleName: string,
   currentJson: string,
   publishedJson: string,
+  draftFiles: readonly string[] = [],
 ): Promise<void> {
   if (!MODULE_SEGMENT.test(moduleName)) return fail(`module name is invalid: ${moduleName}`);
   const paths = moduleRestorePaths(moduleName);
@@ -717,6 +765,7 @@ export async function discardModule(
     dispatchDraftNotice(COLLAB_DRAFT_DISCARD_HOLD, { project, hold: false });
     if (!saved) return fail('saveL5File refused l5/config.json');
   }
+  const localPaths = moduleLocalFiles(effects.storFiles, project, moduleName).map((file) => shortPathOf(file));
   const failures: string[] = [];
   // The module restore already ran. This loop only drops the browser copies, once.
   await withDraftUndoBrowserOnly(async () => {
@@ -740,7 +789,22 @@ export async function discardModule(
     console.error('[draftPanel]', `reloadLive: ${message}`);
     return fail(message);
   }
-  dispatchDraftNotice(COLLAB_DRAFT_DISCARDED, { project });
+  const before = moduleDiscardPaths(draftFiles, localPaths, moduleName, replaced.changed);
+  const after = draftFiles.filter((path) => !pathInModule(path, moduleName));
+  notifyDraftDiscarded(project, before, after);
+}
+
+/** Files this module discard changed, plus the config when its block was rewritten. */
+function moduleDiscardPaths(
+  draftFiles: readonly string[],
+  localPaths: readonly string[],
+  moduleName: string,
+  configChanged: boolean,
+): string[] {
+  const paths = draftFiles.filter((path) => pathInModule(path, moduleName));
+  paths.push(...localPaths);
+  if (configChanged) paths.push('l5/config.json');
+  return paths;
 }
 
 export interface IUndoFileEffects {
@@ -758,7 +822,7 @@ export interface IUndoFileEffects {
  * A path saved in the draft calls `draftRestorePaths` with that path alone (`ref` `main`):
  * a changed file returns to the published text, a new file is removed.
  * The server failure throws before the browser changes.
- * After a restore, the path leaves `draftPaths`, the count is asked again, and the preview reloads.
+ * After a restore, the path leaves `draftPaths`, the count is asked again, and the open tabs are updated.
  */
 export async function undoFile(
   effects: IUndoFileEffects,
@@ -773,6 +837,7 @@ export async function undoFile(
     if (!effects.file) return fail(`undo has no browser file: ${filePath}`);
     await effects.clearLocal(effects.file);
     requestDraftRecount(project);
+    notifyDraftDiscarded(project, [filePath], []);
     return [...draftPaths];
   }
   if (!SLUG_RE.test(slug)) return fail(`undo draft slug is invalid: ${slug}`);
@@ -804,7 +869,6 @@ export async function syncWithPublished(
     || result.status === 'merged'
     || result.status === 'up_to_date'
   ) {
-    effects.reload();
     return;
   }
   return fail(result.status ?? 'draftSync failed');

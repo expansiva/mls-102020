@@ -132,7 +132,7 @@ test('panel buttons use the Studio BUTTON classes', () => {
         assert.ok(mine.includes('disabled:cursor-not-allowed'), `${name} shows a disabled cursor`);
     }
     assert.doesNotMatch(DRAFT, /actionClass/);
-    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON\}/g)].length, 10);
+    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON\}/g)].length, 9);
     assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON_PRIMARY\}/g)].length, 1);
     const actions = methodOf(DRAFT, 'private _renderActions');
     const primaryAt = actions.indexOf('class=${BUTTON_PRIMARY}');
@@ -208,34 +208,48 @@ test('view, try and the project default go through the core', () => {
     assert.doesNotMatch(DRAFT, /['"]\/exec['"]/);
 });
 
-test('a merged publish leaves the busy phase and a failed release offers reload', () => {
+test('a merged publish leaves the busy phase and a failed release stays on the panel', () => {
     const handler = methodOf(DRAFT, 'private async _onPublish');
     const mergedAt = handler.indexOf('onMerged:');
     const phaseAt = handler.indexOf("this._phase = 'updating'");
     assert.ok(mergedAt !== -1 && phaseAt > mergedAt, 'the buttons leave publishing when the merge lands');
+    assert.match(handler, /outcome === 'merged'/);
+    assert.match(handler, /await this\._load\(true\)/);
     assert.match(handler, /outcome === 'release-pending'/);
     assert.match(handler, /this\.msg\.releasePending\.replace\('\{reason\}'/);
     assert.match(handler, /this\.msg\.releaseTimeout/);
     assert.match(handler, /this\.msg\.releaseBuildFailed/);
-    assert.match(handler, /this\._offerReload = true/);
     assert.match(handler, /console\.error\(/);
+    assert.doesNotMatch(handler, /location\.reload/);
     const panel = methodOf(DRAFT, 'private _renderPanel');
     const busyAt = panel.indexOf("this._phase === 'loading' || this._phase === 'publishing'");
     assert.notEqual(busyAt, -1);
     assert.doesNotMatch(panel.slice(busyAt, panel.indexOf('\n', busyAt)), /updating/);
     assert.match(panel, /siteUpdateClock\(this\._updateElapsed\)/);
     assert.match(panel, /this\.msg\.siteUpdating/);
-    assert.match(panel, /this\.msg\.reloadSite/);
-    assert.match(panel, /location\.reload\(\)/);
+    assert.doesNotMatch(panel, /location\.reload/);
     assert.match(DRAFT, /siteUpdating: 'Published\. Updating the site… \(\{time\}\)'/);
     assert.match(DRAFT, /siteUpdating: 'Publicado\. Atualizando o site… \(\{time\}\)'/);
     assert.match(DRAFT, /siteUpdating: 'Publicado\. Actualizando el sitio… \(\{time\}\)'/);
     assert.match(DRAFT, /The draft was published, but the site has not been updated yet/);
     assert.match(DRAFT, /O rascunho foi publicado, mas o site ainda não foi atualizado/);
     assert.match(DRAFT, /El borrador se publicó, pero el sitio todavía no se actualizó/);
-    assert.match(DRAFT, /reloadSite: 'Reload'/);
-    assert.match(DRAFT, /reloadSite: 'Recarregar'/);
-    assert.match(DRAFT, /reloadSite: 'Recargar'/);
+    assert.doesNotMatch(DRAFT, /reloadSite:/);
+});
+
+test('st66 s4c: the panel and the core do not reload the page, and a failed tab update is shown', () => {
+    const core = readFileSync(fileURLToPath(new URL('../helpers/draftPanelCore.ts', import.meta.url)), 'utf8');
+    assert.equal(/effects\.reload\(/.test(core), false);
+    assert.equal(DRAFT.includes('location.reload'), false);
+    assert.equal(DRAFT.includes('_offerReload'), false);
+    assert.equal(DRAFT.includes('reloadSite'), false);
+    const discard = methodOf(DRAFT, 'private async _onDiscard');
+    assert.match(discard, /notifyDraftDiscarded|discard\(/);
+    const sync = methodOf(DRAFT, 'private async _onSyncPublished');
+    assert.match(sync, /notifyDraftDiscarded\(project, before, after\)/);
+    assert.match(DRAFT, /COLLAB_PREVIEW_UPDATE_FAILED/);
+    assert.match(DRAFT, /preview tabs were not updated/);
+    assert.match(methodOf(DRAFT, 'private readonly _onPreviewUpdateFailed'), /this\._phase = 'error'/);
 });
 
 test('the three blocks come from localEdits, panelModel and readPublished', () => {

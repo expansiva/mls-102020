@@ -47,6 +47,8 @@ import {
   storeCapturedDraftText,
   syncWithPublished,
   viewDiff,
+  notifyDraftDiscarded,
+  readPreviewUpdateFailure,
   type FetchImpl,
   type ICollabDraftSavedDetail,
   type IDraftWaitResult,
@@ -111,26 +113,36 @@ test('loadPanel picks the current branch and leaves the rest as others', async (
   assert.deepEqual(missing.others.map((item) => item.branch), ['user/ada@example.com', 'team/102047']);
 });
 
-test('publish merged waits then reloads, in that order', async () => {
+test('st66 s4c: publish merged asks the open tabs for the published files and does not reload', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const saved: { project: number; paths: string[] }[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_SAVED, (ev) => {
+    saved.push((ev as CustomEvent<{ project: number; paths: string[] }>).detail);
+  });
+  host.window = windowEvents;
   const calls: string[] = [];
-  const fetchImpl: FetchImpl = async (_input, init) => {
-    calls.push('promote');
-    const body = JSON.parse(init.body) as { action: string; target: string; draft: string; comment: string };
-    assert.equal(body.action, 'promote');
-    assert.equal(body.target, 'production');
-    assert.equal(body.draft, 'team-102047');
-    assert.equal(body.comment, 'ship it');
-    return jsonResponse({ statusCode: 200, status: 'merged', ref: 'abc', release: 'scheduled' });
-  };
-  const waitForNew = async (): Promise<IDraftWaitResult> => {
-    calls.push('waitForNew');
-    return { changed: true, reason: 'released' };
-  };
-  const reload = (): void => { calls.push('reload'); };
-
-  const result = await publish({ fetchImpl, waitForNew, reload }, 102047, 'team-102047', 'ship it');
-  assert.deepEqual(result, { outcome: 'merged' });
-  assert.deepEqual(calls, ['promote', 'waitForNew', 'reload']);
+  try {
+    const result = await publish({
+      fetchImpl: async (_input, init) => {
+        calls.push('promote');
+        const body = JSON.parse(init.body) as { action: string; comment: string };
+        assert.equal(body.action, 'promote');
+        assert.equal(body.comment, 'ship it');
+        return jsonResponse({ statusCode: 200, status: 'merged', ref: 'abc', release: 'scheduled' });
+      },
+      waitForNew: async () => {
+        calls.push('waitForNew');
+        return { changed: true, reason: 'released' };
+      },
+    }, 102047, 'team-102047', 'ship it', ['l2/a.ts', 'l2/b.ts']);
+    assert.deepEqual(result, { outcome: 'merged' });
+    assert.deepEqual(calls, ['promote', 'waitForNew']);
+    assert.deepEqual(saved, [{ project: 102047, paths: ['l2/a.ts', 'l2/b.ts'] }]);
+  } finally {
+    host.window = previous;
+  }
 });
 
 test('nothing_to_promote does not wait and does not reload', async () => {
@@ -142,7 +154,6 @@ test('nothing_to_promote does not wait and does not reload', async () => {
   const result = await publish({
     fetchImpl,
     waitForNew: async () => { calls.push('waitForNew'); return { changed: true, reason: 'released' }; },
-    reload: () => { calls.push('reload'); },
   }, 102047, 'team-102047', '');
   assert.deepEqual(result, { outcome: 'nothing' });
   assert.deepEqual(calls, ['promote']);
@@ -157,7 +168,6 @@ test('409 DRAFT_CONFLICT returns the files and does not reload', async () => {
   const result = await publish({
     fetchImpl,
     waitForNew: async () => { calls.push('waitForNew'); return { changed: true, reason: 'released' }; },
-    reload: () => { calls.push('reload'); },
   }, 102047, 'team-102047', 'ship');
   assert.deepEqual(result, { outcome: 'conflict', files: ['l2/a.ts', 'l2/b.ts'] });
   assert.deepEqual(calls, []);
@@ -193,7 +203,6 @@ test('merged clears the local copy and enables buttons before a hanging release 
       buttons = 'active';
       calls.push('merged');
     },
-    reload: () => { calls.push('reload'); },
     storFiles: { a: file },
     clearLocal: async (row) => {
       calls.push('clear');
@@ -210,7 +219,7 @@ test('merged clears the local copy and enables buttons before a hanging release 
 
   resolveWait({ changed: true, reason: 'released' });
   assert.deepEqual(await pending, { outcome: 'merged' });
-  assert.deepEqual(calls, ['remember', 'clear', 'merged', 'wait', 'reload']);
+  assert.deepEqual(calls, ['remember', 'clear', 'merged', 'wait']);
 });
 
 test('timeout and build-failed report that the draft was published and do not reload', async () => {
@@ -224,7 +233,6 @@ test('timeout and build-failed report that the draft was published and do not re
       waitForNew: async () => { calls.push('wait'); return { changed: false, reason }; },
       rememberPublished: () => { calls.push('remember'); },
       onMerged: () => { calls.push('merged'); },
-      reload: () => { calls.push('reload'); },
       storFiles: { a: file },
       clearLocal: async (row) => {
         calls.push('clear');
@@ -243,7 +251,6 @@ test('MAIN_DIRTY, REBUILD_BUSY and other codes throw the code', async () => {
       () => publish({
         fetchImpl: async () => jsonResponse({ statusCode: 409, code }, 409),
         waitForNew: async () => { throw new Error('wait should not run'); },
-        reload: () => { throw new Error('reload should not run'); },
       }, 102047, 'team-102047', ''),
       (err: unknown) => err instanceof Error && err.message === code,
     );
@@ -276,17 +283,15 @@ test('discard reloads only after discardDraft succeeds', async () => {
       assert.equal(body.draft, 'team-102047');
       return jsonResponse({ statusCode: 200, status: 'discarded' });
     },
-    reload: () => { calls.push('reload'); },
     storFiles: {},
     clearLocal: async () => { calls.push('clear'); },
   }, 102047, 'team-102047');
-  assert.deepEqual(calls, ['discardDraft', 'reload']);
+  assert.deepEqual(calls, ['discardDraft']);
 
   const refused: string[] = [];
   await assert.rejects(
     () => discard({
       fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'BAD_DRAFT' }, 400),
-      reload: () => { refused.push('reload'); },
       storFiles: {},
       clearLocal: async () => { refused.push('clear'); },
     }, 102047, 'nope'),
@@ -348,7 +353,6 @@ test('discard clears the project local copies and tempObjects before reload', as
       calls.push('discardDraft');
       return jsonResponse({ statusCode: 200, status: 'discarded' });
     },
-    reload: () => { calls.push('reload'); },
     storFiles,
     clearLocal: async (file) => {
       calls.push(`clear:${file.shortName}`);
@@ -357,7 +361,7 @@ test('discard clears the project local copies and tempObjects before reload', as
       delete tempObjects[fileKey(file)];
     },
   }, 102047, 'team-102047');
-  assert.deepEqual(calls, ['discardDraft', 'clear:a', 'clear:b', 'reload']);
+  assert.deepEqual(calls, ['discardDraft', 'clear:a', 'clear:b']);
   assert.equal(projectFile.inLocalStorage, false);
   assert.equal(deleted.inLocalStorage, false);
   assert.equal(other.inLocalStorage, true);
@@ -375,14 +379,13 @@ test('discard logs a failed local clear with the file and still reloads', async 
   try {
     await discard({
       fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'discarded' }),
-      reload: () => { calls.push('reload'); },
       storFiles: { a: dirty },
       clearLocal: async () => { throw new Error('idb down'); },
     }, 102047, 'team-102047');
   } finally {
     console.error = orig;
   }
-  assert.deepEqual(calls, ['reload']);
+  assert.deepEqual(calls, []);
   assert.ok(logs.some((line) => line.includes('l2/aura/a.ts') && line.includes('idb down')));
   assert.equal(dirty.inLocalStorage, true);
 });
@@ -401,7 +404,6 @@ test('discard asks for a recount only after the server accepts', async () => {
     await assert.rejects(
       () => discard({
         fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'BAD_DRAFT' }, 400),
-        reload: () => { calls.push('reload'); },
         storFiles: {},
         clearLocal: async () => {},
       }, 102047, 'nope'),
@@ -410,11 +412,10 @@ test('discard asks for a recount only after the server accepts', async () => {
     assert.deepEqual(calls, []);
     await discard({
       fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'discarded' }),
-      reload: () => { calls.push('reload'); },
       storFiles: {},
       clearLocal: async () => {},
     }, 102047, 'team-102047');
-    assert.deepEqual(calls, ['recount:102047', 'reload']);
+    assert.deepEqual(calls, ['recount:102047']);
   } finally {
     host.window = previous;
   }
@@ -438,16 +439,17 @@ test('discardModule asks for a recount only after the local undo succeeds', asyn
     await assert.rejects(
       () => discardModule({
         fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+        reloadLive: async () => undefined,
         saveL5File: async () => true,
         undoFile: async () => { calls.push('undo'); },
         storFiles: { orders },
-        reloadLive: async () => { calls.push('reload'); },
       }, 102047, 'team-102047', 'orders', same, same),
       /draft\.not_owner/,
     );
     assert.deepEqual(calls, []);
     await discardModule({
       fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'restored' }),
+      reloadLive: async () => undefined,
       saveL5File: async () => true,
       undoFile: async (file) => {
         calls.push('undo');
@@ -455,9 +457,8 @@ test('discardModule asks for a recount only after the local undo succeeds', asyn
         file.status = 'nochange';
       },
       storFiles: { orders },
-      reloadLive: async () => { calls.push('reload'); },
     }, 102047, 'team-102047', 'orders', same, same);
-    assert.deepEqual(calls, ['undo', 'recount:102047', 'reload']);
+    assert.deepEqual(calls, ['undo', 'recount:102047']);
   } finally {
     host.window = previous;
   }
@@ -477,7 +478,6 @@ test('st62 s2: accepted discard emits one collabDraftDiscarded; a refusal emits 
     await assert.rejects(
       () => discard({
         fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'BAD_DRAFT' }, 400),
-        reload: () => { notices.push('reload'); },
         storFiles: {},
         clearLocal: async () => {},
       }, 102047, 'nope'),
@@ -486,11 +486,10 @@ test('st62 s2: accepted discard emits one collabDraftDiscarded; a refusal emits 
     assert.deepEqual(notices, []);
     await discard({
       fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'discarded' }),
-      reload: () => { notices.push('reload'); },
       storFiles: {},
       clearLocal: async () => {},
     }, 102047, 'team-102047');
-    assert.deepEqual(notices, ['discarded:102047', 'reload']);
+    assert.deepEqual(notices, ['discarded:102047']);
   } finally {
     host.window = previous;
   }
@@ -517,13 +516,13 @@ test('st62 s2: discardModule holds across saveL5File and emits one collabDraftDi
     fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'restored' }),
     undoFile: async () => { notices.push('undo'); },
     storFiles: {},
-    reloadLive: async () => { notices.push('reloadLive'); },
   };
   try {
     await assert.rejects(
       () => discardModule({
         ...effects,
         fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+        reloadLive: async () => undefined,
         saveL5File: async () => { notices.push('save'); return true; },
       }, 102047, 'team-102047', 'orders', current, published),
       /draft\.not_owner/,
@@ -533,6 +532,7 @@ test('st62 s2: discardModule holds across saveL5File and emits one collabDraftDi
     await assert.rejects(
       () => discardModule({
         ...effects,
+        reloadLive: async () => undefined,
         saveL5File: async () => {
           notices.push('save');
           windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, {
@@ -549,6 +549,7 @@ test('st62 s2: discardModule holds across saveL5File and emits one collabDraftDi
     await assert.rejects(
       () => discardModule({
         ...effects,
+        reloadLive: async () => undefined,
         saveL5File: async () => { notices.push('save'); throw new Error('config write down'); },
       }, 102047, 'team-102047', 'orders', current, published),
       /config write down/,
@@ -558,6 +559,7 @@ test('st62 s2: discardModule holds across saveL5File and emits one collabDraftDi
     notices.length = 0;
     await discardModule({
       ...effects,
+      reloadLive: async () => undefined,
       saveL5File: async () => {
         notices.push('save');
         windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, {
@@ -566,7 +568,7 @@ test('st62 s2: discardModule holds across saveL5File and emits one collabDraftDi
         return true;
       },
     }, 102047, 'team-102047', 'orders', current, published);
-    assert.deepEqual(notices, ['hold:true', 'save', 'saved', 'hold:false', 'reloadLive', 'discarded:102047']);
+    assert.deepEqual(notices, ['hold:true', 'save', 'saved', 'hold:false', 'discarded:102047']);
   } finally {
     host.window = previous;
   }
@@ -584,9 +586,8 @@ test('syncWithPublished reloads on merged and rejects DRAFT_CONFLICT with the fi
         assert.equal(body.draft, 'team-102047');
         return jsonResponse({ statusCode: 200, status });
       },
-      reload: () => { calls.push('reload'); },
     }, 102047, 'team-102047');
-    assert.deepEqual(calls, ['draftSync', 'reload']);
+    assert.deepEqual(calls, ['draftSync']);
   }
 
   const refused: string[] = [];
@@ -596,7 +597,6 @@ test('syncWithPublished reloads on merged and rejects DRAFT_CONFLICT with the fi
         { statusCode: 409, code: 'DRAFT_CONFLICT', files: ['l2/a.ts'] },
         409,
       ),
-      reload: () => { refused.push('reload'); },
     }, 102047, 'team-102047'),
     (err: unknown) => err instanceof Error && err.message.includes('l2/a.ts'),
   );
@@ -606,7 +606,6 @@ test('syncWithPublished reloads on merged and rejects DRAFT_CONFLICT with the fi
   await assert.rejects(
     () => syncWithPublished({
       fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'BAD_DRAFT' }, 400),
-      reload: () => { otherCode.push('reload'); },
     }, 102047, 'team-102047'),
     (err: unknown) => err instanceof Error && err.message === 'BAD_DRAFT',
   );
@@ -1022,11 +1021,10 @@ test('publish merged remembers the files before the release wait', async () => {
       calls.push('remember');
       recorded = record;
     },
-    reload: () => { calls.push('reload'); },
   }, 102047, 'team-102047', 'ship it', files);
   const after = Date.now();
   assert.deepEqual(result, { outcome: 'merged' });
-  assert.deepEqual(calls, ['promote', 'remember', 'waitForNew', 'reload']);
+  assert.deepEqual(calls, ['promote', 'remember', 'waitForNew']);
   assert.deepEqual(recorded?.files, files);
   assert.ok(recorded !== undefined && recorded.at >= before && recorded.at <= after);
   files.push('l2/c.ts');
@@ -1039,7 +1037,6 @@ test('publish does not remember on nothing, conflict, or failure', async () => {
     fetchImpl,
     waitForNew: async () => { throw new Error('wait should not run'); },
     rememberPublished: () => { remembered.push('remember'); },
-    reload: () => { throw new Error('reload should not run'); },
   });
 
   const nothing = await publish(
@@ -1100,7 +1097,6 @@ test('publish drops only the local rows it took, and only after the server lands
       return { changed: true, reason: 'released' };
     },
     rememberPublished: () => { calls.push('remember'); },
-    reload: () => { calls.push('reload'); },
     storFiles,
     clearLocal: async (file) => {
       calls.push(`clear:${file.shortName}`);
@@ -1110,7 +1106,7 @@ test('publish drops only the local rows it took, and only after the server lands
     },
   }, 102047, 'team-102047', 'ship', ['l2/a.ts', 'l2/aura/b.ts']);
   assert.deepEqual(merged, { outcome: 'merged' });
-  assert.deepEqual(calls, ['promote', 'remember', 'clear:a', 'clear:b', 'wait', 'reload']);
+  assert.deepEqual(calls, ['promote', 'remember', 'clear:a', 'clear:b', 'wait']);
   assert.equal(taken.inLocalStorage, false);
   assert.equal(alsoTaken.inLocalStorage, false);
   assert.equal(kept.inLocalStorage, true);
@@ -1123,7 +1119,6 @@ test('publish drops only the local rows it took, and only after the server lands
     () => publish({
       fetchImpl: async () => jsonResponse({ statusCode: 409, code: 'MAIN_DIRTY' }, 409),
       waitForNew: async () => { failedCalls.push('wait'); return { changed: true, reason: 'released' }; },
-      reload: () => { failedCalls.push('reload'); },
       storFiles: { a: taken },
       clearLocal: async (file) => {
         failedCalls.push('clear');
@@ -1141,7 +1136,6 @@ test('publish drops only the local rows it took, and only after the server lands
   const pending = await publish({
     fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
     waitForNew: async () => ({ changed: false, reason: 'timeout' }),
-    reload: () => { timeoutCalls.push('reload'); },
     storFiles: { a: taken },
     clearLocal: async (file) => {
       timeoutCalls.push('clear');
@@ -1167,6 +1161,7 @@ test('discardModule drops only that module local rows after the restore', async 
   const same = moduleConfig('Published', true);
   await discardModule({
     fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'restored' }),
+    reloadLive: async () => undefined,
     saveL5File: async () => { throw new Error('config should stay'); },
     undoFile: async (file) => {
       file.inLocalStorage = false;
@@ -1174,7 +1169,6 @@ test('discardModule drops only that module local rows after the restore', async 
       delete tempObjects[fileKey(file)];
     },
     storFiles: { orders, billing },
-    reloadLive: async () => {},
   }, 102047, 'team-102047', 'orders', same, same);
   assert.equal(orders.inLocalStorage, false);
   assert.equal(billing.inLocalStorage, true);
@@ -1186,10 +1180,10 @@ test('discardModule drops only that module local rows after the restore', async 
   await assert.rejects(
     () => discardModule({
       fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+      reloadLive: async () => undefined,
       saveL5File: async () => true,
       undoFile: async (file) => { delete keptRows[fileKey(file)]; },
       storFiles: { orders },
-      reloadLive: async () => { throw new Error('reload should not run'); },
     }, 102047, 'team-102047', 'orders', same, same),
     /draft\.not_owner/,
   );
@@ -1602,6 +1596,7 @@ test('discardModule sends the four paths, swaps only that module block, and undo
       assert.deepEqual(body.paths, ['l1/orders', 'l1/orders_old', 'l2/orders', 'l4/orders']);
       return jsonResponse({ statusCode: 200, status: 'restored', paths: body.paths, head: 'abc' });
     },
+    reloadLive: async () => undefined,
     saveL5File: async (project, shortName, content, comment) => {
       calls.push('save');
       assert.equal(project, 102047);
@@ -1617,7 +1612,6 @@ test('discardModule sends the four paths, swaps only that module block, and undo
       file.status = 'nochange';
     },
     storFiles,
-    reloadLive: async () => { calls.push('reload'); },
   }, 102047, 'team-102047', 'orders', current, publishedJson);
 
   assert.deepEqual(calls, [
@@ -1625,7 +1619,6 @@ test('discardModule sends the four paths, swaps only that module block, and undo
     'save',
     'undo:1/orders_old/agent',
     'undo:2/orders/pipeline/page',
-    'reload',
   ]);
   assert.equal(storFiles.old, undefined);
   assert.equal(otherModule.inLocalStorage, true);
@@ -1780,7 +1773,7 @@ test('st64 s1: a browser-only undo clears the local copy and does not call the s
     assert.deepEqual(next, draftPaths);
     assert.equal(local.status, 'nochange');
     assert.equal(local.inLocalStorage, false);
-    assert.deepEqual(notices, ['clear', 'recount']);
+    assert.deepEqual(notices, ['clear', 'recount', 'discarded']);
     assert.equal(filesByShortPath({ page: local }, 102047).get('l2/orders/page.ts'), local);
   } finally {
     host.window = previous;
@@ -1888,10 +1881,10 @@ test('st67 s2: discardModule with 3 local files restores once and recounts once'
         if (body.action === 'draftRestorePaths') restores += 1;
         return jsonResponse({ statusCode: 200, status: 'restored' });
       },
+      reloadLive: async () => undefined,
       saveL5File: async () => { throw new Error('config should stay'); },
       undoFile: (file) => undoStorFile(file as mls.stor.IFileInfo),
       storFiles,
-      reloadLive: async () => {},
     }, 102047, 'team-102047', 'orders', same, same);
     assert.equal(restores, 1);
     assert.equal(recounts, 1);
@@ -1908,16 +1901,139 @@ test('discardModule shows the server reason and does not touch config or local c
   await assert.rejects(
     () => discardModule({
       fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+      reloadLive: async () => undefined,
       saveL5File: async () => { calls.push('save'); return true; },
       undoFile: async () => { calls.push('undo'); },
       storFiles: {
         a: { project: 102047, status: 'new', shortName: 'agent', level: 1, folder: 'orders_old', extension: '.ts' },
       },
-      reloadLive: async () => { calls.push('reload'); },
     }, 102047, 'user-ada_example_com', 'orders', moduleConfig('Draft', true), moduleConfig('Published', true)),
     /draft\.not_owner/,
   );
   assert.deepEqual(calls, []);
+});
+
+test('st66 s4c: discard sends the diff from before and an empty after', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const seen: { project: number; before: string[]; after: string[] }[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, (ev) => {
+    seen.push((ev as CustomEvent<{ project: number; before: string[]; after: string[] }>).detail);
+  });
+  host.window = windowEvents;
+  const local: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'page', level: 2, folder: 'orders', extension: '.ts',
+  };
+  try {
+    await discard({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'discarded' }),
+      storFiles: { local },
+      clearLocal: async (file) => {
+        file.inLocalStorage = false;
+        file.status = 'nochange';
+      },
+    }, 102047, 'team-102047', ['l2/billing/bill.ts', 'l2/orders/page.ts']);
+    assert.deepEqual(seen, [{
+      project: 102047,
+      before: ['l2/billing/bill.ts', 'l2/orders/page.ts'],
+      after: [],
+    }]);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st66 s4c: discard module sends that module before and the other files after', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const seen: { before: string[]; after: string[] }[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, (ev) => {
+    const detail = (ev as CustomEvent<{ before: string[]; after: string[] }>).detail;
+    seen.push({ before: detail.before, after: detail.after });
+  });
+  host.window = windowEvents;
+  const local: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, status: 'changed', shortName: 'page', level: 2, folder: 'orders', extension: '.ts',
+  };
+  try {
+    await discardModule({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'restored' }),
+      reloadLive: async () => undefined,
+      saveL5File: async () => true,
+      undoFile: async (file) => {
+        file.inLocalStorage = false;
+        file.status = 'nochange';
+      },
+      storFiles: { local },
+    }, 102047, 'team-102047', 'orders', moduleConfig('Draft orders', true), moduleConfig('Published orders', true), [
+      'l2/orders/page.ts',
+      'l2/billing/bill.ts',
+    ]);
+    assert.equal(seen.length, 1);
+    assert.deepEqual(seen[0]?.before, ['l2/orders/page.ts', 'l5/config.json']);
+    assert.deepEqual(seen[0]?.after, ['l2/billing/bill.ts']);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st66 s4c: undo of one browser file sends that file', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const seen: { before: string[]; after: string[] }[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, (ev) => {
+    const detail = (ev as CustomEvent<{ before: string[]; after: string[] }>).detail;
+    seen.push({ before: detail.before, after: detail.after });
+  });
+  host.window = windowEvents;
+  const file: IPanelStorFile = {
+    project: 102047, inLocalStorage: true, shortName: 'page', level: 2, folder: 'orders', extension: '.ts',
+  };
+  try {
+    const next = await undoFile({
+      fetchImpl: async () => { throw new Error('a browser undo does not call the server'); },
+      file,
+      clearLocal: async (item) => {
+        item.inLocalStorage = false;
+        item.status = 'nochange';
+      },
+      removeNew: async () => { throw new Error('not a new file'); },
+    }, 102047, 'team-102047', 'l2/orders/page.ts', false, ['l2/orders/page.ts']);
+    assert.deepEqual(next, ['l2/orders/page.ts']);
+    assert.deepEqual(seen, [{ before: ['l2/orders/page.ts'], after: [] }]);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st66 s4c: bring published notifies with the diff before and after', () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const seen: { project: number; before: string[]; after: string[] }[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, (ev) => {
+    seen.push((ev as CustomEvent<{ project: number; before: string[]; after: string[] }>).detail);
+  });
+  host.window = windowEvents;
+  try {
+    notifyDraftDiscarded(102047, ['l2/a.ts', 'l2/a.ts'], ['l2/b.ts']);
+    assert.deepEqual(seen, [{ project: 102047, before: ['l2/a.ts'], after: ['l2/b.ts'] }]);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st66 s4c: a preview update failure is a project and a message', () => {
+  assert.equal(readPreviewUpdateFailure(null), null);
+  assert.equal(readPreviewUpdateFailure({ project: 0, message: 'x' }), null);
+  assert.equal(readPreviewUpdateFailure({ project: 102047, message: '' }), null);
+  assert.deepEqual(
+    readPreviewUpdateFailure({ project: 102047, message: 'The open preview could not be updated. missing' }),
+    { project: 102047, message: 'The open preview could not be updated. missing' },
+  );
 });
 
 test('1016 pipeline files open closed, one level line, and only the children of an open node', () => {
