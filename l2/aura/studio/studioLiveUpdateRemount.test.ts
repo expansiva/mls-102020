@@ -575,3 +575,66 @@ test('a specifier outside the subgraph is absolute in every source delivered to 
     globalThis.document = previousDocument;
   }
 });
+
+test('st66 s4: a saved l2 file refreshes only the tab that imports it', async () => {
+  await armPageTag();
+  const { draftPathSpecifier, updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageS4.js';
+  const other = '/_102033_/l2/pageS4b.js';
+  assert.equal(draftPathSpecifier(102033, 'l2/pageS4.ts'), page);
+  assert.equal(draftPathSpecifier(102033, 'l5/config.json'), null);
+  assert.equal(draftPathSpecifier(102033, 'l2/pageS4.test.ts'), null);
+
+  const previousElements = (globalThis as { customElements?: unknown }).customElements;
+  const previousDocument = globalThis.document;
+  (globalThis as { customElements?: unknown }).customElements = sharedRegistry;
+  globalThis.document = {
+    documentElement: previousDocument?.documentElement,
+    createElement(tag: string) {
+      return createPage(tag);
+    },
+  } as unknown as Document;
+  try {
+    await evalModule(pageSource('preview-page-s4', 'S1'));
+    await evalModule(pageSource('preview-page-s4b', 'T1'));
+    const header = new FakeHTMLElement();
+    header.label = 'SHELL';
+    const tab = new FakeHTMLElement();
+    const kept = new FakeHTMLElement();
+    tab.child = createPage('preview-page-s4');
+    kept.child = createPage('preview-page-s4b');
+    const before = tab.child;
+    const result = await updateOpenTabsForFiles(102033, ['l2/pageS4.ts', 'l5/config.json'], {
+      tabs: [slot(tab, page, 'preview-page-s4'), slot(kept, other, 'preview-page-s4b')],
+      draftSlug: null,
+      origin: 'http://preview.test',
+      readModule(specifier: string) {
+        if (specifier === page) return { source: pageSource('preview-page-s4', 'S2'), version: V2 };
+        if (specifier === other) return { source: pageSource('preview-page-s4b', 'T1'), version: V1 };
+        return null;
+      },
+    });
+    assert.ok(result);
+    assert.equal(result.ok, true);
+    assert.notEqual(tab.child, before);
+    assert.equal(tab.child?.label, 'S2');
+    assert.equal(kept.child?.label, 'T1');
+    assert.equal(header.label, 'SHELL');
+  } finally {
+    (globalThis as { customElements?: unknown }).customElements = previousElements;
+    globalThis.document = previousDocument;
+  }
+});
+
+test('st66 s4: a saved l2 file that was not compiled fails', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const result = await updateOpenTabsForFiles(102033, ['l2/missing.ts'], {
+    tabs: [],
+    draftSlug: null,
+    origin: 'http://preview.test',
+    readModule: () => null,
+  });
+  assert.ok(result);
+  assert.equal(result.ok, false);
+  assert.equal(result.message, t('live.notCompiled'));
+});

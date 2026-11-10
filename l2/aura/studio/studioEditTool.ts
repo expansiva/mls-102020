@@ -17,6 +17,7 @@ import {
   currentEditHost,
   type IStudioEditHost,
 } from '/_102033_/l2/cbe/studioEditSlot.js';
+import { armPreviewTabUpdates } from '/_102020_/l2/aura/studio/studioLiveUpdateRemount.js';
 import { activeDraft, isVmDriver } from '/_102033_/l2/cbe/studioDraft.js';
 import { COLLAB_DRAFT_RECOUNT, draftEntrySeedPending } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import {
@@ -899,5 +900,7 @@ registerVisibleScreenSwap(async (ref) => {
     shortName: ref.shortName,
   });
 });
+
+armPreviewTabUpdates();
 
 installStudioModuleLock();

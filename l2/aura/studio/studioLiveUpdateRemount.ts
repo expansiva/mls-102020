@@ -45,6 +45,8 @@ import {
   markRebuiltByStudio,
   swapElementImpl,
 } from '/_102033_/l2/shared/elementSwapRegistry.js';
+import { registerPreviewTabsUpdate } from '/_102033_/l2/cbe/studioEditSlot.js';
+import { activeDraft } from '/_102033_/l2/cbe/studioDraft.js';
 import {
   previewTabSlots,
   replaceTabPage,
@@ -446,3 +448,115 @@ export const remountMode: ILiveUpdateMode = {
     };
   },
 };
+
+/** `l2/<path>.ts` of this project, as the page import writes it. Anything else is not a preview module. */
+export function draftPathSpecifier(project: number, path: string): string | null {
+  if (!Number.isInteger(project) || project <= 0) return null;
+  if (!path.startsWith('l2/') || !path.endsWith('.ts') || path.endsWith('.d.ts') || path.endsWith('.test.ts')) return null;
+  const rest = path.slice(3, -3);
+  if (rest.length === 0 || rest.startsWith('/') || rest.endsWith('/')) return null;
+  return `/_${project}_/l2/${rest}.js`;
+}
+
+interface ICompiledPreview {
+  source: string;
+  version: string;
+}
+
+export interface IPreviewTabsDeps {
+  tabs?: readonly PreviewTabSlot[];
+  readModule?: (specifier: string) => ICompiledPreview | null;
+  draftSlug?: string | null;
+  origin?: string;
+  importModule?: (url: string) => Promise<unknown>;
+}
+
+interface IEditorModel {
+  compilerResults?: { prodJS?: string; cacheVersion?: string };
+}
+
+function modelKey(specifier: string): { project: number; folder: string; shortName: string } | null {
+  const match = /^\/_(\d+)_\/l2\/(.+)\.js$/.exec(specifier);
+  if (!match) return null;
+  const rest = match[2];
+  const slash = rest.lastIndexOf('/');
+  const folder = slash === -1 ? '' : rest.slice(0, slash);
+  const shortName = slash === -1 ? rest : rest.slice(slash + 1);
+  if (!shortName) return null;
+  return { project: Number(match[1]), folder, shortName };
+}
+
+function readCompiledModule(specifier: string): ICompiledPreview | null {
+  const key = modelKey(specifier);
+  const editor = (globalThis as { mls?: { editor?: { getModels?: (project: number, shortName: string, folder: string, level: number) => { ts?: IEditorModel } | undefined } } }).mls?.editor;
+  if (!key || !editor?.getModels) {
+    console.error(`[remount] ${specifier}: compiled module is unavailable`);
+    return null;
+  }
+  const model = editor.getModels(key.project, key.shortName, key.folder, 2)?.ts;
+  const source = model?.compilerResults?.prodJS;
+  const version = model?.compilerResults?.cacheVersion;
+  if (!source || !version) return null;
+  return { source, version };
+}
+
+/**
+ * Rebuilds the open tabs whose page imports one of these draft paths.
+ * `null` when none of them is an l2 module an open page imports.
+ */
+export async function updateOpenTabsForFiles(
+  project: number,
+  files: readonly string[],
+  deps: IPreviewTabsDeps = {},
+): Promise<ILiveUpdateResult | null> {
+  const changed = files
+    .map((path) => draftPathSpecifier(project, path))
+    .filter((item): item is string => item !== null);
+  if (changed.length === 0) return null;
+  const tabs = deps.tabs ?? previewTabSlots();
+  const readModule = deps.readModule ?? readCompiledModule;
+  const modules = new Map<string, PreviewModuleRecord>();
+  const pending = [...changed, ...tabs.map((tab) => tab.page)];
+  const seen = new Set<string>();
+  const missingChanged: string[] = [];
+  while (pending.length > 0) {
+    const specifier = pending.pop();
+    if (specifier === undefined || seen.has(specifier)) continue;
+    seen.add(specifier);
+    if (!/^\/_\d+_\/.+\.js$/.test(specifier)) continue;
+    const compiled = readModule(specifier);
+    if (!compiled) {
+      if (changed.includes(specifier)) missingChanged.push(specifier);
+      continue;
+    }
+    modules.set(specifier, previewModule(specifier, compiled.source, compiled.version));
+    for (const imported of importedSpecifiers(compiled.source)) {
+      if (!seen.has(imported)) pending.push(imported);
+    }
+  }
+  if (missingChanged.length > 0) {
+    console.error(`[remount] preview tabs were not updated: not compiled: ${missingChanged.join(', ')}`);
+    return { ok: false, message: t('live.notCompiled') };
+  }
+  const draftSlug = deps.draftSlug !== undefined ? deps.draftSlug : (activeDraft() ?? null);
+  const origin = deps.origin ?? (typeof location !== 'undefined' ? location.origin : '');
+  return updateOpenPreviewTabs({
+    modules: [...modules.values()],
+    changed,
+    tabs,
+    draftSlug,
+    origin,
+    importModule: deps.importModule,
+  });
+}
+
+/** The Studio tool registers itself. Save and Discard ask through the slot. */
+export function armPreviewTabUpdates(): void {
+  registerPreviewTabsUpdate(async (project, files) => {
+    const result = await updateOpenTabsForFiles(project, files);
+    if (result && !result.ok) {
+      console.error(`[remount] preview tabs were not updated: ${result.message}`);
+      throw new Error(result.message);
+    }
+  });
+}
