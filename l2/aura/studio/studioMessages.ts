@@ -737,9 +737,7 @@ const message_pt = {
   'inspect.noSource': 'Inspect: o código desta página não está carregado no editor.',
   'inspect.refused': 'Inspect: {reason}',
 
-  // Same sentences as the draft panel (askComment, emptyComment, noFiles). es reads pt.
-  'draft.askComment': 'Mensagem',
-  'draft.emptyComment': 'A mensagem é obrigatória.',
+  // Same sentence as the draft panel (noFiles). es reads pt.
   'draft.noFiles': 'Nenhum arquivo tocado.',
   'draft.saveFailed': 'O rascunho não foi salvo.',
   'draft.blocked': '{n} arquivo(s) com erro não foram salvos. Corrija-os.',
@@ -1444,8 +1442,6 @@ const message_en: typeof message_pt = {
   'inspect.noSource': 'Inspect: the code of this page is not loaded in the editor.',
   'inspect.refused': 'Inspect: {reason}',
 
-  'draft.askComment': 'Message',
-  'draft.emptyComment': 'A message is required.',
   'draft.noFiles': 'No touched files.',
   'draft.saveFailed': 'The draft was not saved.',
   'draft.blocked': '{n} file(s) with errors were not saved. Fix them.',

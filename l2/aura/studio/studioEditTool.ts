@@ -448,8 +448,6 @@ function syncStudioDraftBridge(studioMode: boolean): void {
 }
 
 export interface IDraftSaveMessages {
-  askComment: string;
-  emptyComment: string;
   noFiles: string;
 }
 
@@ -484,31 +482,23 @@ export function currentDraftSaveHost(): IDraftSaveHost | null {
 /** Language for a Save that runs with the draft panel closed. Same catalog as the rest of Studio. */
 export function draftSaveMessages(): IDraftSaveMessages {
   return {
-    askComment: t('draft.askComment'),
-    emptyComment: t('draft.emptyComment'),
     noFiles: t('draft.noFiles'),
   };
 }
 
-type CommentAsk = { ok: true; comment: string } | { ok: false; empty: true };
-
-function askDraftComment(panelMessages: IDraftSaveMessages): CommentAsk | null {
-  if (typeof prompt !== 'function') {
-    console.error('[studio] prompt is missing; the draft was not saved');
-    return null;
-  }
-  const comment = prompt(panelMessages.askComment);
-  if (comment === null) return null;
-  const trimmed = comment.trim();
-  if (!trimmed) {
-    console.warn('[studio] empty message');
-    return { ok: false, empty: true };
-  }
-  return { ok: true, comment: trimmed };
-}
-
 function draftFileLabel(file: mls.stor.IFileInfo): string {
   return `${file.folder}/${file.shortName}${file.extension}`;
+}
+
+/** Git commit message for a manual Save. Technical English; up to three paths. */
+function draftSaveComment(files: readonly mls.stor.IFileInfo[]): string {
+  const listed = files.slice(0, 3).map((file) => {
+    const folder = file.folder ?? '';
+    const name = file.shortName ?? '';
+    const extension = file.extension ?? '';
+    return folder === '' ? `${name}${extension}` : `${folder}/${name}${extension}`;
+  });
+  return `save: ${files.length} file(s): ${listed.join(', ')}`;
 }
 
 async function rememberLocalDraftText(): Promise<void> {
@@ -556,9 +546,6 @@ export async function runDraftSave(
     if (!driverWasKnown) console.error('[studio] save request is not a VM project', project);
     return done(idleSave);
   }
-  const asked = askDraftComment(panelMessages);
-  if (!asked) return done(idleSave);
-  if (!asked.ok) return done({ kind: 'error', message: panelMessages.emptyComment });
   await rememberLocalDraftText();
   const storFiles = mls.stor.files;
   if (!storFiles) {
@@ -586,7 +573,7 @@ export async function runDraftSave(
   try {
     const saved = await saveToDraft(
       open,
-      asked.comment,
+      draftSaveComment(open),
       (clean, text) => mls.stor.setContents(clean, text),
       (file) => afterDraftSave(file),
     );

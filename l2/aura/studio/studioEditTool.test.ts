@@ -16,6 +16,7 @@ import {
   deliverSharedEdit,
   listedOwner,
   noteSharedFile,
+  runDraftSave,
   subscribeDraftFiles,
   syncSharedEditNotice,
   type ICollabDraftPendingDetail,
@@ -312,6 +313,75 @@ test('an edit of a file another draft also touches warns once and does not call 
   }
 });
 
+test('runDraftSave with two files does not prompt and sends save: 2 file(s): a, b', async () => {
+  const host = globalThis as unknown as {
+    mls: {
+      stor?: {
+        files?: Record<string, unknown>;
+        setContents?: (files: unknown[], comment: string) => Promise<{ result: boolean }[]>;
+        localStor?: { setContent?: unknown };
+        cache?: { setContent?: unknown };
+        getKeyToFiles?: unknown;
+      };
+      editor?: { deleteModels?: unknown; getModels?: unknown };
+      common?: { crc?: { crc32: (value: string) => number } };
+    };
+    prompt?: (message?: string) => string | null;
+  };
+  const previous = {
+    stor: host.mls.stor,
+    editor: host.mls.editor,
+    common: host.mls.common,
+    prompt: host.prompt,
+  };
+  let prompts = 0;
+  const comments: string[] = [];
+  const file = (shortName: string): Record<string, unknown> => ({
+    project: 102047,
+    level: 2,
+    folder: '',
+    shortName,
+    extension: '',
+    status: 'changed',
+    hasError: false,
+    inLocalStorage: true,
+    getContent: async () => `body-${shortName}`,
+  });
+  host.mls.stor = {
+    files: { a: file('a'), b: file('b') },
+    setContents: async (_clean, comment) => {
+      comments.push(comment);
+      return [{ result: true }, { result: true }];
+    },
+    localStor: { setContent: () => undefined },
+    cache: { setContent: () => undefined },
+    getKeyToFiles: () => 'k',
+  };
+  host.mls.editor = { deleteModels: () => undefined, getModels: () => undefined };
+  host.mls.common = { crc: { crc32: () => 1 } };
+  host.prompt = () => {
+    prompts += 1;
+    return 'should not run';
+  };
+  try {
+    const save = TOOL.slice(
+      TOOL.indexOf('export async function runDraftSave'),
+      TOOL.indexOf('let editor:', TOOL.indexOf('export async function runDraftSave')),
+    );
+    assert.doesNotMatch(save, /\bprompt\s*\(/);
+    assert.doesNotMatch(save, /askDraftComment/);
+    const outcome = await runDraftSave(102047, { noFiles: 'No touched files.' }, { driverVersion: '1.0.0-vm' });
+    assert.equal(prompts, 0);
+    assert.deepEqual(comments, ['save: 2 file(s): a, b']);
+    assert.equal(outcome.kind, 'saved');
+  } finally {
+    host.mls.stor = previous.stor;
+    host.mls.editor = previous.editor;
+    host.mls.common = previous.common;
+    host.prompt = previous.prompt;
+  }
+});
+
 test('editing the front publishes the unsaved count, Save with the panel closed clears it, and the preview is not swapped', async () => {
   const watcherBody = TOOL.slice(TOOL.indexOf('async function syncWatcher'), TOOL.indexOf('async function syncEditor'));
   assert.doesNotMatch(watcherBody, /watcher\.start\(/);
@@ -403,7 +473,9 @@ test('editing the front publishes the unsaved count, Save with the panel closed 
   };
   host.mls.editor = { getKeyModel: () => 'none', models: {} };
   host.window = windowEvents;
-  host.prompt = () => 'ship it';
+  host.prompt = () => {
+    throw new Error('save must not prompt');
+  };
   const studioHost: IStudioEditHost = {
     host: { children: [] } as unknown as HTMLElement,
     chromeHost: { children: [] } as unknown as HTMLElement,
@@ -424,7 +496,7 @@ test('editing the front publishes the unsaved count, Save with the panel closed 
     for (let i = 0; i < 30 && written.length === 0; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    assert.deepEqual(written, ['ship it']);
+    assert.deepEqual(written, ['save: 1 file(s): aura/page.ts']);
     assert.deepEqual(counts, [0, 1, 0]);
   } finally {
     publishEditHost(null);
@@ -523,7 +595,9 @@ test('a compile error is blocked on the pending event, and Save with the panel c
   };
   host.mls.editor = { getKeyModel: () => 'none', models: {} };
   host.window = windowEvents;
-  host.prompt = () => 'ship it';
+  host.prompt = () => {
+    throw new Error('save must not prompt');
+  };
   const doc = (globalThis as { document?: { documentElement?: { lang: string } } }).document;
   const previousLang = doc?.documentElement?.lang;
   if (doc?.documentElement) doc.documentElement.lang = 'en';
