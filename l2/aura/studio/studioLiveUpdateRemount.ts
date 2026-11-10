@@ -28,12 +28,13 @@
 // WHAT IT REFUSES
 //  - a tag that was never armed (this session never went through a studio boot): the only fix is one
 //    reload, and claiming "applied" would be a lie;
-//  - an edit to the SHARED BASE. Re-importing the page does not help: `/…/shared/x.js` resolves in
-//    the module map to the base ALREADY EVALUATED, so the new base is never reached. Fixing that
-//    means rewriting the specifiers of the edited subgraph to versioned URLs — a task of its own,
-//    and one that applies to any mechanism. Until then, refusing is the only honest answer. The
-//    detection is mechanical rather than a guess about file roles: a module that registers NO custom
-//    element has nothing this mode can swap.
+//  - an edit whose reimported page still registers NO custom element. A shared base used to fail
+//    this test on its own file. The page is now loaded from the preview graph, so the refusal stays
+//    only when that page import also registers nothing.
+//
+// WHAT IS REMOUNTED
+//  Only the page node inside the preview tab div. The rest of the document (header, other tabs)
+//  stays put.
 
 import type { ILiveUpdateContext, ILiveUpdateMode, ILiveUpdateResult } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
 import type { IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
@@ -44,6 +45,18 @@ import {
   markRebuiltByStudio,
   swapElementImpl,
 } from '/_102033_/l2/shared/elementSwapRegistry.js';
+import {
+  previewTabSlots,
+  replaceTabPage,
+  type PreviewTabSlot,
+} from '/_102033_/l2/shared/moduleTab.js';
+import {
+  buildPreviewGraph,
+  previewGraphRequest,
+  previewModule,
+  type PreviewModuleRecord,
+  type PreviewModuleUrl,
+} from '/_102033_/l2/shared/previewGraph.js';
 
 /** Lit's static surface used for the carry-over. */
 interface ILitLikeConstructor extends CustomElementConstructor {
@@ -149,6 +162,223 @@ function remountAll(tag: string): number {
   return count;
 }
 
+function remountTab(div: HTMLElement, tag: string): void {
+  replaceTabPage(div, tag, (previous, next) => {
+    if (!previous) return;
+    const impl = customElements.get(tag);
+    if (!impl) return;
+    carryOver(previous, next, impl);
+  });
+}
+
+function previewFail(message: string): never {
+  console.error(`[remount] ${message}`);
+  throw new Error(`[remount] ${message}`);
+}
+
+function importedSpecifiers(source: string): string[] {
+  const found: string[] = [];
+  const pattern = /\b(?:from|import)\s*(?:\(\s*)?(['"])([^'"]+)\1/g;
+  let match: RegExpExecArray | null = pattern.exec(source);
+  while (match) {
+    found.push(match[2]);
+    match = pattern.exec(source);
+  }
+  return found;
+}
+
+function rewrittenDataUrl(source: string): string {
+  return `data:text/javascript,${encodeURIComponent(source).replaceAll('\'', '%27')}`;
+}
+
+/** A bare package name (`lit`, `@scope/pkg`). A path or a URL is not one. */
+function isBarePackage(spec: string): boolean {
+  return spec.length > 0 && !spec.startsWith('/') && !spec.startsWith('.') && !/^[a-z][a-z0-9+.-]*:/iu.test(spec);
+}
+
+/**
+ * A `data:` module has no hierarchical base, so a leftover `/…` specifier does not resolve.
+ * The absolute URL is the same module the document already loaded (`new URL(spec, origin)`).
+ */
+function absoluteSpecifier(spec: string, origin: string | undefined): string {
+  if (!origin) previewFail(`origin is required to resolve ${spec}`);
+  try {
+    return new URL(spec, origin).href;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    previewFail(`cannot resolve ${spec} against ${origin}: ${detail}`);
+  }
+}
+
+/** What dynamic import receives: an absolute URL, or a bare package name. */
+function assertDeliverable(source: string): void {
+  for (const spec of importedSpecifiers(source)) {
+    if (isBarePackage(spec)) continue;
+    try {
+      new URL(spec);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      previewFail(`specifier is not absolute: ${spec} (${detail})`);
+    }
+  }
+}
+
+async function loadRewritten(
+  key: string,
+  owned: ReadonlyMap<string, PreviewModuleUrl>,
+  cache: Map<string, string>,
+  stack: string[],
+  origin: string | undefined,
+): Promise<string> {
+  const cached = cache.get(key);
+  if (cached) return cached;
+  if (stack.includes(key)) previewFail(`circular import at ${key}`);
+  const record = owned.get(key);
+  if (!record) {
+    const url = key.startsWith('/') ? absoluteSpecifier(key, origin) : key;
+    cache.set(key, url);
+    return url;
+  }
+  stack.push(key);
+  const deps = new Map<string, string>();
+  for (const specifier of importedSpecifiers(record.source)) {
+    deps.set(specifier, await loadRewritten(specifier, owned, cache, stack, origin));
+  }
+  stack.pop();
+  let cursor = 0;
+  let rewritten = '';
+  const pattern = /\b(?:from|import)\s*(?:\(\s*)?(['"])([^'"]+)\1/g;
+  let match: RegExpExecArray | null = pattern.exec(record.source);
+  while (match) {
+    const specifier = match[2];
+    const mapped = deps.get(specifier);
+    if (mapped === undefined) previewFail(`missing import ${specifier}`);
+    const start = match.index + match[0].lastIndexOf(specifier);
+    rewritten += record.source.slice(cursor, start);
+    rewritten += mapped;
+    cursor = start + specifier.length;
+    match = pattern.exec(record.source);
+  }
+  rewritten += record.source.slice(cursor);
+  assertDeliverable(rewritten);
+  const url = rewrittenDataUrl(rewritten);
+  cache.set(record.url, url);
+  cache.set(record.specifier, url);
+  cache.set(key, url);
+  return url;
+}
+
+export interface PreviewTabUpdate {
+  modules: readonly PreviewModuleRecord[];
+  changed: readonly string[];
+  tabs: readonly PreviewTabSlot[];
+  draftSlug: string | null;
+  /** Document origin. A `/…` specifier left outside the subgraph is resolved against it. */
+  origin: string;
+  /** Sees each module URL before it is imported. The test reads the source; production omits it. */
+  importModule?: (url: string) => Promise<unknown>;
+}
+
+/**
+ * Reimports each open page that sits on the changed subgraph and rebuilds only that tab's div.
+ * Returns null when no open page imports a changed file, so the caller can keep its other path.
+ * A page import that registers no element is still a refusal.
+ */
+export async function updateOpenPreviewTabs(input: PreviewTabUpdate): Promise<ILiveUpdateResult | null> {
+  const known = new Set(input.modules.map((item) => item.specifier));
+  const tabs = input.tabs.filter((tab) => known.has(tab.page));
+  const graph = buildPreviewGraph(previewGraphRequest(
+    input.modules,
+    input.changed,
+    tabs.map((tab) => tab.page),
+    input.draftSlug,
+  ));
+  if (graph.modules.length === 0) return null;
+
+  const owned = new Map<string, PreviewModuleUrl>();
+  for (const item of graph.modules) {
+    owned.set(item.specifier, item);
+    owned.set(item.url, item);
+  }
+  const selected = new Set(graph.modules.map((item) => item.specifier));
+  const cache = new Map<string, string>();
+  const pageUrls = new Map<string, string>();
+  for (const tab of tabs) {
+    if (!selected.has(tab.page) || pageUrls.has(tab.page)) continue;
+    pageUrls.set(tab.page, await loadRewritten(tab.page, owned, cache, [], input.origin));
+  }
+
+  const importModule = input.importModule ?? ((url: string) => import(url));
+  const captured = new Map<string, CustomElementConstructor>();
+  await captureDefines(async () => {
+    for (const url of pageUrls.values()) await importModule(url);
+  }, (name, ctor) => { captured.set(name, ctor); });
+
+  if (captured.size === 0) {
+    return { ok: false, message: t('live.noElementDefine') };
+  }
+
+  const swapped: string[] = [];
+  const refused: string[] = [];
+  for (const [tag, impl] of captured) {
+    if (swapElementImpl(tag, impl)) swapped.push(tag);
+    else refused.push(tag);
+  }
+  if (swapped.length === 0) {
+    return { ok: false, message: t('live.tagNotArmed', { tag: refused.join(', ') }) };
+  }
+
+  const swappedTags = new Set(swapped);
+  let count = 0;
+  for (const tab of tabs) {
+    if (!selected.has(tab.page) || !swappedTags.has(tab.tag)) continue;
+    remountTab(tab.div, tab.tag);
+    count += 1;
+  }
+  if (count === 0) {
+    console.error('[remount] swapped the page class but no tab div held that tag');
+    return { ok: false, message: t('live.nothingToApply', { reason: t('live.tagNotArmed', { tag: swapped.join(', ') }) }) };
+  }
+  const message = t('live.remounted', { count, tags: swapped.length });
+  return {
+    ok: true,
+    message: refused.length > 0
+      ? `${message} — ${t('live.tagNotArmed', { tag: refused.join(', ') })}`
+      : message,
+  };
+}
+
+interface ICompiledModule {
+  errors?: readonly unknown[];
+  cacheVersion?: string;
+  prodJS?: string;
+}
+
+function compiledModule(target: IStudioEditTarget): ICompiledModule | null {
+  const model = target.model as { compilerResults?: ICompiledModule };
+  return model.compilerResults ?? null;
+}
+
+function bareSpecifier(target: IStudioEditTarget): string {
+  const { project, folder, shortName } = target.storFile;
+  const middle = folder ? `${folder}/` : '';
+  return `/_${project}_/${middle}${shortName}.js`;
+}
+
+function previewModules(ctx: ILiveUpdateContext): { modules: PreviewModuleRecord[]; changed: string } | null {
+  const edited = compiledModule(ctx.edited);
+  if (!edited?.prodJS || !edited.cacheVersion) return null;
+  if (edited.errors && edited.errors.length > 0) return null;
+  const editedSpecifier = bareSpecifier(ctx.edited);
+  const modules = [previewModule(editedSpecifier, edited.prodJS, edited.cacheVersion)];
+  const page = compiledModule(ctx.page);
+  const pageSpecifier = bareSpecifier(ctx.page);
+  if (page?.prodJS && page.cacheVersion && pageSpecifier !== editedSpecifier && !(page.errors && page.errors.length > 0)) {
+    modules.push(previewModule(pageSpecifier, page.prodJS, page.cacheVersion));
+  }
+  return { modules, changed: editedSpecifier };
+}
+
 export const remountMode: ILiveUpdateMode = {
   name: 'remount',
   // English: devtools listing (see studioLiveUpdate).
@@ -164,7 +394,20 @@ export const remountMode: ILiveUpdateMode = {
       return { ok: false, message: t('live.nothingToApply', { reason: compiled.reason }) };
     }
 
+    const planned = previewModules(ctx);
+    if (planned) {
+      const viaGraph = await updateOpenPreviewTabs({
+        modules: planned.modules,
+        changed: [planned.changed],
+        tabs: previewTabSlots(),
+        draftSlug: null,
+        origin: location.origin,
+      });
+      if (viaGraph) return viaGraph;
+    }
+
     // The define IS the answer to "which class is which tag" — no export-name guessing.
+    // Used when the edited file is itself the page and the graph had no open tab to rebuild.
     const captured = new Map<string, CustomElementConstructor>();
     await captureDefines(
       () => import(compiled.url as string) as Promise<unknown>,
@@ -172,8 +415,7 @@ export const remountMode: ILiveUpdateMode = {
     );
 
     if (captured.size === 0) {
-      // No `@customElement` anywhere in the edited module: it is a shared base / helper. Its new code
-      // is unreachable from here (the page's import of it resolves to the copy already evaluated).
+      // The edited module and the reimported page (when the graph had one) registered nothing.
       return { ok: false, message: t('live.noElementDefine') };
     }
 
@@ -188,7 +430,13 @@ export const remountMode: ILiveUpdateMode = {
       return { ok: false, message: t('live.tagNotArmed', { tag: refused.join(', ') }) };
     }
 
-    const remounted = remountAll(ctx.pageTag);
+    const slots = previewTabSlots().filter((slot) => slot.tag === ctx.pageTag);
+    const remounted = slots.length > 0
+      ? slots.reduce((total, slot) => {
+        remountTab(slot.div, slot.tag);
+        return total + 1;
+      }, 0)
+      : remountAll(ctx.pageTag);
     const message = t('live.remounted', { count: remounted, tags: swapped.length });
     return {
       ok: true,

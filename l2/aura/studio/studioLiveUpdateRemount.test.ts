@@ -3,10 +3,26 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { t } from '/_102020_/l2/aura/studio/studioMessages.js';
 import type { IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import { previewModule } from '/_102033_/l2/shared/previewGraph.js';
+import type { PreviewTabSlot } from '/_102033_/l2/shared/moduleTab.js';
 
 // The registry the mode imports builds `class extends HTMLElement`; Node has no such global. Set it
 // BEFORE the import, same reasoning as studioLiveUpdateHotSwap.test.ts.
-class FakeHTMLElement {}
+class FakeHTMLElement {
+  public attributes: Array<{ name: string; value: string }> = [];
+  public child: FakeHTMLElement | null = null;
+  public bootConfig?: unknown;
+  public label = '';
+  public setAttribute(name: string, value: string): void {
+    this.attributes = [...this.attributes.filter((item) => item.name !== name), { name, value }];
+  }
+  public get firstElementChild(): FakeHTMLElement | null {
+    return this.child;
+  }
+  public replaceChildren(next?: FakeHTMLElement): void {
+    this.child = next ?? null;
+  }
+}
 (globalThis as { HTMLElement?: unknown }).HTMLElement = FakeHTMLElement;
 
 type RemountModule = typeof import('/_102020_/l2/aura/studio/studioLiveUpdateRemount.js');
@@ -48,13 +64,17 @@ class FakeRegistry {
 }
 
 const PAGE_TAG = 'controle-chamados--web--desktop--page11--ticket-catalogue-102047';
+const sharedRegistry = new FakeRegistry();
+let registryArmed = false;
 
 async function armPageTag(): Promise<void> {
   const registry = await loadRegistry();
-  const fake = new FakeRegistry();
-  registry.armElementSwap(fake as unknown as Parameters<RegistryModule['armElementSwap']>[0]);
+  if (!registryArmed) {
+    registry.armElementSwap(sharedRegistry as unknown as Parameters<RegistryModule['armElementSwap']>[0]);
+    registryArmed = true;
+  }
   if (!registry.isElementSwapArmed(PAGE_TAG)) {
-    fake.define(PAGE_TAG, class extends (FakeHTMLElement as unknown as { new (): HTMLElement }) {});
+    sharedRegistry.define(PAGE_TAG, class extends (FakeHTMLElement as unknown as { new (): HTMLElement }) {});
   }
 }
 
@@ -247,4 +267,311 @@ test('T12: a normally created node sees wasRebuiltByStudio false inside connecte
   (node.connectedCallback as (this: Element) => void).call(node as unknown as Element);
 
   assert.equal(seen, false);
+});
+
+const PAGE_A = '/_102033_/l2/pageA.js';
+const PAGE_B = '/_102033_/l2/pageB.js';
+const PAGE_C = '/_102033_/l2/pageC.js';
+const PAGE_D = '/_102033_/l2/pageD.js';
+const PAGE_E = '/_102033_/l2/pageE.js';
+const BASE = '/_102033_/l2/base.js';
+const V1 = '20261110120000000';
+const V2 = '20261110120000001';
+
+function pageSource(tag: string, label: string, baseSpecifier?: string): string {
+  const importLine = baseSpecifier ? `import { label as baseLabel } from '${baseSpecifier}';\n` : '';
+  const value = baseSpecifier ? `'${label}' + baseLabel` : `'${label}'`;
+  return [
+    importLine.trimEnd(),
+    'class Page extends HTMLElement {',
+    '  constructor() {',
+    '    super();',
+    `    this.label = ${value};`,
+    '  }',
+    '}',
+    `customElements.define('${tag}', Page);`,
+  ].filter((line) => line !== '').join('\n');
+}
+
+function baseSource(text: string): string {
+  return `export const label = '${text}';\n`;
+}
+
+async function evalModule(source: string): Promise<void> {
+  const url = `data:text/javascript,${encodeURIComponent(source).replaceAll('\'', '%27')}`;
+  await import(url);
+}
+
+function createPage(tag: string): FakeHTMLElement {
+  const ctor = sharedRegistry.get(tag);
+  if (!ctor) throw new Error(`[remount.test] missing ${tag}`);
+  return new ctor() as unknown as FakeHTMLElement;
+}
+
+function slot(div: FakeHTMLElement, page: string, tag: string): PreviewTabSlot {
+  return { div: div as unknown as HTMLElement, page, tag };
+}
+
+test('a changed page refreshes only its tab, and a shared base refreshes every tab that imports it', async () => {
+  await armPageTag();
+  const { updateOpenPreviewTabs } = await load();
+  const previousElements = (globalThis as { customElements?: unknown }).customElements;
+  const previousDocument = globalThis.document;
+  (globalThis as { customElements?: unknown }).customElements = sharedRegistry;
+  globalThis.document = {
+    documentElement: previousDocument?.documentElement,
+    createElement(tag: string) {
+      return createPage(tag);
+    },
+  } as unknown as Document;
+
+  try {
+    await evalModule(pageSource('preview-page-a', 'A1'));
+    await evalModule(pageSource('preview-page-b', 'B1'));
+    const header = new FakeHTMLElement();
+    header.label = 'SHELL';
+    const tabA = new FakeHTMLElement();
+    const tabB = new FakeHTMLElement();
+    const pageA = createPage('preview-page-a');
+    const pageB = createPage('preview-page-b');
+    tabA.child = pageA;
+    tabB.child = pageB;
+    const headerPage = createPage('preview-page-a');
+    header.child = headerPage;
+
+    const pageOnly = await updateOpenPreviewTabs({
+      modules: [
+        previewModule(PAGE_A, pageSource('preview-page-a', 'A2'), V2),
+        previewModule(PAGE_B, pageSource('preview-page-b', 'B1'), V1),
+      ],
+      changed: [PAGE_A],
+      tabs: [slot(tabA, PAGE_A, 'preview-page-a'), slot(tabB, PAGE_B, 'preview-page-b')],
+      draftSlug: null,
+      origin: 'http://preview.test',
+    });
+    assert.ok(pageOnly);
+    assert.equal(pageOnly.ok, true);
+    assert.equal(pageOnly.message, t('live.remounted', { count: 1, tags: 1 }));
+    assert.notEqual(tabA.child, pageA);
+    assert.equal(tabA.child?.label, 'A2');
+    assert.equal(tabB.child, pageB);
+    assert.equal(tabB.child?.label, 'B1');
+    assert.equal(header.child, headerPage);
+    assert.equal(header.child?.label, 'A1');
+    assert.equal(header.label, 'SHELL');
+
+    await evalModule(pageSource('preview-page-e', 'E1'));
+    const tabC = new FakeHTMLElement();
+    const tabD = new FakeHTMLElement();
+    const tabE = new FakeHTMLElement();
+    const pageE = createPage('preview-page-e');
+    tabE.child = pageE;
+    const mounted = await updateOpenPreviewTabs({
+      modules: [
+        previewModule(PAGE_C, pageSource('preview-page-c', 'C:', BASE), V1),
+        previewModule(PAGE_D, pageSource('preview-page-d', 'D:', BASE), V1),
+        previewModule(PAGE_E, pageSource('preview-page-e', 'E1'), V1),
+        previewModule(BASE, baseSource('base-v1'), V1),
+      ],
+      changed: [BASE],
+      tabs: [
+        slot(tabC, PAGE_C, 'preview-page-c'),
+        slot(tabD, PAGE_D, 'preview-page-d'),
+        slot(tabE, PAGE_E, 'preview-page-e'),
+      ],
+      draftSlug: null,
+      origin: 'http://preview.test',
+    });
+    assert.ok(mounted);
+    assert.equal(mounted.ok, true);
+    assert.equal(tabC.child?.label, 'C:base-v1');
+    assert.equal(tabD.child?.label, 'D:base-v1');
+    assert.equal(tabE.child, pageE);
+    const headerBase = createPage('preview-page-c');
+    header.child = headerBase;
+    const keptC = tabC.child;
+    const keptD = tabD.child;
+
+    const shared = await updateOpenPreviewTabs({
+      modules: [
+        previewModule(PAGE_C, pageSource('preview-page-c', 'C:', BASE), V1),
+        previewModule(PAGE_D, pageSource('preview-page-d', 'D:', BASE), V1),
+        previewModule(PAGE_E, pageSource('preview-page-e', 'E1'), V1),
+        previewModule(BASE, baseSource('base-v2'), V2),
+      ],
+      changed: [BASE],
+      tabs: [
+        slot(tabC, PAGE_C, 'preview-page-c'),
+        slot(tabD, PAGE_D, 'preview-page-d'),
+        slot(tabE, PAGE_E, 'preview-page-e'),
+      ],
+      draftSlug: null,
+      origin: 'http://preview.test',
+    });
+    assert.ok(shared);
+    assert.equal(shared.ok, true);
+    assert.equal(shared.message, t('live.remounted', { count: 2, tags: 2 }));
+    assert.notEqual(tabC.child, keptC);
+    assert.notEqual(tabD.child, keptD);
+    assert.equal(tabC.child?.label, 'C:base-v2');
+    assert.equal(tabD.child?.label, 'D:base-v2');
+    assert.equal(tabE.child, pageE);
+    assert.equal(tabE.child?.label, 'E1');
+    assert.equal(header.child, headerBase);
+    assert.equal(header.child?.label, 'C:base-v1');
+    assert.equal(header.label, 'SHELL');
+  } finally {
+    (globalThis as { customElements?: unknown }).customElements = previousElements;
+    globalThis.document = previousDocument;
+  }
+});
+
+test('a shared base stays refused when the reimported page registers no element', async () => {
+  const { updateOpenPreviewTabs } = await load();
+  const page = '/_102033_/l2/plain.js';
+  const base = '/_102033_/l2/plainBase.js';
+  const div = new FakeHTMLElement();
+  const previous = new FakeHTMLElement();
+  previous.label = 'stay';
+  div.child = previous;
+  const result = await updateOpenPreviewTabs({
+    modules: [
+      previewModule(page, `import { label } from '${base}';\nexport const seen = label;\n`, V1),
+      previewModule(base, baseSource('x'), V2),
+    ],
+    changed: [base],
+    tabs: [slot(div, page, 'preview-plain')],
+    draftSlug: null,
+    origin: 'http://preview.test',
+  });
+  assert.ok(result);
+  assert.equal(result.ok, false);
+  assert.equal(result.message, t('live.noElementDefine'));
+  assert.equal(div.child, previous);
+  assert.equal(div.child?.label, 'stay');
+});
+
+const OUTSIDE = '/_102029_/l2/outside.js';
+const ABS_PAGE = '/_102033_/l2/absPage.js';
+const ABS_BASE = '/_102033_/l2/absBase.js';
+const ORIGIN = 'http://preview.test';
+
+function decodeDataUrl(url: string): string {
+  const prefix = 'data:text/javascript,';
+  if (!url.startsWith(prefix)) throw new Error(`[remount.test] not a data url: ${url.slice(0, 40)}`);
+  return decodeURIComponent(url.slice(prefix.length));
+}
+
+function deliveredSpecifiers(source: string): string[] {
+  const found: string[] = [];
+  const pattern = /\b(?:from|import)\s*(?:\(\s*)?(['"])([^'"]+)\1/g;
+  let match: RegExpExecArray | null = pattern.exec(source);
+  while (match) {
+    found.push(match[2]);
+    match = pattern.exec(source);
+  }
+  return found;
+}
+
+function isPackageName(spec: string): boolean {
+  return spec.length > 0 && !spec.startsWith('/') && !spec.startsWith('.') && !/^[a-z][a-z0-9+.-]*:/iu.test(spec);
+}
+
+/** Fails when a `/…` or relative specifier is still in a source handed to import. */
+function assertDeliveredSource(source: string, seen: Set<string>): void {
+  if (seen.has(source)) return;
+  seen.add(source);
+  for (const spec of deliveredSpecifiers(source)) {
+    if (isPackageName(spec)) continue;
+    let url: URL;
+    try {
+      url = new URL(spec);
+    } catch {
+      throw new Error(`[remount.test] specifier is not absolute and is not a package name: ${spec}`);
+    }
+    if (url.protocol === 'data:' && spec.startsWith('data:text/javascript,')) {
+      assertDeliveredSource(decodeDataUrl(spec), seen);
+    }
+  }
+}
+
+function stubDataUrl(source: string): string {
+  return `data:text/javascript,${encodeURIComponent(source).replaceAll('\'', '%27')}`;
+}
+
+/** Keeps subgraph `data:` imports. Package names and http(s) URLs become empty modules so Node can evaluate the page. */
+function runnableSource(source: string): string {
+  return source.replace(/\b(from|import)(\s*(?:\(\s*)?)(['"])([^'"]+)\3/g, (whole, keyword: string, gap: string, quote: string, spec: string) => {
+    if (spec.startsWith('data:')) return whole;
+    const body = isPackageName(spec) ? 'export const html = 1;' : 'export {};';
+    return `${keyword}${gap}${quote}${stubDataUrl(body)}${quote}`;
+  });
+}
+
+test('a specifier outside the subgraph is absolute in every source delivered to import', async () => {
+  await armPageTag();
+  const { updateOpenPreviewTabs } = await load();
+  const previousElements = (globalThis as { customElements?: unknown }).customElements;
+  const previousDocument = globalThis.document;
+  (globalThis as { customElements?: unknown }).customElements = sharedRegistry;
+  globalThis.document = {
+    documentElement: previousDocument?.documentElement,
+    createElement(tag: string) {
+      return createPage(tag);
+    },
+  } as unknown as Document;
+
+  const delivered: string[] = [];
+  try {
+    const header = new FakeHTMLElement();
+    header.label = 'SHELL';
+    const tab = new FakeHTMLElement();
+    const result = await updateOpenPreviewTabs({
+      modules: [
+        previewModule(ABS_PAGE, [
+          `import { label } from '${ABS_BASE}';`,
+          `import '${OUTSIDE}';`,
+          "import { html } from 'lit';",
+          'class Page extends HTMLElement {',
+          '  constructor() {',
+          '    super();',
+          '    this.label = label;',
+          '    this.html = html;',
+          '  }',
+          '}',
+          "customElements.define('preview-page-abs', Page);",
+        ].join('\n'), V2),
+        previewModule(ABS_BASE, baseSource('base-v2'), V2),
+      ],
+      changed: [ABS_BASE],
+      tabs: [slot(tab, ABS_PAGE, 'preview-page-abs')],
+      draftSlug: null,
+      origin: ORIGIN,
+      importModule: async (url) => {
+        const source = decodeDataUrl(url);
+        delivered.push(source);
+        assertDeliveredSource(source, new Set());
+        await import(stubDataUrl(runnableSource(source)));
+      },
+    });
+    assert.equal(delivered.length > 0, true);
+    const pageSourceText = delivered.join('\n');
+    const absoluteOutside = new URL(OUTSIDE, ORIGIN).href;
+    assert.equal(pageSourceText.includes(`'${absoluteOutside}'`), true);
+    assert.equal(pageSourceText.includes("'lit'"), true);
+    for (const source of delivered) {
+      for (const spec of deliveredSpecifiers(source)) {
+        assert.equal(spec.startsWith('/'), false, spec);
+        assert.equal(spec.startsWith('./') || spec.startsWith('../'), false, spec);
+      }
+    }
+    assert.ok(result);
+    assert.equal(result.ok, true);
+    assert.equal(tab.child?.label, 'base-v2');
+    assert.equal(header.label, 'SHELL');
+    assert.equal(header.child, null);
+  } finally {
+    (globalThis as { customElements?: unknown }).customElements = previousElements;
+    globalThis.document = previousDocument;
+  }
 });
