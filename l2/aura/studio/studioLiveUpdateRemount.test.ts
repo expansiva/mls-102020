@@ -752,6 +752,57 @@ test('st66 s6: a compiled model stays the source and is not fetched', async () =
   }
 });
 
+test('st66 s8: after a discard the stale Monaco model is not the source; the service worker is', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageS8.js';
+  const previousMls = (globalThis as { mls?: unknown }).mls;
+  const rows: Record<string, { inLocalStorage: boolean }> = { 'k-pageS8': { inLocalStorage: false } };
+  (globalThis as { mls?: unknown }).mls = {
+    editor: {
+      getModels(project: number, shortName: string, folder: string, level: number) {
+        if (project === 102033 && shortName === 'pageS8' && folder === '' && level === 2) {
+          return { ts: { compilerResults: { prodJS: pageSource('preview-page-s8', 'STALE-MODEL'), cacheVersion: V2 } } };
+        }
+        return undefined;
+      },
+    },
+    stor: { files: rows, getKeyToFile: (file: { shortName: string }) => `k-${file.shortName}` },
+  };
+  try {
+    await withPreviewTab('preview-page-s8', 'S8-OLD', async (tab, before) => {
+      const fetched: string[] = [];
+      const ask = (fetchedSource: string) => updateOpenTabsForFiles(102033, ['l2/pageS8.ts'], {
+        tabs: [slot(tab, page, 'preview-page-s8')],
+        draftSlug: 'team-102033',
+        origin: 'http://preview.test',
+        publishDraft: async () => ({ sent: 0, keep: new Set<string>() }),
+        forgetStale: async () => 0,
+        fetchModule: async (specifier: string) => {
+          fetched.push(specifier);
+          return jsResponse(fetchedSource);
+        },
+      });
+      // No local copy any more: the published text from the service worker wins over the model.
+      const result = await ask(pageSource('preview-page-s8', 'FROM-SW'));
+      assert.ok(result);
+      assert.equal(result.ok, true);
+      assert.deepEqual(fetched, [page]);
+      assert.notEqual(tab.child, before);
+      assert.equal(tab.child?.label, 'FROM-SW');
+      // A kept local copy: the model is the source and nothing is fetched for it.
+      rows['k-pageS8'].inLocalStorage = true;
+      fetched.length = 0;
+      const again = await ask(pageSource('preview-page-s8', 'NEVER-READ'));
+      assert.ok(again);
+      assert.equal(again.ok, true);
+      assert.deepEqual(fetched, []);
+      assert.equal(tab.child?.label, 'STALE-MODEL');
+    });
+  } finally {
+    (globalThis as { mls?: unknown }).mls = previousMls;
+  }
+});
+
 test('st66 s6: a failed fetch names the specifier and leaves the tab', async () => {
   const { updateOpenTabsForFiles } = await load();
   const page = '/_102033_/l2/pageS6c.js';

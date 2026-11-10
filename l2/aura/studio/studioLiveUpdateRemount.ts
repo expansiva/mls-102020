@@ -551,10 +551,25 @@ function modelKey(specifier: string): { project: number; folder: string; shortNa
 }
 
 /** An open file that already compiled is the source. Otherwise the service worker is. */
+/**
+ * True only when the stor knows this file and holds no local copy of it. After Discard or Undo the
+ * Monaco model can still carry the compiled text of the edit that was thrown away; it is not the
+ * source then, the service worker is. When the stor does not know the file, the model stays the source.
+ */
+function storSaysNoLocalEdit(key: { project: number; folder: string; shortName: string }): boolean {
+  const stor = (globalThis as {
+    mls?: { stor?: { files?: Record<string, { inLocalStorage?: boolean } | null | undefined>; getKeyToFile?: (file: { project: number; level: number; shortName: string; extension: string; folder: string }) => string } };
+  }).mls?.stor;
+  if (!stor?.files || typeof stor.getKeyToFile !== 'function') return false;
+  const row = stor.files[stor.getKeyToFile({ project: key.project, level: 2, shortName: key.shortName, extension: '.ts', folder: key.folder })];
+  return row ? row.inLocalStorage !== true : false;
+}
+
 function compiledFromModel(specifier: string): ICompiledPreview | null {
   const key = modelKey(specifier);
   const editor = (globalThis as { mls?: { editor?: { getModels?: (project: number, shortName: string, folder: string, level: number) => { ts?: IEditorModel } | undefined } } }).mls?.editor;
   if (!key || !editor?.getModels) return null;
+  if (storSaysNoLocalEdit(key)) return null;
   const model = editor.getModels(key.project, key.shortName, key.folder, 2)?.ts;
   const source = model?.compilerResults?.prodJS;
   const version = model?.compilerResults?.cacheVersion;
