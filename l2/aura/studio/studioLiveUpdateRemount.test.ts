@@ -636,5 +636,226 @@ test('st66 s4: a saved l2 file that was not compiled fails', async () => {
   });
   assert.ok(result);
   assert.equal(result.ok, false);
-  assert.equal(result.message, t('live.notCompiled'));
+  assert.equal(result.message, `${t('live.notCompiled')}: /_102033_/l2/missing.js`);
+});
+
+function jsResponse(source: string, version?: string): Response {
+  const url = version ? `http://preview.test/module.js?v=${version}` : 'http://preview.test/module.js';
+  return {
+    ok: true,
+    status: 200,
+    url,
+    headers: { get: () => 'application/javascript' },
+    text: async () => source,
+  } as unknown as Response;
+}
+
+async function withPreviewTab(
+  tag: string,
+  label: string,
+  run: (tab: FakeHTMLElement, before: FakeHTMLElement) => Promise<void>,
+): Promise<void> {
+  await armPageTag();
+  const previousElements = (globalThis as { customElements?: unknown }).customElements;
+  const previousDocument = globalThis.document;
+  (globalThis as { customElements?: unknown }).customElements = sharedRegistry;
+  globalThis.document = {
+    documentElement: previousDocument?.documentElement,
+    createElement(nextTag: string) {
+      return createPage(nextTag);
+    },
+  } as unknown as Document;
+  try {
+    await evalModule(pageSource(tag, label));
+    const tab = new FakeHTMLElement();
+    tab.child = createPage(tag);
+    const before = tab.child;
+    await run(tab, before);
+  } finally {
+    (globalThis as { customElements?: unknown }).customElements = previousElements;
+    globalThis.document = previousDocument;
+  }
+}
+
+test('st66 s6: saving a page with no editor model publishes, then fetches, then updates the tab', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageS6a.js';
+  const order: string[] = [];
+  const next = pageSource('preview-page-s6a', 'S6-NEW');
+  await withPreviewTab('preview-page-s6a', 'S6-OLD', async (tab, before) => {
+    const result = await updateOpenTabsForFiles(102033, ['l2/pageS6a.ts'], {
+      tabs: [slot(tab, page, 'preview-page-s6a')],
+      draftSlug: 'team-102033',
+      origin: 'http://preview.test',
+      publishDraft: async () => {
+        order.push('publish');
+        return { sent: 1, keep: new Set(['l2/pageS6a.ts']) };
+      },
+      forgetStale: async () => {
+        order.push('forget');
+        return 0;
+      },
+      fetchModule: async () => {
+        order.push('fetch');
+        return jsResponse(next);
+      },
+    });
+    assert.ok(result);
+    assert.equal(result.ok, true);
+    assert.equal(order[0], 'publish');
+    assert.equal(order.indexOf('publish') < order.indexOf('fetch'), true);
+    assert.notEqual(tab.child, before);
+    assert.equal(tab.child?.label, 'S6-NEW');
+  });
+});
+
+test('st66 s6: a compiled model stays the source and is not fetched', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageS6b.js';
+  const previousMls = (globalThis as { mls?: unknown }).mls;
+  let fetched = 0;
+  (globalThis as { mls?: unknown }).mls = {
+    editor: {
+      getModels(project: number, shortName: string, folder: string, level: number) {
+        if (project === 102033 && shortName === 'pageS6b' && folder === '' && level === 2) {
+          return { ts: { compilerResults: { prodJS: pageSource('preview-page-s6b', 'FROM-MODEL'), cacheVersion: V2 } } };
+        }
+        return undefined;
+      },
+    },
+  };
+  try {
+    await withPreviewTab('preview-page-s6b', 'S6-OLD', async (tab, before) => {
+      const result = await updateOpenTabsForFiles(102033, ['l2/pageS6b.ts'], {
+        tabs: [slot(tab, page, 'preview-page-s6b')],
+        draftSlug: 'team-102033',
+        origin: 'http://preview.test',
+        publishDraft: async () => ({ sent: 0, keep: new Set(['l2/pageS6b.ts']) }),
+        forgetStale: async () => 0,
+        fetchModule: async () => {
+          fetched += 1;
+          throw new Error('fetch should not run');
+        },
+      });
+      assert.ok(result);
+      assert.equal(result.ok, true);
+      assert.equal(fetched, 0);
+      assert.notEqual(tab.child, before);
+      assert.equal(tab.child?.label, 'FROM-MODEL');
+    });
+  } finally {
+    (globalThis as { mls?: unknown }).mls = previousMls;
+  }
+});
+
+test('st66 s6: a failed fetch names the specifier and leaves the tab', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageS6c.js';
+  await withPreviewTab('preview-page-s6c', 'S6-OLD', async (tab, before) => {
+    const result = await updateOpenTabsForFiles(102033, ['l2/pageS6c.ts'], {
+      tabs: [slot(tab, page, 'preview-page-s6c')],
+      draftSlug: 'team-102033',
+      origin: 'http://preview.test',
+      publishDraft: async () => ({ sent: 1, keep: new Set(['l2/pageS6c.ts']) }),
+      forgetStale: async () => 0,
+      fetchModule: async () => {
+        throw new Error('service worker missing');
+      },
+    });
+    assert.ok(result);
+    assert.equal(result.ok, false);
+    assert.equal(result.message, `${t('live.notCompiled')}: ${page}`);
+    assert.equal(tab.child, before);
+    assert.equal(tab.child?.label, 'S6-OLD');
+  });
+});
+
+test('st66 s6: discard forgets the stale draft copy before the fetch returns production', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageS6d.js';
+  const order: string[] = [];
+  const production = pageSource('preview-page-s6d', 'PUBLISHED');
+  await withPreviewTab('preview-page-s6d', 'DRAFT', async (tab, before) => {
+    const result = await updateOpenTabsForFiles(102033, ['l2/pageS6d.ts'], {
+      tabs: [slot(tab, page, 'preview-page-s6d')],
+      draftSlug: 'team-102033',
+      origin: 'http://preview.test',
+      publishDraft: async () => {
+        order.push('publish');
+        return { sent: 0, keep: new Set<string>() };
+      },
+      forgetStale: async (_project, _slug, keep) => {
+        order.push('forget');
+        assert.equal(keep.has('l2/pageS6d.ts'), false);
+        return 1;
+      },
+      fetchModule: async () => {
+        order.push('fetch');
+        return jsResponse(production, 'prodsha');
+      },
+    });
+    assert.ok(result);
+    assert.equal(result.ok, true);
+    assert.equal(order.indexOf('forget') < order.indexOf('fetch'), true);
+    assert.notEqual(tab.child, before);
+    assert.equal(tab.child?.label, 'PUBLISHED');
+  });
+});
+
+test('st66 s6: a kept local copy with no editor model is included and the fetch updates the tab', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageS6e.js';
+  const previousMls = (globalThis as { mls?: unknown }).mls;
+  (globalThis as { mls?: unknown }).mls = { editor: { getModels: () => undefined } };
+  let included: readonly string[] | undefined;
+  const next = pageSource('preview-page-s6e', 'LOCAL-NEW');
+  try {
+    await withPreviewTab('preview-page-s6e', 'S6-OLD', async (tab, before) => {
+      const result = await updateOpenTabsForFiles(102033, ['l2/pageS6e.ts'], {
+        tabs: [slot(tab, page, 'preview-page-s6e')],
+        draftSlug: 'team-102033',
+        origin: 'http://preview.test',
+        publishDraft: async (_project, _slug, include) => {
+          included = include;
+          return { sent: 1, keep: new Set(['l2/pageS6e.ts']) };
+        },
+        forgetStale: async (_project, _slug, keep) => {
+          assert.equal(keep.has('l2/pageS6e.ts'), true);
+          return 0;
+        },
+        fetchModule: async () => jsResponse(next),
+      });
+      assert.ok(result);
+      assert.equal(result.ok, true);
+      assert.deepEqual(included, ['l2/pageS6e.ts']);
+      assert.notEqual(tab.child, before);
+      assert.equal(tab.child?.label, 'LOCAL-NEW');
+    });
+  } finally {
+    (globalThis as { mls?: unknown }).mls = previousMls;
+  }
+});
+
+test('st66 s6: module fetches stay within six at a time', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const paths = Array.from({ length: 8 }, (_item, index) => `l2/p${index}.ts`);
+  let active = 0;
+  let max = 0;
+  const result = await updateOpenTabsForFiles(102033, paths, {
+    tabs: [],
+    draftSlug: 'team-102033',
+    origin: 'http://preview.test',
+    publishDraft: async () => ({ sent: 0, keep: new Set<string>() }),
+    forgetStale: async () => 0,
+    fetchModule: async () => {
+      active += 1;
+      max = Math.max(max, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+      return jsResponse('export const label = "x";\n');
+    },
+  });
+  assert.equal(result, null);
+  assert.equal(max > 1, true);
+  assert.equal(max <= 6, true);
 });

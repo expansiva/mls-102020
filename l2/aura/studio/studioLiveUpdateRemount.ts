@@ -48,6 +48,11 @@ import {
 import { registerPreviewTabsUpdate } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { activeDraft } from '/_102033_/l2/cbe/studioDraft.js';
 import {
+  forgetStaleDraftL2,
+  publishDraftL2,
+  type PublishDraftL2Result,
+} from '/_102033_/l2/cbe/studioDraftL2.js';
+import {
   previewTabSlots,
   replaceTabPage,
   type PreviewTabSlot,
@@ -463,12 +468,23 @@ interface ICompiledPreview {
   version: string;
 }
 
+/** How many module bodies are read at once. The next wave waits, so the walk cannot run away. */
+const MODULE_FETCHES = 6;
+const MODULE_SPECIFIER = /^\/_\d+_\/.+\.js$/;
+
 export interface IPreviewTabsDeps {
   tabs?: readonly PreviewTabSlot[];
-  readModule?: (specifier: string) => ICompiledPreview | null;
+  /** Test double. Production reads the model, then the service worker. */
+  readModule?: (specifier: string) => Promise<ICompiledPreview | null> | ICompiledPreview | null;
   draftSlug?: string | null;
   origin?: string;
   importModule?: (url: string) => Promise<unknown>;
+  /** Test double. Production calls `publishDraftL2` and passes the changed `l2/….ts` paths as `include`. */
+  publishDraft?: (project: number, slug: string, include?: readonly string[]) => Promise<PublishDraftL2Result>;
+  /** Test double. Production calls `forgetStaleDraftL2`. */
+  forgetStale?: (project: number, slug: string, keep: ReadonlySet<string>) => Promise<number>;
+  /** Test double. Production is `fetch(specifier, { cache: 'no-store' })`. */
+  fetchModule?: (specifier: string) => Promise<Response>;
 }
 
 interface IEditorModel {
@@ -486,18 +502,110 @@ function modelKey(specifier: string): { project: number; folder: string; shortNa
   return { project: Number(match[1]), folder, shortName };
 }
 
-function readCompiledModule(specifier: string): ICompiledPreview | null {
+/** An open file that already compiled is the source. Otherwise the service worker is. */
+function compiledFromModel(specifier: string): ICompiledPreview | null {
   const key = modelKey(specifier);
   const editor = (globalThis as { mls?: { editor?: { getModels?: (project: number, shortName: string, folder: string, level: number) => { ts?: IEditorModel } | undefined } } }).mls?.editor;
-  if (!key || !editor?.getModels) {
-    console.error(`[remount] ${specifier}: compiled module is unavailable`);
-    return null;
-  }
+  if (!key || !editor?.getModels) return null;
   const model = editor.getModels(key.project, key.shortName, key.folder, 2)?.ts;
   const source = model?.compilerResults?.prodJS;
   const version = model?.compilerResults?.cacheVersion;
   if (!source || !version) return null;
   return { source, version };
+}
+
+function crc32(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      const mask = -(crc & 1);
+      crc = (crc >>> 1) ^ (0xedb88320 & mask);
+    }
+  }
+  return ((crc ^ 0xffffffff) >>> 0).toString(16).padStart(8, '0');
+}
+
+function versionOf(source: string, response: Response): string {
+  const raw = response.url;
+  if (raw) {
+    try {
+      const version = new URL(raw, 'http://preview.local').searchParams.get('v');
+      if (version && !/[\s?#&]/.test(version)) return version;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[remount] ${raw}: ${detail}`);
+    }
+  }
+  return crc32(source);
+}
+
+function isJavaScript(contentType: string, source: string): boolean {
+  const type = contentType.toLowerCase();
+  if (type.includes('html') || type.includes('json')) return false;
+  const body = source.trim();
+  if (body.length === 0 || body.startsWith('<')) return false;
+  if (type.includes('javascript') || type.includes('ecmascript')) return true;
+  return type.length === 0 || type.includes('text/plain') || type.includes('octet-stream');
+}
+
+async function fetchCompiled(specifier: string, fetchModule: (specifier: string) => Promise<Response>): Promise<ICompiledPreview | null> {
+  let response: Response;
+  try {
+    response = await fetchModule(specifier);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`[remount] ${specifier}: ${detail}`);
+    return null;
+  }
+  if (!response.ok) {
+    console.error(`[remount] ${specifier}: HTTP ${response.status}`);
+    return null;
+  }
+  let source: string;
+  try {
+    source = await response.text();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`[remount] ${specifier}: ${detail}`);
+    return null;
+  }
+  const contentType = response.headers?.get('content-type') ?? '';
+  if (!isJavaScript(contentType, source)) {
+    console.error(`[remount] ${specifier}: response is not JavaScript`);
+    return null;
+  }
+  return { source, version: versionOf(source, response) };
+}
+
+async function readPreviewSource(
+  specifier: string,
+  fetchModule: (specifier: string) => Promise<Response>,
+): Promise<ICompiledPreview | null> {
+  const fromModel = compiledFromModel(specifier);
+  if (fromModel) return fromModel;
+  return fetchCompiled(specifier, fetchModule);
+}
+
+async function eachLimited<T>(items: readonly T[], limit: number, run: (item: T) => Promise<void>): Promise<void> {
+  if (items.length === 0) return;
+  let next = 0;
+  const workers = Math.min(limit, items.length);
+  const runWorker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      await run(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: workers }, () => runWorker()));
+}
+
+function missingJavaScript(specifiers: readonly string[]): ILiveUpdateResult {
+  const list = [...specifiers].sort().join(', ');
+  console.error(`[remount] preview tabs were not updated: not compiled: ${list}`);
+  return { ok: false, message: `${t('live.notCompiled')}: ${list}` };
 }
 
 /**
@@ -509,36 +617,66 @@ export async function updateOpenTabsForFiles(
   files: readonly string[],
   deps: IPreviewTabsDeps = {},
 ): Promise<ILiveUpdateResult | null> {
-  const changed = files
-    .map((path) => draftPathSpecifier(project, path))
-    .filter((item): item is string => item !== null);
+  const changedPaths: string[] = [];
+  const changed: string[] = [];
+  for (const path of files) {
+    const specifier = draftPathSpecifier(project, path);
+    if (!specifier) continue;
+    changedPaths.push(path);
+    changed.push(specifier);
+  }
   if (changed.length === 0) return null;
+  const draftSlug = deps.draftSlug !== undefined ? deps.draftSlug : (activeDraft() ?? null);
+  if (draftSlug) {
+    const publish = deps.publishDraft
+      ?? ((id: number, slug: string, include?: readonly string[]) => publishDraftL2(id, slug, undefined, undefined, include));
+    const forget = deps.forgetStale ?? forgetStaleDraftL2;
+    let published: PublishDraftL2Result;
+    try {
+      published = await publish(project, draftSlug, changedPaths);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[remount] ${draftSlug}: publishDraftL2 failed: ${detail}`);
+      return missingJavaScript(changed);
+    }
+    if (published.keep !== null) {
+      try {
+        await forget(project, draftSlug, published.keep);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error(`[remount] ${draftSlug}: forgetStaleDraftL2 failed: ${detail}`);
+        return missingJavaScript(changed);
+      }
+    }
+  }
   const tabs = deps.tabs ?? previewTabSlots();
-  const readModule = deps.readModule ?? readCompiledModule;
+  const fetchModule = deps.fetchModule ?? ((specifier: string) => fetch(specifier, { cache: 'no-store' }));
+  const readModule = deps.readModule ?? ((specifier: string) => readPreviewSource(specifier, fetchModule));
   const modules = new Map<string, PreviewModuleRecord>();
-  const pending = [...changed, ...tabs.map((tab) => tab.page)];
+  const changedSet = new Set(changed);
   const seen = new Set<string>();
   const missingChanged: string[] = [];
+  let pending = [...changed, ...tabs.map((tab) => tab.page)];
   while (pending.length > 0) {
-    const specifier = pending.pop();
-    if (specifier === undefined || seen.has(specifier)) continue;
-    seen.add(specifier);
-    if (!/^\/_\d+_\/.+\.js$/.test(specifier)) continue;
-    const compiled = readModule(specifier);
-    if (!compiled) {
-      if (changed.includes(specifier)) missingChanged.push(specifier);
-      continue;
+    const batch: string[] = [];
+    for (const specifier of pending) {
+      if (seen.has(specifier) || !MODULE_SPECIFIER.test(specifier)) continue;
+      seen.add(specifier);
+      batch.push(specifier);
     }
-    modules.set(specifier, previewModule(specifier, compiled.source, compiled.version));
-    for (const imported of importedSpecifiers(compiled.source)) {
-      if (!seen.has(imported)) pending.push(imported);
-    }
+    pending = [];
+    await eachLimited(batch, MODULE_FETCHES, async (specifier) => {
+      const compiled = await readModule(specifier);
+      if (!compiled) {
+        if (changedSet.has(specifier)) missingChanged.push(specifier);
+        else console.error(`[remount] ${specifier}: compiled JavaScript was not read`);
+        return;
+      }
+      modules.set(specifier, previewModule(specifier, compiled.source, compiled.version));
+      for (const imported of importedSpecifiers(compiled.source)) pending.push(imported);
+    });
   }
-  if (missingChanged.length > 0) {
-    console.error(`[remount] preview tabs were not updated: not compiled: ${missingChanged.join(', ')}`);
-    return { ok: false, message: t('live.notCompiled') };
-  }
-  const draftSlug = deps.draftSlug !== undefined ? deps.draftSlug : (activeDraft() ?? null);
+  if (missingChanged.length > 0) return missingJavaScript(missingChanged);
   const origin = deps.origin ?? (typeof location !== 'undefined' ? location.origin : '');
   return updateOpenPreviewTabs({
     modules: [...modules.values()],
