@@ -247,6 +247,13 @@ test('st66 s4c: the panel and the core do not reload the page, and a failed tab 
     assert.match(discard, /notifyDraftDiscarded|discard\(/);
     const sync = methodOf(DRAFT, 'private async _onSyncPublished');
     assert.match(sync, /notifyDraftDiscarded\(project, before, after\)/);
+    const loadAt = sync.indexOf('await this._load(true)');
+    const noteAt = sync.indexOf('this._note = this.msg.syncReopen');
+    assert.ok(loadAt !== -1 && noteAt > loadAt, 'the reopen note is set after _load, which clears it');
+    assert.doesNotMatch(sync, /location\.reload/);
+    assert.match(DRAFT, /syncReopen: 'What came from the published version appears when you reopen the page\.'/);
+    assert.match(DRAFT, /syncReopen: 'O que veio do publicado aparece ao reabrir a página\.'/);
+    assert.match(DRAFT, /syncReopen: 'Lo que vino de lo publicado aparece al reabrir la página\.'/);
     assert.match(DRAFT, /COLLAB_PREVIEW_UPDATE_FAILED/);
     assert.match(DRAFT, /preview tabs were not updated/);
     assert.match(methodOf(DRAFT, 'private readonly _onPreviewUpdateFailed'), /this\._phase = 'error'/);

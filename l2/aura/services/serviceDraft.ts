@@ -148,6 +148,7 @@ const message_en = {
     noPublished: 'Nothing published from this browser yet.',
     syncPublished: 'Bring in published changes',
     syncConflict: 'Conflicts with the published version in: {files}. Nothing was changed.',
+    syncReopen: 'What came from the published version appears when you reopen the page.',
     siteUpdating: 'Published. Updating the site… ({time})',
     releasePending: 'The draft was published, but the site has not been updated yet: {reason}.',
     releaseTimeout: 'the update timed out',
@@ -232,6 +233,7 @@ const messages: Record<string, MessageType> = {
         noPublished: 'Nada publicado a partir deste navegador.',
         syncPublished: 'Trazer o publicado',
         syncConflict: 'Conflito com o publicado em: {files}. Nada foi alterado.',
+        syncReopen: 'O que veio do publicado aparece ao reabrir a página.',
         siteUpdating: 'Publicado. Atualizando o site… ({time})',
         releasePending: 'O rascunho foi publicado, mas o site ainda não foi atualizado: {reason}.',
         releaseTimeout: 'a atualização expirou',
@@ -313,6 +315,7 @@ const messages: Record<string, MessageType> = {
         noPublished: 'Nada publicado desde este navegador.',
         syncPublished: 'Traer lo publicado',
         syncConflict: 'Conflicto con lo publicado en: {files}. No se cambió nada.',
+        syncReopen: 'Lo que vino de lo publicado aparece al reabrir la página.',
         siteUpdating: 'Publicado. Actualizando el sitio… ({time})',
         releasePending: 'El borrador se publicó, pero el sitio todavía no se actualizó: {reason}.',
         releaseTimeout: 'la actualización expiró',
@@ -1328,6 +1331,8 @@ export class ServiceDraft102020 extends ServiceBase {
             if (!listed) console.error('[serviceDraft] draft sync landed but the panel list was not reread');
             const after = listed && this._current ? [...this._current.files] : [];
             notifyDraftDiscarded(project, before, after);
+            // _load clears the note. The files that arrived from published are not in the draft diff, so the tabs stay. Say so.
+            if (this._phase !== 'error') this._note = this.msg.syncReopen;
         } catch (err) {
             console.error('[serviceDraft] draft sync failed:', err);
             const message = err instanceof Error ? err.message : String(err);
