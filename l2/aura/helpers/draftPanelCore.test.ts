@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { COLLAB_DRAFT_RECOUNT, draftContentCrc, rememberSentCrc } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { rememberCollabMode } from '/_102033_/l2/cbe/studioDraft.js';
+import { undoFile as undoStorFile } from '/_102027_/l2/libStor.js';
 import {
   afterDraftSave,
   branchForSlug,
@@ -1811,6 +1813,93 @@ test('st64 s1: a server refusal leaves the browser copy and shows the error', as
     assert.deepEqual(notices, []);
   } finally {
     host.window = previous;
+  }
+});
+
+test('st67 s2: undo of a saved path with no local copy still restores that path', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const notices: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_RECOUNT, () => { notices.push('recount'); });
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, () => { notices.push('discarded'); });
+  host.window = windowEvents;
+  try {
+    const next = await undoFile({
+      fetchImpl: async (_input, init) => {
+        const body = JSON.parse(init.body) as { action: string; paths: string[]; ref: string };
+        assert.equal(body.action, 'draftRestorePaths');
+        assert.equal(body.ref, 'main');
+        assert.deepEqual(body.paths, ['l2/orders/page.ts']);
+        notices.push('fetch');
+        return jsonResponse({ statusCode: 200, status: 'restored' });
+      },
+      file: null,
+      clearLocal: async () => { notices.push('clear'); },
+      removeNew: async () => { notices.push('remove'); },
+    }, 102047, 'team-102047', 'l2/orders/page.ts', true, ['l2/orders/page.ts', 'l2/billing/bill.ts']);
+    assert.deepEqual(next, ['l2/billing/bill.ts']);
+    assert.deepEqual(notices, ['fetch', 'recount', 'discarded']);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st67 s2: discardModule with 3 local files restores once and recounts once', async () => {
+  const host = globalThis as { window?: EventTarget; mls?: unknown };
+  const previousWindow = host.window;
+  const previousMls = host.mls;
+  const windowEvents = new EventTarget();
+  let recounts = 0;
+  let restores = 0;
+  windowEvents.addEventListener(COLLAB_DRAFT_RECOUNT, () => { recounts += 1; });
+  host.window = windowEvents;
+  const files = [0, 1, 2].map((index) => ({
+    project: 102047,
+    inLocalStorage: true,
+    status: 'changed' as const,
+    shortName: `page${index}`,
+    level: 2,
+    folder: 'orders',
+    extension: '.ts',
+  }));
+  const storFiles: Record<string, (typeof files)[number]> = {};
+  for (const file of files) storFiles[file.shortName] = file;
+  host.mls = {
+    sites: { getMode: () => 'studio' as const },
+    editor: { models: {}, getKeyModel: () => 'model' },
+    stor: {
+      files: storFiles,
+      getKeyToFiles: (project: number, level: number, name: string, folder: string, extension: string) =>
+        [project, level, folder, name, extension].join('|'),
+      localStor: { setContent: async () => true },
+      localDB: { removePrjInfo: async () => { throw new Error('discard must not drop the project'); } },
+      others: {
+        getDefaultDriver: async () => ({ driverVersion: '1.0.0-vm', getHistoryContent: async () => 'PUBLISHED' }),
+      },
+    },
+  };
+  rememberCollabMode({ mode: 'studio', project: 102047, draft: 'team-102047' });
+  const same = moduleConfig('Same', true);
+  try {
+    await discardModule({
+      fetchImpl: async (_input, init) => {
+        const body = JSON.parse(init.body) as { action: string };
+        if (body.action === 'draftRestorePaths') restores += 1;
+        return jsonResponse({ statusCode: 200, status: 'restored' });
+      },
+      saveL5File: async () => { throw new Error('config should stay'); },
+      undoFile: (file) => undoStorFile(file as mls.stor.IFileInfo),
+      storFiles,
+      reloadLive: async () => {},
+    }, 102047, 'team-102047', 'orders', same, same);
+    assert.equal(restores, 1);
+    assert.equal(recounts, 1);
+    assert.equal(files.every((file) => file.status === 'nochange' && file.inLocalStorage === false), true);
+  } finally {
+    host.window = previousWindow;
+    host.mls = previousMls;
+    rememberCollabMode({ mode: 'production' });
   }
 });
 

@@ -10,7 +10,7 @@
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
 
 import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
-import { draftContentCrc, rememberSentCrc, requestDraftRecount, sentCrcOf, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { draftContentCrc, rememberDraftPaths, rememberSentCrc, requestDraftRecount, sentCrcOf, undoDraftPaths, withDraftUndoBrowserOnly, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import { modelTextDiffers, openModelText } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
@@ -718,16 +718,19 @@ export async function discardModule(
     if (!saved) return fail('saveL5File refused l5/config.json');
   }
   const failures: string[] = [];
-  for (const file of moduleLocalFiles(effects.storFiles, project, moduleName)) {
-    try {
-      await effects.undoFile(file);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const label = shortPathOf(file);
-      console.error('[draftPanel]', `undoFile ${label}: ${message}`);
-      failures.push(`${label}: ${message}`);
+  // The module restore already ran. This loop only drops the browser copies, once.
+  await withDraftUndoBrowserOnly(async () => {
+    for (const file of moduleLocalFiles(effects.storFiles, project, moduleName)) {
+      try {
+        await effects.undoFile(file);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const label = shortPathOf(file);
+        console.error('[draftPanel]', `undoFile ${label}: ${message}`);
+        failures.push(`${label}: ${message}`);
+      }
     }
-  }
+  });
   if (failures.length > 0) return fail(failures.join('; '));
   requestDraftRecount(project);
   try {
@@ -773,23 +776,13 @@ export async function undoFile(
     return [...draftPaths];
   }
   if (!SLUG_RE.test(slug)) return fail(`undo draft slug is invalid: ${slug}`);
-  const result = await callExec(effects.fetchImpl, 'draftRestorePaths', {
-    project,
-    draft: slug,
-    ref: 'main',
-    paths: [filePath],
-  });
-  if (!result.ok) return fail(result.msg ?? result.code);
-  if (result.status !== 'restored' && result.status !== 'unchanged') {
-    return fail(result.status ?? 'draftRestorePaths failed');
-  }
-  if (effects.file?.status === 'new') {
-    await effects.removeNew(effects.file);
-  } else if (effects.file) {
-    await effects.clearLocal(effects.file);
-  }
-  requestDraftRecount(project);
-  dispatchDraftNotice(COLLAB_DRAFT_DISCARDED, { project });
+  await undoDraftPaths(project, slug, [filePath], async () => {
+    if (effects.file?.status === 'new') {
+      await effects.removeNew(effects.file);
+    } else if (effects.file) {
+      await effects.clearLocal(effects.file);
+    }
+  }, effects.fetchImpl);
   return draftPaths.filter((path) => path !== filePath);
 }
 
@@ -1778,6 +1771,7 @@ export async function afterDraftSave(
   file: IPanelStorFile,
   deps: IAfterDraftSaveDeps = defaultAfterSaveDeps,
 ): Promise<void> {
+  rememberDraftPaths(file.project, [shortPathOf(file)]);
   const captured = takeCapturedDraftText(file);
   if (file.status === 'deleted') {
     file.inLocalStorage = false;
