@@ -242,6 +242,7 @@ const message_pt = {
   'edit.alsoChangingUnknown': 'Outra pessoa também está alterando este arquivo',
   'live.noElementDefine': 'o arquivo editado não registra nenhum elemento (é base compartilhada) — recarregue para ver',
   'live.remounted': 'remontado ao vivo ({count} instância(s), {tags} implementação(ões) trocada(s)) — rolagem, diálogo aberto e texto não enviado se perdem',
+  'live.noOpenPage': 'nenhuma página aberta para atualizar (nem a principal nem uma aba de módulo)',
   'live.alreadyApplied': 'já aplicado — a página no ar já é esta versão',
 
   // ── The molecule swap, when the source is right but the running page is out of reach ──────
@@ -959,6 +960,7 @@ const message_en: typeof message_pt = {
   'edit.alsoChangingUnknown': 'Someone else is also changing this file',
   'live.noElementDefine': 'the edited file registers no element (it is a shared base) — reload to see it',
   'live.remounted': 'remounted live ({count} instance(s), {tags} implementation(s) swapped) — scroll, open dialog and unsent text are lost',
+  'live.noOpenPage': 'no open page to update (neither the main page nor a module tab)',
   'live.alreadyApplied': 'already applied — the running page is already this version',
 
   'swap.notReached': 'the swap is in the source and shows on reload, but did not reach the running page: {reason}',

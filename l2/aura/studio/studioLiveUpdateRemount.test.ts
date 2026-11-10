@@ -22,6 +22,10 @@ class FakeHTMLElement {
   public replaceChildren(next?: FakeHTMLElement): void {
     this.child = next ?? null;
   }
+  public replacedBy: FakeHTMLElement | null = null;
+  public replaceWith(next: FakeHTMLElement): void {
+    this.replacedBy = next;
+  }
 }
 (globalThis as { HTMLElement?: unknown }).HTMLElement = FakeHTMLElement;
 
@@ -855,7 +859,233 @@ test('st66 s6: module fetches stay within six at a time', async () => {
       return jsResponse('export const label = "x";\n');
     },
   });
-  assert.equal(result, null);
+  assert.ok(result);
+  assert.equal(result.ok, false);
+  assert.equal(result.message, t('live.noOpenPage'));
   assert.equal(max > 1, true);
   assert.equal(max <= 6, true);
+});
+
+const S7_MAIN = '/_102033_/l2/s7main.js';
+const S7_BASE = '/_102033_/l2/s7base.js';
+const S7_SHELL = '/_102033_/l2/s7shell.js';
+const S7_MOD = '/_102033_/l2/s7mod.js';
+const S7_IDLE = '/_102033_/l2/s7idle.js';
+const S7_OTHER = '/_102033_/l2/s7other.js';
+const S7_MAIN_TAG = 'preview-page-s7main';
+const S7_SHELL_TAG = 'preview-page-s7shell';
+const S7_MOD_TAG = 'preview-page-s7mod';
+
+function capturePreviewLogs(): { infos: string[]; errors: string[]; restore: () => void } {
+  const infos: string[] = [];
+  const errors: string[] = [];
+  const previousInfo = console.info;
+  const previousError = console.error;
+  console.info = (...args: unknown[]) => { infos.push(args.map((item) => String(item)).join(' ')); };
+  console.error = (...args: unknown[]) => { errors.push(args.map((item) => String(item)).join(' ')); };
+  return {
+    infos,
+    errors,
+    restore() {
+      console.info = previousInfo;
+      console.error = previousError;
+    },
+  };
+}
+
+function previewUpdateLine(infos: readonly string[]): string {
+  const line = infos.find((item) => item.startsWith('[remount] preview update:'));
+  assert.ok(line, infos.join('\n'));
+  return line;
+}
+
+function liveDocument(live: Map<string, FakeHTMLElement[]>): { asked: string[] } {
+  const asked: string[] = [];
+  const previous = globalThis.document;
+  globalThis.document = {
+    documentElement: previous?.documentElement,
+    createElement(tag: string) {
+      return createPage(tag);
+    },
+    querySelectorAll(selector: string) {
+      asked.push(selector);
+      return live.get(selector) ?? [];
+    },
+  } as unknown as Document;
+  return { asked };
+}
+
+test('st66 s7: only the main page is open, a changed base swaps and remounts by tag', async () => {
+  await armPageTag();
+  const { updateOpenTabsForFiles } = await load();
+  const previousElements = (globalThis as { customElements?: unknown }).customElements;
+  const previousDocument = globalThis.document;
+  const previousMls = (globalThis as { mls?: unknown }).mls;
+  (globalThis as { customElements?: unknown }).customElements = sharedRegistry;
+  const live = new Map<string, FakeHTMLElement[]>();
+  const { asked } = liveDocument(live);
+  const logs = capturePreviewLogs();
+  (globalThis as { mls?: unknown }).mls = {
+    editor: {
+      getModels(project: number, shortName: string, folder: string, level: number) {
+        if (project === 102033 && shortName === 's7main' && folder === '' && level === 2) {
+          return { ts: { compilerResults: { prodJS: pageSource(S7_MAIN_TAG, 'M:', S7_BASE), cacheVersion: V2 } } };
+        }
+        return undefined;
+      },
+    },
+  };
+  try {
+    await evalModule(pageSource(S7_MAIN_TAG, 'OLD'));
+    const header = new FakeHTMLElement();
+    header.label = 'SHELL';
+    const main = createPage(S7_MAIN_TAG);
+    live.set(S7_MAIN_TAG, [main]);
+    const result = await updateOpenTabsForFiles(102033, ['l2/s7base.ts'], {
+      tabs: [],
+      mainPage: { page: S7_MAIN, tag: S7_MAIN_TAG, host: main as unknown as HTMLElement },
+      draftSlug: null,
+      origin: 'http://preview.test',
+      fetchModule: async (specifier: string) => {
+        assert.equal(specifier, S7_BASE);
+        return jsResponse(baseSource('base-v2'), V2);
+      },
+    });
+    assert.ok(result);
+    assert.equal(result.ok, true);
+    assert.equal(result.message, t('live.remounted', { count: 1, tags: 1 }));
+    assert.ok(main.replacedBy);
+    assert.equal(main.replacedBy.label, 'M:base-v2');
+    assert.deepEqual(asked, [S7_MAIN_TAG]);
+    assert.equal(header.label, 'SHELL');
+    assert.equal(header.replacedBy, null);
+    const line = previewUpdateLine(logs.infos);
+    assert.equal(line.includes(`changed=${S7_BASE}`), true, line);
+    assert.equal(line.includes(`pages=${S7_MAIN}`), true, line);
+    assert.equal(line.includes(`${S7_MAIN}=model`), true, line);
+    assert.equal(line.includes(`${S7_BASE}=fetch`), true, line);
+    assert.equal(line.includes(`swapped=${S7_MAIN_TAG}`), true, line);
+    assert.equal(line.includes(`remounted=${S7_MAIN_TAG}`), true, line);
+  } finally {
+    logs.restore();
+    (globalThis as { mls?: unknown }).mls = previousMls;
+    (globalThis as { customElements?: unknown }).customElements = previousElements;
+    globalThis.document = previousDocument;
+  }
+});
+
+test('st66 s7: the main page and a module tab of different pages each update only their own', async () => {
+  await armPageTag();
+  const { updateOpenTabsForFiles } = await load();
+  const previousElements = (globalThis as { customElements?: unknown }).customElements;
+  const previousDocument = globalThis.document;
+  (globalThis as { customElements?: unknown }).customElements = sharedRegistry;
+  const live = new Map<string, FakeHTMLElement[]>();
+  const { asked } = liveDocument(live);
+  const logs = capturePreviewLogs();
+  try {
+    await evalModule(pageSource(S7_SHELL_TAG, 'SHELL-1'));
+    await evalModule(pageSource(S7_MOD_TAG, 'MOD-1'));
+    const main = createPage(S7_SHELL_TAG);
+    const tab = new FakeHTMLElement();
+    const mod = createPage(S7_MOD_TAG);
+    tab.child = mod;
+    live.set(S7_SHELL_TAG, [main]);
+    const mainPage = { page: S7_SHELL, tag: S7_SHELL_TAG, host: main as unknown as HTMLElement };
+    const tabSlot = slot(tab, S7_MOD, S7_MOD_TAG);
+    const read = (shellLabel: string, modLabel: string) => (specifier: string) => {
+      if (specifier === S7_SHELL) return { source: pageSource(S7_SHELL_TAG, shellLabel), version: V2 };
+      if (specifier === S7_MOD) return { source: pageSource(S7_MOD_TAG, modLabel), version: V2 };
+      return null;
+    };
+    const shellOnly = await updateOpenTabsForFiles(102033, ['l2/s7shell.ts'], {
+      tabs: [tabSlot],
+      mainPage,
+      draftSlug: null,
+      origin: 'http://preview.test',
+      readModule: read('SHELL-2', 'MOD-1'),
+    });
+    assert.ok(shellOnly);
+    assert.equal(shellOnly.ok, true);
+    assert.ok(main.replacedBy);
+    assert.equal(main.replacedBy.label, 'SHELL-2');
+    assert.equal(tab.child, mod);
+    assert.equal(mod.replacedBy, null);
+    assert.deepEqual(asked, [S7_SHELL_TAG]);
+    const firstLine = previewUpdateLine(logs.infos);
+    assert.equal(firstLine.includes(`pages=${S7_MOD},${S7_SHELL}`), true, firstLine);
+    assert.equal(firstLine.includes(`swapped=${S7_SHELL_TAG}`), true, firstLine);
+    assert.equal(firstLine.includes(`remounted=${S7_SHELL_TAG}`), true, firstLine);
+    assert.equal(firstLine.includes(S7_MOD_TAG), false, firstLine);
+
+    asked.length = 0;
+    logs.infos.length = 0;
+    const kept = main.replacedBy;
+    const modOnly = await updateOpenTabsForFiles(102033, ['l2/s7mod.ts'], {
+      tabs: [tabSlot],
+      mainPage,
+      draftSlug: null,
+      origin: 'http://preview.test',
+      readModule: read('SHELL-2', 'MOD-2'),
+    });
+    assert.ok(modOnly);
+    assert.equal(modOnly.ok, true);
+    assert.equal(main.replacedBy, kept);
+    assert.equal(kept.replacedBy, null);
+    assert.notEqual(tab.child, mod);
+    assert.equal(tab.child?.label, 'MOD-2');
+    assert.deepEqual(asked, []);
+    const secondLine = previewUpdateLine(logs.infos);
+    assert.equal(secondLine.includes(`swapped=${S7_MOD_TAG}`), true, secondLine);
+    assert.equal(secondLine.includes(`remounted=${S7_MOD_TAG}`), true, secondLine);
+    assert.equal(secondLine.includes(S7_SHELL_TAG), false, secondLine);
+  } finally {
+    logs.restore();
+    (globalThis as { customElements?: unknown }).customElements = previousElements;
+    globalThis.document = previousDocument;
+  }
+});
+
+test('st66 s7: no main page and no module tab is a visible error, and a page that does not import the file stays null', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const logs = capturePreviewLogs();
+  try {
+    const missing = await updateOpenTabsForFiles(102033, ['l2/s7alone.ts'], {
+      tabs: [],
+      draftSlug: null,
+      origin: 'http://preview.test',
+      fetchModule: async () => jsResponse('export const label = "x";\n'),
+    });
+    assert.ok(missing);
+    assert.equal(missing.ok, false);
+    assert.equal(missing.message, t('live.noOpenPage'));
+    assert.equal(logs.errors.some((line) => line.includes('[remount] no open page to update')), true);
+    const errorLine = previewUpdateLine(logs.infos);
+    assert.equal(errorLine.includes('changed=/_102033_/l2/s7alone.js'), true, errorLine);
+    assert.equal(errorLine.includes('pages=;'), true, errorLine);
+
+    logs.infos.length = 0;
+    logs.errors.length = 0;
+    const idle = new FakeHTMLElement();
+    const untouched = await updateOpenTabsForFiles(102033, ['l2/s7other.ts'], {
+      tabs: [],
+      mainPage: { page: S7_IDLE, tag: 'preview-page-s7idle', host: idle as unknown as HTMLElement },
+      draftSlug: null,
+      origin: 'http://preview.test',
+      readModule(specifier: string) {
+        if (specifier === S7_IDLE) return { source: pageSource('preview-page-s7idle', 'STAY'), version: V1 };
+        if (specifier === S7_OTHER) return { source: baseSource('nope'), version: V2 };
+        return null;
+      },
+    });
+    assert.equal(untouched, null);
+    assert.equal(idle.replacedBy, null);
+    const nullLine = previewUpdateLine(logs.infos);
+    assert.equal(nullLine.includes(`changed=${S7_OTHER}`), true, nullLine);
+    assert.equal(nullLine.includes(`pages=${S7_IDLE}`), true, nullLine);
+    assert.equal(nullLine.includes('swapped=;'), true, nullLine);
+    assert.equal(nullLine.includes('remounted='), true, nullLine);
+  } finally {
+    logs.restore();
+  }
 });

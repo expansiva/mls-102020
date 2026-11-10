@@ -33,8 +33,8 @@
 //    only when that page import also registers nothing.
 //
 // WHAT IS REMOUNTED
-//  Only the page node inside the preview tab div. The rest of the document (header, other tabs)
-//  stays put.
+//  The page node inside each open preview-tab div, and the shell's main content page (it is not a
+//  tab div: the shell registers it and this mode rebuilds it by tag). The rest of the document stays.
 
 import type { ILiveUpdateContext, ILiveUpdateMode, ILiveUpdateResult } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
 import type { IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
@@ -55,7 +55,9 @@ import {
 import {
   previewTabSlots,
   replaceTabPage,
+  shellMainPageSlot,
   type PreviewTabSlot,
+  type ShellMainPage,
 } from '/_102033_/l2/shared/moduleTab.js';
 import {
   buildPreviewGraph,
@@ -279,28 +281,59 @@ export interface PreviewTabUpdate {
   modules: readonly PreviewModuleRecord[];
   changed: readonly string[];
   tabs: readonly PreviewTabSlot[];
+  /** Shell main page, rebuilt by tag in the same pass as the module tabs. */
+  mainPage?: ShellMainPage | null;
   draftSlug: string | null;
   /** Document origin. A `/…` specifier left outside the subgraph is resolved against it. */
   origin: string;
   /** Sees each module URL before it is imported. The test reads the source; production omits it. */
   importModule?: (url: string) => Promise<unknown>;
+  /** How each module body was read. The diagnostic names it. */
+  sources?: ReadonlyMap<string, 'model' | 'fetch'>;
+}
+
+function consideredPages(tabs: readonly PreviewTabSlot[], main: ShellMainPage | null | undefined): string[] {
+  const pages = tabs.map((tab) => tab.page);
+  if (main?.page) pages.push(main.page);
+  return pages;
+}
+
+function reportPreviewUpdate(
+  changed: readonly string[],
+  pages: readonly string[],
+  sources: ReadonlyMap<string, 'model' | 'fetch'> | undefined,
+  swapped: readonly string[],
+  remounted: readonly string[],
+): void {
+  const parts: string[] = [];
+  if (sources) {
+    for (const [specifier, kind] of sources) parts.push(`${specifier}=${kind}`);
+  }
+  const sourceText = parts.join(',');
+  console.info(`[remount] preview update: changed=${changed.join(',')}; pages=${pages.join(',')}; sources=${sourceText}; swapped=${swapped.join(',')}; remounted=${remounted.join(',')}`);
 }
 
 /**
- * Reimports each open page that sits on the changed subgraph and rebuilds only that tab's div.
+ * Reimports each open page that sits on the changed subgraph.
+ * A module tab is rebuilt inside its div. The shell's main page is rebuilt by tag.
  * Returns null when no open page imports a changed file, so the caller can keep its other path.
  * A page import that registers no element is still a refusal.
  */
 export async function updateOpenPreviewTabs(input: PreviewTabUpdate): Promise<ILiveUpdateResult | null> {
   const known = new Set(input.modules.map((item) => item.specifier));
+  const pages = consideredPages(input.tabs, input.mainPage);
   const tabs = input.tabs.filter((tab) => known.has(tab.page));
+  const main = input.mainPage && known.has(input.mainPage.page) ? input.mainPage : null;
   const graph = buildPreviewGraph(previewGraphRequest(
     input.modules,
     input.changed,
-    tabs.map((tab) => tab.page),
+    [...tabs.map((tab) => tab.page), ...(main ? [main.page] : [])],
     input.draftSlug,
   ));
-  if (graph.modules.length === 0) return null;
+  if (graph.modules.length === 0) {
+    if (pages.length > 0) reportPreviewUpdate(input.changed, pages, input.sources, [], []);
+    return null;
+  }
 
   const owned = new Map<string, PreviewModuleUrl>();
   for (const item of graph.modules) {
@@ -310,9 +343,11 @@ export async function updateOpenPreviewTabs(input: PreviewTabUpdate): Promise<IL
   const selected = new Set(graph.modules.map((item) => item.specifier));
   const cache = new Map<string, string>();
   const pageUrls = new Map<string, string>();
-  for (const tab of tabs) {
-    if (!selected.has(tab.page) || pageUrls.has(tab.page)) continue;
-    pageUrls.set(tab.page, await loadRewritten(tab.page, owned, cache, [], input.origin));
+  const pageSpecifiers = [...tabs.map((tab) => tab.page)];
+  if (main?.page) pageSpecifiers.push(main.page);
+  for (const page of pageSpecifiers) {
+    if (!selected.has(page) || pageUrls.has(page)) continue;
+    pageUrls.set(page, await loadRewritten(page, owned, cache, [], input.origin));
   }
 
   const importModule = input.importModule ?? ((url: string) => import(url));
@@ -322,6 +357,7 @@ export async function updateOpenPreviewTabs(input: PreviewTabUpdate): Promise<IL
   }, (name, ctor) => { captured.set(name, ctor); });
 
   if (captured.size === 0) {
+    reportPreviewUpdate(input.changed, pages, input.sources, [], []);
     return { ok: false, message: t('live.noElementDefine') };
   }
 
@@ -332,21 +368,31 @@ export async function updateOpenPreviewTabs(input: PreviewTabUpdate): Promise<IL
     else refused.push(tag);
   }
   if (swapped.length === 0) {
+    reportPreviewUpdate(input.changed, pages, input.sources, [], []);
     return { ok: false, message: t('live.tagNotArmed', { tag: refused.join(', ') }) };
   }
 
   const swappedTags = new Set(swapped);
+  const remounted: string[] = [];
   let count = 0;
   for (const tab of tabs) {
     if (!selected.has(tab.page) || !swappedTags.has(tab.tag)) continue;
     remountTab(tab.div, tab.tag);
+    remounted.push(tab.tag);
     count += 1;
   }
+  if (main && selected.has(main.page) && swappedTags.has(main.tag)) {
+    const found = remountAll(main.tag);
+    count += found;
+    if (found > 0) remounted.push(main.tag);
+  }
   if (count === 0) {
-    console.error('[remount] swapped the page class but no tab div held that tag');
+    console.error('[remount] swapped the page class but neither a tab div nor the main page held that tag');
+    reportPreviewUpdate(input.changed, pages, input.sources, swapped, []);
     return { ok: false, message: t('live.nothingToApply', { reason: t('live.tagNotArmed', { tag: swapped.join(', ') }) }) };
   }
   const message = t('live.remounted', { count, tags: swapped.length });
+  reportPreviewUpdate(input.changed, pages, input.sources, swapped, remounted);
   return {
     ok: true,
     message: refused.length > 0
@@ -474,6 +520,8 @@ const MODULE_SPECIFIER = /^\/_\d+_\/.+\.js$/;
 
 export interface IPreviewTabsDeps {
   tabs?: readonly PreviewTabSlot[];
+  /** `null` is no main page. Omitted reads the slot the shell registered. */
+  mainPage?: ShellMainPage | null;
   /** Test double. Production reads the model, then the service worker. */
   readModule?: (specifier: string) => Promise<ICompiledPreview | null> | ICompiledPreview | null;
   draftSlug?: string | null;
@@ -582,10 +630,16 @@ async function fetchCompiled(specifier: string, fetchModule: (specifier: string)
 async function readPreviewSource(
   specifier: string,
   fetchModule: (specifier: string) => Promise<Response>,
+  sources: Map<string, 'model' | 'fetch'>,
 ): Promise<ICompiledPreview | null> {
   const fromModel = compiledFromModel(specifier);
-  if (fromModel) return fromModel;
-  return fetchCompiled(specifier, fetchModule);
+  if (fromModel) {
+    sources.set(specifier, 'model');
+    return fromModel;
+  }
+  const fetched = await fetchCompiled(specifier, fetchModule);
+  if (fetched) sources.set(specifier, 'fetch');
+  return fetched;
 }
 
 async function eachLimited<T>(items: readonly T[], limit: number, run: (item: T) => Promise<void>): Promise<void> {
@@ -609,8 +663,9 @@ function missingJavaScript(specifiers: readonly string[]): ILiveUpdateResult {
 }
 
 /**
- * Rebuilds the open tabs whose page imports one of these draft paths.
- * `null` when none of them is an l2 module an open page imports.
+ * Rebuilds every open page whose module imports one of these draft paths.
+ * Module tabs rebuild inside their div. The shell's main page rebuilds by tag.
+ * `null` when an open page exists and none of them imports a changed l2 file.
  */
 export async function updateOpenTabsForFiles(
   project: number,
@@ -650,13 +705,16 @@ export async function updateOpenTabsForFiles(
     }
   }
   const tabs = deps.tabs ?? previewTabSlots();
+  const mainPage = deps.mainPage !== undefined ? deps.mainPage : shellMainPageSlot();
+  const pages = consideredPages(tabs, mainPage);
+  const sources = new Map<string, 'model' | 'fetch'>();
   const fetchModule = deps.fetchModule ?? ((specifier: string) => fetch(specifier, { cache: 'no-store' }));
-  const readModule = deps.readModule ?? ((specifier: string) => readPreviewSource(specifier, fetchModule));
+  const readModule = deps.readModule ?? ((specifier: string) => readPreviewSource(specifier, fetchModule, sources));
   const modules = new Map<string, PreviewModuleRecord>();
   const changedSet = new Set(changed);
   const seen = new Set<string>();
   const missingChanged: string[] = [];
-  let pending = [...changed, ...tabs.map((tab) => tab.page)];
+  let pending = [...changed, ...pages];
   while (pending.length > 0) {
     const batch: string[] = [];
     for (const specifier of pending) {
@@ -676,15 +734,25 @@ export async function updateOpenTabsForFiles(
       for (const imported of importedSpecifiers(compiled.source)) pending.push(imported);
     });
   }
-  if (missingChanged.length > 0) return missingJavaScript(missingChanged);
+  if (missingChanged.length > 0) {
+    reportPreviewUpdate(changed, pages, sources, [], []);
+    return missingJavaScript(missingChanged);
+  }
+  if (pages.length === 0) {
+    console.error('[remount] no open page to update');
+    reportPreviewUpdate(changed, pages, sources, [], []);
+    return { ok: false, message: t('live.noOpenPage') };
+  }
   const origin = deps.origin ?? (typeof location !== 'undefined' ? location.origin : '');
   return updateOpenPreviewTabs({
     modules: [...modules.values()],
     changed,
     tabs,
+    mainPage,
     draftSlug,
     origin,
     importModule: deps.importModule,
+    sources,
   });
 }
 
