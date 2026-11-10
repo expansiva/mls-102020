@@ -243,6 +243,10 @@ let pendingProject: number | null = null;
 let pendingCount: number | null = null;
 let pendingBlocked: number | null = null;
 let pendingRefreshOn = false;
+let pendingEpoch = 0;
+/** One local-text read at a time. A recount that arrives mid-read runs once more at the end. */
+let localNote: Promise<void> | null = null;
+let localNoteAgain = false;
 let saveRequestOn = false;
 let draftBridgeOn = false;
 
@@ -261,12 +265,39 @@ function pendingTotals(project: number): { count: number; blocked: number } {
   return draftSaveTotals(files, project);
 }
 
-function publishDraftPending(force: boolean): void {
-  const project = siteProjectId();
-  if (project === null) {
-    console.error('[studio] collabDraftPending: mls.actualProject is missing');
-    return;
+/**
+ * Read every local copy before the cover counts. A saved file with no noted text
+ * would count as unsaved (`fileNeedsSave`) and the footer would stay up.
+ * Callers that arrive while a read is in flight share it and cause one more read at the end.
+ */
+function noteLocalsForPending(): Promise<void> {
+  if (localNote) {
+    localNoteAgain = true;
+    return localNote;
   }
+  let resolveFlight: () => void = () => {};
+  const flight = new Promise<void>((resolve) => {
+    resolveFlight = resolve;
+  });
+  localNote = flight;
+  const run = async (): Promise<void> => {
+    do {
+      localNoteAgain = false;
+      try {
+        await rememberLocalDraftText();
+      } catch (err) {
+        console.error('[studio] could not read the local draft text', err);
+      }
+    } while (localNoteAgain);
+  };
+  void run().finally(() => {
+    if (localNote === flight) localNote = null;
+    resolveFlight();
+  });
+  return flight;
+}
+
+function emitDraftPending(project: number, force: boolean): void {
   const totals = pendingTotals(project);
   if (
     !force
@@ -292,6 +323,25 @@ function publishDraftPending(force: boolean): void {
   } catch (err) {
     console.error('[studio] collabDraftPending was not dispatched:', err);
   }
+}
+
+/** Note the local text first. Do not publish the conservative count while that read is in flight. */
+function publishDraftPending(force: boolean): void {
+  const project = siteProjectId();
+  if (project === null) {
+    console.error('[studio] collabDraftPending: mls.actualProject is missing');
+    return;
+  }
+  const epoch = pendingEpoch;
+  void noteLocalsForPending().then(() => {
+    if (epoch !== pendingEpoch || !pendingUnsub) return;
+    const current = siteProjectId();
+    if (current === null) {
+      console.error('[studio] collabDraftPending: mls.actualProject is missing');
+      return;
+    }
+    emitDraftPending(current, force);
+  });
 }
 
 function onDraftPendingRefresh(): void {
@@ -326,6 +376,7 @@ function startDraftPending(): void {
 }
 
 function stopDraftPending(): void {
+  pendingEpoch += 1;
   disarmDraftPendingRefresh();
   pendingUnsub?.();
   pendingUnsub = undefined;

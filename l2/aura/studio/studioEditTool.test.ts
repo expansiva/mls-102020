@@ -25,7 +25,6 @@ import {
   COLLAB_DRAFT_SAVE_RESULT,
   deliverSharedEdit,
   listedOwner,
-  noteDraftPending,
   noteSharedFile,
   runDraftSave,
   subscribeDraftFiles,
@@ -497,16 +496,19 @@ test('editing the front publishes the unsaved count, Save with the panel closed 
   };
   try {
     publishEditHost(studioHost);
+    await settleDraftNote();
     assert.deepEqual(counts, [0]);
     files.page = page;
     const fileEvent = listeners.find((item) => item.type === 'FileAction');
     assert.ok(fileEvent, 'studio mode listens for a file edit');
     fileEvent.fn({ level: fileEvent.level, type: 'FileAction', desc: '{}' });
+    await settleDraftNote();
     assert.deepEqual(counts, [0, 1]);
     windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_REQUEST, { detail: { project: 102047 } }));
     for (let i = 0; i < 30 && written.length === 0; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    await settleDraftNote();
     assert.deepEqual(written, ['save: 1 file(s): aura/page.ts']);
     assert.deepEqual(counts, [0, 1, 0]);
   } finally {
@@ -630,17 +632,20 @@ test('a compile error is blocked on the pending event, and Save with the panel c
     files.page = valid;
     files.broken = broken;
     fire();
+    await settleDraftNote();
     const withError = pending[pending.length - 1];
     assert.equal(withError?.project, 102047);
     assert.equal(withError?.count, 2);
     assert.equal(withError?.blocked, 1);
     broken.hasError = false;
     fire();
+    await settleDraftNote();
     const fixed = pending[pending.length - 1];
     assert.equal(fixed?.count, 2);
     assert.equal(fixed?.blocked, 0);
     broken.hasError = true;
     fire();
+    await settleDraftNote();
     assert.equal(pending[pending.length - 1]?.blocked, 1);
     windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_REQUEST, { detail: { project: 102047 } }));
     for (let i = 0; i < 30 && results.length === 0; i += 1) {
@@ -665,7 +670,7 @@ test('a compile error is blocked on the pending event, and Save with the panel c
   }
 });
 
-test('the unsaved count refreshes on collabDraftRecount, not on a 1s timer, and stops with Studio', () => {
+test('the unsaved count refreshes on collabDraftRecount, not on a 1s timer, and stops with Studio', async () => {
   const host = globalThis as unknown as {
     mls: {
       actualProject?: number;
@@ -757,32 +762,39 @@ test('the unsaved count refreshes on collabDraftRecount, not on a 1s timer, and 
   try {
     publishEditHost(studioHost);
     publishEditHost(studioHost);
+    await settleDraftNote();
     assert.equal(timers.size, 0);
     assert.equal(pending.length, 1);
     assert.equal(pending[0]?.count, 0);
     files.page = page;
     recount();
+    await settleDraftNote();
     assert.equal(pending[pending.length - 1]?.count, 1);
     assert.equal(pending[pending.length - 1]?.project, 102047);
     page.inLocalStorage = false;
     recount();
+    await settleDraftNote();
     assert.equal(pending[pending.length - 1]?.count, 0);
     assert.equal(listeners.some((item) => item.type === 'FileAction'), true);
     page.inLocalStorage = true;
     windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, { detail: { project: 102047, paths: [] } }));
+    await settleDraftNote();
     assert.equal(pending[pending.length - 1]?.count, 1);
     page.inLocalStorage = false;
     windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_RESULT, {
       detail: { project: 102047, saved: true, blocked: 0 },
     }));
+    await settleDraftNote();
     assert.equal(pending[pending.length - 1]?.count, 0);
     const beforeStop = pending.length;
     publishEditHost(null);
     page.inLocalStorage = true;
     recount();
+    await settleDraftNote();
     assert.equal(pending.length, beforeStop);
     publishEditHost(studioHost);
     recount();
+    await settleDraftNote();
     assert.equal(pending[pending.length - 1]?.count, 1);
   } finally {
     publishEditHost(null);
@@ -922,11 +934,16 @@ test('one publishDraftPending over 457 pending files of 5 KB costs more than 2 m
   };
   try {
     publishEditHost(studioHost);
+    await settleDraftNote();
     assert.equal(timers.size, 0);
     const samples: number[] = [];
     for (let sample = 0; sample < 3; sample += 1) {
+      const before = pending.length;
       const started = performance.now();
       windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: 102047 } }));
+      for (let wait = 0; wait < 20 && pending.length === before; wait += 1) {
+        await settleDraftNote();
+      }
       samples.push(performance.now() - started);
     }
     samples.sort((left, right) => left - right);
@@ -960,6 +977,11 @@ test('an armed editor moves to the host of the nav3 tab on screen', () => {
   assert.match(sync, /editor\.attach\(fresh\.host, fresh\.chromeHost\)/u);
   assert.doesNotMatch(sync, /fresh\.host !== state\.host/u);
 });
+
+/** The cover notes local text before it emits. One turn drains that read. */
+async function settleDraftNote(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 const ST65_PROJECT = 102047;
 
@@ -1013,6 +1035,7 @@ interface ISt65Harness {
   panelSave: () => number;
   last: () => number;
   enter: () => void;
+  touchFile: () => void;
   restore: () => void;
 }
 
@@ -1101,6 +1124,11 @@ function armSt65(): ISt65Harness {
     },
     last: () => pending[pending.length - 1]?.count ?? -1,
     enter: () => { publishEditHost(studioHost); },
+    touchFile: () => {
+      const fileEvent = listeners.find((item) => item.type === 'FileAction');
+      if (!fileEvent) throw new Error('studio mode listens for a file edit');
+      fileEvent.fn({ level: fileEvent.level, type: 'FileAction', desc: '{}' });
+    },
     restore: () => {
       publishEditHost(null);
       host.mls.actualProject = previous.actualProject;
@@ -1115,7 +1143,8 @@ function armSt65(): ISt65Harness {
   };
 }
 
-function assertPanelMatches(h: ISt65Harness, count: number): void {
+async function assertPanelMatches(h: ISt65Harness, count: number): Promise<void> {
+  await settleDraftNote();
   assert.equal(h.panelSave(), count);
   assert.equal(h.last(), count);
 }
@@ -1132,12 +1161,8 @@ test('st65 s2: a saved file that is not open after F5 — the panel is 0 and the
   );
   try {
     h.enter();
-    assertPanelMatches(h, 1);
-    await rememberOpenedDraftText([file]);
-    assert.equal(actionCounts(localEdits(h.files, ST65_PROJECT), []).save, 0);
-    assert.equal(h.last(), 1);
-    noteDraftPending();
-    assertPanelMatches(h, 0);
+    await assertPanelMatches(h, 0);
+    assert.equal(h.pending.some((item) => item.count >= 1), false);
   } finally {
     h.restore();
   }
@@ -1149,13 +1174,13 @@ test('st65 s2: Save from the layer leaves the panel and the cover at 0', async (
   try {
     h.enter();
     h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
-    assertPanelMatches(h, 1);
+    await assertPanelMatches(h, 1);
     h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_REQUEST, { detail: { project: ST65_PROJECT } }));
     for (let i = 0; i < 30 && h.written.length === 0; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     assert.deepEqual(h.written, ['save: 1 file(s): aura/st65layer.ts']);
-    assertPanelMatches(h, 0);
+    await assertPanelMatches(h, 0);
   } finally {
     h.restore();
   }
@@ -1167,11 +1192,11 @@ test('st65 s2: Save all from the panel leaves the panel and the cover at 0', asy
   try {
     h.enter();
     h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
-    assertPanelMatches(h, 1);
+    await assertPanelMatches(h, 1);
     const outcome = await runDraftSave(ST65_PROJECT, { noFiles: 'No touched files.' }, { driverVersion: '1.0.0-vm' });
     assert.equal(outcome.kind, 'saved');
     assert.deepEqual(h.written, ['save: 1 file(s): aura/st65panel.ts']);
-    assertPanelMatches(h, 0);
+    await assertPanelMatches(h, 0);
   } finally {
     h.restore();
   }
@@ -1184,7 +1209,7 @@ test('st65 s2: Undo from the panel leaves the panel and the cover at 0', async (
   try {
     h.enter();
     h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
-    assertPanelMatches(h, 1);
+    await assertPanelMatches(h, 1);
     await undoFile({
       fetchImpl: async () => { throw new Error('a browser undo does not call the server'); },
       file,
@@ -1194,7 +1219,7 @@ test('st65 s2: Undo from the panel leaves the panel and the cover at 0', async (
       },
       removeNew: async () => { throw new Error('not a new file'); },
     }, ST65_PROJECT, 'team-102047', 'l2/aura/st65undo.ts', false, []);
-    assertPanelMatches(h, 0);
+    await assertPanelMatches(h, 0);
   } finally {
     h.restore();
   }
@@ -1206,7 +1231,7 @@ test('st65 s2: Discard all leaves the panel and the cover at 0', async () => {
   try {
     h.enter();
     h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
-    assertPanelMatches(h, 1);
+    await assertPanelMatches(h, 1);
     await discard({
       fetchImpl: async () => st65Json({ statusCode: 200, status: 'discarded' }),
       reload: () => {},
@@ -1216,7 +1241,7 @@ test('st65 s2: Discard all leaves the panel and the cover at 0', async () => {
         item.status = 'nochange';
       },
     }, ST65_PROJECT, 'team-102047');
-    assertPanelMatches(h, 0);
+    await assertPanelMatches(h, 0);
   } finally {
     h.restore();
   }
@@ -1230,7 +1255,7 @@ test('st65 s2: Discard module leaves the panel and the cover at 0', async () => 
   try {
     h.enter();
     h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
-    assertPanelMatches(h, 1);
+    await assertPanelMatches(h, 1);
     await discardModule({
       fetchImpl: async () => st65Json({ statusCode: 200, status: 'restored' }),
       saveL5File: async () => true,
@@ -1241,13 +1266,13 @@ test('st65 s2: Discard module leaves the panel and the cover at 0', async () => 
       storFiles: h.files,
       reloadLive: async () => {},
     }, ST65_PROJECT, 'team-102047', 'orders', config, config);
-    assertPanelMatches(h, 0);
+    await assertPanelMatches(h, 0);
   } finally {
     h.restore();
   }
 });
 
-test('st65 s2: collabDraftRecount makes the panel and the cover agree', () => {
+test('st65 s2: collabDraftRecount makes the panel and the cover agree', async () => {
   const service = readFileSync(new URL('../services/serviceDraft.ts', import.meta.url), 'utf8');
   const render = service.slice(service.indexOf('private _renderPanel'), service.indexOf('private _renderActions'));
   assert.match(render, /draftSaveTotals\(/);
@@ -1262,10 +1287,78 @@ test('st65 s2: collabDraftRecount makes the panel and the cover agree', () => {
   try {
     h.enter();
     h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
-    assertPanelMatches(h, 1);
+    await assertPanelMatches(h, 1);
     file.inLocalStorage = false;
     h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
-    assertPanelMatches(h, 0);
+    await assertPanelMatches(h, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test('st65 s5: a saved file with the panel closed publishes count 0 and one read in flight', async () => {
+  const h = armSt65();
+  const body = 'saved-inicio';
+  let reads = 0;
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const file = st65File('inicio');
+  file.getContent = async () => {
+    reads += 1;
+    inFlight += 1;
+    if (inFlight > maxInFlight) maxInFlight = inFlight;
+    if (reads === 1) await gate;
+    inFlight -= 1;
+    return body;
+  };
+  h.files.page = file;
+  rememberSentCrc(
+    { project: ST65_PROJECT, level: 2, folder: 'aura', shortName: 'inicio', extension: '.ts' },
+    draftContentCrc(body, '.ts'),
+  );
+  try {
+    h.enter();
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVED, { detail: { project: ST65_PROJECT, paths: [] } }));
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_SAVE_RESULT, {
+      detail: { project: ST65_PROJECT, saved: true, blocked: 0 },
+    }));
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
+    h.touchFile();
+    assert.equal(reads, 1);
+    assert.equal(maxInFlight, 1);
+    assert.equal(h.pending.length, 0);
+    release();
+    await settleDraftNote();
+    assert.equal(maxInFlight, 1);
+    assert.equal(reads, 2);
+    assert.equal(h.pending.length > 0, true);
+    assert.equal(h.pending.some((item) => item.count >= 1), false);
+    assert.equal(h.panelSave(), 0);
+    assert.equal(h.last(), 0);
+  } finally {
+    release();
+    h.restore();
+  }
+});
+
+test('st65 s5: a file edited after the accepted text still counts as 1', async () => {
+  const h = armSt65();
+  const file = st65File('inicioEdited');
+  file.getContent = async () => 'edited-after';
+  h.files.page = file;
+  rememberSentCrc(
+    { project: ST65_PROJECT, level: 2, folder: 'aura', shortName: 'inicioEdited', extension: '.ts' },
+    draftContentCrc('accepted-text', '.ts'),
+  );
+  try {
+    h.enter();
+    await settleDraftNote();
+    assert.equal(h.pending.some((item) => item.count === 0), false);
+    assert.equal(h.pending.length > 0, true);
+    assert.equal(h.last(), 1);
+    assert.equal(h.panelSave(), 1);
   } finally {
     h.restore();
   }
