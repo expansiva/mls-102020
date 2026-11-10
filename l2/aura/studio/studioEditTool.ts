@@ -18,7 +18,7 @@ import {
   type IStudioEditHost,
 } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { activeDraft, isVmDriver } from '/_102033_/l2/cbe/studioDraft.js';
-import { COLLAB_DRAFT_RECOUNT } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { COLLAB_DRAFT_RECOUNT, draftEntrySeedPending } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import {
   afterDraftSave,
   COLLAB_DRAFT_SAVED,
@@ -335,6 +335,7 @@ function publishDraftPending(force: boolean): void {
   const epoch = pendingEpoch;
   void noteLocalsForPending().then(() => {
     if (epoch !== pendingEpoch || !pendingUnsub) return;
+    if (draftEntrySeedPending()) return;
     const current = siteProjectId();
     if (current === null) {
       console.error('[studio] collabDraftPending: mls.actualProject is missing');

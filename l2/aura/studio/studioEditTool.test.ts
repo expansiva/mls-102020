@@ -18,7 +18,14 @@ import {
   undoFile,
   type IPanelStorFile,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
-import { COLLAB_DRAFT_RECOUNT, draftContentCrc, rememberSentCrc } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import {
+  beginDraftEntrySeed,
+  COLLAB_DRAFT_RECOUNT,
+  completeDraftEntrySeed,
+  draftContentCrc,
+  draftEntrySeedPending,
+  rememberSentCrc,
+} from '/_102033_/l2/cbe/studioDraftFiles.js';
 import {
   COLLAB_DRAFT_PENDING,
   COLLAB_DRAFT_SAVE_REQUEST,
@@ -1357,6 +1364,71 @@ test('st65 s5: a file edited after the accepted text still counts as 1', async (
     await settleDraftNote();
     assert.equal(h.pending.some((item) => item.count === 0), false);
     assert.equal(h.pending.length > 0, true);
+    assert.equal(h.last(), 1);
+    assert.equal(h.panelSave(), 1);
+  } finally {
+    h.restore();
+  }
+});
+
+test('st65 s6: the first pending event waits for the entry seed and is already 0', async () => {
+  const h = armSt65();
+  const body = 'saved-inicio';
+  const file = st65File('inicioSeed');
+  file.getContent = async () => body;
+  h.files.page = file;
+  const ident = { project: ST65_PROJECT, level: 2, folder: 'aura', shortName: 'inicioSeed', extension: '.ts' };
+  beginDraftEntrySeed();
+  try {
+    h.enter();
+    h.windowEvents.dispatchEvent(new CustomEvent(COLLAB_DRAFT_RECOUNT, { detail: { project: ST65_PROJECT } }));
+    await settleDraftNote();
+    assert.equal(draftEntrySeedPending(), true);
+    assert.equal(h.pending.length, 0);
+    rememberSentCrc(ident, draftContentCrc(body, '.ts'));
+    completeDraftEntrySeed(ST65_PROJECT);
+    await settleDraftNote();
+    assert.equal(h.pending.some((item) => item.count > 0), false);
+    assert.equal(h.pending[0]?.count, 0);
+    assert.equal(h.last(), 0);
+    file.getContent = async () => 'edited-after-seed';
+    h.touchFile();
+    await settleDraftNote();
+    assert.equal(draftEntrySeedPending(), false);
+    assert.equal(h.last(), 1);
+  } finally {
+    if (draftEntrySeedPending()) completeDraftEntrySeed(ST65_PROJECT);
+    h.restore();
+  }
+});
+
+test('st65 s6: a failed entry seed still publishes', async () => {
+  const h = armSt65();
+  h.files.page = st65File('inicioFailed');
+  beginDraftEntrySeed();
+  try {
+    h.enter();
+    await settleDraftNote();
+    assert.equal(h.pending.length, 0);
+    completeDraftEntrySeed(ST65_PROJECT);
+    await settleDraftNote();
+    assert.equal(draftEntrySeedPending(), false);
+    assert.equal(h.pending.length > 0, true);
+    assert.equal(h.last(), 1);
+  } finally {
+    if (draftEntrySeedPending()) completeDraftEntrySeed(ST65_PROJECT);
+    h.restore();
+  }
+});
+
+test('st65 s6: a file edited and never saved publishes count 1 without a seed', async () => {
+  const h = armSt65();
+  h.files.page = st65File('inicioNew');
+  try {
+    assert.equal(draftEntrySeedPending(), false);
+    h.enter();
+    await settleDraftNote();
+    assert.equal(h.pending.some((item) => item.count === 0), false);
     assert.equal(h.last(), 1);
     assert.equal(h.panelSave(), 1);
   } finally {
