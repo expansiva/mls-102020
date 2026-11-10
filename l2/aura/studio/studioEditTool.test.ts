@@ -866,3 +866,12 @@ test('one publishDraftPending over 457 pending files of 5 KB costs more than 2 m
     host.clearInterval = previous.clearInterval;
   }
 });
+
+test('an armed editor moves to the host of the nav3 tab on screen', () => {
+  const sync = TOOL.slice(TOOL.indexOf('async function syncEditor('), TOOL.indexOf('function teardown('));
+  // A new host disarms the memo so the arm path runs again; attach detaches from the old host first.
+  assert.match(sync, /if \(armed && editor && !editor\.isAttachedTo\(state\.host\)\) armed = false;/u);
+  // The arm path binds to the host published LAST, not to the one of the call that started the import.
+  assert.match(sync, /editor\.attach\(fresh\.host, fresh\.chromeHost\)/u);
+  assert.doesNotMatch(sync, /fresh\.host !== state\.host/u);
+});

@@ -212,6 +212,51 @@ export class ServiceGenome102020 extends ServiceBase {
             this._oldSelectedTag = selection?.tag ?? '';
             void this._onPreviewSelectedElementChanged(selection?.tag ?? '');
         }
+        if (key === 'aura.actualPage') void this._followPageOnScreen(value as IAuraPage | null);
+    }
+
+    /** Which page-on-screen change is the current one: the context refresh awaits, and tabs can switch meanwhile. */
+    private _followToken = 0;
+    /**
+     * The page being followed and the `project:module` whose page list was asked for. Both are written BEFORE any
+     * await: comparing against `_currentPageFile` (written after them) re-asked the list on every reload of it, and
+     * the reload's automatic select came back here — a loop that froze the tab.
+     */
+    private _followedPage = '';
+    private _pageListKey = '';
+
+    /**
+     * The page on screen changed without a file being opened — switching between nav3 tabs already open re-seeds
+     * the Aura state from the tab's page, and nothing else tells this service. The panel takes that page as its
+     * context, the same steps as `onServiceClick`; the page is NOT opened again (it is already on screen) and the
+     * l3/l4 file editors are left alone.
+     */
+    private async _followPageOnScreen(page: IAuraPage | null): Promise<void> {
+        // A module switch publishes null before the new page: only a real page moves the context.
+        if (!page?.folder || !page.shortName) return;
+        const pageId = `${page.project}:${page.folder}:${page.shortName}`;
+        if (pageId === this._followedPage) return;
+        this._followedPage = pageId;
+        // Another module (or project): the page knob lists the pages of the module it loaded, and choosing one of
+        // those would navigate the app back to that module. Its list is re-read; within the module only the value moves.
+        const listKey = `${page.project}:${page.folder.split('/')[0]}`;
+        if (listKey !== this._pageListKey) {
+            this._pageListKey = listKey;
+            // Until the new list arrives (the knob panel may not even be mounted), the old entries must not be opened.
+            this._pageEntries = [];
+            this._pageValue = 0;
+            this._pageReloadToken += 1;
+        } else {
+            this._syncPageValue();
+        }
+        const token = ++this._followToken;
+        const file = { project: page.project, shortName: page.shortName, folder: page.folder, level: page.level, extension: page.extension } as mls.stor.IFileInfo;
+        await this._trySetActualModule(file);
+        if (token !== this._followToken) return;
+        await this._updateCurrentPage(file);
+        await this._initLayoutKnob();
+        if (token !== this._followToken) return;
+        this.requestUpdate();
     }
 
     // ─── Layout init from project.js ─────────────────────────────────
@@ -478,8 +523,8 @@ export class ServiceGenome102020 extends ServiceBase {
         // THE LOCAL COPY IS WHAT A RELOAD READS, and it goes in here rather than in
         // `_applyToRunningPage`: that method is about the page already MOUNTED, and it gives up early
         // whenever the studio host is not armed — which left the swap in the model and nowhere else,
-        // so F5 brought the old molecule back. Same order the class picker has used since
-        // 2026-09-01, ahead of libModel's 400ms debounce (see `persistLocalEdit`).
+        // so F5 brought the old molecule back. Same order the class picker uses, ahead of libModel's
+        // 400ms debounce (see `persistLocalEdit`).
         await persistLocalEdit(target, newSource);
 
         await this._applyToRunningPage(target);
@@ -657,7 +702,7 @@ export class ServiceGenome102020 extends ServiceBase {
     /**
      * WHERE in the source the swap writes — an exact offset, or the reason there is none.
      *
-     * THE DEFECT THIS REPLACES (28/09/2026, 102047/consultas): the in-place editor published the
+     * THE DEFECT THIS REPLACES (102047/consultas): the in-place editor published the
      * element's position among its peers ON SCREEN, and `replaceComponentTag` read it as a position
      * among the occurrences IN THE TEXT. The source order follows the order the render helpers are
      * DECLARED; the screen order follows the order they are COMPOSED. On that page `render()` is
@@ -779,10 +824,26 @@ export class ServiceGenome102020 extends ServiceBase {
         const { min, max, labels, pages } = e.detail;
         this._pageConfig = { key: 'page', min, max, labels };
         if (pages) this._pageEntries = pages;
+        // A new list (another module) makes the old index meaningless: it points at the page on screen, or at none.
+        this._syncPageValue();
         this.requestUpdate();
     }
 
+    /** The page knob on the page on screen (aura.actualPage), or on "All" when the list does not have it. */
+    private _syncPageValue(): void {
+        const page = getAuraState()?.actualPage;
+        const index = page ? this._pageEntries.findIndex(entry => entry.file.project === page.project && entry.file.shortName === page.shortName) : -1;
+        this._pageValue = index >= 0 ? index + 1 : 0;
+    }
+
     private _onPageSelect(e: CustomEvent) {
+        // The list (re)loaded and pointed at the page already on screen: nothing to open, and opening it would
+        // navigate the app and rebind the file editors.
+        if (e.detail.auto) {
+            this._pageValue = e.detail.value;
+            this.requestUpdate();
+            return;
+        }
         this._pageValue = e.detail.value;
         const file = e.detail.file as mls.stor.IFileInfo | null;
         if (file) this._openPage(file);
@@ -824,7 +885,7 @@ export class ServiceGenome102020 extends ServiceBase {
      * `_isPageContext` goes false and the layout and molecules knobs render dimmed and unclickable.
      *
      * It used to read `l2/project.js` -> `projectConfig.modules`, and that array is `[]` in every
-     * real project (checked on 2026-09-11 across 102043/45/46/47/48/49/50/51): the modules live in
+     * real project (checked across 102043/45/46/47/48/49/50/51): the modules live in
      * `l5/project.json`, which is where the Module knob of serviceProject reads them from, with the
      * shape `{ moduleName, backend, … }`. Two services, two sources, one of them empty by
      * construction — so this one now reads the same file as the other, and keeps the old source as a
@@ -1032,6 +1093,7 @@ export class ServiceGenome102020 extends ServiceBase {
         super.connectedCallback();
         AuraInitState();
         subscribe('aura.edit.selection', this);
+        subscribe('aura.actualPage', this);
         await this._loadModuleNames(); // warm the guard used by the menu title — BEFORE the knob
         await this.setLastOpenedFileIfNeeded();
         await this._initLayoutKnob();
@@ -1045,6 +1107,7 @@ export class ServiceGenome102020 extends ServiceBase {
         super.disconnectedCallback();
         delete (window as unknown as Record<string, unknown>).auraGenomeDiagnose;
         unsubscribe('aura.edit.selection', this);
+        unsubscribe('aura.actualPage', this);
         // @ts-ignore
         mls.events.removeEventListener([this.level], ['FileAction'], this._onFileActionGenome);
     }

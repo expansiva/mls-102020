@@ -773,6 +773,11 @@ export class StudioEditor {
    *        element: a toast on the body reads as an app-wide notification and escapes the panel. It
    *        must NOT be the region host — nothing may sit between it and the page element.
    */
+  /** Whether the editor is bound to `host` (a nav3 tab change publishes another one). */
+  public isAttachedTo(host: HTMLElement): boolean {
+    return this.host === host;
+  }
+
   public attach(host: HTMLElement, chromeHost?: HTMLElement): void {
     if (this.host === host) return;
     this.detach();
@@ -2506,7 +2511,7 @@ export class StudioEditor {
    * exactly the source's children, so their order and count are the source's order and count.
    */
   /**
-   * TEMPORARY diagnosis for the "não consegui identificar" reports (2026-09-09).
+   * TEMPORARY diagnosis for the "não consegui identificar" reports.
    *
    * Opt-in with `window.auraAnchorTrace = true` in the console. It prints what the panel actually
    * decided with — the file it resolved, the path it built, and what each candidate answered — because

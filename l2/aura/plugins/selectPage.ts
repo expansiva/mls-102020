@@ -311,7 +311,7 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _editBusy: Record<string, 'plan' | 'apply'> = {};
     @state() private _editError: Record<string, string> = {};
     @state() private _editNotes: Record<string, IEditNotes> = {};
-    // The element selected in the Studio (TASK-102020-agent-edit-page-selection). `_selectionOff` = the person removed
+    // The element selected in the Studio. `_selectionOff` = the person removed
     // the chip; `_selectionUsed` = the selection an applied change consumed (the remount made it stale). A NEW
     // selection clears both.
     @state() private _selection: IAuraEditSelection | null = null;
@@ -625,8 +625,8 @@ export class PluginSelectPage extends StateLitElement {
         return nothing;
     }
 
-    // Re-fire the select event for the page already active in the state, so the
-    // preview repaints when this component (re)loads.
+    // Re-fire the select event for the page already active in the state, so the host knows which entry it is when
+    // this component (re)loads. Marked `auto`: the page is already on screen, so the host does not open it again.
     private _autoSelectActivePage(): void {
         const activePage = getAuraState().actualPage;
         if (!activePage) return;
@@ -635,7 +635,7 @@ export class PluginSelectPage extends StateLitElement {
             p.file.project === activePage.project
         );
         if (index < 0) return;
-        this._dispatchSelect(index + 1);
+        this._dispatchSelect(index + 1, true);
     }
 
     private _fileExists(project: number | null, level: number, folder: string, shortName: string): boolean {
@@ -853,7 +853,7 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
-    // ─── Change this page (agentEditPage, TASK-102020-agent-edit-page) ──
+    // ─── Change this page (agentEditPage) ──
 
     // `<module>/web/<device>/<genome>` of the page on screen; null when the folder is not a generated page folder.
     private _editTarget(page: IPageEntry): { device: string; genome: string } | null {
@@ -1210,10 +1210,10 @@ export class PluginSelectPage extends StateLitElement {
         await this._loadPageStatus();
     }
 
-    // Regenerate this single page (TASK-102020-genome-ux-3). UX N (2..9): agentGenomeUx writes page{N}1/<page>.defs.ts
+    // Regenerate this single page. UX N (2..9): agentGenomeUx writes page{N}1/<page>.defs.ts
     // on both devices and chains agentMaterializeL2 --genome page{N}1 itself (force: even when its receipt is fresh).
     // UX 1 (page11) is agentDefsL2's: only its .ts is regenerated (agentMaterializeL2 --genome page11 --force), unless
-    // the page has a UX 1 template choice that differs from page11 (TASK-102020-genome-ux-4): then agentGenomeUx base
+    // the page has a UX 1 template choice that differs from page11: then agentGenomeUx base
     // mode (layout 1) rewrites page11 with it and chains agentMaterializeL2 --genome page11.
     private async _onRegenerate(page: IPageEntry) {
         const module = this._moduleName ?? this._modulePath;
@@ -1484,10 +1484,10 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
-    private _dispatchSelect(value: number) {
+    private _dispatchSelect(value: number, auto = false) {
         const entry = value > 0 && value <= this._pages.length ? this._pages[value - 1] : null;
         this.dispatchEvent(new CustomEvent('select-page', {
-            detail: { value, file: entry?.file ?? null },
+            detail: { value, file: entry?.file ?? null, auto },
             bubbles: true,
             composed: true,
         }));

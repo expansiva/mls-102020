@@ -1,5 +1,5 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioEditTool.ts" enhancement="_blank" />
-// The editing tools, plugged into the running client app (TASK-102033-studio-to-102020).
+// The editing tools, plugged into the running client app.
 //
 // This is the half that used to live inside `serviceClientApp` (102033). The app service still owns
 // the DECISION — where the app is, whether studio mode is on, which level the user is at — and
@@ -805,16 +805,19 @@ async function syncEditor(state: IStudioEditHost): Promise<void> {
     return;
   }
 
-  if (armed || arming) return;
+  if (arming) return;
+  // Another nav3 tab on screen is another host: the editor moves to it (attach detaches from the old one first).
+  if (armed && editor && !editor.isAttachedTo(state.host)) armed = false;
+  if (armed) return;
   arming = true;
   try {
     if (!editor) {
       const { StudioEditor } = await import('/_102020_/l2/aura/studio/studioEditor.js');
       editor = new StudioEditor();
     }
-    // Re-read the slot: the level may have changed while the import was in flight.
+    // Re-read the slot: the level, or the tab on screen, may have changed while the import was in flight.
     const fresh = currentEditHost();
-    if (!fresh?.editLevel || fresh.host !== state.host) return;
+    if (!fresh?.editLevel) return;
 
     editor.attach(fresh.host, fresh.chromeHost);
     armed = true;

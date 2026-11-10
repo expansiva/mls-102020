@@ -349,3 +349,46 @@ test('no reselect key is written — the in-place editor restores its own select
   // reselects by position.
   assert.equal(changed.includes('pendingReselect'), false);
 });
+
+test('switching nav3 tabs moves the panel to the page on screen, without opening it again', () => {
+  // A tab switch re-seeds aura.actualPage and fires no FileAction: the subscription is the only signal.
+  assert.match(GENOME, /subscribe\('aura\.actualPage', this\)/u);
+  assert.match(GENOME, /unsubscribe\('aura\.actualPage', this\)/u);
+  const follow = GENOME.slice(GENOME.indexOf('private async _followPageOnScreen('));
+  const body = follow.slice(0, follow.indexOf('\n    }\n'));
+  assert.match(body, /this\._updateCurrentPage\(file\)/u);
+  assert.match(body, /this\._initLayoutKnob\(\)/u);
+  // The page is already on screen: no open, no repaint, no editor rebinding.
+  for (const gone of ['_openPage(', '_repaintCurrentPage(', '_syncWithProjectDs(', 'setFullName(', "mls.events.fire("]) {
+    assert.equal(body.includes(gone), false, `${gone} is not for a tab switch`);
+  }
+});
+
+test('the page knob follows the module of the tab on screen and never opens a page of the previous one', () => {
+  const follow = GENOME.slice(GENOME.indexOf('private async _followPageOnScreen('));
+  const body = follow.slice(0, follow.indexOf('\n    }\n'));
+  // Another module: the list is re-read, and the old entries are dropped until it arrives.
+  assert.match(body, /this\._pageEntries = \[\];/u);
+  assert.match(body, /this\._pageReloadToken \+= 1;/u);
+  // A new list puts the knob on the page on screen.
+  const config = GENOME.slice(GENOME.indexOf('private _onPageConfig('), GENOME.indexOf('private _onPageSelect('));
+  assert.match(config, /this\._syncPageValue\(\);/u);
+  // The automatic select of a (re)loaded list does not open the page again.
+  const select = GENOME.slice(GENOME.indexOf('private _onPageSelect('));
+  const selectBody = select.slice(0, select.indexOf('\n    }\n'));
+  const autoBranch = selectBody.slice(selectBody.indexOf('if (e.detail.auto)'), selectBody.indexOf('return;'));
+  assert.equal(autoBranch.includes('_openPage('), false);
+  // And it does not come back to the follow: reload -> automatic select -> follow -> reload froze the tab.
+  assert.equal(autoBranch.includes('_followPageOnScreen('), false);
+});
+
+test('following the page decides on markers written before any await', () => {
+  const follow = GENOME.slice(GENOME.indexOf('private async _followPageOnScreen('));
+  const body = follow.slice(0, follow.indexOf('\n    }\n'));
+  const firstAwait = body.indexOf('await ');
+  for (const marker of ['this._followedPage = pageId;', 'this._pageListKey = listKey;', 'this._pageReloadToken += 1;']) {
+    const at = body.indexOf(marker);
+    assert.ok(at > 0 && at < firstAwait, `${marker} before the first await`);
+  }
+  assert.equal(body.includes('this._currentPageFile'), false, 'the async-written page is not what decides');
+});
