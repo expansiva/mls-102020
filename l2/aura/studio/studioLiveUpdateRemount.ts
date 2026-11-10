@@ -196,8 +196,12 @@ function importedSpecifiers(source: string): string[] {
   return found;
 }
 
-function rewrittenDataUrl(source: string): string {
-  return `data:text/javascript,${encodeURIComponent(source).replaceAll('\'', '%27')}`;
+/** One number per `updateOpenPreviewTabs` call. The browser caches a `data:` module by URL, so the same source on a later pass would not run `define` again. */
+let previewPass = 0;
+
+function rewrittenDataUrl(source: string, pass: number): string {
+  const marked = `${source}\n//# st66-pass=${pass}\n`;
+  return `data:text/javascript,${encodeURIComponent(marked).replaceAll('\'', '%27')}`;
 }
 
 /** A bare package name (`lit`, `@scope/pkg`). A path or a URL is not one. */
@@ -238,6 +242,7 @@ async function loadRewritten(
   cache: Map<string, string>,
   stack: string[],
   origin: string | undefined,
+  pass: number,
 ): Promise<string> {
   const cached = cache.get(key);
   if (cached) return cached;
@@ -251,7 +256,7 @@ async function loadRewritten(
   stack.push(key);
   const deps = new Map<string, string>();
   for (const specifier of importedSpecifiers(record.source)) {
-    deps.set(specifier, await loadRewritten(specifier, owned, cache, stack, origin));
+    deps.set(specifier, await loadRewritten(specifier, owned, cache, stack, origin, pass));
   }
   stack.pop();
   let cursor = 0;
@@ -270,7 +275,7 @@ async function loadRewritten(
   }
   rewritten += record.source.slice(cursor);
   assertDeliverable(rewritten);
-  const url = rewrittenDataUrl(rewritten);
+  const url = rewrittenDataUrl(rewritten, pass);
   cache.set(record.url, url);
   cache.set(record.specifier, url);
   cache.set(key, url);
@@ -320,6 +325,7 @@ function reportPreviewUpdate(
  * A page import that registers no element is still a refusal.
  */
 export async function updateOpenPreviewTabs(input: PreviewTabUpdate): Promise<ILiveUpdateResult | null> {
+  const pass = ++previewPass;
   const known = new Set(input.modules.map((item) => item.specifier));
   const pages = consideredPages(input.tabs, input.mainPage);
   const tabs = input.tabs.filter((tab) => known.has(tab.page));
@@ -347,7 +353,7 @@ export async function updateOpenPreviewTabs(input: PreviewTabUpdate): Promise<IL
   if (main?.page) pageSpecifiers.push(main.page);
   for (const page of pageSpecifiers) {
     if (!selected.has(page) || pageUrls.has(page)) continue;
-    pageUrls.set(page, await loadRewritten(page, owned, cache, [], input.origin));
+    pageUrls.set(page, await loadRewritten(page, owned, cache, [], input.origin, pass));
   }
 
   const importModule = input.importModule ?? ((url: string) => import(url));

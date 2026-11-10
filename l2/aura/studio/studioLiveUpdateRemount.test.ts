@@ -1140,3 +1140,135 @@ test('st66 s7: no main page and no module tab is a visible error, and a page tha
     logs.restore();
   }
 });
+
+const S9A_PAGE = '/_102033_/l2/pageS9a.js';
+const S9A_LEFT = '/_102033_/l2/s9aLeft.js';
+const S9A_RIGHT = '/_102033_/l2/s9aRight.js';
+const S9A_SHARED = '/_102033_/l2/s9aShared.js';
+
+function passMarker(source: string): string {
+  const match = /\/\/# st66-pass=(\d+)/.exec(source);
+  if (!match) throw new Error('[remount.test] missing pass marker');
+  return match[1];
+}
+
+async function withPreviewDocument(run: () => Promise<void>): Promise<void> {
+  await armPageTag();
+  const previousElements = (globalThis as { customElements?: unknown }).customElements;
+  const previousDocument = globalThis.document;
+  (globalThis as { customElements?: unknown }).customElements = sharedRegistry;
+  globalThis.document = {
+    documentElement: previousDocument?.documentElement,
+    createElement(tag: string) {
+      return createPage(tag);
+    },
+  } as unknown as Document;
+  try {
+    await run();
+  } finally {
+    (globalThis as { customElements?: unknown }).customElements = previousElements;
+    globalThis.document = previousDocument;
+  }
+}
+
+test('st66 s9a: the same text captures define on two passes', async () => {
+  const { updateOpenPreviewTabs } = await load();
+  await withPreviewDocument(async () => {
+    await evalModule(pageSource('preview-page-s9a', 'BOOT'));
+    const tab = new FakeHTMLElement();
+    tab.child = createPage('preview-page-s9a');
+    const urls: string[] = [];
+    const ask = (label: string) => updateOpenPreviewTabs({
+      modules: [previewModule(S9A_PAGE, pageSource('preview-page-s9a', label), V1)],
+      changed: [S9A_PAGE],
+      tabs: [slot(tab, S9A_PAGE, 'preview-page-s9a')],
+      draftSlug: null,
+      origin: ORIGIN,
+      importModule: async (url) => {
+        urls.push(url);
+        await import(url);
+      },
+    });
+    const first = await ask('SAME');
+    assert.ok(first);
+    assert.equal(first.ok, true);
+    assert.equal(tab.child?.label, 'SAME');
+    const kept = tab.child;
+    const second = await ask('SAME');
+    assert.ok(second);
+    assert.equal(second.ok, true);
+    assert.notEqual(tab.child, kept);
+    assert.equal(tab.child?.label, 'SAME');
+    assert.equal(urls.length, 2);
+    assert.notEqual(urls[0], urls[1]);
+    assert.notEqual(passMarker(decodeDataUrl(urls[0])), passMarker(decodeDataUrl(urls[1])));
+  });
+});
+
+test('st66 s9a: B then A then B then A swaps on all four', async () => {
+  const { updateOpenPreviewTabs } = await load();
+  await withPreviewDocument(async () => {
+    await evalModule(pageSource('preview-page-s9a4', 'BOOT'));
+    const tab = new FakeHTMLElement();
+    tab.child = createPage('preview-page-s9a4');
+    let previous = tab.child;
+    for (const label of ['B', 'A', 'B', 'A']) {
+      const result = await updateOpenPreviewTabs({
+        modules: [previewModule(S9A_PAGE, pageSource('preview-page-s9a4', label), V1)],
+        changed: [S9A_PAGE],
+        tabs: [slot(tab, S9A_PAGE, 'preview-page-s9a4')],
+        draftSlug: null,
+        origin: ORIGIN,
+      });
+      assert.ok(result);
+      assert.equal(result.ok, true, label);
+      assert.notEqual(tab.child, previous);
+      assert.equal(tab.child?.label, label);
+      previous = tab.child;
+    }
+  });
+});
+
+test('st66 s9a: two importers of one module see one url in a pass', async () => {
+  const { updateOpenPreviewTabs } = await load();
+  await withPreviewDocument(async () => {
+    await evalModule(pageSource('preview-s9a-left', 'L0'));
+    await evalModule(pageSource('preview-s9a-right', 'R0'));
+    const left = new FakeHTMLElement();
+    const right = new FakeHTMLElement();
+    left.child = createPage('preview-s9a-left');
+    right.child = createPage('preview-s9a-right');
+    const urls: string[] = [];
+    const result = await updateOpenPreviewTabs({
+      modules: [
+        previewModule(S9A_LEFT, pageSource('preview-s9a-left', 'L:', S9A_SHARED), V1),
+        previewModule(S9A_RIGHT, pageSource('preview-s9a-right', 'R:', S9A_SHARED), V1),
+        previewModule(S9A_SHARED, baseSource('once'), V1),
+      ],
+      changed: [S9A_SHARED],
+      tabs: [
+        slot(left, S9A_LEFT, 'preview-s9a-left'),
+        slot(right, S9A_RIGHT, 'preview-s9a-right'),
+      ],
+      draftSlug: null,
+      origin: ORIGIN,
+      importModule: async (url) => {
+        urls.push(url);
+        const source = decodeDataUrl(url);
+        assertDeliveredSource(source, new Set());
+        await import(stubDataUrl(runnableSource(source)));
+      },
+    });
+    assert.ok(result);
+    assert.equal(result.ok, true);
+    assert.equal(urls.length, 2);
+    const shared = urls.map((url) => deliveredSpecifiers(decodeDataUrl(url)).filter((spec) => spec.startsWith('data:')));
+    assert.equal(shared[0].length, 1);
+    assert.equal(shared[0][0], shared[1][0]);
+    const marker = passMarker(decodeDataUrl(shared[0][0]));
+    assert.equal(passMarker(decodeDataUrl(urls[0])), marker);
+    assert.equal(passMarker(decodeDataUrl(urls[1])), marker);
+    assert.equal(left.child?.label, 'L:once');
+    assert.equal(right.child?.label, 'R:once');
+  });
+});
