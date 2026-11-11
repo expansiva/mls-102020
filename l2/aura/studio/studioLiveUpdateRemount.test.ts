@@ -1272,3 +1272,65 @@ test('st66 s9a: two importers of one module see one url in a pass', async () => 
     assert.equal(right.child?.label, 'R:once');
   });
 });
+
+function statusResponse(status: number): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    url: 'http://preview.test/module.js',
+    headers: { get: () => 'text/plain' },
+    text: async () => 'missing',
+  } as unknown as Response;
+}
+
+test('st69 s1c: a removed new file whose fetch is 404 leaves the changed list', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageSt69.js';
+  const logs = capturePreviewLogs();
+  try {
+    await withPreviewTab('preview-page-st69', 'OLD', async (tab, before) => {
+      const result = await updateOpenTabsForFiles(102033, ['l2/pageSt69.ts'], {
+        tabs: [slot(tab, page, 'preview-page-st69')],
+        mainPage: null,
+        draftSlug: null,
+        origin: 'http://preview.test',
+        fetchModule: async () => statusResponse(404),
+      });
+      assert.equal(result, null);
+      assert.equal(tab.child, before);
+      assert.equal(tab.child?.label, 'OLD');
+      assert.equal(
+        logs.infos.some((line) => line.includes('HTTP 404') && line.includes(page)),
+        true,
+        logs.infos.join('\n'),
+      );
+      assert.equal(logs.errors.some((line) => line.includes(page) || line.includes('not compiled')), false, logs.errors.join('\n'));
+    });
+  } finally {
+    logs.restore();
+  }
+});
+
+test('st69 s1c: a changed module that fetches 500 stays an error', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageSt69b.js';
+  const logs = capturePreviewLogs();
+  try {
+    await withPreviewTab('preview-page-st69b', 'OLD', async (tab, before) => {
+      const result = await updateOpenTabsForFiles(102033, ['l2/pageSt69b.ts'], {
+        tabs: [slot(tab, page, 'preview-page-st69b')],
+        mainPage: null,
+        draftSlug: null,
+        origin: 'http://preview.test',
+        fetchModule: async () => statusResponse(500),
+      });
+      assert.ok(result);
+      assert.equal(result.ok, false);
+      assert.equal(result.message, `${t('live.notCompiled')}: ${page}`);
+      assert.equal(tab.child, before);
+      assert.equal(logs.errors.some((line) => line.includes('HTTP 500') && line.includes(page)), true, logs.errors.join('\n'));
+    });
+  } finally {
+    logs.restore();
+  }
+});
