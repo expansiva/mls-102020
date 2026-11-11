@@ -94,7 +94,8 @@ function styledClasses(LESS: string): string[] {
 const CHANNEL_CALLS = [
   'utilityOptions(token, 2, this.dsRoles, (cssVar) => this.resolveVar(cssVar), side.channel)',
   'addableProperties(side.literal, { childCount: this.target?.childCount ?? 0, channel: side.channel })',
-  'pasteStyleInto(this.literal, clip.literal, this.channel).literal',
+  // Each paste option writes one SIDE (the main one, every slot of a name, the inside) — always with its channel.
+  'pasteStyleInto(side.literal, clip.literal, side.channel).literal',
   'pasteStyleInto(this.literal, clip.literal, this.channel);',
   "side.channel === 'data-class'",
   // A molecule: ONE part at a time, chosen in the part selector (TASK-102020-picker-inspector).
@@ -130,13 +131,13 @@ test('both chromes show undo/redo and put the other actions in the ⋯ menu', ()
     const own = code(`${panel}.ts`);
     assert.ok(own.includes('extends ClassPickerBase'), `${panel} inherits the content`);
     assert.ok(own.includes('${this.renderActions()}'), `${panel} draws the shared actions`);
-    for (const moved of ['moveButton(', 'duplicateButton(', 'removeElementButton(', 'renderCopyIcon(', 'renderPasteIcon(']) {
+    for (const moved of ['moveButton(', 'duplicateButton(', 'removeElementButton(', 'renderCopyIcon(', 'renderPasteItems(']) {
       assert.equal(own.includes(moved), false, `${panel}: ${moved} is in the menu, not in the chrome`);
     }
   }
   const actions = base.slice(base.indexOf('protected renderActions()'), base.indexOf('protected menuItem('));
   assert.ok(actions.includes("this.historyButton('undo')") && actions.includes("this.historyButton('redo')"), 'undo/redo stay in sight');
-  for (const item of ["this.moveButton('up')", "this.moveButton('down')", 'this.duplicateButton()', 'this.removeElementButton()', 'this.renderCopyIcon()', 'this.renderPasteIcon()']) {
+  for (const item of ["this.moveButton('up')", "this.moveButton('down')", 'this.duplicateButton()', 'this.removeElementButton()', 'this.renderCopyIcon()', 'this.renderPasteItems()']) {
     assert.ok(actions.includes(item), `${item} is a line of the menu`);
   }
   // Remove still asks twice: its first click keeps the menu open.

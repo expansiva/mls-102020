@@ -33,6 +33,7 @@ export type {
   IPickerLevel,
   IPickerPreview,
   IPickerPropEdit,
+  IPickerPaste,
   IPickerProps,
   IPickerSide,
   IPickerSlot,

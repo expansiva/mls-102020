@@ -222,3 +222,58 @@ test('readAttributes gives each attribute its span in the source', () => {
     'title="t"', 'required', '.v=${x}', 'k=v',
   ]);
 });
+
+// ─── copying properties along with the style ─────────────────────────────
+
+import { planPropTransfer, snapshotProps } from './studioMoleculeProps.js';
+
+const targetRow = (over: Partial<Parameters<typeof planPropTransfer>[1][number]> & { attribute: string }) => ({
+  type: 'enum' as const, values: ['filled', 'outlined'] as readonly string[], default: 'filled', min: undefined, max: undefined,
+  source: 'absent' as const, value: 'filled', ...over,
+});
+
+test('snapshotProps: what the page wrote, what it left at the default (null), never a binding', () => {
+  assert.deepEqual(snapshotProps([
+    { attribute: 'variant', label: 'Variant', source: 'literal', value: 'outlined' },
+    { attribute: 'size', label: 'Size', source: 'absent', value: 'md' },
+    { attribute: 'value', label: 'Value', source: 'expression', value: null },
+  ]), [
+    { attribute: 'variant', label: 'Variant', value: 'outlined' },
+    { attribute: 'size', label: 'Size', value: null },
+  ]);
+});
+
+test('planPropTransfer: writes what changes, keeps what is the same, says why the rest stays behind', () => {
+  const snapshot = [
+    { attribute: 'variant', label: 'Variant', value: 'outlined' },
+    { attribute: 'size', label: 'Size', value: null },
+    { attribute: 'icon-position', label: 'Icon position', value: 'end' },
+    { attribute: 'tone', label: 'Tone', value: 'neon' },
+    { attribute: 'bound', label: 'Bound', value: 'x' },
+    { attribute: 'dense', label: 'Dense', value: true },
+  ];
+  const target = [
+    targetRow({ attribute: 'variant' }),                                                     // absent → set outlined
+    targetRow({ attribute: 'size', values: ['sm', 'md'], default: 'md', source: 'literal', value: 'sm' }), // literal → back to default
+    targetRow({ attribute: 'tone', values: ['soft', 'strong'], default: 'soft' }),           // neon not valid here
+    targetRow({ attribute: 'bound', source: 'expression', value: null }),                    // a binding: untouched
+    targetRow({ attribute: 'dense', type: 'boolean' as any, values: undefined, default: false, source: 'literal', value: true }), // already on
+  ];
+  const plan = planPropTransfer(snapshot, target as any);
+  assert.deepEqual(plan.writes, [
+    { attribute: 'variant', label: 'Variant', value: 'outlined' },
+    { attribute: 'size', label: 'Size', value: null },
+  ]);
+  assert.deepEqual(plan.same, ['Dense']);
+  assert.deepEqual(plan.skipped, [
+    { label: 'Icon position', reason: 'missing' },
+    { label: 'Tone', reason: 'invalid' },
+    { label: 'Bound', reason: 'binding' },
+  ]);
+});
+
+test('planPropTransfer: the target already at the default stays untouched for a copied default', () => {
+  const plan = planPropTransfer([{ attribute: 'variant', label: 'Variant', value: null }], [targetRow({ attribute: 'variant' })] as any);
+  assert.deepEqual(plan.writes, []);
+  assert.deepEqual(plan.same, ['Variant']);
+});

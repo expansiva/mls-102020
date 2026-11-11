@@ -45,6 +45,7 @@ import {
   type IPickerApply,
   type IPickerPreview,
   type IPickerPropEdit,
+  type IPickerPaste,
   type IPickerProps,
   type IPickerTarget,
   type IPickerSlotMove,
@@ -488,6 +489,17 @@ type EditStep =
     /** Where the slice was before the move, and where it ended up. */
     from: number;
     to: { start: number; end: number };
+    what: string;
+    el: WeakRef<HTMLElement>;
+  }
+  | {
+    /**
+     * One gesture that wrote several times — a paste of classes AND properties, or a paste into every
+     * slot of a name. The children are the steps the writers recorded, in order; undo replays them
+     * backwards, redo forwards, and each one still revalidates on its own text.
+     */
+    kind: 'group';
+    steps: EditStep[];
     what: string;
     el: WeakRef<HTMLElement>;
   }
@@ -2038,6 +2050,7 @@ export class StudioEditor {
     method('picker-adopt', this.onPickerAdopt);
     method('picker-props-open', this.onPickerPropsOpen);
     method('picker-prop', this.onPickerProp as EventListener);
+    method('picker-paste', this.onPickerPaste as EventListener);
   }
 
   /**
@@ -2168,6 +2181,10 @@ export class StudioEditor {
 
   private onPickerProp = (e: CustomEvent<IPickerPropEdit>): void => {
     void this.applyProp(e.detail.attribute, e.detail.value);
+  };
+
+  private onPickerPaste = (e: CustomEvent<IPickerPaste>): void => {
+    void this.pasteComposite(e.detail);
   };
 
   private onPickerDuplicate = (): void => {
@@ -3088,6 +3105,38 @@ export class StudioEditor {
    * The attribute must be one the tab OFFERED: the panel is chrome, and a name it was never given is
    * an attribute nobody chose.
    */
+  /**
+   * A paste that writes more than once — classes and properties, or every slot of a name — through the
+   * SAME writers as a chip and a property field, recorded as ONE step: the writers push as usual into
+   * a capture, and what they pushed becomes a group (a single write stays a plain step).
+   */
+  private async pasteComposite(paste: IPickerPaste): Promise<void> {
+    const el = this.selectedEl;
+    if (!el?.isConnected || !this.classPanel || this.classPanel.el !== el) return;
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+    // The properties are written against the rows of THIS molecule; the panel only offers them once
+    // it has them, but a reload in between would leave nothing to write against.
+    if (paste.props.length && (!this.props || this.props.el !== el)) await this.loadProps();
+
+    this.history.beginCapture();
+    try {
+      for (const write of paste.literals) {
+        await this.applyLiteralChange(write.literal, paste.what, write.attribute, write.slot);
+      }
+      for (const prop of paste.props) await this.applyProp(prop.attribute, prop.value);
+    } finally {
+      const steps = this.history.endCapture();
+      if (steps.length === 1) this.history.push(steps[0]);
+      else if (steps.length > 1) this.history.push({ kind: 'group', steps, what: paste.what, el: new WeakRef(el) });
+    }
+    this.setStatus(paste.what);
+    // The undo label of the panel names the step that just landed.
+    if (this.selectedEl === el && el.isConnected) await this.showClassPanel(el);
+  }
+
   private async applyProp(attribute: string, value: IPickerPropEdit['value']): Promise<void> {
     const props = this.props;
     const state = this.classPanel;
@@ -4610,6 +4659,20 @@ export class StudioEditor {
   private async applyStep(step: EditStep, direction: 'undo' | 'redo'): Promise<boolean> {
     const undoing = direction === 'undo';
     const what = t(undoing ? 'status.undone' : 'status.redone', { what: step.what });
+
+    if (step.kind === 'group') {
+      // Backwards to undo, forwards to redo; the defs history of each child goes with it, as travel()
+      // does for a single step. A child that no longer matches stops here (the branch is dropped).
+      for (const child of undoing ? [...step.steps].reverse() : step.steps) {
+        if (!(await this.applyStep(child, direction))) return false;
+        if ('defs' in child && child.defs) {
+          if (undoing) await undoEditInDefs(child.defs);
+          else await redoEditInDefs(child.defs);
+        }
+      }
+      this.setStatus(what);
+      return true;
+    }
 
     if (step.kind === 'class') {
       const from = undoing ? step.after : step.before;

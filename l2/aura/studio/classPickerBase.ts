@@ -87,7 +87,7 @@ import {
   type IUtilityToken,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { isCoreElementTag } from '/_102020_/l2/aura/studio/studioAdoptEdit.js';
-import type { IMoleculePropRow, PropValue } from '/_102020_/l2/aura/studio/studioMoleculeProps.js';
+import { planPropTransfer, snapshotProps, type IMoleculePropRow, type IPropSnapshot, type PropValue } from '/_102020_/l2/aura/studio/studioMoleculeProps.js';
 import { t, tr, type IMessageRef } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 /**
@@ -454,6 +454,32 @@ export interface IStyleClipboard {
   literal: string;
   /** Tag it came from, for the label. A name only — the element itself may be long gone. */
   tag: string;
+  /** Which part the classes were read from: a plain element, a molecule's tag or inside, or one of its slots. */
+  part: 'element' | 'tag' | 'inner' | 'slot';
+  /** The slot's NAME when it came from one — what a paste looks for in the next molecule. */
+  slot?: string;
+  /** A molecule's properties, as copied (see snapshotProps); absent for a slot or a plain element. */
+  props?: IPropSnapshot[];
+  /** Copied before the properties were read: asked for, and filled in when they arrive. */
+  propsPending?: boolean;
+}
+
+/** A paste that writes more than once: several class attributes (every slot of a name) and/or properties. */
+export interface IPickerPaste {
+  literals: { literal: string; attribute: ClassChannel; slot?: number }[];
+  props: IPickerPropEdit[];
+  /** Already-translated description for the status line and the undo label. */
+  what: string;
+}
+
+/** One way to paste, as the ⋯ menu offers it. */
+interface IPasteOption {
+  label: string;
+  title: string;
+  detail?: unknown;
+  literals: IPickerPaste['literals'];
+  props: IPickerPropEdit[];
+  what: string;
 }
 
 /**
@@ -628,11 +654,38 @@ export abstract class ClassPickerBase extends StateLitElement {
    */
   updated(changed: Map<string, unknown>): void {
     super.updated(changed);
+    this.syncClipboardProps(changed);
     if (!changed.has('target')) return;
     const row = this.renderRoot.querySelector('.acp-chain');
     if (row) row.scrollLeft = row.scrollWidth;
   }
 
+
+  /**
+   * The copied style and the properties, which are read on demand (the Properties tab is paid when
+   * asked for): a copy made before they were read gets them when they arrive — unless the selection
+   * moved to another tag meanwhile, and then the copy keeps the classes only. A molecule about to be
+   * pasted into needs ITS rows to decide what fits, so they are asked for too.
+   */
+  protected syncClipboardProps(changed: Map<string, unknown>): void {
+    const clip = this.clipboard;
+    if (!clip) return;
+    const previous = changed.get('target') as IPickerTarget | undefined;
+    if (clip.propsPending) {
+      if (changed.has('target') && previous && previous.tag !== this.target?.tag) {
+        this.clipboard = { ...clip, propsPending: false };
+      } else if (this.props && !this.props.loading) {
+        this.clipboard = { ...clip, props: snapshotProps(this.props.rows), propsPending: false };
+      }
+      return;
+    }
+    if (clip.props?.length && this.isMolecule && !this.props) this.requestProps();
+  }
+
+  /** Ask the editor for the molecule's properties without opening the tab. */
+  protected requestProps(): void {
+    this.dispatchEvent(new CustomEvent('picker-props-open', { bubbles: true, composed: true }));
+  }
 
   /**
    * The panel's own chrome — the tag, the actions, the way to the other picker and the close.
@@ -655,6 +708,7 @@ export abstract class ClassPickerBase extends StateLitElement {
       ${this.renderChrome(target)}
       ${this.renderChain(target)}
       ${this.renderTexts(target)}
+      ${this.renderClipboardBar()}
       <div class="acp-tabs">
         ${this.tabButton('classes', 'panel.tabStyle')}
         ${this.tabButton('animations', 'panel.tabAnimations', animationTokens(this.mainSide.literal).owned.length)}
@@ -1487,39 +1541,140 @@ export abstract class ClassPickerBase extends StateLitElement {
    * console while this is being tried out (see logPaste).
    */
   protected renderCopyIcon() {
-    const has = Boolean(this.literal.trim());
+    const part = this.mainPart;
+    const has = Boolean(this.literal.trim()) || part === 'inner' || part === 'tag';
     return this.menuItem({
       icon: '\u29C9',
-      label: t('panel.menuCopy'),
+      label: part === 'slot' ? t('panel.menuCopySlot', { slot: this.slotLabel(this.target!.slots[this.editPart as number]) }) : t('panel.menuCopy'),
       title: has ? t('panel.copyStyleTitle') : t('status.nothingToCopy'),
       disabled: !has,
       onClick: this.onCopy,
     });
   }
 
-  /**
-   * Paste: the whole style, so the target ends up identical to the source.
-   *
-   * That is the decision this feature was built on (2026-09-01) and it is why one icon is enough. The
-   * two narrower variants — only the looks, and keeping this element's place — have no button any
-   * more; what they WOULD produce is printed next to the summary, so they stay visible while we
-   * decide whether they deserve to come back.
-   */
-  protected renderPasteIcon() {
-    const clip = this.clipboard;
-    const editable = this.mainSide.editable;
-    const result = clip ? pasteStyleInto(this.literal, clip.literal, this.channel).literal : '';
-    const nothingToDo = !clip || !editable || result === this.literal;
+  /** Which part the main side is — what a copy records as its origin. */
+  protected get mainPart(): IStyleClipboard['part'] {
+    if (!this.innerSide) return 'element';
+    const part = this.editPart;
+    if (typeof part === 'number' && this.target?.slots[part]) return 'slot';
+    return part === 'tag' ? 'tag' : 'inner';
+  }
 
-    return this.menuItem({
-      icon: '\u{1F4CB}',
+  /** The class write a paste makes into one side (none when it would change nothing or cannot write). */
+  protected pasteWrite(side: IPickerSide, clip: IStyleClipboard): IPickerPaste['literals'] {
+    if (!side.editable) return [];
+    const literal = pasteStyleInto(side.literal, clip.literal, side.channel).literal;
+    return literal === side.literal ? [] : [{ literal, attribute: side.channel, slot: side.slot }];
+  }
+
+  /**
+   * The ways to paste the copied style here — each one REPLACES (the 2026-09-01 decision), so the
+   * target ends up like the source.
+   *
+   * From a slot: into the selected slot, into every slot of the same name (no need to reopen the tree),
+   * or into the molecule's inside. Otherwise: the style — the classes of the main side plus, on a
+   * molecule, the copied properties that fit (planPropTransfer) — and the classes alone.
+   */
+  protected pasteOptions(): IPasteOption[] {
+    const clip = this.clipboard;
+    const target = this.target;
+    if (!clip || !target) return [];
+    const fromSlot = clip.part === 'slot' && clip.slot;
+    const what = fromSlot ? t('status.pastedSlot', { slot: clip.slot! }) : t('status.pasted', { tag: clip.tag });
+    const options: IPasteOption[] = [];
+
+    if (fromSlot && this.isMolecule) {
+      if (typeof this.editPart === 'number' && target.slots[this.editPart]) {
+        options.push({
+          label: t('panel.menuPasteSlot', { slot: this.slotLabel(target.slots[this.editPart]) }),
+          title: t('panel.pasteFromSlotTitle', { slot: clip.slot! }),
+          literals: this.pasteWrite(this.mainSide, clip), props: [], what,
+        });
+      }
+      const same = target.slots.map((slot, at) => ({ slot, at })).filter(({ slot }) => slot.name === clip.slot);
+      if (same.length) {
+        options.push({
+          label: t('panel.menuPasteAllSlots', { slot: clip.slot!, count: same.length }),
+          title: t('panel.pasteFromSlotTitle', { slot: clip.slot! }),
+          detail: t('panel.pasteAllSlotsDetail'),
+          literals: same.flatMap(({ at }) => this.pasteWrite(this.slotSide(at), clip)),
+          props: [],
+          what: t('status.pastedSlots', { slot: clip.slot!, count: same.length }),
+        });
+      }
+      const inner = this.innerSide;
+      if (inner) {
+        options.push({
+          label: t('panel.menuPasteInner'), title: t('panel.pasteFromSlotTitle', { slot: clip.slot! }),
+          literals: this.pasteWrite(inner, clip), props: [], what,
+        });
+      }
+      return options;
+    }
+
+    const literals = this.pasteWrite(this.mainSide, clip);
+    const part = this.mainPart;
+    const takesProps = Boolean(clip.props?.length) && (part === 'inner' || part === 'tag');
+    const rows = this.props && !this.props.loading ? this.props.rows : null;
+    const transfer = takesProps && rows ? planPropTransfer(clip.props!, rows) : null;
+    const props: IPickerPropEdit[] = transfer ? transfer.writes.map((w) => ({ attribute: w.attribute, value: w.value })) : [];
+    let detail: unknown = undefined;
+    if (takesProps && !rows) detail = t('panel.clipPropsPending');
+    else if (transfer) {
+      const fit = transfer.writes.length + transfer.same.length;
+      detail = html`${t('panel.pasteSummaryProps', { fit, total: clip.props!.length })}
+        ${transfer.writes.map((w) => html`<span class="acp-menu-ok">✓ ${w.label}: ${w.value === null ? t('panel.pasteDefault') : String(w.value)}</span>`)}
+        ${transfer.skipped.map((s) => html`<span class="acp-menu-skip">— ${t(`panel.propSkip.${s.reason}`, { label: s.label })}</span>`)}`;
+    }
+    options.push({
       label: t('panel.menuPaste'),
-      title: clip ? t('panel.pasteFromTitle', { tag: clip.tag }) : t('panel.pasteEmpty'),
-      disabled: nothingToDo,
-      onEnter: () => { if (!nothingToDo) this.previewLiteral(result); },
-      onLeave: () => this.previewLiteral(null),
-      onClick: () => this.onPaste(),
+      title: t('panel.pasteFromTitle', { tag: clip.tag }),
+      detail, literals, props, what,
     });
+    if (props.length) {
+      options.push({ label: t('panel.menuPasteClassesOnly'), title: t('panel.pasteFromTitle', { tag: clip.tag }), literals, props: [], what });
+    }
+    return options;
+  }
+
+  /** The paste lines of the ⋯ menu; with nothing copied, one disabled line that says so. */
+  protected renderPasteItems() {
+    const options = this.pasteOptions();
+    if (!options.length) {
+      return this.menuItem({ icon: '\u{1F4CB}', label: t('panel.menuPaste'), title: t('panel.pasteEmpty'), disabled: true, onClick: () => undefined });
+    }
+    return options.map((option) => {
+      const nothingToDo = !option.literals.length && !option.props.length;
+      // The preview shows the first class write (the main side, or the first slot of the name).
+      const first = option.literals[0];
+      return this.menuItem({
+        icon: '\u{1F4CB}',
+        label: option.label,
+        title: option.title,
+        detail: option.detail,
+        disabled: nothingToDo,
+        onEnter: () => { if (first) this.emitPreview({ literal: first.literal, attribute: first.attribute, slot: first.slot }); },
+        onLeave: () => this.emitPreview(null),
+        onClick: () => this.onPaste(option),
+      });
+    });
+  }
+
+  /** The copied style, while there is one: where it came from, what it carries, and a way to forget it. */
+  protected renderClipboardBar() {
+    const clip = this.clipboard;
+    if (!clip) return nothing;
+    const classes = clip.literal.trim() ? clip.literal.trim().split(/\s+/).length : 0;
+    const parts = [
+      clip.part === 'slot' && clip.slot ? t('panel.clipFromSlot', { slot: clip.slot }) : t('panel.clipFrom', { tag: clip.tag }),
+      t('panel.clipClasses', { count: classes }),
+      clip.propsPending ? t('panel.clipPropsPending') : clip.props?.length ? t('panel.clipProps', { count: clip.props.length }) : '',
+    ].filter(Boolean);
+    return html`<div class="acp-clip" title=${clip.literal}>
+      <span class="acp-clip-text">\u{1F4CB} ${parts.join(' · ')}</span>
+      <button type="button" class="acp-icon" title=${t('panel.clipForget')} aria-label=${t('panel.clipForget')}
+        @click=${() => { this.clipboard = null; }}>\u2715</button>
+    </div>`;
   }
 
   /**
@@ -1546,7 +1701,7 @@ export abstract class ClassPickerBase extends StateLitElement {
           ${this.removeElementButton()}
           <div class="acp-menu-sep"></div>
           ${this.renderCopyIcon()}
-          ${this.renderPasteIcon()}
+          ${this.renderPasteItems()}
         </div>` : nothing}
       </span>`;
   }
@@ -1561,6 +1716,8 @@ export abstract class ClassPickerBase extends StateLitElement {
     danger?: boolean;
     /** Arming a two-click action: the menu stays open for the second click. */
     keepOpen?: boolean;
+    /** A second line under the name: what the action will do (what a paste carries). */
+    detail?: unknown;
     onClick: () => void;
     onEnter?: () => void;
     onLeave?: () => void;
@@ -1570,17 +1727,33 @@ export abstract class ClassPickerBase extends StateLitElement {
       ?disabled=${item.disabled ?? false} title=${item.title}
       @mouseenter=${() => item.onEnter?.()} @mouseleave=${() => item.onLeave?.()}
       @click=${() => { if (!item.keepOpen) this.menuOpen = false; item.onClick(); }}
-      ><span class="acp-menu-icon">${item.icon}</span>${item.label}</button>`;
+      ><span class="acp-menu-icon">${item.icon}</span><span class="acp-menu-text">${item.label}${item.detail ? html`<span class="acp-menu-detail">${item.detail}</span>` : nothing}</span></button>`;
   }
 
-  protected onPaste(): void {
+  /**
+   * One class write and no properties goes out as `picker-apply`, like a chip; anything more (classes
+   * and properties, every slot of a name) as `picker-paste`, which the editor records as ONE step.
+   */
+  protected onPaste(option?: IPasteOption): void {
     const clip = this.clipboard;
     if (!clip) return;
-    // Into a molecule only the channel's vocabulary travels; what stayed behind goes to the console.
-    const { literal: result, dropped } = pasteStyleInto(this.literal, clip.literal, this.channel);
-    if (result === this.literal) return;
-    this.logPaste(clip, result, dropped);
-    this.applyLiteral(result, t('status.pasted', { tag: clip.tag }));
+    const chosen = option ?? this.pasteOptions()[0];
+    if (!chosen || (!chosen.literals.length && !chosen.props.length)) return;
+    const single = chosen.literals.length === 1 && !chosen.props.length ? chosen.literals[0] : null;
+    if (single && single.attribute === this.channel && single.slot === this.mainSide.slot) {
+      // Into a molecule only the channel's vocabulary travels; what stayed behind goes to the console.
+      const { literal: result, dropped } = pasteStyleInto(this.literal, clip.literal, this.channel);
+      if (result === this.literal) return;
+      this.logPaste(clip, result, dropped);
+      this.applyLiteral(result, t('status.pasted', { tag: clip.tag }));
+      return;
+    }
+    this.preview(null);
+    this.dispatchEvent(new CustomEvent<IPickerPaste>('picker-paste', {
+      detail: { literals: chosen.literals, props: chosen.props, what: chosen.what },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   /**
@@ -1619,12 +1792,24 @@ export abstract class ClassPickerBase extends StateLitElement {
   protected onCopy = (): void => {
     const literal = this.literal;
     const tag = this.target?.tag ?? '';
-    if (!literal.trim()) {
+    const part = this.mainPart;
+    const molecule = part === 'inner' || part === 'tag';
+    if (!literal.trim() && !molecule) {
       this.status(t('status.nothingToCopy'));
       return;
     }
-    this.clipboard = { literal, tag };
-    this.status(t('status.copied', { tag }));
+    const clip: IStyleClipboard = { literal, tag, part };
+    if (part === 'slot') clip.slot = this.target?.slots[this.editPart as number]?.name;
+    if (molecule) {
+      // The properties go along; read now when the tab has them, else asked for and filled in later.
+      if (this.props && !this.props.loading) clip.props = snapshotProps(this.props.rows);
+      else {
+        clip.propsPending = true;
+        this.requestProps();
+      }
+    }
+    this.clipboard = clip;
+    this.status(part === 'slot' && clip.slot ? t('status.copiedSlot', { slot: clip.slot }) : t('status.copied', { tag }));
   };
 
   /**

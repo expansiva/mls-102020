@@ -307,3 +307,60 @@ export function writeOfCurrent(found: IOpenTagAttribute | null): PropWrite | nul
   if (found.value.kind === 'literal') return { kind: 'set', text: found.value.value };
   return null;
 }
+
+// ─── Copying a molecule's properties along with its style ─────────────────
+
+/** One property as copied: `null` = the molecule used its default (the target goes back to its own). */
+export interface IPropSnapshot {
+  attribute: string;
+  label: string;
+  value: PropValue | null;
+}
+
+/**
+ * What "copy style" takes from a molecule's properties: what the page wrote, and what it left at the
+ * default — so the target ends up the same, not just the same where the source was explicit. A binding
+ * (`expression`) is an expression of the page, never a value to carry.
+ */
+export function snapshotProps(rows: readonly Pick<IMoleculePropRow, 'attribute' | 'label' | 'source' | 'value'>[]): IPropSnapshot[] {
+  return rows
+    .filter((row) => row.source !== 'expression')
+    .map((row) => ({ attribute: row.attribute, label: row.label, value: row.source === 'literal' ? row.value : null }));
+}
+
+export type PropSkipReason = 'missing' | 'binding' | 'invalid';
+
+/** What pasting a snapshot into a molecule does, attribute by attribute. */
+export interface IPropTransfer {
+  /** The writes to emit — only the ones that change something. */
+  writes: { attribute: string; label: string; value: PropValue | null }[];
+  /** Fits, and the target already says the same: nothing to write. */
+  same: string[];
+  /** Does not travel, and why: the target has no such property, it is a binding there, or the value is not valid there. */
+  skipped: { label: string; reason: PropSkipReason }[];
+}
+
+/**
+ * Which copied properties go into a molecule. The same tag means the same configuration, so all of
+ * them fit; another molecule takes only the attributes it also has, with a value valid for it (the same
+ * check as typing it in the tab, `planPropWrite`). A property bound to data in the target is not touched.
+ */
+export function planPropTransfer(
+  snapshot: readonly IPropSnapshot[],
+  targetRows: readonly Pick<IMoleculePropRow, 'attribute' | 'type' | 'values' | 'default' | 'min' | 'max' | 'source' | 'value'>[],
+): IPropTransfer {
+  const out: IPropTransfer = { writes: [], same: [], skipped: [] };
+  for (const copied of snapshot) {
+    const row = targetRows.find((entry) => entry.attribute === copied.attribute);
+    if (!row) { out.skipped.push({ label: copied.label, reason: 'missing' }); continue; }
+    if (row.source === 'expression') { out.skipped.push({ label: copied.label, reason: 'binding' }); continue; }
+    const plan = planPropWrite(row, copied.value);
+    if (!plan.ok) { out.skipped.push({ label: copied.label, reason: 'invalid' }); continue; }
+    const unchanged = (plan.write.kind === 'remove' && row.source === 'absent')
+      || (row.source === 'literal' && plan.write.kind === 'bare' && row.value === true)
+      || (row.source === 'literal' && plan.write.kind === 'set' && String(row.value) === plan.write.text);
+    if (unchanged) out.same.push(copied.label);
+    else out.writes.push({ attribute: copied.attribute, label: copied.label, value: copied.value });
+  }
+  return out;
+}

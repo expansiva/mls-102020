@@ -107,3 +107,16 @@ test('clear empties both sides', () => {
   history.clear();
   assert.deepEqual(history.depth, { undo: 0, redo: 0 });
 });
+
+test('a capture collects the steps of one gesture without touching the stacks', () => {
+  const history = new EditHistory<{ name: string }>();
+  history.push(step('before'));
+  history.beginCapture();
+  history.push(step('class'));
+  history.push(step('prop'));
+  assert.deepEqual(history.peekUndo(), step('before'), 'nothing landed while capturing');
+  assert.deepEqual(history.endCapture(), [step('class'), step('prop')]);
+  history.push(step('group'));
+  assert.deepEqual(history.peekUndo(), step('group'));
+  assert.deepEqual(history.endCapture(), [], 'a second end is empty and harmless');
+});

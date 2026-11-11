@@ -31,7 +31,26 @@ export class EditHistory<TStep> {
   private readonly undoStack: TStep[] = [];
   private readonly redoStack: TStep[] = [];
 
+  /** While set, pushes are collected here instead of landing on the stacks (see beginCapture). */
+  private capture: TStep[] | null = null;
+
   constructor(private readonly limit: number = HISTORY_LIMIT) {}
+
+  /**
+   * Start collecting the steps of a gesture that writes several times (a paste of classes and
+   * properties, a paste into every slot of a name): the writers push as usual, and `endCapture` hands
+   * them back so the caller records them as ONE step. Nothing reaches the stacks in between.
+   */
+  beginCapture(): void {
+    this.capture = [];
+  }
+
+  /** The steps pushed since `beginCapture`, in order; collecting stops. */
+  endCapture(): TStep[] {
+    const steps = this.capture ?? [];
+    this.capture = null;
+    return steps;
+  }
 
   /**
    * Records an edit that just landed.
@@ -40,6 +59,10 @@ export class EditHistory<TStep> {
    * file, and offering to "redo" it would write over the change the user just made.
    */
   push(step: TStep): void {
+    if (this.capture) {
+      this.capture.push(step);
+      return;
+    }
     this.undoStack.push(step);
     if (this.undoStack.length > this.limit) this.undoStack.shift();
     this.redoStack.length = 0;

@@ -138,6 +138,12 @@ aura--studio--page-class-picker-102020 {
   .acp-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 10px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; color: var(--pcp-text); }
   .acp-menu-item:hover:not([disabled]) { background: var(--pcp-accent-faint); }
   .acp-menu-item[disabled] { opacity: 0.4; cursor: default; }
+  .acp-menu-text { display: flex; flex-direction: column; min-width: 0; }
+  .acp-menu-detail { display: flex; flex-direction: column; font-size: 10.5px; line-height: 1.35; color: var(--pcp-muted, #64748b); white-space: normal; }
+  .acp-menu-ok { color: var(--pcp-ok-text, #15803d); }
+  .acp-menu-skip { color: var(--pcp-muted, #64748b); }
+  .acp-clip { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 11px; background: var(--pcp-accent-faint); color: var(--pcp-text); }
+  .acp-clip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .acp-menu-item.acp-noted { color: var(--pcp-warn-text); }
   .acp-menu-item.acp-danger { color: var(--pcp-err-text); background: var(--pcp-err-bg); }
   .acp-menu-icon { width: 16px; text-align: center; color: var(--pcp-muted); }
