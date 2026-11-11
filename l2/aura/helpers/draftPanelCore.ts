@@ -10,7 +10,7 @@
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
 
 import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
-import { draftContentCrc, rememberDraftPaths, rememberSentCrc, requestDraftRecount, sentCrcOf, undoDraftPaths, withDraftUndoBrowserOnly, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { deletedDraftFile, draftContentCrc, forgetDraftPaths, rememberDraftPaths, rememberSentCrc, requestDraftRecount, savedOriginToDrop, sentCrcOf, undoDraftPaths, withDraftUndoBrowserOnly, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import { modelTextDiffers, openModelText } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
@@ -42,6 +42,12 @@ export interface IPanelStorFile {
   extension?: string;
   /** Present on a real stor file. The save reads it when no capture was held. */
   getContent?(): Promise<string | Blob | null>;
+  /** Present on a real stor file. A `new` rename keeps the previous name here. */
+  getValueInfo?(): Promise<{
+    originalFolder?: string;
+    originalProject?: number;
+    originalShortName?: string;
+  } | null | undefined>;
 }
 
 /** One file sitting in the browser, not yet saved to the draft. */
@@ -1452,6 +1458,36 @@ const blockedReasons = new WeakMap<IPanelStorFile, IDraftBlockReason>();
  * driver already wrote the other files: the named files go back to the browser, and `clearLocal`
  * runs for the rest.
  */
+async function originDeletesForSave<T extends IPanelStorFile>(
+  clean: readonly T[],
+): Promise<{ stubs: T[]; byFile: Map<T, string> }> {
+  const stubs: T[] = [];
+  const byFile = new Map<T, string>();
+  const sending = new Set(clean.map((file) => shortPathOf(file)));
+  const dropped = new Set<string>();
+  for (const file of clean) {
+    const origin = await savedOriginToDrop(file);
+    if (!origin || sending.has(origin) || dropped.has(origin)) continue;
+    const stub = deletedDraftFile(file.project, origin);
+    if (!stub) continue;
+    stubs.push(stub as T);
+    byFile.set(file, origin);
+    dropped.add(origin);
+  }
+  return { stubs, byFile };
+}
+
+function forgetSavedOrigins<T extends IPanelStorFile>(files: readonly T[], byFile: Map<T, string>): void {
+  if (files.length === 0) return;
+  const origins: string[] = [];
+  for (const file of files) {
+    const origin = byFile.get(file);
+    if (origin) origins.push(origin);
+  }
+  if (origins.length === 0) return;
+  forgetDraftPaths(files[0].project, origins);
+}
+
 export async function saveToDraft<T extends IPanelStorFile>(
   files: readonly T[],
   comment: string,
@@ -1466,6 +1502,7 @@ export async function saveToDraft<T extends IPanelStorFile>(
     else clean.push(file);
   }
   if (clean.length === 0) return { blocked };
+  const originDeletes = await originDeletesForSave(clean);
   const flags = clean.map((file) => file.inLocalStorage);
   const restoreFlags = (which: readonly T[] = clean): void => {
     for (const file of which) {
@@ -1475,9 +1512,10 @@ export async function saveToDraft<T extends IPanelStorFile>(
     }
   };
   for (const file of clean) file.inLocalStorage = false;
+  const payload = originDeletes.stubs.length > 0 ? [...clean, ...originDeletes.stubs] : clean;
   let results: readonly ISetContentsResult[];
   try {
-    results = await setContents(clean, comment);
+    results = await setContents(payload, comment);
   } catch (err) {
     const failure = parseSetContentsFailure(err);
     if (!failure) {
@@ -1516,6 +1554,7 @@ export async function saveToDraft<T extends IPanelStorFile>(
       if (!matched.has(item.path)) console.error(`[draftPanel] refused file was not in this save: ${item.path}`);
     }
     for (const file of saved) await clearLocal(file);
+    forgetSavedOrigins(saved, originDeletes.byFile);
     const firstSaved = saved[0];
     if (firstSaved) dispatchDraftSaved(firstSaved.project, saved.map((file) => shortPathOf(file)));
     return { blocked };
@@ -1525,6 +1564,7 @@ export async function saveToDraft<T extends IPanelStorFile>(
     return fail('setContents refused the draft save');
   }
   for (const file of clean) await clearLocal(file);
+  forgetSavedOrigins(clean, originDeletes.byFile);
   const first = clean[0];
   if (first) dispatchDraftSaved(first.project, clean.map((file) => shortPathOf(file)));
   return { blocked };
