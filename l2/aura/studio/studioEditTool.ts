@@ -13,7 +13,6 @@
 
 import {
   registerStudioEditTool,
-  registerVisibleScreenSwap,
   currentEditHost,
   type IStudioEditHost,
 } from '/_102033_/l2/cbe/studioEditSlot.js';
@@ -889,16 +888,6 @@ async function apply(state: IStudioEditHost | null): Promise<void> {
 
 registerStudioEditTool((state) => {
   void apply(state);
-});
-
-// The Studio entry still asks for a live swap of screens the draft changed. The preview now waits
-// for Save, so the request is acknowledged and not applied.
-registerVisibleScreenSwap(async (ref) => {
-  console.info('[studio] preview live swap is off until Save', {
-    project: ref.project,
-    folder: ref.folder,
-    shortName: ref.shortName,
-  });
 });
 
 armPreviewTabUpdates();
