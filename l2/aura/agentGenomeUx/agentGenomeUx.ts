@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/agentGenomeUx/agentGenomeUx.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Genome UX variant agent (TASK-102020-genome-ux-3, part A). Replaces agentImplementGenome for the new defs format:
+// Genome UX variant agent. For the page11 defs format:
 // for UX N of a module it writes web/<device>/page{N}1/<page>.defs.ts on both devices, in the page11 grammar, with
 // the UX template and the molecules chosen again for it (agentDefsL2's group → decision funnel, with the template
 // rules as constraints). Contract and receipt: README.md in this folder.

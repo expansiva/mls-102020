@@ -32,7 +32,7 @@ import '/_102020_/l2/aura/plugins/navHeader.js';
 // DESIGN SYSTEM = the entries of `_<project>_/l2/designSystem.ts` — the SINGLE home of
 // identity + styling tokens. This plugin edits those entries DIRECTLY (token names are
 // free-form; a `_dark-<token>` key is the dark value of `<token>`; `fonts` declares font
-// loading). l5/project.json only keeps the per-DS GENERATION config (skill/rules/…),
+// loading). l5/project.json only keeps a per-DS bucket (generation config, if any),
 // correlated by `dsIndex`. The DS knob mirrors the layout knob: 0 = All, dsIndex… = edit,
 // last slot = Add.
 
@@ -511,12 +511,10 @@ const messages: Record<string, MessageType> = {
 
 // ─── Types ────────────────────────────────────────────────────────────
 
-interface IDsEntry { key: number; dsIndex: string; name: string; description: string; skill: string; theme: IDesignSystemTokens; }
+interface IDsEntry { key: number; dsIndex: string; name: string; description: string; theme: IDesignSystemTokens; }
 interface IColorRow { name: string; light: string; dark: string; }   // dark '' = no dark value
 interface IValueRow { name: string; value: string; }
 
-// Per-DS skill slot (generation config, kept in project.json — correlated by dsIndex).
-const DS_SKILL_DEFAULT = '_102020_/l2/aura/agentImplementGenome/skills/genCfePageDesignSystem.ts';
 
 const FONT_SOURCES = ['system', 'google', 'custom'];
 const GOOGLE_FONTS = [
@@ -581,7 +579,6 @@ export class PluginSelectDesignSystem extends StateLitElement {
     // ── working model (edit + add share it) — mirrors ONE theme entry ──
     @state() private _name = '';
     @state() private _desc = '';
-    @state() private _skill = DS_SKILL_DEFAULT;
     @state() private _colors: IColorRow[] = [];
     @state() private _typo: IValueRow[] = [];
     @state() private _global: IValueRow[] = [];
@@ -1349,15 +1346,12 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private get msg(): MessageType { return messages[this.getMessageKey(messages)]; }
 
-    // ── loading (designSystem.ts = identity + tokens; project.json = skill) ──
+    // ── loading (designSystem.ts = identity + tokens) ──
     private async _load(projectId: number): Promise<void> {
         this._loading = true;
         this.requestUpdate();
         try {
             const themes = await readThemes(projectId);
-            const config: any = await getConfigProject(projectId).catch(() => null);
-            const dsMap: Record<string, any> = (config?.designSystems && typeof config.designSystems === 'object' && !Array.isArray(config.designSystems))
-                ? config.designSystems : {};
             this._entries = themes
                 .map((theme, i) => {
                     const dsIndex = themeDsIndex(theme, i);
@@ -1366,7 +1360,6 @@ export class PluginSelectDesignSystem extends StateLitElement {
                         dsIndex,
                         name: theme.themeName,
                         description: theme.description ?? '',
-                        skill: dsMap[dsIndex]?.skill ?? DS_SKILL_DEFAULT,
                         theme,
                     };
                 })
@@ -1392,7 +1385,6 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _loadStarter(): void {
         this._name = '';
         this._desc = '';
-        this._skill = DS_SKILL_DEFAULT;
         // A new DS starts from the canonical mandatory template (all tokens present, editable).
         const template = defaultTokensTemplate();
         this._setColorAndGlobalRows(template.color, template.global);
@@ -1412,7 +1404,6 @@ export class PluginSelectDesignSystem extends StateLitElement {
         const t = entry.theme;
         this._name = entry.name;
         this._desc = entry.description;
-        this._skill = entry.skill || DS_SKILL_DEFAULT;
         // Seed the mandatory template UNDER the entry's own values: mandatory tokens are always
         // present to edit (heals the legacy default DS, which was persisted with empty tokens),
         // while the entry's real values — and any custom tokens — win. No-op for DSes that
@@ -2761,10 +2752,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
         const theme: IDesignSystemTokens = { themeName: name, description, color, typography, global, dsIndex };
         if (fonts.length) theme.fonts = fonts;
-        // Carry forward the reconciliation agent's field: it is NOT edited by this form, but
-        // writeTheme replaces the whole entry — omitting it here would wipe it on every save.
-        const recon = this._selectedEntry?.theme?.tokenReconciliation;
-        if (recon) theme.tokenReconciliation = recon;
+        // writeTheme replaces the whole entry: every field of it must be built here.
         const components = componentRowsToMap(this._components);
         if (Object.keys(components).length) theme.components = components;
         return theme;
@@ -2788,7 +2776,6 @@ export class PluginSelectDesignSystem extends StateLitElement {
         const dsIndex = isNew ? String(this._customKey) : (this._selectedEntry?.dsIndex ?? String(this._customKey));
         const key = Number(dsIndex);
 
-        const skill = this._skill || DS_SKILL_DEFAULT;
         const theme = this._buildTheme(dsIndex, name, this._desc.trim());
 
         this._saving = true;
@@ -2797,7 +2784,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
             // designSystem.ts — identity + tokens (the single home), matched by dsIndex.
             await writeTheme(this.projectId, theme);
             // project.json — only the generation config bucket for this dsIndex.
-            await this._persistConfig(this.projectId, dsIndex, skill);
+            await this._persistConfig(this.projectId, dsIndex);
         } catch (err) {
             console.error('[selectDesignSystem] save failed', err);
             this._saveError = this.msg.saveError;
@@ -2813,7 +2800,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         await this._load(this.projectId);
         // The compiled designSystem.js lags behind the just-written .ts, so _load can miss a
         // brand-new entry — upsert it optimistically so the list + knob reflect the save now.
-        this._ensureEntry(key, dsIndex, name, this._desc.trim(), skill, theme);
+        this._ensureEntry(key, dsIndex, name, this._desc.trim(), theme);
         this._saving = false;
         this._dirty = false;
         this._saved = true;
@@ -2835,22 +2822,22 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     /** Optimistically add/replace an entry in the in-memory list (heals stale post-save reads). */
-    private _ensureEntry(key: number, dsIndex: string, name: string, description: string, skill: string, theme: IDesignSystemTokens): void {
-        const entry: IDsEntry = { key, dsIndex, name, description, skill, theme };
+    private _ensureEntry(key: number, dsIndex: string, name: string, description: string, theme: IDesignSystemTokens): void {
+        const entry: IDsEntry = { key, dsIndex, name, description, theme };
         const idx = this._entries.findIndex(e => e.key === key);
         const next = idx >= 0 ? this._entries.map((e, i) => (i === idx ? entry : e)) : [...this._entries, entry];
         this._entries = next.sort((a, b) => a.key - b.key);
     }
 
     /** project.json designSystems[dsIndex] = GENERATION config only (no identity, no tokens). */
-    private async _persistConfig(projectId: number, dsIndex: string, skill: string): Promise<void> {
+    private async _persistConfig(projectId: number, dsIndex: string): Promise<void> {
         const config: any = await getConfigProject(projectId);
         if (!config) throw new Error('project config not found');
         const current = config.designSystems;
         const designSystems: Record<string, any> =
             (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
         const existing = designSystems[dsIndex] ?? {};
-        const entry: Record<string, any> = { ...existing, skill };
+        const entry: Record<string, any> = { ...existing };
         delete entry.name;
         delete entry.description;
         delete entry.tokens;

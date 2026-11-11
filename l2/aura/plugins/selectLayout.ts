@@ -26,13 +26,11 @@ const message_en = {
     bentoDesc: 'Mosaic-style grid of cards with variable sizes and positions.',
     adding: 'Adding…',
     addTitle: 'New Layout',
-    addDesc: 'Create a new layout: pick a base skill (or custom) and configure its component rules.',
-    chooseSkill: 'Layout skill',
+    addDesc: 'Create a new layout: pick a base (or custom) and configure its component rules.',
+    chooseSkill: 'Base layout',
     custom: 'Custom',
     nameLabel: 'Name',
-    skillLabel: 'Skill path',
     namePlaceholder: 'e.g. compactSidebar',
-    skillPlaceholder: '_102020_/l2/skills/layout/…',
     saveLayout: 'Save layout',
     saveError: 'Could not save the layout.',
     moleculesHeader: 'Molecules',
@@ -60,13 +58,11 @@ const messages: Record<string, MessageType> = {
         bentoDesc: 'Grade mosaico de cards com tamanhos e posições variáveis.',
         adding: 'Adicionando…',
         addTitle: 'Novo Layout',
-        addDesc: 'Crie um novo layout: escolha uma skill base (ou custom) e configure as rules de componentes.',
-        chooseSkill: 'Skill do layout',
+        addDesc: 'Crie um novo layout: escolha uma base (ou custom) e configure as rules de componentes.',
+        chooseSkill: 'Layout base',
         custom: 'Custom',
         nameLabel: 'Nome',
-        skillLabel: 'Caminho da skill',
         namePlaceholder: 'ex.: compactSidebar',
-        skillPlaceholder: '_102020_/l2/skills/layout/…',
         saveLayout: 'Salvar layout',
         saveError: 'Não foi possível salvar o layout.',
         moleculesHeader: 'Moléculas',
@@ -91,13 +87,11 @@ const messages: Record<string, MessageType> = {
         bentoDesc: 'Cuadrícula mosaico de tarjetas con tamaños y posiciones variables.',
         adding: 'Agregando…',
         addTitle: 'Nuevo Layout',
-        addDesc: 'Cree un nuevo layout: elija una skill base (o custom) y configure sus reglas de componentes.',
-        chooseSkill: 'Skill del layout',
+        addDesc: 'Cree un nuevo layout: elija una base (o custom) y configure sus reglas de componentes.',
+        chooseSkill: 'Layout base',
         custom: 'Custom',
         nameLabel: 'Nombre',
-        skillLabel: 'Ruta de la skill',
         namePlaceholder: 'ej.: compactSidebar',
-        skillPlaceholder: '_102020_/l2/skills/layout/…',
         saveLayout: 'Guardar layout',
         saveError: 'No se pudo guardar el layout.',
         moleculesHeader: 'Moléculas',
@@ -114,20 +108,13 @@ const messages: Record<string, MessageType> = {
 interface ILayoutOption {
     value: number;
     name: string;
-    skill: string;
     // When false the genome flow skips molecule resolution for this layout's pages
     // (only the configured layout rules apply). Default true; absent key = true.
     useMolecules: boolean;
 }
 
-// Presets for the "Add layout" form: each sets the layout name + its render skill.
-const LAYOUT_PRESETS: { name: string; skill: string }[] = [
-    { name: 'standard', skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutStandard.ts' },
-    { name: 'compact',  skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutCompact.ts' },
-    { name: 'sidebar',  skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutSidebar.ts' },
-    { name: 'tabs',     skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutTabs.ts' },
-    { name: 'bento',    skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutBento.ts' },
-];
+// Base layouts offered by the "Add layout" form (the name drives the label, description and diagram).
+const LAYOUT_PRESETS: string[] = ['standard', 'compact', 'sidebar', 'tabs', 'bento'];
 
 // ─── Component ───────────────────────────────────────────────────────
 
@@ -141,7 +128,6 @@ export class PluginSelectLayout extends StateLitElement {
     // ─── "Add layout" form state ──────────────────────────────────────
     @state() private _addPreset: string | null = null;   // preset name | 'custom' | null
     @state() private _addName: string = '';
-    @state() private _addSkill: string = '';
     @state() private _addRules: Record<string, string> = {};
     @state() private _addUseMolecules: boolean = true;
     @state() private _addSaving: boolean = false;
@@ -162,9 +148,9 @@ export class PluginSelectLayout extends StateLitElement {
         if (!project) return;
         try {
             const config: any = await getConfigProject(project);
-            const layoutsMap: Record<number, { name: string; skill: string; useMolecules?: boolean }> = config?.layouts ?? {};
+            const layoutsMap: Record<number, { name: string; useMolecules?: boolean }> = config?.layouts ?? {};
             this._layoutOptions = Object.entries(layoutsMap)
-                .map(([k, v]) => ({ value: Number(k), name: v.name, skill: v.skill, useMolecules: v.useMolecules !== false }))
+                .map(([k, v]) => ({ value: Number(k), name: v.name, useMolecules: v.useMolecules !== false }))
                 .sort((a, b) => a.value - b.value);
         } catch { /* no project config */ }
         // @ts-ignore
@@ -415,20 +401,20 @@ export class PluginSelectLayout extends StateLitElement {
         const projectId = getAuraState().actualProject;
         const isCustom = this._addPreset === 'custom';
         const hasChoice = this._addPreset != null;
-        const canSave = !!this._addName.trim() && !!this._addSkill.trim() && !this._addSaving;
+        const canSave = !!this._addName.trim() && !this._addSaving;
 
         return html`
             <div class="flex flex-col gap-4">
-                <!-- Skill preset picker -->
+                <!-- Base layout picker -->
                 <div class="flex flex-col gap-1.5">
                     <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.chooseSkill}</span>
                     <div class="flex flex-wrap gap-1.5">
-                        ${LAYOUT_PRESETS.map(p => this._renderPresetChip(p.name, p.skill, this._getLayoutLabel(p.name)))}
-                        ${this._renderPresetChip('custom', '', this.msg.custom)}
+                        ${LAYOUT_PRESETS.map(name => this._renderPresetChip(name, this._getLayoutLabel(name)))}
+                        ${this._renderPresetChip('custom', this.msg.custom)}
                     </div>
                 </div>
 
-                <!-- Name + skill path (editable in custom; shown read-only-ish for presets) -->
+                <!-- Name (editable in custom; read-only for presets) -->
                 ${hasChoice ? html`
                     <div class="flex flex-col gap-2">
                         <label class="flex flex-col gap-1">
@@ -440,17 +426,6 @@ export class PluginSelectLayout extends StateLitElement {
                                 placeholder=${this.msg.namePlaceholder}
                                 ?readonly=${!isCustom}
                                 @input=${(e: Event) => { this._addName = (e.target as HTMLInputElement).value; }}
-                            />
-                        </label>
-                        <label class="flex flex-col gap-1">
-                            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">${this.msg.skillLabel}</span>
-                            <input
-                                type="text"
-                                class="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-mono"
-                                .value=${this._addSkill}
-                                placeholder=${this.msg.skillPlaceholder}
-                                ?readonly=${!isCustom}
-                                @input=${(e: Event) => { this._addSkill = (e.target as HTMLInputElement).value; }}
                             />
                         </label>
                     </div>
@@ -510,7 +485,7 @@ export class PluginSelectLayout extends StateLitElement {
         `;
     }
 
-    private _renderPresetChip(name: string, skill: string, label: string) {
+    private _renderPresetChip(name: string, label: string) {
         const active = this._addPreset === name;
         return html`
             <button
@@ -520,21 +495,15 @@ export class PluginSelectLayout extends StateLitElement {
                         ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'}
                 "
-                @click=${() => this._selectPreset(name, skill)}
+                @click=${() => this._selectPreset(name)}
             >${label}</button>
         `;
     }
 
-    private _selectPreset(name: string, skill: string) {
+    private _selectPreset(name: string) {
         this._addPreset = name;
         this._addError = '';
-        if (name === 'custom') {
-            this._addName = '';
-            this._addSkill = '';
-        } else {
-            this._addName = name;
-            this._addSkill = skill;
-        }
+        this._addName = name === 'custom' ? '' : name;
     }
 
     private _onAddRulesChanged(e: CustomEvent) {
@@ -546,8 +515,7 @@ export class PluginSelectLayout extends StateLitElement {
         if (projectId == null) return;
 
         const name = this._addName.trim();
-        const skill = this._addSkill.trim();
-        if (!name || !skill) return;
+        if (!name) return;
 
         this._addSaving = true;
         this._addError = '';
@@ -558,7 +526,7 @@ export class PluginSelectLayout extends StateLitElement {
             const current = config.layouts;
             const layouts: Record<string, any> = (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
             const newIndex = this._addValue;
-            layouts[newIndex] = { name, skill, rules: { ...this._addRules }, useMolecules: this._addUseMolecules };
+            layouts[newIndex] = { name, rules: { ...this._addRules }, useMolecules: this._addUseMolecules };
             config.layouts = layouts;
             await updateConfigProject(projectId, config);
 
@@ -581,7 +549,6 @@ export class PluginSelectLayout extends StateLitElement {
     private _resetAddForm() {
         this._addPreset = null;
         this._addName = '';
-        this._addSkill = '';
         this._addRules = {};
         this._addUseMolecules = true;
         this._addError = '';

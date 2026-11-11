@@ -580,8 +580,8 @@ export function parseVarValue(value: string): IVarValue | null {
  * ([designSystemBase.ts:264](mls-102029/l2/designSystemBase.ts#L264) strips the `_dark-` prefix), so
  * taking both would just duplicate every role.
  *
- * `--ml-*` are excluded: those are the molecule reconciliation tokens
- * ([getMlTokensCss](mls-102029/l2/designSystemBase.ts#L138)), not roles a page is meant to reference.
+ * `--ml-*` are excluded: those are molecule tokens (read by the molecules' own CSS), not roles a
+ * page is meant to reference.
  */
 export function readDesignSystemRoles(css: string): string[] {
   const rootBlock = css.match(/:root\s*\{([^}]*)\}/u);

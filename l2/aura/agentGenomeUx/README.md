@@ -13,7 +13,7 @@ The template is `layouts[N].templates.pages["<module>/<page>"]`, or the page11 `
 did not choose one (`helpers/uxTemplates.ts`). Its `## Molecule rules` (`helpers/templateRules.ts`) apply:
 `forbid` is a hard constraint, `prefer` is guidance; a legacy `pageNN.md` has no rules (no restriction).
 
-`agentImplementGenome` is untouched (part C stops calling it).
+The old genome agent it replaced has been removed.
 
 ## Base mode (UX 1, `TASK-102020-genome-ux-4`)
 

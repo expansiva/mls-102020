@@ -17,7 +17,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { mkCompleted, mkFail } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
+import { mkCompleted, mkFail } from '/_102020_/l2/aura/helpers/agentStepStatus.js';
 import { skill as logoContract } from '/_102020_/l2/aura/agentManageHeader/skills/logoContract.js';
 import {
   applyLogoToBrand,

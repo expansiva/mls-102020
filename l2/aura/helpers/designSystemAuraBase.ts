@@ -35,13 +35,13 @@ export interface ILayoutAxisDef {
     default: string;
     /**
      * UX groups this axis governs — drives the per-element `layoutRules` stamped on
-     * plain controls (dsMatch/plainControlRules). OMITTED means page-wide: the axis is
+     * plain controls. OMITTED means page-wide: the axis is
      * implemented globally via DS tokens/CSS (density, motion), never per element.
      */
     groups?: readonly string[];
     /**
-     * Governs EVERY labeled input, even when the element's group is unknown (Agent1
-     * omitted it) — plainControlRules applies these to any field/filter as fallback.
+     * Governs EVERY labeled input, even when the element's group is unknown — applied to any
+     * field/filter as fallback.
      */
     inputTransversal?: boolean;
     /** part of the curated "essential" subset shown by default in the UI. */

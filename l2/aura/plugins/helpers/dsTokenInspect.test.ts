@@ -10,7 +10,7 @@ function fakeStyle(decls: Record<string, string>) {
   return { length: props.length, item: (i: number) => props[i], getPropertyValue: (p: string) => decls[p] ?? '' };
 }
 
-test('reverseGraph: from a DS token to the tokens that read it (reconciliation)', () => {
+test('reverseGraph: from a DS token to the tokens that read it', () => {
   const graph = tokenGraph(':root{--primary:#123;--ml-primary:var(--primary);--ml-accent:var(--ml-primary);}');
   const rev = reverseGraph(graph);
   assert.deepEqual([...expandRefs(['primary'], rev)].sort(), ['ml-accent', 'ml-primary', 'primary']);

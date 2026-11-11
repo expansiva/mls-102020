@@ -6,14 +6,14 @@
 // (themeName/description), the styling tokens (color/typography/global maps, dark via the
 // `_dark-` key prefix) and the font-loading declarations (`fonts`). Each entry carries a
 // `dsIndex` that correlates it with the GENERATION config bucket `designSystems[dsIndex]`
-// in l5/project.json (skill/rules/overrides/tokenReconciliation) and with the
+// in l5/project.json and with the
 // `page<layout><ds>` variation folders. Entries without `dsIndex` (older files) resolve
 // to their array position + 1.
 //
 // The Design System plugin edits the entries directly (token names are free-form — the
-// file IS the model); the reconciliation agent writes the entry's `tokenReconciliation`
-// (--ml-* → --ds-* map); the runtime (`_102029_/l2/designSystemBase.getTokensCss`) renders
-// the selected entry as CSS, applying the reconciliation map at :root.
+// file IS the model; molecule tokens `--ml-*` are plain keys of color/global, per-molecule values
+// live in `components`); the runtime (`_102029_/l2/designSystemBase.getTokensCss`) renders the
+// selected entry as CSS.
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { replaceTokensBlock, getTokens } from '/_102027_/l2/designSystemBase.js';

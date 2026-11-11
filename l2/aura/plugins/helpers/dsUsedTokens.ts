@@ -7,7 +7,7 @@
 // through inline styles — the browser already has all of it as rules. A rule counts when its selector
 // matches an element of the page region; nested rules (Tailwind v4 variants: `&:hover`, `@media`) count
 // with their parent. Indirection is followed through the token CSS itself: `--ml-primary:
-// var(--primary)` (reconciliation) or `calc(var(--font-base-unit) * 3)` mark the referenced token too.
+// var(--primary)` (a token pointing at another) or `calc(var(--font-base-unit) * 3)` mark the referenced token too.
 //
 // The pure helpers (var refs, selector cleanup, closure) are exported for Node tests.
 

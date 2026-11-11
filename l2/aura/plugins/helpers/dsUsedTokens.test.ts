@@ -27,7 +27,7 @@ test('cleanSelector keeps Tailwind arbitrary values whole (escaped commas, escap
   assert.equal(cleanSelector(':is(.a, .b) .c, .d:focus'), ':is(.a, .b) .c, .d');
 });
 
-test('tokenGraph + expandRefs follow reconciliation and calc indirections', () => {
+test('tokenGraph + expandRefs follow var and calc indirections', () => {
   const css = `:root{--primary:#123;--font-base-unit:.25rem;--font-size-16:calc(var(--font-base-unit) * 4);}
 [data-theme="dark"], :root.dark{--primary:#abc;}
 :root{--ml-primary:var(--primary);--ml-text:var(--text-strong);}`;

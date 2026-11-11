@@ -40,7 +40,7 @@ import {
 } from '/_102020_/l2/aura/plugins/helpers/configIo.js';
 import { openElementInServiceDetails, clearServiceDetails } from '/_102027_/l2/libCommom.js';
 import { bandBootConfig, mountHeaderBand, projectTokensCss } from '/_102020_/l2/aura/plugins/helpers/headerBandPreview.js';
-import { readRawSource } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
+import { readRawSource } from '/_102020_/l2/aura/helpers/storFileIo.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 import '/_102020_/l2/aura/plugins/pluginHeaderEditor.js';
 

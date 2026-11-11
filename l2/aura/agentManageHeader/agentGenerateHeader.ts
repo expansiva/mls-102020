@@ -21,7 +21,8 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { mkCompleted, mkFail, saveFile } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
+import { mkCompleted, mkFail } from '/_102020_/l2/aura/helpers/agentStepStatus.js';
+import { saveFile } from '/_102020_/l2/aura/helpers/storFileIo.js';
 import { MANDATORY_COLOR_ROLES } from '/_102029_/l2/designSystemBase.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
 import { skill as headerContract } from '/_102020_/l2/aura/agentManageHeader/skills/headerContract.js';
@@ -252,9 +253,9 @@ async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPath
 /**
  * Child step that draws the brand mark.
  *
- * Shape follows `mkAgentStep` (agentImplementGenome/planning.ts), which is the working convention for
- * an agent step: `interaction: null` and a status the planner understands. With no `dependsOn`, that
- * status is `waiting_human_input` — the same one the genome orchestrator gives its entry group — NOT
+ * Shape follows the working convention for a planned agent step: `interaction: null` and a status the
+ * planner understands. With no `dependsOn`, that status is `waiting_human_input` — the one an
+ * orchestrator gives its entry steps — NOT
  * `pending`, which means "already prepared" and makes the runtime refuse the step
  * ("Step not prepared for continueBeforePrompt ... interaction:null").
  *
