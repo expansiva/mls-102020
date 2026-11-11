@@ -132,7 +132,7 @@ test('panel buttons use the Studio BUTTON classes', () => {
         assert.ok(mine.includes('disabled:cursor-not-allowed'), `${name} shows a disabled cursor`);
     }
     assert.doesNotMatch(DRAFT, /actionClass/);
-    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON\}/g)].length, 9);
+    assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON\}/g)].length, 12);
     assert.equal([...DRAFT.matchAll(/class=\$\{BUTTON_PRIMARY\}/g)].length, 1);
     const actions = methodOf(DRAFT, 'private _renderActions');
     const primaryAt = actions.indexOf('class=${BUTTON_PRIMARY}');
@@ -463,4 +463,45 @@ test('serviceDraft is on l5ServicesLeft before serviceSave', () => {
     const entry = PLUGIN.slice(entryStart, draftAt);
     assert.match(entry, /l5ServicesLeft/);
     assert.match(entry, /priority:\s*1/);
+});
+
+test('st70 s5: Data opens in this panel, confirms before the action, and english has no Portuguese', () => {
+    const panel = methodOf(DRAFT, 'private _renderPanel()');
+    const openAt = panel.indexOf('this._dataOpen');
+    const dataAt = panel.indexOf('_renderData(');
+    const treeAt = panel.indexOf('_renderTree(');
+    assert.ok(openAt !== -1 && dataAt > openAt && treeAt > dataAt, 'the data scenario replaces the list in this panel');
+    assert.match(panel, /_renderDataWarning\(\)/);
+    const data = methodOf(DRAFT, 'private _renderData(');
+    assert.match(data, /this\._dataOpen = false/);
+    assert.match(data, /dataBack/);
+    assert.match(data, /dataCurrent/);
+    assert.match(data, /draft-data-title/);
+    assert.match(methodOf(DRAFT, 'private _renderDataChoice'), /draft-data-desc/);
+    assert.doesNotMatch(data, /dataWarnReadonly|dataWarnSame/);
+    const choice = methodOf(DRAFT, 'private async _onDataChoice');
+    const enabledAt = choice.indexOf('!choice.enabled');
+    const confirmAt = choice.indexOf('confirm(');
+    const callAt = choice.indexOf('await applyDraftDataChoice(');
+    assert.ok(enabledAt !== -1 && confirmAt > enabledAt && callAt > confirmAt, 'an off option never confirms or calls');
+    assert.match(choice, /draftDataConfirm\(/);
+    assert.match(choice, /startsWith\('team-'\)/);
+    assert.match(choice, /dataAffectsAll/);
+    assert.match(choice, /this\._error = this\._draftReason\(message\)/);
+    assert.match(choice, /DRAFT_DATA_FORBIDDEN/);
+    assert.match(choice, /DRAFT_DATA_UNCONFIGURED/);
+    const warn = methodOf(DRAFT, 'private _renderDataWarning');
+    assert.match(warn, /showsDraftDataWarning\(/);
+    assert.match(warn, /dataWarnReadonly/);
+    assert.match(warn, /dataWarnSame/);
+    const en = DRAFT.split('const message_en')[1].split('type MessageType')[0];
+    assert.doesNotMatch(en, /[áàãâéêíóôõúçÁÀÃÂÉÊÍÓÔÕÚÇ]/u);
+    assert.doesNotMatch(en, /\b(não|você|rascunho|também|produção)\b/u);
+    assert.match(DRAFT, /data: 'Data'/);
+    assert.match(DRAFT, /data: 'Dados'/);
+    assert.match(DRAFT, /data: 'Datos'/);
+    assert.match(DRAFT, /dataAffectsAll: 'This is the team draft: it affects everyone.'/);
+    assert.match(DRAFT, /dataAffectsAll: 'Este é o rascunho do time: afeta todos.'/);
+    assert.match(DRAFT, /dataAffectsAll: 'Este es el borrador del equipo: afecta a todos.'/);
+    assert.doesNotMatch(DRAFT, /static styles/);
 });

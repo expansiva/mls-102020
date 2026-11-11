@@ -17,6 +17,12 @@ import {
     discard,
     filesByShortPath,
     resetDraftDatabase,
+    loadDraftData,
+    applyDraftDataChoice,
+    draftDataChoices,
+    draftDataConfirm,
+    showsDraftDataWarning,
+    DraftDataRequestError,
     loadPanel,
     localEdits,
     rememberOpenedDraftText,
@@ -44,6 +50,9 @@ import {
     readPreviewUpdateFailure,
     COLLAB_PREVIEW_UPDATE_FAILED,
     type FetchImpl,
+    type DraftDataChoiceId,
+    type IDraftDataChoice,
+    type IDraftDataView,
     type ICollabDraftUploadDetail,
     type IDraftUploadProgress,
     type IDraftWaitResult,
@@ -153,6 +162,35 @@ const message_en = {
     releasePending: 'The draft was published, but the site has not been updated yet: {reason}.',
     releaseTimeout: 'the update timed out',
     releaseBuildFailed: 'the site build failed',
+    data: 'Data',
+    dataBack: 'Back',
+    dataCurrent: 'Current data: {source}',
+    dataWhen: 'Set at {at} by {by}.',
+    dataWhenUnknown: 'Nobody has set this yet.',
+    dataUnknown: 'The current data source could not be read.',
+    dataSourceSeed: 'Example data',
+    dataSourceCopy: 'Copy of production',
+    dataSourceReadonly: 'Production, read-only',
+    dataSourceSame: 'Same database as production',
+    dataSeedTitle: 'Clear and reload example data',
+    dataSeedDesc: 'Deletes the draft data and loads the initial data again. The draft code stays. Data written in the draft is lost.',
+    dataCopyTitle: 'Copy production',
+    dataCopyDesc: 'Copies the app data into the draft. Writing in the draft does not change production. A module whose tables changed in the draft can fail; the draft then returns to example data.',
+    dataReadonlyTitle: 'Production, read-only',
+    dataReadonlyDesc: 'The draft reads the real app data and cannot write. A table change in the draft stops the draft from starting.',
+    dataSameTitle: 'Same database as production',
+    dataSameDesc: 'The draft reads and writes the app database. A saved row appears in production before Publish. A table change in the draft stops the draft from starting.',
+    dataConfirmSeed: 'Clear the draft data and reload the example data?',
+    dataConfirmCopy: 'Replace the draft data with a copy of production?',
+    dataConfirmReadonly: 'Point this draft at production, read-only?',
+    dataConfirmSame: 'Use the production database for this draft? Writes change production.',
+    dataAffectsAll: 'This is the team draft: it affects everyone.',
+    dataWarnReadonly: 'This draft is reading production and cannot write.',
+    dataWarnSame: 'This draft writes to the production database.',
+    dataCopied: 'Production data copied.',
+    dataReadonlyOn: 'This draft now reads production.',
+    dataSameOn: 'This draft now uses the production database.',
+    dataOptionUnavailable: 'This option is not available.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -238,6 +276,35 @@ const messages: Record<string, MessageType> = {
         releasePending: 'O rascunho foi publicado, mas o site ainda não foi atualizado: {reason}.',
         releaseTimeout: 'a atualização expirou',
         releaseBuildFailed: 'a construção do site falhou',
+        data: 'Dados',
+        dataBack: 'Voltar',
+        dataCurrent: 'Dados atuais: {source}',
+        dataWhen: 'Definido em {at} por {by}.',
+        dataWhenUnknown: 'Ninguém definiu isto ainda.',
+        dataUnknown: 'Não foi possível ler a fonte atual dos dados.',
+        dataSourceSeed: 'Dados de exemplo',
+        dataSourceCopy: 'Cópia da produção',
+        dataSourceReadonly: 'Produção, só leitura',
+        dataSourceSame: 'O mesmo banco da produção',
+        dataSeedTitle: 'Limpar e recarregar os dados de exemplo',
+        dataSeedDesc: 'Apaga os dados do rascunho e carrega de novo os dados iniciais. O código do rascunho fica. O que foi gravado no rascunho se perde.',
+        dataCopyTitle: 'Copiar a produção',
+        dataCopyDesc: 'Copia os dados do aplicativo para o rascunho. Gravar no rascunho não muda a produção. Um módulo cuja tabela mudou no rascunho pode falhar; o rascunho volta aos dados de exemplo.',
+        dataReadonlyTitle: 'Produção, só leitura',
+        dataReadonlyDesc: 'O rascunho lê os dados reais e não grava. Uma mudança de tabela no rascunho impede o rascunho de subir.',
+        dataSameTitle: 'O mesmo banco da produção',
+        dataSameDesc: 'O rascunho lê e grava o banco do aplicativo. Uma linha salva aparece na produção antes do Publicar. Uma mudança de tabela no rascunho impede o rascunho de subir.',
+        dataConfirmSeed: 'Limpar os dados do rascunho e recarregar os dados de exemplo?',
+        dataConfirmCopy: 'Substituir os dados do rascunho por uma cópia da produção?',
+        dataConfirmReadonly: 'Apontar este rascunho para a produção, só leitura?',
+        dataConfirmSame: 'Usar o banco da produção neste rascunho? As gravações mudam a produção.',
+        dataAffectsAll: 'Este é o rascunho do time: afeta todos.',
+        dataWarnReadonly: 'Este rascunho está lendo a produção e não pode gravar.',
+        dataWarnSame: 'Este rascunho grava no banco da produção.',
+        dataCopied: 'Dados da produção copiados.',
+        dataReadonlyOn: 'Este rascunho agora lê a produção.',
+        dataSameOn: 'Este rascunho agora usa o banco da produção.',
+        dataOptionUnavailable: 'Esta opção não está disponível.',
     },
     es: {
         svcTitle: 'Borrador',
@@ -320,6 +387,35 @@ const messages: Record<string, MessageType> = {
         releasePending: 'El borrador se publicó, pero el sitio todavía no se actualizó: {reason}.',
         releaseTimeout: 'la actualización expiró',
         releaseBuildFailed: 'la construcción del sitio falló',
+        data: 'Datos',
+        dataBack: 'Volver',
+        dataCurrent: 'Datos actuales: {source}',
+        dataWhen: 'Definido el {at} por {by}.',
+        dataWhenUnknown: 'Nadie lo ha definido todavía.',
+        dataUnknown: 'No se pudo leer la fuente actual de los datos.',
+        dataSourceSeed: 'Datos de ejemplo',
+        dataSourceCopy: 'Copia de producción',
+        dataSourceReadonly: 'Producción, solo lectura',
+        dataSourceSame: 'La misma base de producción',
+        dataSeedTitle: 'Borrar y recargar los datos de ejemplo',
+        dataSeedDesc: 'Borra los datos del borrador y carga de nuevo los datos iniciales. El código del borrador se queda. Lo escrito en el borrador se pierde.',
+        dataCopyTitle: 'Copiar producción',
+        dataCopyDesc: 'Copia los datos de la aplicación al borrador. Escribir en el borrador no cambia la producción. Un módulo cuya tabla cambió en el borrador puede fallar; el borrador vuelve a los datos de ejemplo.',
+        dataReadonlyTitle: 'Producción, solo lectura',
+        dataReadonlyDesc: 'El borrador lee los datos reales y no escribe. Un cambio de tabla en el borrador impide que el borrador arranque.',
+        dataSameTitle: 'La misma base de producción',
+        dataSameDesc: 'El borrador lee y escribe la base de la aplicación. Una fila guardada aparece en producción antes de Publicar. Un cambio de tabla en el borrador impide que el borrador arranque.',
+        dataConfirmSeed: '¿Borrar los datos del borrador y recargar los datos de ejemplo?',
+        dataConfirmCopy: '¿Reemplazar los datos del borrador por una copia de producción?',
+        dataConfirmReadonly: '¿Apuntar este borrador a producción, solo lectura?',
+        dataConfirmSame: '¿Usar la base de producción en este borrador? Las escrituras cambian la producción.',
+        dataAffectsAll: 'Este es el borrador del equipo: afecta a todos.',
+        dataWarnReadonly: 'Este borrador está leyendo producción y no puede escribir.',
+        dataWarnSame: 'Este borrador escribe en la base de producción.',
+        dataCopied: 'Datos de producción copiados.',
+        dataReadonlyOn: 'Este borrador ahora lee producción.',
+        dataSameOn: 'Este borrador ahora usa la base de producción.',
+        dataOptionUnavailable: 'Esta opción no está disponible.',
     },
 };
 /// **collab_i18n_end**
@@ -504,6 +600,9 @@ export class ServiceDraft102020 extends ServiceBase {
     @state() private _upload: IDraftUploadProgress | null = null;
     @state() private _open = new Set<string>(['draft']);
     @state() private _selected = '';
+    @state() private _dataOpen = false;
+    @state() private _data: IDraftDataView | null = null;
+    @state() private _dataDenied: Partial<Record<DraftDataChoiceId, string>> = {};
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -599,8 +698,16 @@ export class ServiceDraft102020 extends ServiceBase {
             : new Map<string, mls.stor.IFileInfo>();
         const busy = this._phase === 'loading' || this._phase === 'publishing';
         const uploadLine = this._upload ? draftUploadLine(this._upload, this.msg.uploadingPart) : '';
+        if (this._dataOpen) {
+            return html`
+                <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
+                    ${this._renderData(busy)}
+                </div>
+            `;
+        }
         return html`
             <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
+                ${this._renderDataWarning()}
                 ${this._renderActions(counts, busy)}
                 ${uploadLine ? html`<p class="px-4 py-2 text-amber-700 dark:text-amber-300">${uploadLine}</p>` : nothing}
                 ${this._phase === 'loading' ? html`<p class="px-4 py-4">${this.msg.loading}</p>` : nothing}
@@ -633,6 +740,7 @@ export class ServiceDraft102020 extends ServiceBase {
                 <button class=${BUTTON_PRIMARY} ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${publish}</button>
                 <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${discard}</button>
                 <button class=${BUTTON} ?disabled=${busy} @click=${() => { void this._onResetDatabase(); }}>${this.msg.resetDatabase}</button>
+                <button class=${BUTTON} ?disabled=${busy} @click=${() => { this._dataOpen = true; }}>${this.msg.data}</button>
             </div>
         `;
     }
@@ -843,7 +951,32 @@ export class ServiceDraft102020 extends ServiceBase {
         await this._rememberLocalText();
         this._rememberBlockedReasons(project);
         this._showPreviewFailureOrIdle();
+        await this._readDraftData(project);
         return true;
+    }
+
+    /** The main scenario reads the source even while the Data scenario is closed. */
+    private async _readDraftData(project: number): Promise<void> {
+        if (!this._slug) return;
+        try {
+            const view = await loadDraftData(fetchImpl, project, this._slug);
+            this._data = view;
+            this._dataDenied = view.denied;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[serviceDraft] draft data failed:', message);
+            this._data = null;
+            const shown = this._draftReason(message);
+            if (err instanceof DraftDataRequestError && err.code === 'DRAFT_DATA_FORBIDDEN') {
+                this._dataDenied = { seed: shown, copy: shown, readonly: shown, same: shown };
+            } else {
+                this._dataDenied = {};
+            }
+            if (this._phase !== 'error') {
+                this._error = shown;
+                this._phase = 'error';
+            }
+        }
     }
 
     /** A tab update that failed while the list was loading stays on the panel. */
@@ -1318,6 +1451,110 @@ export class ServiceDraft102020 extends ServiceBase {
     private _noteDatabaseReset(database: string): void {
         if (this._phase === 'error') return;
         this._note = this.msg.databaseReset.replace('{database}', database);
+    }
+
+    /** Fixed line on the main scenario while the draft reads or writes production. */
+    private _renderDataWarning() {
+        const which = showsDraftDataWarning(this._data?.source);
+        if (!which) return nothing;
+        const text = which === 'readonly' ? this.msg.dataWarnReadonly : this.msg.dataWarnSame;
+        return html`<p class="draft-data-warn">${text}</p>`;
+    }
+
+    private _sourceLabel(source: IDraftDataView['source']): string {
+        if (source === 'seed') return this.msg.dataSourceSeed;
+        if (source === 'copy') return this.msg.dataSourceCopy;
+        if (source === 'readonly') return this.msg.dataSourceReadonly;
+        return this.msg.dataSourceSame;
+    }
+
+    private _dataQuestion(id: DraftDataChoiceId): string {
+        if (id === 'seed') return this.msg.dataConfirmSeed;
+        if (id === 'copy') return this.msg.dataConfirmCopy;
+        if (id === 'readonly') return this.msg.dataConfirmReadonly;
+        return this.msg.dataConfirmSame;
+    }
+
+    private _dataCopy(id: DraftDataChoiceId): { title: string; desc: string } {
+        if (id === 'seed') return { title: this.msg.dataSeedTitle, desc: this.msg.dataSeedDesc };
+        if (id === 'copy') return { title: this.msg.dataCopyTitle, desc: this.msg.dataCopyDesc };
+        if (id === 'readonly') return { title: this.msg.dataReadonlyTitle, desc: this.msg.dataReadonlyDesc };
+        return { title: this.msg.dataSameTitle, desc: this.msg.dataSameDesc };
+    }
+
+    /** Same panel space as the file list. Back closes it; it does not open another service. */
+    private _renderData(busy: boolean) {
+        const view = this._data;
+        const source = view ? this._sourceLabel(view.source) : this.msg.dataUnknown;
+        const when = view && view.at && view.by
+            ? this.msg.dataWhen.replace('{at}', view.at).replace('{by}', view.by)
+            : this.msg.dataWhenUnknown;
+        const choices = draftDataChoices(this._dataDenied);
+        return html`
+            <div class="draft-data">
+                <button class=${BUTTON} @click=${() => { this._dataOpen = false; }}>${this.msg.dataBack}</button>
+                <p class="draft-data-title">${this.msg.dataCurrent.replace('{source}', source)}</p>
+                <p>${when}</p>
+                ${this._phase === 'error' ? html`<p class="text-amber-700 dark:text-amber-300">${this._error}</p>` : nothing}
+                ${this._note ? html`<p>${this._note}</p>` : nothing}
+                ${choices.map((choice) => this._renderDataChoice(choice, busy))}
+            </div>
+        `;
+    }
+
+    private _renderDataChoice(choice: IDraftDataChoice, busy: boolean) {
+        const copy = this._dataCopy(choice.id);
+        const reason = choice.enabled ? '' : (choice.reason || this.msg.dataOptionUnavailable);
+        return html`
+            <div class="draft-data-option">
+                <p class="draft-data-title">${copy.title}</p>
+                <p class="draft-data-desc">${copy.desc}</p>
+                ${reason ? html`<p class="draft-data-reason">${reason}</p>` : nothing}
+                <button class=${BUTTON} ?disabled=${busy || !choice.enabled} @click=${() => { void this._onDataChoice(choice.id); }}>${copy.title}</button>
+            </div>
+        `;
+    }
+
+    private async _onDataChoice(id: DraftDataChoiceId): Promise<void> {
+        const project = this._projectId;
+        if (!project || !this._slug || !isVmDriver(this._driver)) return;
+        const choice = draftDataChoices(this._dataDenied).find((item) => item.id === id);
+        if (!choice || !choice.enabled) {
+            console.error('[serviceDraft] data option is off:', id, choice?.reason ?? '');
+            return;
+        }
+        const question = draftDataConfirm(this._dataQuestion(id), this._slug.startsWith('team-'), this.msg.dataAffectsAll);
+        if (!confirm(question)) return;
+        this._error = '';
+        this._note = '';
+        this._phase = 'loading';
+        let done: { source: IDraftDataView['source']; database?: string };
+        try {
+            done = await applyDraftDataChoice(fetchImpl, project, this._slug, id);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[serviceDraft] draft data action failed:', id, message);
+            this._error = this._draftReason(message);
+            this._phase = 'error';
+            if (err instanceof DraftDataRequestError && (err.code === 'DRAFT_DATA_FORBIDDEN' || err.code === 'DRAFT_DATA_UNCONFIGURED')) {
+                this._dataDenied = { ...this._dataDenied, [id]: this._error };
+            }
+            return;
+        }
+        await this._load(true);
+        this._noteDataChoice(id, done.database);
+    }
+
+    /** `_load` clears the note. Put it back only when the refresh itself did not fail. */
+    private _noteDataChoice(id: DraftDataChoiceId, database: string | undefined): void {
+        if (this._phase === 'error') return;
+        if (id === 'seed') {
+            this._note = this.msg.databaseReset.replace('{database}', database ?? '');
+            return;
+        }
+        if (id === 'copy') this._note = this.msg.dataCopied;
+        else if (id === 'readonly') this._note = this.msg.dataReadonlyOn;
+        else this._note = this.msg.dataSameOn;
     }
 
     private async _onSyncPublished(): Promise<void> {

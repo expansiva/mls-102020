@@ -17,6 +17,12 @@ import {
   filesByShortPath,
   undoFile,
   resetDraftDatabase,
+  loadDraftData,
+  applyDraftDataChoice,
+  draftDataChoices,
+  draftDataConfirm,
+  showsDraftDataWarning,
+  DraftDataRequestError,
   loadPanel,
   modulePendingCount,
   localEdits,
@@ -2387,4 +2393,88 @@ test('draftCountText counts a file edited after a save once in the total', () =>
   const mine = findDraftNode([tree], 'mine');
   assert.ok(mine);
   assert.equal(draftCountText(mine), '(2 / 3)');
+});
+
+test('st70 s5: draft data choices stay off only when the server names them', () => {
+  const open = draftDataChoices({});
+  assert.deepEqual(open.map((item) => item.enabled), [true, true, true, true]);
+  const closed = draftDataChoices({
+    readonly: 'The read-only app database is not configured on this server',
+    same: '',
+  });
+  assert.equal(closed.find((item) => item.id === 'copy')?.enabled, true);
+  assert.equal(closed.find((item) => item.id === 'readonly')?.enabled, false);
+  assert.equal(closed.find((item) => item.id === 'same')?.enabled, false);
+  assert.equal(closed.find((item) => item.id === 'same')?.reason, '');
+  assert.equal(showsDraftDataWarning('seed'), null);
+  assert.equal(showsDraftDataWarning('copy'), null);
+  assert.equal(showsDraftDataWarning('readonly'), 'readonly');
+  assert.equal(showsDraftDataWarning('same'), 'same');
+  assert.equal(draftDataConfirm('Clear?', false, 'It affects everyone.'), 'Clear?');
+  assert.equal(draftDataConfirm('Clear?', true, 'It affects everyone.'), 'Clear? It affects everyone.');
+});
+
+test('st70 s5: loadDraftData reads the source and a disabled option', async () => {
+  const view = await loadDraftData(async (_input, init) => {
+    const body = JSON.parse(init.body) as { action: string; project: number; draft: string };
+    assert.equal(body.action, 'draftDataSource');
+    assert.equal(body.project, 102047);
+    assert.equal(body.draft, 'team-102047');
+    return jsonResponse({
+      statusCode: 200,
+      source: 'readonly',
+      at: '2026-11-11T12:00:00.000Z',
+      by: 'ada@example.com',
+      options: {
+        readonly: { ok: true },
+        same: { ok: false, reason: 'You do not have permission for this draft data action' },
+      },
+    });
+  }, 102047, 'team-102047');
+  assert.equal(view.source, 'readonly');
+  assert.equal(view.at, '2026-11-11T12:00:00.000Z');
+  assert.equal(view.by, 'ada@example.com');
+  assert.equal(view.denied.same, 'You do not have permission for this draft data action');
+  assert.equal('readonly' in view.denied, false);
+
+  await assert.rejects(
+    () => loadDraftData(
+      async () => jsonResponse({ statusCode: 403, code: 'DRAFT_DATA_FORBIDDEN', msg: 'You do not have permission for this draft data action' }, 403),
+      102047,
+      'team-102047',
+    ),
+    (err: unknown) => err instanceof DraftDataRequestError && err.code === 'DRAFT_DATA_FORBIDDEN',
+  );
+});
+
+test('st70 s5: each data choice calls its action and a schema refusal stays visible', async () => {
+  const actions: string[] = [];
+  const fetchImpl: FetchImpl = async (_input, init) => {
+    const body = JSON.parse(init.body) as { action: string };
+    actions.push(body.action);
+    if (body.action === 'draftResetDatabase') {
+      return jsonResponse({ statusCode: 200, status: 'reset', database: 'draft_db' });
+    }
+    if (body.action === 'draftCopy') {
+      return jsonResponse({ statusCode: 200, status: 'copied', source: 'copy' });
+    }
+    if (body.action === 'draftReadonly') {
+      return jsonResponse({
+        statusCode: 500,
+        code: 'DRAFT_SCHEMA_DIFF',
+        msg: 'The draft cannot start: module orders differs from published',
+      }, 500);
+    }
+    return jsonResponse({ statusCode: 200, status: 'same', source: 'same' });
+  };
+  assert.deepEqual(await applyDraftDataChoice(fetchImpl, 102047, 'user-ab', 'seed'), { source: 'seed', database: 'draft_db' });
+  assert.deepEqual(await applyDraftDataChoice(fetchImpl, 102047, 'user-ab', 'copy'), { source: 'copy' });
+  await assert.rejects(
+    () => applyDraftDataChoice(fetchImpl, 102047, 'user-ab', 'readonly'),
+    (err: unknown) => err instanceof DraftDataRequestError
+      && err.code === 'DRAFT_SCHEMA_DIFF'
+      && err.message.includes('orders'),
+  );
+  assert.deepEqual(await applyDraftDataChoice(fetchImpl, 102047, 'user-ab', 'same'), { source: 'same' });
+  assert.deepEqual(actions, ['draftResetDatabase', 'draftCopy', 'draftReadonly', 'draftSame']);
 });

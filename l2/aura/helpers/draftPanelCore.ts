@@ -212,6 +212,12 @@ export interface IExecSuccess {
   database?: string;
   /** Reason on a `draftResetDatabase` HTTP 500, which has no `code`. */
   cause?: string;
+  /** `draftDataSource` body. Absent on every other action. */
+  source?: string;
+  at?: string | null;
+  by?: string | null;
+  /** Per-option `{ ok, reason }` from `draftDataSource`, when the server sends it. */
+  dataOptions?: Record<string, unknown>;
 }
 
 export type ExecResult = IExecSuccess | IExecFailure;
@@ -362,6 +368,14 @@ export async function callExec(
   if (Array.isArray(parsed.drafts)) success.drafts = parsed.drafts as IListedDraft[];
   if (typeof parsed.database === 'string') success.database = parsed.database;
   if (typeof parsed.cause === 'string') success.cause = parsed.cause;
+  if (typeof parsed.source === 'string') success.source = parsed.source;
+  if (Object.prototype.hasOwnProperty.call(parsed, 'at') && (parsed.at === null || typeof parsed.at === 'string')) {
+    success.at = parsed.at;
+  }
+  if (Object.prototype.hasOwnProperty.call(parsed, 'by') && (parsed.by === null || typeof parsed.by === 'string')) {
+    success.by = parsed.by;
+  }
+  if (isRecord(parsed.options)) success.dataOptions = parsed.options;
   return success;
 }
 
@@ -576,6 +590,136 @@ export async function resetDraftDatabase(
   }
   if (!result.database) return fail('draftResetDatabase returned no database');
   return { database: result.database };
+}
+
+export const DRAFT_DATA_SOURCES = ['seed', 'copy', 'readonly', 'same'] as const;
+export type DraftDataSourceName = (typeof DRAFT_DATA_SOURCES)[number];
+export type DraftDataChoiceId = 'seed' | 'copy' | 'readonly' | 'same';
+
+export interface IDraftDataChoice {
+  id: DraftDataChoiceId;
+  enabled: boolean;
+  /** Empty when the choice can be used. The panel translates an empty reason. */
+  reason: string;
+}
+
+export interface IDraftDataView {
+  source: DraftDataSourceName;
+  at: string | null;
+  by: string | null;
+  /** Key present means the option is off. The value is the server reason, or '' when it sent none. */
+  denied: Partial<Record<DraftDataChoiceId, string>>;
+}
+
+const DRAFT_DATA_CHOICES: readonly DraftDataChoiceId[] = ['seed', 'copy', 'readonly', 'same'];
+const DRAFT_DATA_ACTION: Record<DraftDataChoiceId, string> = {
+  seed: 'draftResetDatabase',
+  copy: 'draftCopy',
+  readonly: 'draftReadonly',
+  same: 'draftSame',
+};
+
+export class DraftDataRequestError extends Error {
+  readonly code: string;
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = 'DraftDataRequestError';
+    this.code = code;
+  }
+}
+
+function isDraftDataSource(value: string): value is DraftDataSourceName {
+  return (DRAFT_DATA_SOURCES as readonly string[]).includes(value);
+}
+
+/** A choice with a key in `denied` is off, even when the reason is empty. */
+export function draftDataChoices(denied: Partial<Record<DraftDataChoiceId, string>>): IDraftDataChoice[] {
+  return DRAFT_DATA_CHOICES.map((id) => {
+    if (!Object.prototype.hasOwnProperty.call(denied, id)) return { id, enabled: true, reason: '' };
+    return { id, enabled: false, reason: denied[id] ?? '' };
+  });
+}
+
+/** The main scenario keeps a fixed warning while the draft reads or writes production. */
+export function showsDraftDataWarning(source: DraftDataSourceName | null | undefined): 'readonly' | 'same' | null {
+  if (source === 'readonly' || source === 'same') return source;
+  return null;
+}
+
+/** Team draft: the question names that the change hits everyone. */
+export function draftDataConfirm(question: string, team: boolean, affectsAll: string): string {
+  if (!team) return question;
+  const extra = affectsAll.trim();
+  return extra ? `${question} ${extra}` : question;
+}
+
+function deniedFromOptions(options: Record<string, unknown> | undefined): Partial<Record<DraftDataChoiceId, string>> {
+  const denied: Partial<Record<DraftDataChoiceId, string>> = {};
+  if (!options) return denied;
+  for (const id of DRAFT_DATA_CHOICES) {
+    const row = options[id];
+    if (!isRecord(row) || row.ok !== false) continue;
+    if (typeof row.reason === 'string' && row.reason.trim()) {
+      denied[id] = row.reason;
+      continue;
+    }
+    console.error(`[draftPanel] draft data option ${id} is off with no reason`);
+    denied[id] = '';
+  }
+  return denied;
+}
+
+function refuseDraftData(action: string, result: IExecFailure): never {
+  const message = result.msg ?? result.code;
+  console.error(`[draftPanel] ${action} failed: ${message}`);
+  throw new DraftDataRequestError(message, result.code);
+}
+
+/** Current source. A missing file on the server is `seed`. An unreadable file throws. */
+export async function loadDraftData(
+  fetchImpl: FetchImpl,
+  project: number,
+  slug: string,
+): Promise<IDraftDataView> {
+  const result = await callExec(fetchImpl, 'draftDataSource', { project, draft: slug });
+  if (!result.ok) refuseDraftData('draftDataSource', result);
+  if (!result.source || !isDraftDataSource(result.source)) {
+    console.error('[draftPanel] draftDataSource returned no source');
+    throw new DraftDataRequestError('draftDataSource returned no source', 'DRAFT_DATA');
+  }
+  return {
+    source: result.source,
+    at: result.at ?? null,
+    by: result.by ?? null,
+    denied: deniedFromOptions(result.dataOptions),
+  };
+}
+
+/** One data action. The caller confirms first. `seed` is `draftResetDatabase`. */
+export async function applyDraftDataChoice(
+  fetchImpl: FetchImpl,
+  project: number,
+  slug: string,
+  choice: DraftDataChoiceId,
+): Promise<{ source: DraftDataSourceName; database?: string }> {
+  const action = DRAFT_DATA_ACTION[choice];
+  const result = await callExec(fetchImpl, action, { project, draft: slug });
+  if (!result.ok) refuseDraftData(action, result);
+  if (choice === 'seed') {
+    if (result.status !== 'reset' || !result.database) {
+      const reason = result.cause?.trim() ? result.cause : (result.status ?? 'draftResetDatabase failed');
+      console.error(`[draftPanel] draftResetDatabase: ${reason}`);
+      throw new DraftDataRequestError(reason, 'DRAFT_DATA');
+    }
+    return { source: 'seed', database: result.database };
+  }
+  const want = choice === 'copy' ? 'copied' : choice;
+  if (result.status !== want) {
+    const reason = result.msg ?? result.status ?? `${action} failed`;
+    console.error(`[draftPanel] ${action}: ${reason}`);
+    throw new DraftDataRequestError(reason, 'DRAFT_DATA');
+  }
+  return { source: choice === 'copy' ? 'copy' : choice };
 }
 
 /** One path segment. A slash or `..` would restore something outside the module. */
