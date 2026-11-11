@@ -113,9 +113,10 @@ export function readHeaderProfileView(
  * Re-scopes compiled design-system tokens from the document root onto one container.
  *
  * The preview renders inside the STUDIO's document, so the project's tokens cannot be dropped on
- * `:root` — they would repaint the studio itself. `tokensCssFromTheme` emits exactly two selector
- * shapes (`:root` for light, `[data-theme="dark"], :root.dark` for dark), so both are rewritten to
- * live under `scope` while keeping the dark switch working from an ancestor.
+ * `:root` — they would repaint the studio itself. `tokensCssFromTheme` emits these selector shapes:
+ * `:root` (light), `[data-theme="dark"], :root.dark` (dark), and per molecule `:root <tag>` /
+ * `[data-theme="dark"] <tag>, :root.dark <tag>`. All are rewritten to live under `scope` while
+ * keeping the dark switch working from an ancestor.
  *
  * @param css - The compiled token CSS (`tokensCssFromTheme`).
  * @param scope - Selector of the container that holds the band, e.g. `[data-token-scope="102051"]`.
@@ -124,6 +125,7 @@ export function scopeTokensCss(css: string, scope: string): string {
   if (!css.trim() || !scope.trim()) return '';
   return css
     .replace(/\[data-theme="dark"\]\s*,\s*:root\.dark/gu, `[data-theme="dark"] ${scope}, .dark ${scope}`)
+    .replace(/\[data-theme="dark"\]\s+(group[a-z0-9]+--ml-[a-z0-9-]+)/gu, `[data-theme="dark"] ${scope} $1`)
     .replace(/:root\.dark/gu, `.dark ${scope}`)
     .replace(/:root/gu, scope);
 }

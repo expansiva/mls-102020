@@ -37,6 +37,7 @@ import {
   variantFromTag,
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
+import { tokensCssFromTheme } from '/_102029_/l2/designSystemBase.js';
 
 // Fictitious project: the fixtures must not depend on a real project in the workspace.
 const PROJECT = 999999;
@@ -369,6 +370,25 @@ test('project tokens are re-scoped off the document root', () => {
     scoped.includes('[data-theme="dark"] [data-token-scope="999999"], .dark [data-token-scope="999999"] {'),
     'dark still switches from an ancestor',
   );
+
+  // Per-molecule blocks, exactly as the compiler writes them: none may stay outside the container.
+  const perComponent = tokensCssFromTheme({
+    themeName: 'T', description: '', color: { 'nav-bg': '#fff', '_dark-nav-bg': '#000' }, typography: {}, global: {},
+    components: { 'groupentertext--ml-address-field': { 'ml-border-width': '2px', '_dark-ml-outline-focus': '#60A5FA' } },
+  });
+  const scopedComponents = scopeTokensCss(perComponent, '[data-token-scope="999999"]');
+  assert.equal(scopedComponents.includes(':root'), false, 'no per-molecule block left on :root');
+  assert.ok(scopedComponents.includes('[data-token-scope="999999"] groupentertext--ml-address-field{'), 'light block of the molecule under the container');
+  assert.ok(
+    scopedComponents.includes('[data-theme="dark"] [data-token-scope="999999"] groupentertext--ml-address-field, .dark [data-token-scope="999999"] groupentertext--ml-address-field{'),
+    'dark block of the molecule under the container',
+  );
+  for (const selector of scopedComponents.match(/[^{}]+(?=\{)/g) ?? []) {
+    for (const part of selector.split(',')) {
+      if (part.trim().startsWith('@import')) continue;
+      assert.ok(part.includes('[data-token-scope="999999"]'), `scoped: ${part.trim()}`);
+    }
+  }
 
   assert.equal(scopeTokensCss('', '[x]'), '', 'no tokens, no style');
   assert.equal(scopeTokensCss(':root{--a:1;}', '  '), '', 'no scope, no style: never leak to :root');

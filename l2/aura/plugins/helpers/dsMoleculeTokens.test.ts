@@ -6,9 +6,10 @@ import {
   classifyMlToken, colorMapToRows, countTokenReaders, isComponentToken, literalFallback, mergeMlUses, mlTokenGroup,
   parseDurationMs, parseLength, parseMlUses, partitionMlRows, ratioMax, removeMlToken, roleOf, suggestRoles,
   upsertMlToken, valueMapToRows, type MlTokenType,
+  baseMoleculeTag, componentMapToRows, componentRowsToMap, flattenComponents, removeComponentToken, upsertComponentToken, withSuffixedTags,
 } from './dsMoleculeTokens.js';
 import { selectorMentionsTag } from './dsTokenInspect.js';
-import { colorRowsToMap, valueRowsToMap } from './dsDiff.js';
+import { colorRowsToMap, diffTokens, tokenStatus, valueRowsToMap } from './dsDiff.js';
 import { tokensCssFromTheme, type IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
 
 // The 61 `--ml-*` tokens the 155 molecules of 102040 read, with the fallback they write most often
@@ -238,4 +239,60 @@ test('DS compiler: ml-* keys in color/global come out as --ml-* in :root and in 
   const darkBody = dark ? (dark[1] ?? dark[2] ?? '') : '';
   assert.match(darkBody, /--ml-outline-focus: #60A5FA;/);
   assert.doesNotMatch(root, /_dark-/);
+});
+
+// ─── values for one kind of molecule ────────────────────────────────
+
+const ADDRESS = 'groupentertext--ml-address-field';
+
+test('baseMoleculeTag: the Studio attempt suffix is dropped', () => {
+  assert.equal(baseMoleculeTag('groupentertext--ml-address-field-2'), ADDRESS);
+  assert.equal(baseMoleculeTag(ADDRESS), ADDRESS);
+  assert.equal(baseMoleculeTag('GroupEnterText--ml-Address-Field'), ADDRESS);
+});
+
+test('components round trip: read, edit, write — dark pair kept, ✕ drops it, an empty tag disappears', () => {
+  const components = {
+    [ADDRESS]: { 'ml-border-width': '2px', 'ml-outline-focus': '#2563EB', '_dark-ml-outline-focus': '#60A5FA' },
+    'groupviewtable--ml-grid': { '_dark-ml-primary': '#123456' },
+  };
+  const rows = componentMapToRows(components);
+  assert.deepEqual(rows, [
+    { tag: ADDRESS, name: 'ml-border-width', value: '2px', dark: '' },
+    { tag: ADDRESS, name: 'ml-outline-focus', value: '#2563EB', dark: '#60A5FA' },
+    { tag: 'groupviewtable--ml-grid', name: 'ml-primary', value: '', dark: '#123456' },
+  ]);
+  assert.deepEqual(componentRowsToMap(rows), components);
+
+  let next = upsertComponentToken(rows, `${ADDRESS}-2`, 'ml-border-width', { value: '3px', dark: '' });
+  next = upsertComponentToken(next, 'groupentertext--ml-cpf-input', 'ml-radius-sm', { value: '8px', dark: '' });
+  assert.equal(next.filter(r => r.tag === ADDRESS && r.name === 'ml-border-width').length, 1, 'suffixed tag writes the base one');
+  assert.equal(componentRowsToMap(next)[ADDRESS]['ml-border-width'], '3px');
+  assert.equal(componentRowsToMap(next)['groupentertext--ml-cpf-input']['ml-radius-sm'], '8px');
+
+  next = removeComponentToken(next, ADDRESS, 'ml-outline-focus');
+  next = removeComponentToken(next, 'groupviewtable--ml-grid', 'ml-primary');
+  const map = componentRowsToMap(next);
+  assert.equal('ml-outline-focus' in map[ADDRESS], false);
+  assert.equal('_dark-ml-outline-focus' in map[ADDRESS], false);
+  assert.equal('groupviewtable--ml-grid' in map, false);
+});
+
+test('flattenComponents + dsDiff: a per-molecule value is one token, its dark value included', () => {
+  const saved = { color: {}, typography: {}, global: {}, components: flattenComponents({ [ADDRESS]: { 'ml-outline-focus': '#2563EB' } }) };
+  const current = { color: {}, typography: {}, global: {}, components: flattenComponents({ [ADDRESS]: { 'ml-outline-focus': '#2563EB', '_dark-ml-outline-focus': '#60A5FA', 'ml-border-width': '2px' } }) };
+  assert.deepEqual(Object.keys(current.components), [`${ADDRESS}/ml-outline-focus`, `_dark-${ADDRESS}/ml-outline-focus`, `${ADDRESS}/ml-border-width`]);
+  const status = tokenStatus(saved, diffTokens(saved, current)).components;
+  assert.equal(status.get(`${ADDRESS}/ml-outline-focus`), 'changed');
+  assert.equal(status.get(`${ADDRESS}/ml-border-width`), 'added');
+  assert.equal(status.size, 2);
+  // maps without the section (older callers) still diff
+  assert.deepEqual(diffTokens({ color: {}, typography: {}, global: {} }, { color: {}, typography: {}, global: {} }), []);
+});
+
+test('withSuffixedTags: the preview repeats a value for the suffixed tags on the page, never for others', () => {
+  const comps = { [ADDRESS]: { 'ml-border-width': '2px' } };
+  const out = withSuffixedTags(comps, [`${ADDRESS}-2`, 'groupentertext--ml-cpf-input-3', ADDRESS]);
+  assert.deepEqual(Object.keys(out).sort(), [ADDRESS, `${ADDRESS}-2`]);
+  assert.deepEqual(out[`${ADDRESS}-2`], comps[ADDRESS]);
 });

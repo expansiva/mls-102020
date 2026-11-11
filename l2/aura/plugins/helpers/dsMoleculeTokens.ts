@@ -228,6 +228,86 @@ export function removeMlToken(rows: MlRows, name: string): MlRows {
   return { colors: rows.colors.filter(r => r.name.trim() !== key), values: rows.values.filter(r => r.name.trim() !== key) };
 }
 
+// ─── values for ONE kind of molecule (theme `components`) ──────────
+
+/** A value of one token for one molecule tag. `dark` only for colors ('' = the light value in both modes). */
+export interface ComponentRow { tag: string; name: string; value: string; dark: string; }
+
+/** The tag a value is stored under: the Studio's per-attempt suffix (`…-field-2`) dropped. */
+export function baseMoleculeTag(tag: string): string {
+  return tag.trim().toLowerCase().replace(/-\d+$/, '');
+}
+
+export function componentKey(tag: string, name: string): string {
+  return `${tag}/${name}`;
+}
+
+/** theme `components` → rows, pairing `<token>` + `_dark-<token>` per tag (a dark-only key still makes a row). */
+export function componentMapToRows(components: Record<string, Record<string, string>> | undefined): ComponentRow[] {
+  const out: ComponentRow[] = [];
+  for (const [tag, keys] of Object.entries(components ?? {})) {
+    if (!keys || typeof keys !== 'object') continue;
+    const names = new Set<string>();
+    for (const k of Object.keys(keys)) names.add(k.startsWith('_dark-') ? k.slice('_dark-'.length) : k);
+    for (const name of names) out.push({ tag, name, value: keys[name] ?? '', dark: keys[`_dark-${name}`] ?? '' });
+  }
+  return out;
+}
+
+/** rows → theme `components`: empty values skipped, a tag left without keys disappears. Light keys first. */
+export function componentRowsToMap(rows: readonly ComponentRow[]): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {};
+  for (const pass of ['light', 'dark'] as const) {
+    for (const r of rows) {
+      const tag = r.tag.trim();
+      const name = r.name.trim();
+      const v = (pass === 'light' ? r.value : r.dark).trim();
+      if (!tag || !name || !v) continue;
+      const keys = out[tag] ?? (out[tag] = {});
+      const key = pass === 'light' ? name : `_dark-${name}`;
+      if (!(key in keys)) keys[key] = v;
+    }
+  }
+  return out;
+}
+
+/** `components` flattened for the diff: `<tag>/<token>`, dark `_dark-<tag>/<token>` (so `baseName` still pairs them). */
+export function flattenComponents(components: Record<string, Record<string, string>>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [tag, keys] of Object.entries(components)) {
+    for (const [k, v] of Object.entries(keys)) {
+      out[k.startsWith('_dark-') ? `_dark-${componentKey(tag, k.slice('_dark-'.length))}` : componentKey(tag, k)] = v;
+    }
+  }
+  return out;
+}
+
+export function upsertComponentToken(rows: readonly ComponentRow[], tag: string, name: string, next: { value: string; dark: string }): ComponentRow[] {
+  const t = baseMoleculeTag(tag);
+  const n = name.trim();
+  const row = { tag: t, name: n, value: next.value, dark: next.dark };
+  return rows.some(r => r.tag === t && r.name === n) ? rows.map(r => (r.tag === t && r.name === n ? row : r)) : [...rows, row];
+}
+
+/** Drop a molecule's value (its dark pair goes with the row): that molecule falls back to the DS value, or its default. */
+export function removeComponentToken(rows: readonly ComponentRow[], tag: string, name: string): ComponentRow[] {
+  const t = baseMoleculeTag(tag);
+  return rows.filter(r => !(r.tag === t && r.name === name.trim()));
+}
+
+/**
+ * The preview copy of `components` for the Studio: each value is repeated for the suffixed tags
+ * (`…-field-2`) found on the page, which the base-tag selector would miss. Never saved.
+ */
+export function withSuffixedTags(components: Record<string, Record<string, string>>, pageTags: Iterable<string>): Record<string, Record<string, string>> {
+  const out = { ...components };
+  for (const tag of pageTags) {
+    const base = baseMoleculeTag(tag);
+    if (base !== tag && components[base] && !out[tag]) out[tag] = components[base];
+  }
+  return out;
+}
+
 // ─── how many molecules read each token ────────────────────────────
 
 export interface MlTokenInfo { count: number; fallback: string; }
@@ -253,14 +333,17 @@ export function countTokenReaders(sources: readonly { id: string; text: string }
 // ─── runtime: the molecule catalog in the stor ─────────────────────
 
 const MOLECULE_FOLDER = /^molecules\/(group[a-z0-9]+)$/i;
-let _catalog: Promise<Map<string, MlTokenInfo>> | null = null;
+/** Token → readers, and the molecule tags the catalog has (`group…--ml-…`, the file id IS the tag). */
+export interface MoleculeCatalog { tokens: Map<string, MlTokenInfo>; tags: Set<string>; }
+
+let _catalog: Promise<MoleculeCatalog> | null = null;
 
 /**
  * Token → readers over every molecule `.less` the stor knows (`molecules/group*\/ml-*.less`, one per
  * molecule even when two projects carry it). Read once per session; an empty result (stor not ready)
  * is not cached, so the next call tries again.
  */
-export function loadMoleculeTokenCatalog(): Promise<Map<string, MlTokenInfo>> {
+export function loadMoleculeTokenCatalog(): Promise<MoleculeCatalog> {
   if (_catalog) return _catalog;
   const run = (async () => {
     const started = performance.now();
@@ -286,11 +369,11 @@ export function loadMoleculeTokenCatalog(): Promise<Map<string, MlTokenInfo>> {
       }));
       for (const c of chunk) if (c) sources.push(c);
     }
-    const out = countTokenReaders(sources);
-    console.debug(`[dsMoleculeTokens] catalog: ${sources.length} molecule(s), ${out.size} token(s), ${Math.round(performance.now() - started)}ms`);
-    return out;
+    const tokens = countTokenReaders(sources);
+    console.debug(`[dsMoleculeTokens] catalog: ${sources.length} molecule(s), ${tokens.size} token(s), ${Math.round(performance.now() - started)}ms`);
+    return { tokens, tags: new Set(files.keys()) };
   })();
   _catalog = run;
-  run.then(map => { if (!map.size && _catalog === run) _catalog = null; }, () => { if (_catalog === run) _catalog = null; });
+  run.then(cat => { if (!cat.tags.size && _catalog === run) _catalog = null; }, () => { if (_catalog === run) _catalog = null; });
   return run;
 }

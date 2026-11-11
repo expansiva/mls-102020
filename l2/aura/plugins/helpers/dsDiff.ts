@@ -12,9 +12,11 @@ export interface TokenMaps {
   color: Record<string, string>;
   typography: Record<string, string>;
   global: Record<string, string>;
+  /** Per-molecule values, flattened: `<tag>/<token>`, dark `_dark-<tag>/<token>` (see flattenComponents). */
+  components?: Record<string, string>;
 }
 export type TokenSection = keyof TokenMaps;
-export const TOKEN_SECTIONS: readonly TokenSection[] = ['color', 'typography', 'global'];
+export const TOKEN_SECTIONS: readonly TokenSection[] = ['color', 'typography', 'global', 'components'];
 
 export type ChangeKind = 'changed' | 'added' | 'removed';
 
@@ -69,7 +71,7 @@ export function diffMaps(section: TokenSection, saved: Record<string, string>, c
 }
 
 export function diffTokens(saved: TokenMaps, current: TokenMaps): KeyChange[] {
-  return TOKEN_SECTIONS.flatMap(s => diffMaps(s, saved[s], current[s]));
+  return TOKEN_SECTIONS.flatMap(s => diffMaps(s, saved[s] ?? {}, current[s] ?? {}));
 }
 
 /**
@@ -77,12 +79,12 @@ export function diffTokens(saved: TokenMaps, current: TokenMaps): KeyChange[] {
  * key of it that differs (e.g. only its dark value appeared) makes it `changed`.
  */
 export function tokenStatus(saved: TokenMaps, changes: readonly KeyChange[]): Record<TokenSection, Map<string, ChangeKind>> {
-  const out = { color: new Map(), typography: new Map(), global: new Map() } as Record<TokenSection, Map<string, ChangeKind>>;
+  const out = { color: new Map(), typography: new Map(), global: new Map(), components: new Map() } as Record<TokenSection, Map<string, ChangeKind>>;
   for (const c of changes) {
     const name = baseName(c.key);
     const map = out[c.section];
     if (c.key === name && c.kind !== 'changed') { map.set(name, c.kind); continue; }
-    if (!map.has(name)) map.set(name, name in saved[c.section] ? 'changed' : 'added');
+    if (!map.has(name)) map.set(name, name in (saved[c.section] ?? {}) ? 'changed' : 'added');
   }
   return out;
 }
