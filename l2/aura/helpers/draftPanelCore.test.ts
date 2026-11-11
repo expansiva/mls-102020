@@ -1844,6 +1844,129 @@ test('st67 s2: undo of a saved path with no local copy still restores that path'
   }
 });
 
+test('st69 f: undo of a published rename restores both paths and drops the new name', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  host.window = windowEvents;
+  const renamed: IPanelStorFile = {
+    project: 102047,
+    inLocalStorage: true,
+    status: 'renamed',
+    shortName: 'next',
+    level: 2,
+    folder: 'orders',
+    extension: '.ts',
+    getValueInfo: async () => ({ originalFolder: 'orders', originalProject: 102047, originalShortName: 'page' }),
+  };
+  const rows = [renamed];
+  const bodies: { action: string; ref: string; paths: string[] }[] = [];
+  const notices: string[] = [];
+  try {
+    const next = await undoFile({
+      fetchImpl: async (_input, init) => {
+        bodies.push(JSON.parse(init.body) as { action: string; ref: string; paths: string[] });
+        return jsonResponse({ statusCode: 200, status: 'restored' });
+      },
+      file: renamed,
+      clearLocal: async () => { notices.push('clear'); },
+      removeNew: async (file) => {
+        notices.push(`remove:${file.status}`);
+        const index = rows.indexOf(file);
+        if (index >= 0) rows.splice(index, 1);
+      },
+    }, 102047, 'team-102047', 'l2/orders/next.ts', true, ['l2/orders/next.ts', 'l2/billing/bill.ts']);
+    assert.equal(bodies.length, 1);
+    assert.equal(bodies[0].action, 'draftRestorePaths');
+    assert.equal(bodies[0].ref, 'main');
+    assert.deepEqual(bodies[0].paths, ['l2/orders/next.ts', 'l2/orders/page.ts']);
+    assert.deepEqual(notices, ['remove:new']);
+    assert.deepEqual(rows, []);
+    assert.deepEqual(next, ['l2/billing/bill.ts']);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st69 g: undo of a saved new rename drops both names and restores nothing', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  host.window = windowEvents;
+  const created: IPanelStorFile = {
+    project: 102047,
+    inLocalStorage: true,
+    status: 'new',
+    shortName: 'next',
+    level: 2,
+    folder: 'orders',
+    extension: '.ts',
+    getValueInfo: async () => ({ originalFolder: 'orders', originalProject: 102047, originalShortName: 'fresh' }),
+  };
+  const rows = [created];
+  const bodies: { paths: string[] }[] = [];
+  const notices: string[] = [];
+  try {
+    const next = await undoFile({
+      fetchImpl: async (_input, init) => {
+        bodies.push(JSON.parse(init.body) as { paths: string[] });
+        return jsonResponse({ statusCode: 200, status: 'restored' });
+      },
+      file: created,
+      clearLocal: async () => { notices.push('clear'); },
+      removeNew: async (file) => {
+        notices.push('remove');
+        const index = rows.indexOf(file);
+        if (index >= 0) rows.splice(index, 1);
+      },
+    }, 102047, 'team-102047', 'l2/orders/next.ts', true, ['l2/orders/fresh.ts', 'l2/orders/next.ts', 'l2/billing/bill.ts']);
+    assert.equal(bodies.length, 1);
+    assert.deepEqual(bodies[0].paths, ['l2/orders/next.ts', 'l2/orders/fresh.ts']);
+    assert.deepEqual(notices, ['remove']);
+    assert.deepEqual(rows, []);
+    assert.deepEqual(next, ['l2/billing/bill.ts']);
+  } finally {
+    host.window = previous;
+  }
+});
+
+test('st69 h: a refused undo of a rename leaves the browser file and shows the error', async () => {
+  const host = globalThis as { window?: EventTarget };
+  const previous = host.window;
+  const windowEvents = new EventTarget();
+  const notices: string[] = [];
+  windowEvents.addEventListener(COLLAB_DRAFT_RECOUNT, () => { notices.push('recount'); });
+  windowEvents.addEventListener(COLLAB_DRAFT_DISCARDED, () => { notices.push('discarded'); });
+  host.window = windowEvents;
+  const renamed: IPanelStorFile = {
+    project: 102047,
+    inLocalStorage: true,
+    status: 'renamed',
+    shortName: 'next',
+    level: 2,
+    folder: 'orders',
+    extension: '.ts',
+    getValueInfo: async () => ({ originalFolder: 'orders', originalProject: 102047, originalShortName: 'page' }),
+  };
+  try {
+    await assert.rejects(
+      () => undoFile({
+        fetchImpl: async () => jsonResponse({ statusCode: 400, code: 'NOT_OWNER', msg: 'draft.not_owner' }, 400),
+        file: renamed,
+        clearLocal: async () => { notices.push('clear'); },
+        removeNew: async () => { notices.push('remove'); },
+      }, 102047, 'team-102047', 'l2/orders/next.ts', true, ['l2/orders/next.ts']),
+      /draft\.not_owner/,
+    );
+    assert.equal(renamed.status, 'renamed');
+    assert.equal(renamed.inLocalStorage, true);
+    assert.equal(renamed.shortName, 'next');
+    assert.deepEqual(notices, []);
+  } finally {
+    host.window = previous;
+  }
+});
+
 test('st67 s2: discardModule with 3 local files restores once and recounts once', async () => {
   const host = globalThis as { window?: EventTarget; mls?: unknown };
   const previousWindow = host.window;

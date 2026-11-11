@@ -10,7 +10,7 @@
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
 
 import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
-import { deletedDraftFile, draftContentCrc, forgetDraftPaths, rememberDraftPaths, rememberSentCrc, requestDraftRecount, savedOriginToDrop, sentCrcOf, undoDraftPaths, withDraftUndoBrowserOnly, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { deletedDraftFile, draftContentCrc, forgetDraftPaths, rememberDraftPaths, rememberSentCrc, requestDraftRecount, savedOriginToDrop, sentCrcOf, undoDraftPaths, undoPathsForDraftFile, withDraftUndoBrowserOnly, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import { modelTextDiffers, openModelText } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
@@ -824,10 +824,13 @@ export interface IUndoFileEffects {
 /**
  * One path back to the published version, on the same route as `discardModule`.
  * A path that is only in the browser clears the local copy and does not call the server.
- * A path saved in the draft calls `draftRestorePaths` with that path alone (`ref` `main`):
- * a changed file returns to the published text, a new file is removed.
+ * A path saved in the draft calls `draftRestorePaths` once (`ref` `main`).
+ * A published rename sends the new name and the published name: the published name
+ * comes back and the new name leaves the draft and the browser.
+ * A `new` file that was renamed and saved sends the new name and, when it is still
+ * listed, the saved name. Both leave. Nothing is written back into the browser.
  * The server failure throws before the browser changes.
- * After a restore, the path leaves `draftPaths`, the count is asked again, and the open tabs are updated.
+ * After a restore, those paths leave `draftPaths`, the count is asked again, and the open tabs are updated.
  */
 export async function undoFile(
   effects: IUndoFileEffects,
@@ -846,14 +849,30 @@ export async function undoFile(
     return [...draftPaths];
   }
   if (!SLUG_RE.test(slug)) return fail(`undo draft slug is invalid: ${slug}`);
-  await undoDraftPaths(project, slug, [filePath], async () => {
-    if (effects.file?.status === 'new') {
-      await effects.removeNew(effects.file);
-    } else if (effects.file) {
-      await effects.clearLocal(effects.file);
-    }
+  const targets = effects.file
+    ? await undoPathsForDraftFile(effects.file, filePath, draftPaths)
+    : [filePath];
+  await undoDraftPaths(project, slug, targets, async () => {
+    await dropUndoneBrowserFile(effects);
   }, effects.fetchImpl);
-  return draftPaths.filter((path) => path !== filePath);
+  const dropped = new Set(targets);
+  return draftPaths.filter((path) => !dropped.has(path));
+}
+
+/**
+ * Drops the browser row after the server accepts the undo.
+ * `deleteFile` removes the row only when the status is `new`, so a renamed row
+ * (the new name) is marked `new` first. A changed file only clears its local copy.
+ */
+async function dropUndoneBrowserFile(effects: IUndoFileEffects): Promise<void> {
+  const file = effects.file;
+  if (!file) return;
+  if (file.status === 'renamed') file.status = 'new';
+  if (file.status === 'new') {
+    await effects.removeNew(file);
+    return;
+  }
+  await effects.clearLocal(file);
 }
 
 /** `DRAFT_CONFLICT: <files>` — the panel turns this into `syncConflict`. */
