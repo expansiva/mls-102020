@@ -248,8 +248,9 @@ function parseAuraPageSource(project: number, source: string): ParsedAuraPage | 
  * region from the DOM and hands the source path here, so the studio services (which all read
  * `getAuraState()`) operate on the page the user is looking at instead of on nothing.
  *
- * Fills actualProject + actualPage and the module/device/variation the folder implies. The language
- * is deliberately not here: the folder does not carry it (see seedAuraStateFromPage).
+ * Fills actualProject + actualPage and the module/device/UX the folder implies. The language and the
+ * UI (design system) are deliberately not here: the folder does not carry them (see
+ * seedAuraStateFromPage; pages live in page{UX}1 whatever the UI, which stays the knob's).
  *
  * @returns the resolved page, or null when the source is not a recognizable aura page.
  */
@@ -270,7 +271,6 @@ export function setAuraStateFromPageSource(project: number, source: string): IAu
     setAuraState('actualModule', parsed.module);
     setAuraState('actualDevice', parsed.device);
     setAuraState('actualLayout', parsed.layout);
-    setAuraState('actualDesignSystem', parsed.designSystem);
     setAuraState('actualPage', parsed.actualPage);
     return parsed.actualPage;
 }

@@ -4,6 +4,7 @@ import { getTokensCss, getGlobalCss } from '/_102027_/l2/designSystemBase.js';
 import { getPath } from '/_102027_/l2/utils';
 import { convertFileToTag, resolveTagToFile } from '/_102020_/l2/utils';
 import { themeByIndex } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
+import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 
 
 export interface IJSONDependence {
@@ -52,11 +53,10 @@ async function getDependencies(storFile: mls.stor.IFileInfo, fileName: string, h
         modules,
     );
 
-    // A page variation folder encodes its DS as `page<layout><ds>`; the generated
-    // designSystem.ts keys that DS's tokens entry by the DS NAME (themeName). Pages
-    // without a DS entry (e.g. default DS) fall back to the editor's active theme.
-    const pageDs = pageDsFromFolder(folder);
-    const dsTheme = pageDs ? await dsNameFromIndex(project, pageDs) : null;
+    // The page paints with the UI picked in the Studio (the folder page{UX}1 does not say which):
+    // its tokens entry is keyed by the DS NAME (themeName). No pick, or no entry, falls back to
+    // the editor's active theme.
+    const dsTheme = await dsThemeForPreview(project);
     let tokens: string | undefined = dsTheme ? await getTokensCss(project, dsTheme) : '';
     if (!tokens) tokens = await getTokensCss(project, theme);
     let globalCss: string | undefined = await getGlobalCss(project, theme);
@@ -75,14 +75,12 @@ async function getDependencies(storFile: mls.stor.IFileInfo, fileName: string, h
 }
 
 /**
- * The theme (DS name) a file's tokens should use, derived from its folder: page variation
- * folders encode the DS index (`page<layout><ds>`), which matches the `dsIndex` of an entry
- * in designSystem.ts. Null when the folder is not a page variation or the DS has no entry
- * (caller falls back to the editor's active theme).
+ * The DS name the preview paints with: the UI picked in the Studio (Aura `actualDesignSystem`).
+ * Null when nothing is picked or the entry is gone (caller falls back to the editor's active theme).
  */
-export async function dsThemeForFolder(project: number, folder: string): Promise<string | null> {
-    const pageDs = pageDsFromFolder(folder);
-    return pageDs ? dsNameFromIndex(project, pageDs) : null;
+export async function dsThemeForPreview(project: number): Promise<string | null> {
+    const ui = getAuraState()?.actualDesignSystem;
+    return ui ? dsNameFromIndex(project, String(ui)) : null;
 }
 
 /** DS index → DS name (the `themeName` of its entry in designSystem.ts, matched by dsIndex). */
@@ -96,15 +94,6 @@ async function dsNameFromIndex(project: number, ds: string): Promise<string | nu
 }
 
 
-/**
- * The DS index of a page variation, parsed from a `page<layout><ds>` folder segment
- * (layout is a single digit, ds is the rest — same convention as derivePaths/genome).
- * Returns null when the folder is not a page variation.
- */
-function pageDsFromFolder(folder: string): string | null {
-    const m = (folder || '').match(/(?:^|\/)page(\d)(\d+)(?=\/|$)/);
-    return m ? m[2] : null;
-}
 
 function extractTagsCustom(html: string): string[] {
 

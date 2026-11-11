@@ -16,7 +16,7 @@ import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
 
 
-import { getDependenciesByHtml, dsThemeForFolder } from '/_102020_/l2/aura/services/preview/buildFile.js';
+import { getDependenciesByHtml, dsThemeForPreview } from '/_102020_/l2/aura/services/preview/buildFile.js';
 
 import '/_102025_/l2/collabMessagesPrompt.js';
 
@@ -583,11 +583,11 @@ export class ServicePreview extends ServiceBase {
       const id = convertFileToTag({ project: this.project, shortName: this.shortName, folder: this.folder });
       const less = await compileStyleUsingStorFile(this.shortName, this.project, this.folder, this.actualTheme);
       if (less) out.push({ id, css: less });
-      const dsTheme = await dsThemeForFolder(this.project, this.folder);
+      const dsTheme = await dsThemeForPreview(this.project);
       const tokens = await getTokensCss(this.project, dsTheme ?? this.actualTheme);
       if (tokens) out.push({ id: this.getIdTokens(), css: tokens });
-      // NOTE: page variations resolve their tokens by the page's DS (dsThemeForFolder);
-      // everything else uses the editor's active theme. Single token channel — the old
+      // NOTE: pages paint with the UI picked in the Studio (dsThemeForPreview);
+      // without one, the editor's active theme. Single token channel — the old
       // per-DS global.css (IJSONDependence.dsGlobalCss) is gone.
     } catch (e: any) {
       console.info('Erro _getCompiledStyles: ' + (e?.message || e));
@@ -868,7 +868,7 @@ export class ServicePreview extends ServiceBase {
 
     const id = convertFileToTag({ project: this.project, shortName: this.shortName, folder: this.folder });
     const newLess = await compileStyleUsingStorFile(this.shortName, this.project, this.folder, this.actualTheme);
-    const dsTheme = await dsThemeForFolder(this.project, this.folder);
+    const dsTheme = await dsThemeForPreview(this.project);
     const tokens = await getTokensCss(this.project, dsTheme ?? this.actualTheme);
 
     if (this._previewMode === 'shared') {

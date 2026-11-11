@@ -4,6 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getAuraEdit, getAuraState, type IAuraEditSelection } from '/_102020_/l2/aura/helpers/auraState.js';
+import { PAGE_FOLDER_UI, pageFolderName } from '/_102020_/l2/aura/helpers/pageCombination.js';
 import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 import { pageDsCheckByDefs, restampPage, layoutHasRules, type PageDsCheck } from '/_102020_/l2/aura/helpers/dsMatch/dsVersion.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
@@ -468,11 +469,10 @@ export class PluginSelectPage extends StateLitElement {
 
         this._activeDevice = activeDevicePath ? (DEVICE_LABELS[activeDevicePath] ?? null) : null;
 
-        // The page variation folder is page<layout><designSystem> (e.g. page11 =
-        // layout 1, DS 1). Build it from the current aura selection.
+        // The page folder comes from the UX (layout) only: page{UX}1. The UI (design system) only
+        // swaps tokens, so UX 1 · UI 2 (page12) lists the pages of page11.
         const layout = getAuraState().actualLayout ?? 1;
-        const ds = getAuraState().actualDesignSystem ?? 1;
-        const variation = `page${layout}${ds}`;
+        const variation = pageFolderName(layout);
 
         // Pages live in the project config.json (l0), written by the register step.
         let pages: any[] = [];
@@ -531,7 +531,7 @@ export class PluginSelectPage extends StateLitElement {
 
             // The page list is owned by the config (or, without one, by the page11 scan):
             // the source (page11) is the source of truth, so a page not yet generated for
-            // the current layout/DS variation still shows. Its file always points at the
+            // the current UX still shows. Its file always points at the
             // variation path — selecting a missing one leads the preview to its own
             // "not found" state instead of silently rendering the page11 version.
             const exists = this._fileExists(project, level, variationFolder, shortName);
@@ -587,7 +587,8 @@ export class PluginSelectPage extends StateLitElement {
         const module = this._modulePath;
         const project = getAuraState().actualProject;
         const layout = getAuraState().actualLayout ?? 1;
-        const ds = getAuraState().actualDesignSystem ?? 1;
+        // The page file is the UX folder's (page{UX}1): its stamp's UI is the folder's, not the knob's.
+        const ds = PAGE_FOLDER_UI;
         if (!module || !project || this._pages.length === 0) return;
         // Gate (L6): only check staleness when the layout actually has rules configured.
         if (!(await layoutHasRules(project, layout))) return;
@@ -1195,7 +1196,8 @@ export class PluginSelectPage extends StateLitElement {
     private async _onMarkReviewed(page: IPageEntry) {
         const module = this._modulePath;
         const layout = getAuraState().actualLayout ?? 1;
-        const ds = getAuraState().actualDesignSystem ?? 1;
+        // The page file is the UX folder's (page{UX}1): its stamp's UI is the folder's, not the knob's.
+        const ds = PAGE_FOLDER_UI;
         if (!module) return;
         this._busyPage = page.name;
         this.requestUpdate();
@@ -1499,7 +1501,6 @@ export class PluginSelectPage extends StateLitElement {
                 module: this._modulePath,
                 device: getAuraState().actualDevice,
                 layout: getAuraState().actualLayout,
-                designSystem: getAuraState().actualDesignSystem,
             },
             bubbles: true,
             composed: true,

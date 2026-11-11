@@ -19,6 +19,7 @@ import {
   setAuraState,
   setEditHistory,
   setEditSelection,
+  setAuraStateFromPageSource,
 } from '/_102020_/l2/aura/helpers/auraState.js';
 
 const SELECTION = {
@@ -95,4 +96,13 @@ test('a null selection clears it without clearing the rest', () => {
   setEditSelection(null);
   assert.equal(getAuraEdit().selection, null);
   assert.equal(getAuraEdit().history.undo, 5, 'the history is not part of the selection');
+});
+
+test('seeding from the page on screen takes the UX from the folder and leaves the UI alone', () => {
+  AuraInitState();
+  setAuraState('actualDesignSystem', 2);
+  const page = setAuraStateFromPageSource(102046, 'l2/buildFlowFsm/web/desktop/page21/changeOrderCatalogue.ts');
+  assert.ok(page);
+  assert.equal(getAuraState().actualLayout, 2);
+  assert.equal(getAuraState().actualDesignSystem, 2, 'page21 is the UX 2 folder: it says nothing about the UI');
 });

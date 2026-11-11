@@ -25,6 +25,7 @@ import { property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { getActualLanguage, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { combinationName } from '/_102020_/l2/aura/helpers/pageCombination.js';
 import { currentLanguage, describePageFolder } from '/_102020_/l2/aura/studio/studioEditTarget.js';
 import {
   ANIMATION_GROUPS,
@@ -1808,8 +1809,9 @@ export abstract class ClassPickerBase extends StateLitElement {
     const module = identity.module || aura?.actualModule || '';
     const name = file?.shortName || aura?.actualPage?.shortName || '';
     const layout = identity.layout ?? aura?.actualLayout;
-    const ds = identity.designSystem ?? aura?.actualDesignSystem;
-    const variation = layout && ds ? `page${layout}${ds}` : '';
+    // The UX comes from the folder; the UI from the Studio's pick (the folder page{UX}1 does not carry it).
+    const ds = aura?.actualDesignSystem ?? identity.designSystem;
+    const variation = layout ? combinationName(layout, ds) : '';
     // The language the page is RENDERING in — the same source the text editor treats as the truth.
     const language = currentLanguage() || getActualLanguage() || '';
     const tokens = splitUtilities(this.literal);

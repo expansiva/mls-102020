@@ -5,6 +5,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { AuraInitState, getAuraState, getAuraEdit, setAuraState, saveAuraProject, moduleScopeTitle, IAuraPage, type IAuraEditSelection } from '/_102020_/l2/aura/helpers/auraState.js';
+import { sitesPageNumber, withUxFolder } from '/_102020_/l2/aura/helpers/pageCombination.js';
 import { skills as listOfGroups } from '/_102020_/l2/aura/molecules/skills/index.js';
 import { replaceComponentTag } from '/_102020_/l2/aura/helpers/moleculeTagSwap.js';
 import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
@@ -955,24 +956,21 @@ export class ServiceGenome102020 extends ServiceBase {
 
     // ─── Repaint preview on layout/DS change ──────────────────────────
 
-    /** Tell the runtime shell (mls.sites) which content variation is active — page21 →
-     *  setPage(21). No-op until the base registers its handlers; fired even when the
+    /** Tell the runtime shell (mls.sites) which UX is active — UX 2 → setPage(21); the UI never
+     *  picks a page. No-op until the base registers its handlers; fired even when the
      *  preview repaint is skipped (same folder), so the shell never drifts. */
     private _notifySitesPage(): void {
         const layout = getAuraState().actualLayout ?? 1;
-        const ds = getAuraState().actualDesignSystem ?? 1;
-        try { mls.sites.setPage(Number(`${layout}${ds}`)); } catch { /* base not registered */ }
+        try { mls.sites.setPage(sitesPageNumber(layout)); } catch { /* base not registered */ }
     }
 
-    /** Current page file with its variation segment (page<L><D>) set to the current layout/DS. */
+    /** Current page file in the folder of the current UX (page{UX}1): the UI only swaps tokens. */
     private _variationPageFile(): mls.stor.IFileInfo | null {
         const base = this._currentPageFile;
         if (!base || !base.folder) return null;
         if (!/page\d+(\/|$)/.test(base.folder)) return null; // no variation segment to swap
         const layout = getAuraState().actualLayout ?? 1;
-        const ds = getAuraState().actualDesignSystem ?? 1;
-        const folder = base.folder.replace(/page\d+(\/|$)/, `page${layout}${ds}$1`);
-        return { ...base, folder } as mls.stor.IFileInfo;
+        return { ...base, folder: withUxFolder(base.folder, layout) } as mls.stor.IFileInfo;
     }
 
     /** Repaint the preview for the current layout/DS combination — ALWAYS, even when the
@@ -1010,8 +1008,8 @@ export class ServiceGenome102020 extends ServiceBase {
     /**
      * Reconcile the preview with the DS picked at PROJECT scope (l6 · serviceExploreProjects).
      * The genome has no DS knob, so (re)entering the service is when we pick up whatever was
-     * selected — or edited — there: a different variation folder is opened, and the SAME folder
-     * is repainted anyway, since the DS tokens (and therefore global.css) may have changed.
+     * selected — or edited — there. The folder only changes with the UX; the SAME folder is
+     * repainted anyway, since the DS tokens (and therefore global.css) may have changed.
      */
     private async _syncWithProjectDs(): Promise<void> {
         this._notifySitesPage();

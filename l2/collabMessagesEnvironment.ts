@@ -9,6 +9,7 @@ import { openElementInServiceDetails, saveOpenedFile } from '/_102027_/l2/libCom
 import { createModel } from '/_102027_/l2/libModel.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
 import { setAuraState, saveAuraProject, getAuraState, type IAuraPage } from '/_102020_/l2/aura/helpers/auraState.js';
+import { withUxFolder } from '/_102020_/l2/aura/helpers/pageCombination.js';
 import { notificationsRuntime } from '/_102025_/l2/notificationsRuntime.js';
 import { collabMessagesEnvironmentBase } from '/_102025_/l2/collabMessagesEnvironmentBase.js';
 
@@ -181,13 +182,12 @@ async function openProgram(item: CollabProgramMenuItem & { project?: number; mod
     }
     if (!target.shortName) return;
 
-    // Swap the source's variation segment (e.g. page11) for the current layout/design system,
-    // BUT only if that variation file actually exists. Modules generated per layout/DS
-    // (e.g. cafeFlow) have page<layout><ds>; single-variation modules (e.g. the audit pilot)
-    // only have the source folder (page11), so fall back to it instead of a missing page31.
+    // Swap the source's variation segment (e.g. page11) for the current UX (page{UX}1: the UI
+    // only swaps tokens), BUT only if that file actually exists. Single-variation modules (e.g.
+    // the audit pilot) only have the source folder (page11), so fall back to it instead of a
+    // missing page31.
     const layout = getAuraState().actualLayout ?? 1;
-    const ds = getAuraState().actualDesignSystem ?? 1;
-    const variationFolder = target.folder.replace(/page\d+(\/|$)/, `page${layout}${ds}$1`);
+    const variationFolder = withUxFolder(target.folder, layout);
     const variationKey = mls.stor.getKeyToFiles(project, target.level, target.shortName, variationFolder, target.extension);
     const folder = mls.stor.files[variationKey] ? variationFolder : target.folder;
 

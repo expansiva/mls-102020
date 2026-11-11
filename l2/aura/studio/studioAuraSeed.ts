@@ -31,6 +31,7 @@ import {
   type IAuraPage,
 } from '/_102020_/l2/aura/helpers/auraState.js';
 import { currentLanguage, findPageElement, tagToFileInfo } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import { combinationName } from '/_102020_/l2/aura/helpers/pageCombination.js';
 
 /** Coordinates of the source file that renders the mounted page. */
 export interface IPageFile {
@@ -123,7 +124,7 @@ export function seedAuraStateFromHost(host: HTMLElement | null | undefined): IAu
     module: state?.actualModule,
     device: state?.actualDevice,
     page: page.shortName,
-    variation: `page${state?.actualLayout}${state?.actualDesignSystem}`,
+    variation: state?.actualLayout ? combinationName(state.actualLayout, state.actualDesignSystem) : null,
     language,
   });
   return page;

@@ -72,6 +72,7 @@ test('the mounted page comes from the tag, skipping our own chrome', () => {
 test('entering studio mode fills the identity the knobs used to be the only source of', () => {
   resetAuraSeed();
   setLanguage('pt-BR');
+  const uiBefore = getAuraState()?.actualDesignSystem ?? null;
 
   const page = seedAuraStateFromHost(host(el(PAGE_TAG)));
   assert.ok(page, 'the seed resolved the mounted page');
@@ -80,9 +81,10 @@ test('entering studio mode fills the identity the knobs used to be the only sour
   assert.equal(state.actualProject, 102046);
   assert.equal(state.actualModule, 'buildFlowFsm');
   assert.equal(state.actualDevice, 'web/desktop');
-  // page23 -> layout 2, design system 3. These two are the fields that were always empty.
+  // page23 -> layout (UX) 2. The second digit is the folder's, not the UI: pages are generated per UX
+  // and the UI is the knob's, so seeding leaves it as it was.
   assert.equal(state.actualLayout, 2);
-  assert.equal(state.actualDesignSystem, 3);
+  assert.equal(state.actualDesignSystem ?? null, uiBefore);
   assert.equal(state.actualPage?.shortName, 'changeOrderCatalogue');
   assert.equal(state.actualPage?.folder, 'buildFlowFsm/web/desktop/page23');
   assert.equal(state.actualPage?.level, 2, 'the level comes from the source path');
