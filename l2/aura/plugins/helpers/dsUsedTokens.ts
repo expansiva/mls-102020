@@ -96,7 +96,8 @@ export function safeMatches(el: Element, selector: string): boolean {
   try { return el.matches(sel); } catch { return false; }
 }
 
-function matchesInside(root: Element, selector: string): boolean {
+/** `root` or anything under it matches the (cleaned) selector. */
+export function matchesInside(root: Element, selector: string): boolean {
   const sel = cleanSelector(selector);
   if (!sel) return false;
   try {

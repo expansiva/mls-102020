@@ -17,7 +17,12 @@ import { canPreview, createLivePreview } from '/_102020_/l2/aura/plugins/helpers
 import { collectUsedTokens, pageRegion } from '/_102020_/l2/aura/plugins/helpers/dsUsedTokens.js';
 import { NAV3_TAB_CHANGE_EVENT } from '/_102033_/l2/shared/nav3ActiveTab.js';
 import { groupColorRows, splitState, type ColorGroup } from '/_102020_/l2/aura/plugins/helpers/dsColorGroups.js';
-import { createHighlighter, elementsUsingTokens, tokensForElement } from '/_102020_/l2/aura/plugins/helpers/dsTokenInspect.js';
+import { createHighlighter, elementsUsingTokens, isMoleculeTag, moleculeHost, moleculeTokenUses, tokensForElement } from '/_102020_/l2/aura/plugins/helpers/dsTokenInspect.js';
+import {
+    BORDER_STYLES, ML_GROUP_ORDER, classifyMlToken, colorMapToRows, isComponentToken, literalFallback, loadMoleculeTokenCatalog, mlTokenGroup,
+    parseDurationMs, parseLength, partitionMlRows, ratioMax, removeMlToken, roleOf, suggestRoles, upsertMlToken, valueMapToRows,
+    isLengthValue, type MlTokenGroup, type MlTokenInfo, type MlTokenType, type MlUse,
+} from '/_102020_/l2/aura/plugins/helpers/dsMoleculeTokens.js';
 import { baseName, colorRowsToMap, countByKind, diffTokens, tokenStatus, valueRowsToMap, type ChangeKind, type KeyChange, type TokenMaps, type TokenSection } from '/_102020_/l2/aura/plugins/helpers/dsDiff.js';
 import { parseTokenQuery, rowMatchesQuery, type SearchableRow } from '/_102020_/l2/aura/plugins/helpers/dsTokenSearch.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
@@ -133,6 +138,42 @@ const message_en = {
     restore: 'Restore',
     newBadge: 'new',
     diffHint: 'Show what changed',
+    mlComponent: 'component',
+    mlComponentHint: 'Tokens this component uses. A token applies to ALL components that read it — the number says how many.',
+    mlNoTokens: 'This component reads no component token.',
+    mlDefault: 'default',
+    mlDefaultHint: 'The component\'s own default (the fallback in its CSS)',
+    mlInDs: 'in DS',
+    mlInDsHint: 'Value set in the design system',
+    mlAdd: '+ DS',
+    mlEditBtn: 'edit',
+    mlReaders: 'components that read this token',
+    mlReadersPage: 'components on this page that read this token (molecule catalog unavailable)',
+    mlGoesTo: 'Goes to the theme',
+    mlChangesN: 'Changes {n} components of this project.',
+    mlChangesAll: 'Applies to every component that reads it.',
+    mlAddToDs: 'Add to design system',
+    mlCancel: 'Cancel',
+    mlClose: 'Close',
+    mlRemove: 'Remove — the components go back to their default',
+    mlRoleLabel: 'A design-system role (switches by itself in dark mode):',
+    mlRoleMore: 'more…',
+    mlFixedLabel: 'or a fixed color, as in the theme Colors — light and dark:',
+    mlDarkEmpty: 'Empty dark = the light value is used.',
+    mlDsMeasure: 'or a design-system measure',
+    mlRole: 'role',
+    mlElementSummary: 'clicked element: {label} — own and inherited tokens',
+    mlSectionTitle: 'Component tokens',
+    mlSectionTag: 'molecules',
+    mlSectionTheme: 'Theme {name} · colors have light and dark',
+    mlSectionEmpty: 'This theme gives no value to component tokens yet.',
+    mlSectionAddHint: 'To add a token, inspect a component on the page.',
+    mlGroup_colors: 'Colors',
+    mlGroup_border: 'Border & shape',
+    mlGroup_focus: 'Focus & state',
+    mlGroup_typography: 'Typography',
+    mlGroup_motion: 'Motion',
+    mlGroup_other: 'Other',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -239,6 +280,42 @@ const messages: Record<string, MessageType> = {
         restore: 'Restaurar',
         newBadge: 'novo',
         diffHint: 'Ver o que mudou',
+        mlComponent: 'componente',
+        mlComponentHint: 'Tokens que este componente usa. Um token vale para TODOS os componentes que o leem — o número ao lado diz quantos.',
+        mlNoTokens: 'Este componente não lê nenhum token de componente.',
+        mlDefault: 'padrão',
+        mlDefaultHint: 'O padrão do próprio componente (o fallback no CSS dele)',
+        mlInDs: 'no DS',
+        mlInDsHint: 'Valor definido no design system',
+        mlAdd: '+ DS',
+        mlEditBtn: 'editar',
+        mlReaders: 'componentes que leem este token',
+        mlReadersPage: 'componentes desta página que leem este token (catálogo de moléculas indisponível)',
+        mlGoesTo: 'Vai para o tema',
+        mlChangesN: 'Muda {n} componentes deste projeto.',
+        mlChangesAll: 'Vale para todos os componentes que o leem.',
+        mlAddToDs: 'Adicionar ao design system',
+        mlCancel: 'Cancelar',
+        mlClose: 'Fechar',
+        mlRemove: 'Remover — os componentes voltam ao padrão deles',
+        mlRoleLabel: 'Um papel do design system (troca sozinho no modo escuro):',
+        mlRoleMore: 'mais…',
+        mlFixedLabel: 'ou uma cor fixa, como nas Cores do tema — claro e escuro:',
+        mlDarkEmpty: 'Escuro vazio = usa o claro.',
+        mlDsMeasure: 'ou uma medida do design system',
+        mlRole: 'papel',
+        mlElementSummary: 'elemento clicado: {label} — tokens próprios e herdados',
+        mlSectionTitle: 'Tokens de componentes',
+        mlSectionTag: 'moléculas',
+        mlSectionTheme: 'Tema {name} · as cores têm claro e escuro',
+        mlSectionEmpty: 'Este tema ainda não dá valor a nenhum token de componente.',
+        mlSectionAddHint: 'Para adicionar um token, inspecione um componente na página.',
+        mlGroup_colors: 'Cores',
+        mlGroup_border: 'Borda e forma',
+        mlGroup_focus: 'Foco e estado',
+        mlGroup_typography: 'Tipografia',
+        mlGroup_motion: 'Movimento',
+        mlGroup_other: 'Outros',
     },
     es: {
         title: 'UI · User Interface',
@@ -342,6 +419,42 @@ const messages: Record<string, MessageType> = {
         restore: 'Restaurar',
         newBadge: 'nuevo',
         diffHint: 'Ver qué cambió',
+        mlComponent: 'componente',
+        mlComponentHint: 'Tokens que usa este componente. Un token vale para TODOS los componentes que lo leen — el número indica cuántos.',
+        mlNoTokens: 'Este componente no lee ningún token de componente.',
+        mlDefault: 'predeterminado',
+        mlDefaultHint: 'El valor predeterminado del propio componente (el fallback en su CSS)',
+        mlInDs: 'en el DS',
+        mlInDsHint: 'Valor definido en el design system',
+        mlAdd: '+ DS',
+        mlEditBtn: 'editar',
+        mlReaders: 'componentes que leen este token',
+        mlReadersPage: 'componentes de esta página que leen este token (catálogo de moléculas no disponible)',
+        mlGoesTo: 'Va al tema',
+        mlChangesN: 'Cambia {n} componentes de este proyecto.',
+        mlChangesAll: 'Vale para todos los componentes que lo leen.',
+        mlAddToDs: 'Agregar al design system',
+        mlCancel: 'Cancelar',
+        mlClose: 'Cerrar',
+        mlRemove: 'Quitar — los componentes vuelven a su valor predeterminado',
+        mlRoleLabel: 'Un rol del design system (cambia solo en modo oscuro):',
+        mlRoleMore: 'más…',
+        mlFixedLabel: 'o un color fijo, como en los Colores del tema — claro y oscuro:',
+        mlDarkEmpty: 'Oscuro vacío = se usa el claro.',
+        mlDsMeasure: 'o una medida del design system',
+        mlRole: 'rol',
+        mlElementSummary: 'elemento clicado: {label} — tokens propios y heredados',
+        mlSectionTitle: 'Tokens de componentes',
+        mlSectionTag: 'moléculas',
+        mlSectionTheme: 'Tema {name} · los colores tienen claro y oscuro',
+        mlSectionEmpty: 'Este tema aún no da valor a ningún token de componente.',
+        mlSectionAddHint: 'Para agregar un token, inspeccione un componente en la página.',
+        mlGroup_colors: 'Colores',
+        mlGroup_border: 'Borde y forma',
+        mlGroup_focus: 'Foco y estado',
+        mlGroup_typography: 'Tipografía',
+        mlGroup_motion: 'Movimiento',
+        mlGroup_other: 'Otros',
     },
 };
 /// **collab_i18n_end**
@@ -376,7 +489,17 @@ interface IDsDraftCache {
     stamp: number;      // bumped on every write — lets a fresh instance spot a draft it has not applied
     name: string; desc: string;
     colors: IColorRow[]; typo: IValueRow[]; global: IValueRow[]; fonts: DsFont[];
+    mlColors: IColorRow[]; mlValues: IValueRow[];
     palette: string[]; brief: string;
+}
+
+/** The molecule token whose editor is open: from the inspected component or from the form section. */
+interface IMlEditor {
+    name: string;
+    type: MlTokenType;
+    fallback: string;
+    from: 'inspect' | 'section';
+    light: string; dark: string; value: string;   // the values on screen (a draft until added, when not in the DS yet)
 }
 const COLOR_VIEW_KEY = 'aura-ds-editor-color-view';
 
@@ -410,6 +533,10 @@ export class PluginSelectDesignSystem extends StateLitElement {
     @state() private _typo: IValueRow[] = [];
     @state() private _global: IValueRow[] = [];
     @state() private _fonts: DsFont[] = [];
+    // Molecule tokens (`ml-*`): they live in `color` / `global` of the theme like any token, but the
+    // form shows them apart — out of the Colors and Global rows, into "Component tokens".
+    @state() private _mlColors: IColorRow[] = [];
+    @state() private _mlValues: IValueRow[] = [];
 
     @state() private _editingKey: number | null = null;   // which DS the form is synced to
     @state() private _nameError = false;
@@ -449,8 +576,14 @@ export class PluginSelectDesignSystem extends StateLitElement {
     @state() private _inspecting = false;
     @state() private _inspected: { label: string; own: string[]; inherited: string[] } | null = null;
     private _inspectedEl: Element | null = null;
+    // The molecule holding the inspected element, and every `--ml-*` it reads.
+    @state() private _molecule: { tag: string; uses: MlUse[] } | null = null;
+    @state() private _mlEditor: IMlEditor | null = null;
+    // How many molecules read each token: the stor catalog (once per session), else the page on screen.
+    @state() private _mlCatalog: Map<string, MlTokenInfo> | null = null;
+    private _mlCatalogAsked = false;
     // What changed since the DS was loaded/saved: the form as loaded is the baseline (null in Add — all new).
-    private _baseline: { colors: IColorRow[]; typo: IValueRow[]; global: IValueRow[]; maps: TokenMaps; name: string; desc: string; fonts: string } | null = null;
+    private _baseline: { colors: IColorRow[]; typo: IValueRow[]; global: IValueRow[]; mlColors: IColorRow[]; mlValues: IValueRow[]; maps: TokenMaps; name: string; desc: string; fonts: string } | null = null;
     private _formVersion = 0;
     private _diffMemo: { version: number; changes: KeyChange[]; status: Record<TokenSection, Map<string, ChangeKind>>; counts: Record<ChangeKind, number> } | null = null;
     @state() private _showDiff = false;
@@ -548,6 +681,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
         window.removeEventListener('keydown', this._onInspectKey, true);
         this._inspectedEl = null;
         this._inspected = null;
+        this._molecule = null;
+        if (this._mlEditor?.from === 'inspect') this._mlEditor = null;
         this._hl.clear();
     }
 
@@ -584,13 +719,22 @@ export class PluginSelectDesignSystem extends StateLitElement {
         const region = pageRegion(document);
         if (!region) return;
         // Only tokens of THIS design system — Tailwind internals (--tw-*) and app vars are noise here.
-        const dsNames = new Set([...this._colors, ...this._typo, ...this._global].map(r => r.name.trim()).filter(Boolean));
+        const dsNames = new Set(this._allRows.map(r => r.name.trim()).filter(Boolean));
         try {
             const { own, inherited } = tokensForElement(el, region, document, this._tokensCss);
             const cls = (el.getAttribute('class') ?? '').trim().split(/\s+/).filter(Boolean)[0];
             const label = `<${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${cls ? `.${cls.length > 28 ? cls.slice(0, 27) + '…' : cls}` : ''}>`;
             this._inspectedEl = el;
             this._inspected = { label, own: own.filter(n => dsNames.has(n)), inherited: inherited.filter(n => dsNames.has(n)) };
+            // Inside a molecule, the panel climbs to it: every `--ml-*` it reads, not only the clicked part's.
+            const mol = moleculeHost(el, region);
+            const tag = mol?.tagName.toLowerCase();
+            if (tag !== this._molecule?.tag && this._mlEditor?.from === 'inspect') this._mlEditor = null;
+            this._molecule = mol && tag ? { tag, uses: moleculeTokenUses(mol, document) } : null;
+            if (mol) {
+                this._ensureMlCatalog();
+                if (!this._mlCatalog) this._pageMlCounts = this._countPageMolecules(region);
+            }
             this._hl.show([el], 'pick');
         } catch (err) {
             console.debug('[selectDesignSystem] inspect skipped', err);
@@ -599,7 +743,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     /** Bring a token row into view: lift the filters hiding it, open its group/section, focus it. */
     private async _revealToken(name: string): Promise<void> {
-        const row = [...this._colors, ...this._typo, ...this._global].find(r => r.name.trim() === name);
+        const row = this._allRows.find(r => r.name.trim() === name);
         if (!row) return;
         if (!this._rowVisible(row)) { this._query = ''; this._onlyUsed = false; }
         const split = splitState(name);
@@ -614,6 +758,105 @@ export class PluginSelectDesignSystem extends StateLitElement {
         input.scrollIntoView({ block: 'center', behavior: 'smooth' });
         input.focus({ preventScroll: true });
         input.animate([{ boxShadow: '0 0 0 3px rgba(236,72,153,.75)' }, { boxShadow: '0 0 0 0 rgba(236,72,153,0)' }], { duration: 1400 });
+    }
+
+    // ── molecule tokens (`ml-*`) ───────────────────────────────────────
+    private _pageMlCounts: Map<string, number> | null = null;
+
+    /** The molecule catalog of the stor, asked once (the helper caches it for the session). */
+    private _ensureMlCatalog(): void {
+        if (this._mlCatalog || this._mlCatalogAsked) return;
+        this._mlCatalogAsked = true;
+        loadMoleculeTokenCatalog()
+            .then(map => { if (map.size) this._mlCatalog = map; else this._mlCatalogAsked = false; })
+            .catch(err => { this._mlCatalogAsked = false; console.debug('[selectDesignSystem] molecule catalog skipped', err); });
+    }
+
+    /** Without the catalog: one molecule of each kind on the page, and the tokens each reads. */
+    private _countPageMolecules(region: Element): Map<string, number> {
+        const firstOfTag = new Map<string, Element>();
+        for (const el of Array.from(region.querySelectorAll('*'))) {
+            const tag = el.tagName.toLowerCase();
+            if (!firstOfTag.has(tag) && isMoleculeTag(tag)) firstOfTag.set(tag, el);
+        }
+        const counts = new Map<string, number>();
+        for (const el of firstOfTag.values()) for (const u of moleculeTokenUses(el, document)) counts.set(u.name, (counts.get(u.name) ?? 0) + 1);
+        return counts;
+    }
+
+    /** How many components read a token, and whether that is the catalog or only the page. */
+    private _mlCount(name: string): { n: number; page: boolean } | null {
+        const info = this._mlCatalog?.get(name);
+        if (info) return { n: info.count, page: false };
+        const n = this._pageMlCounts?.get(name);
+        return n ? { n, page: true } : null;
+    }
+
+    private _mlRow(name: string): { kind: 'color'; row: IColorRow } | { kind: 'value'; row: IValueRow } | null {
+        const key = name.trim();
+        const color = this._mlColors.find(r => r.name.trim() === key);
+        if (color) return { kind: 'color', row: color };
+        const value = this._mlValues.find(r => r.name.trim() === key);
+        return value ? { kind: 'value', row: value } : null;
+    }
+
+    /** The editor a token gets. A token already in the theme keeps the map it lives in. */
+    private _mlTypeOf(name: string, fallback: string): MlTokenType {
+        const found = this._mlRow(name);
+        if (found?.kind === 'color') return 'color';
+        const type = classifyMlToken(name, found ? (found.row.value || fallback) : fallback);
+        return found && type === 'color' ? 'text' : type;
+    }
+
+    private _openMlEditor(name: string, fallback: string, from: IMlEditor['from']): void {
+        const fb = fallback || this._mlCatalog?.get(name)?.fallback || '';
+        const found = this._mlRow(name);
+        const lit = literalFallback(fb);
+        this._mlEditor = {
+            name, fallback: fb, from,
+            type: this._mlTypeOf(name, fb),
+            light: found?.kind === 'color' ? found.row.light : (roleOf(fb) ? fb : lit),
+            dark: found?.kind === 'color' ? found.row.dark : '',
+            value: found?.kind === 'value' ? found.row.value : lit,
+        };
+    }
+
+    /** An edit in the open editor: a draft until added; live (form + preview) once the token is in the DS. */
+    private _mlChange(patch: Partial<Pick<IMlEditor, 'light' | 'dark' | 'value'>>): void {
+        const ed = this._mlEditor;
+        if (!ed) return;
+        this._mlEditor = { ...ed, ...patch };
+        if (this._mlRow(ed.name)) this._commitMl(this._mlEditor);
+    }
+
+    /** Write the editor's value: a color into `color` (+ `_dark-` when filled), anything else into `global`. */
+    private _commitMl(ed: IMlEditor): void {
+        const next = ed.type === 'color' ? { light: ed.light.trim(), dark: ed.dark.trim() } : { value: ed.value.trim() };
+        if ('light' in next ? !next.light : !next.value) return;   // an empty value is not a value
+        const rows = upsertMlToken({ colors: this._mlColors, values: this._mlValues }, ed.name, next);
+        this._mlColors = rows.colors;
+        this._mlValues = rows.values;
+        this._touch();
+    }
+
+    /** ✕: the key (and its `_dark-` pair) leaves the theme — the components go back to their own default. */
+    private _removeMl(name: string): void {
+        const rows = removeMlToken({ colors: this._mlColors, values: this._mlValues }, name);
+        this._mlColors = rows.colors;
+        this._mlValues = rows.values;
+        if (this._mlEditor?.name === name) {
+            if (this._mlEditor.from === 'section') this._mlEditor = null;
+            else this._openMlEditor(name, this._mlEditor.fallback, 'inspect');
+        }
+        this._touch();
+    }
+
+    /** After a revert/restore, the open editor shows the row as it is now. */
+    private _syncMlEditor(): void {
+        const ed = this._mlEditor;
+        if (!ed) return;
+        if (this._mlRow(ed.name) || ed.from === 'inspect') this._openMlEditor(ed.name, ed.fallback, ed.from);
+        else this._mlEditor = null;
     }
 
     // ── used-on-page scan ──────────────────────────────────────────────
@@ -671,15 +914,23 @@ export class PluginSelectDesignSystem extends StateLitElement {
     /** Form rows (all sections) the page reads — drives the filter label and its visibility. */
     private get _usedRowCount(): number {
         let n = 0;
-        for (const r of this._colors) if (this._isUsed(r.name)) n++;
-        for (const r of this._typo) if (this._isUsed(r.name)) n++;
-        for (const r of this._global) if (this._isUsed(r.name)) n++;
+        for (const r of this._allRows) if (this._isUsed(r.name)) n++;
         return n;
     }
 
+    /** Every token row of the form, the molecule ones included. */
+    private get _allRows(): SearchableRow[] {
+        return [...this._colors, ...this._typo, ...this._global, ...this._mlColors, ...this._mlValues];
+    }
+
     // ── what changed (diff vs the loaded/saved form) ──────────────────
+    // The molecule rows are part of `color` / `global`, exactly as they are written.
     private _currentMaps(): TokenMaps {
-        return { color: colorRowsToMap(this._colors), typography: valueRowsToMap(this._typo), global: valueRowsToMap(this._global) };
+        return {
+            color: colorRowsToMap([...this._colors, ...this._mlColors]),
+            typography: valueRowsToMap(this._typo),
+            global: valueRowsToMap([...this._global, ...this._mlValues]),
+        };
     }
 
     private _snapshotBaseline(): void {
@@ -687,6 +938,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
             colors: this._colors.map(r => ({ ...r })),
             typo: this._typo.map(r => ({ ...r })),
             global: this._global.map(r => ({ ...r })),
+            mlColors: this._mlColors.map(r => ({ ...r })),
+            mlValues: this._mlValues.map(r => ({ ...r })),
             maps: this._currentMaps(),
             name: this._name.trim(),
             desc: this._desc.trim(),
@@ -715,44 +968,62 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return own ?? ((names ?? []).some(n => status.has(n.trim())) ? 'changed' : undefined);
     }
 
-    private _rowsOf(section: TokenSection): (IColorRow | IValueRow)[] {
+    // A section's rows; `ml` = its molecule tokens (kept apart on screen, written into the same map).
+    private _rowsOf(section: TokenSection, ml = false): (IColorRow | IValueRow)[] {
+        if (ml) return section === 'color' ? this._mlColors : section === 'global' ? this._mlValues : [];
         return section === 'color' ? this._colors : section === 'typography' ? this._typo : this._global;
+    }
+
+    private _savedRowsOf(section: TokenSection, ml: boolean): (IColorRow | IValueRow)[] {
+        const base = this._baseline;
+        if (!base) return [];
+        if (ml) return section === 'color' ? base.mlColors : section === 'global' ? base.mlValues : [];
+        return section === 'color' ? base.colors : section === 'typography' ? base.typo : base.global;
     }
 
     /** Put these tokens back as saved: values restored, a NEW row removed. */
     private _revertTokens(section: TokenSection, names: string[]): void {
-        const base = this._baseline;
-        if (!base) return;
-        const wanted = new Set(names.map(n => n.trim()));
-        const savedRows: (IColorRow | IValueRow)[] = section === 'color' ? base.colors : section === 'typography' ? base.typo : base.global;
-        const kept = this._rowsOf(section).filter(row => {
-            const n = row.name.trim();
-            if (!wanted.has(n)) return true;
-            const saved = savedRows.find(r => r.name.trim() === n);
-            if (!saved) return false;                     // added since load → reverting removes it
-            Object.assign(row, saved);
-            return true;
-        });
-        this._setRows(section, kept);
+        if (!this._baseline) return;
+        for (const ml of [false, true]) {
+            const wanted = new Set(names.map(n => n.trim()).filter(n => isComponentToken(n) === ml));
+            if (!wanted.size) continue;
+            const savedRows = this._savedRowsOf(section, ml);
+            const kept = this._rowsOf(section, ml).filter(row => {
+                const n = row.name.trim();
+                if (!wanted.has(n)) return true;
+                const saved = savedRows.find(r => r.name.trim() === n);
+                if (!saved) return false;                     // added since load → reverting removes it
+                Object.assign(row, saved);
+                return true;
+            });
+            this._setRows(section, kept, ml);
+        }
+        this._syncMlEditor();
         this._touch();
         this._settleDirty();
     }
 
     /** Bring a removed token back, at (about) its saved position. */
     private _restoreRemoved(section: TokenSection, name: string): void {
-        const base = this._baseline;
-        if (!base) return;
-        const savedRows: (IColorRow | IValueRow)[] = section === 'color' ? base.colors : section === 'typography' ? base.typo : base.global;
+        if (!this._baseline) return;
+        const ml = isComponentToken(name);
+        const savedRows = this._savedRowsOf(section, ml);
         const at = savedRows.findIndex(r => r.name.trim() === name);
         if (at < 0) return;
-        const rows = [...this._rowsOf(section)];
+        const rows = [...this._rowsOf(section, ml)];
         rows.splice(Math.min(at, rows.length), 0, { ...savedRows[at] });
-        this._setRows(section, rows);
+        this._setRows(section, rows, ml);
+        this._syncMlEditor();
         this._touch();
         this._settleDirty();
     }
 
-    private _setRows(section: TokenSection, rows: (IColorRow | IValueRow)[]): void {
+    private _setRows(section: TokenSection, rows: (IColorRow | IValueRow)[], ml = false): void {
+        if (ml) {
+            if (section === 'color') this._mlColors = rows as IColorRow[];
+            else if (section === 'global') this._mlValues = rows as IValueRow[];
+            return;
+        }
         if (section === 'color') this._colors = rows as IColorRow[];
         else if (section === 'typography') this._typo = rows as IValueRow[];
         else this._global = rows as IValueRow[];
@@ -768,17 +1039,20 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._showDiff = false;
     }
 
-    /** "Removed (N)" chips at the end of a section, each one restorable. */
-    private _renderRemoved(section: TokenSection) {
-        const status = this._diff?.status[section];
-        const removed = status ? [...status].filter(([, k]) => k === 'removed').map(([n]) => n) : [];
+    /** "Removed (N)" chips at the end of a section, each one restorable. `ml`: only the molecule tokens of these sections. */
+    private _renderRemoved(section: TokenSection | TokenSection[], ml = false) {
+        const removed: [TokenSection, string][] = [];
+        for (const s of Array.isArray(section) ? section : [section]) {
+            const status = this._diff?.status[s];
+            if (status) for (const [n, k] of status) if (k === 'removed' && isComponentToken(n) === ml) removed.push([s, n]);
+        }
         if (!removed.length) return nothing;
         return html`
             <div class="flex flex-wrap items-center gap-1 text-[11px]">
                 <span class="font-semibold text-red-500 dark:text-red-400">${this.msg.removedTitle} (${removed.length}):</span>
-                ${removed.map(n => html`
+                ${removed.map(([s, n]) => html`
                     <button class="flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 line-through hover:no-underline hover:border-red-400 cursor-pointer"
-                        title=${this.msg.restore} @click=${() => this._restoreRemoved(section, n)}>${n} <span class="no-underline">↺</span></button>`)}
+                        title=${this.msg.restore} @click=${() => this._restoreRemoved(s, n)}>${n} <span class="no-underline">↺</span></button>`)}
             </div>
         `;
     }
@@ -864,6 +1138,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
             typo: this._typo.map(r => ({ ...r })),
             global: this._global.map(r => ({ ...r })),
             fonts: this._fonts.map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined })),
+            mlColors: this._mlColors.map(r => ({ ...r })),
+            mlValues: this._mlValues.map(r => ({ ...r })),
             palette: [...this._palette], brief: this._aiBrief,
         };
         this._appliedStamp = _draftCache.stamp;
@@ -875,6 +1151,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._typo = cache.typo.map(r => ({ ...r }));
         this._global = cache.global.map(r => ({ ...r }));
         this._fonts = cache.fonts.map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined }));
+        this._mlColors = (cache.mlColors ?? []).map(r => ({ ...r }));
+        this._mlValues = (cache.mlValues ?? []).map(r => ({ ...r }));
+        this._mlEditor = null;
         this._palette = [...cache.palette]; this._aiBrief = cache.brief;
         this._dirty = true; this._saved = false;
         this._appliedStamp = cache.stamp;
@@ -958,9 +1237,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._skill = DS_SKILL_DEFAULT;
         // A new DS starts from the canonical mandatory template (all tokens present, editable).
         const template = defaultTokensTemplate();
-        this._colors = this._colorRowsFrom(template.color);
+        this._setColorAndGlobalRows(template.color, template.global);
         this._typo = this._valueRowsFrom(template.typography);
-        this._global = this._valueRowsFrom(template.global);
         this._fonts = [];
         this._palette = [...STARTER_PALETTE];
         this._aiBrief = ''; this._genError = ''; this._generating = false;
@@ -981,10 +1259,10 @@ export class PluginSelectDesignSystem extends StateLitElement {
         // while the entry's real values — and any custom tokens — win. No-op for DSes that
         // already carry the full template.
         const template = defaultTokensTemplate();
-        this._colors = this._colorRowsFrom({ ...template.color, ...(t.color ?? {}) });
+        this._setColorAndGlobalRows({ ...template.color, ...(t.color ?? {}) }, { ...template.global, ...(t.global ?? {}) });
         this._typo = this._valueRowsFrom({ ...template.typography, ...(t.typography ?? {}) });
-        this._global = this._valueRowsFrom({ ...template.global, ...(t.global ?? {}) });
         this._fonts = (t.fonts ?? []).map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined }));
+        if (this._mlValues.length || this._mlColors.length) this._ensureMlCatalog();
         this._palette = [];
         this._aiBrief = ''; this._genError = ''; this._generating = false;
         this._nameError = false; this._saveError = ''; this._saving = false;
@@ -994,24 +1272,30 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     /** Load an AI-generated draft's tokens into the form (name/desc kept if the user typed them). */
     private _loadDraftTokens(tokens: { color?: Record<string, string>; typography?: Record<string, string>; global?: Record<string, string> }, name: string, desc: string): void {
-        this._colors = this._colorRowsFrom(tokens.color ?? {});
+        this._setColorAndGlobalRows(tokens.color ?? {}, tokens.global ?? {});
         this._typo = this._valueRowsFrom(tokens.typography ?? {});
-        this._global = this._valueRowsFrom(tokens.global ?? {});
         if (name) this._name = name;
         if (desc) this._desc = desc;
         this._touch();     // the draft is NOT persisted — the save bar must say so
         this._cacheDraft(); // …and it must survive leaving the panel
     }
 
-    /** color map → rows, pairing `<token>` + `_dark-<token>` into light/dark columns. */
-    private _colorRowsFrom(color: Record<string, string>): IColorRow[] {
-        return Object.entries(color)
-            .filter(([k]) => !k.startsWith('_dark-'))
-            .map(([name, light]) => ({ name, light, dark: color[`_dark-${name}`] ?? '' }));
+    /**
+     * `color` / `global` maps → rows. The molecule keys (`ml-*`) leave the Colors and Global rows for
+     * "Component tokens" — on screen only: `_buildTheme` writes them back into the same maps.
+     */
+    private _setColorAndGlobalRows(color: Record<string, string>, global: Record<string, string>): void {
+        const c = partitionMlRows(colorMapToRows(color));
+        const g = partitionMlRows(valueMapToRows(global));
+        this._colors = c.base;
+        this._mlColors = c.ml;
+        this._global = g.base;
+        this._mlValues = g.ml;
+        this._mlEditor = null;
     }
 
     private _valueRowsFrom(map: Record<string, string>): IValueRow[] {
-        return Object.entries(map).map(([name, value]) => ({ name, value }));
+        return valueMapToRows(map);
     }
 
     createRenderRoot() { return this; }
@@ -1296,6 +1580,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 ${this._renderColorsSection()}
                 ${this._renderTypographySection()}
                 ${this._renderGlobalSection()}
+                ${this._renderMlSection()}
             </div>
             ${this._saveError ? this._renderSaveError() : nothing}
         `;
@@ -1469,7 +1754,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
      */
     private _renderFilterBar() {
         const usedCount = this._usedRowCount;
-        const all = [...this._colors, ...this._typo, ...this._global];
+        const all = this._allRows;
         return html`
             <div class="sticky top-0 z-10 flex flex-col gap-2.5 rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm">
                 ${this._panelTitle(this.msg.filterTitle)}
@@ -1543,16 +1828,278 @@ export class PluginSelectDesignSystem extends StateLitElement {
             <button class="flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-pink-400 hover:text-pink-600 cursor-pointer"
                 @click=${() => this._revealToken(n)}>
                 <span class="w-2.5 h-2.5 rounded-sm border border-black/10" style="background:var(--${n})"></span>${n}</button>`);
+        const tokens = html`
+            ${!info.own.length && !info.inherited.length ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400">${this.msg.inspectNone}</span>` : nothing}
+            ${info.own.length ? html`
+                <span class="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">${this.msg.inspectOwn}</span>
+                <div class="flex flex-wrap gap-1">${chips(info.own)}</div>` : nothing}
+            ${info.inherited.length ? html`
+                <span class="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">${this.msg.inspectInherited}</span>
+                <div class="flex flex-wrap gap-1">${chips(info.inherited)}</div>` : nothing}`;
+        // Inside a molecule: the molecule's tokens first; the clicked element's list stays below, collapsed.
+        if (this._molecule) {
+            return html`
+                ${this._renderMoleculeBlock(this._molecule)}
+                <details class="rounded-md border border-pink-200 dark:border-pink-800/40 bg-pink-50/60 dark:bg-pink-900/10 px-2 py-1.5">
+                    <summary class="text-[10px] text-pink-700 dark:text-pink-300 cursor-pointer truncate">${this.msg.mlElementSummary.replace('{label}', info.label)}</summary>
+                    <div class="flex flex-col gap-1.5 mt-1.5">${tokens}</div>
+                </details>
+            `;
+        }
         return html`
             <div class="flex flex-col gap-1.5 rounded-md border border-pink-200 dark:border-pink-800/40 bg-pink-50/60 dark:bg-pink-900/10 px-2 py-1.5">
                 <span class="text-[11px] font-mono font-semibold text-pink-700 dark:text-pink-300 truncate">${info.label}</span>
-                ${!info.own.length && !info.inherited.length ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400">${this.msg.inspectNone}</span>` : nothing}
-                ${info.own.length ? html`
-                    <span class="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">${this.msg.inspectOwn}</span>
-                    <div class="flex flex-wrap gap-1">${chips(info.own)}</div>` : nothing}
-                ${info.inherited.length ? html`
-                    <span class="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">${this.msg.inspectInherited}</span>
-                    <div class="flex flex-wrap gap-1">${chips(info.inherited)}</div>` : nothing}
+                ${tokens}
+            </div>
+        `;
+    }
+
+    // ── molecule tokens: the inspected component, the editor, the form section ──
+
+    /** The molecule of the inspected element and every `--ml-*` it reads, grouped by subject. */
+    private _renderMoleculeBlock(mol: { tag: string; uses: MlUse[] }) {
+        const groups = new Map<MlTokenGroup, { use: MlUse; type: MlTokenType }[]>();
+        for (const use of mol.uses) {
+            const type = this._mlTypeOf(use.name, use.fallback);
+            const g = mlTokenGroup(use.name, type);
+            groups.set(g, [...(groups.get(g) ?? []), { use, type }]);
+        }
+        return html`
+            <div class="rounded-md border border-indigo-200 dark:border-indigo-800/50 bg-indigo-50/50 dark:bg-indigo-900/10 px-2.5 py-2 flex flex-col gap-2">
+                <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-indigo-500 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/40 rounded px-1">${this.msg.mlComponent}</span>
+                    <span class="text-[11px] font-mono font-semibold text-indigo-800 dark:text-indigo-300 truncate" title=${mol.tag}>${mol.tag}</span>
+                </div>
+                <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-snug">${this.msg.mlComponentHint}</p>
+                ${!mol.uses.length ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400 italic">${this.msg.mlNoTokens}</span>` : nothing}
+                ${ML_GROUP_ORDER.map(g => {
+                    const items = groups.get(g);
+                    if (!items?.length) return nothing;
+                    return html`
+                        <div class="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mt-1">${this.msg[`mlGroup_${g}` as keyof MessageType]}</div>
+                        <div class="flex flex-col gap-1">${items.map(i => this._renderMlInspectRow(i.use, i.type))}</div>`;
+                })}
+            </div>
+        `;
+    }
+
+    private _mlSwatch(background: string, size = 'w-3.5 h-3.5', dashed = false) {
+        return html`<span class="${size} shrink-0 rounded-[3px] border ${dashed ? 'border-dashed border-gray-300 dark:border-gray-600' : 'border-black/15 dark:border-white/15'}" style="background:${background}"></span>`;
+    }
+
+    private _renderMlInspectRow(use: MlUse, type: MlTokenType) {
+        const ed = this._mlEditor;
+        if (ed && ed.from === 'inspect' && ed.name === use.name) return this._renderMlEditor(ed);
+        const found = this._mlRow(use.name);
+        const value = found ? (found.kind === 'color' ? found.row.light : found.row.value) : (use.fallback || '—');
+        const lit = literalFallback(use.fallback);
+        return html`
+            <div class="flex items-center gap-2 min-w-0 bg-white dark:bg-gray-900 rounded border ${found ? 'border-indigo-300 dark:border-indigo-700' : 'border-gray-200 dark:border-gray-700'} px-2 py-1">
+                ${type === 'color' ? this._mlSwatch(lit ? `var(--${use.name}, ${lit})` : `var(--${use.name})`) : nothing}
+                <span class="min-w-0 flex-1 text-[11px] font-mono text-gray-700 dark:text-gray-200 truncate" title=${use.name}>${use.name}</span>
+                <span class="shrink min-w-0 max-w-[80px] text-[11px] font-mono text-gray-600 dark:text-gray-400 truncate" title=${value}>${value}</span>
+                ${found
+                    ? html`<span class="shrink-0 text-[9px] text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/40 rounded px-1" title=${this.msg.mlInDsHint}>${this.msg.mlInDs}</span>`
+                    : html`<span class="shrink-0 text-[9px] text-gray-400 bg-gray-100 dark:bg-gray-800 rounded px-1" title=${this.msg.mlDefaultHint}>${this.msg.mlDefault}</span>`}
+                ${this._renderMlCount(use.name)}
+                <button class="shrink-0 text-[11px] font-semibold ${found ? 'text-gray-500 dark:text-gray-400' : 'text-indigo-600 dark:text-indigo-400'} hover:underline cursor-pointer"
+                    @click=${() => this._openMlEditor(use.name, use.fallback, 'inspect')}>${found ? this.msg.mlEditBtn : this.msg.mlAdd}</button>
+            </div>
+        `;
+    }
+
+    private _renderMlCount(name: string) {
+        const c = this._mlCount(name);
+        if (!c) return html`<span class="shrink-0 w-8"></span>`;
+        return html`<span class="shrink-0 w-8 text-right text-[10px] text-gray-400 dark:text-gray-500" title=${c.page ? this.msg.mlReadersPage : this.msg.mlReaders}>${c.n} ▣</span>`;
+    }
+
+    /** The open editor: the input for the token's type, what it changes, add/cancel or close/remove. */
+    private _renderMlEditor(ed: IMlEditor) {
+        const inDs = !!this._mlRow(ed.name);
+        const c = this._mlCount(ed.name);
+        const theme = this._name.trim() || this._selectedEntry?.name || '';
+        const lit = literalFallback(ed.fallback);
+        return html`
+            <div class="bg-white dark:bg-gray-900 rounded border-2 border-indigo-400 dark:border-indigo-500 px-2 py-2 flex flex-col gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                    ${ed.type === 'color' ? this._mlSwatch(lit ? `var(--${ed.name}, ${lit})` : `var(--${ed.name})`) : nothing}
+                    <div class="flex-1 min-w-0">
+                        <div class="text-[11px] font-mono font-semibold text-gray-700 dark:text-gray-200 truncate" title=${ed.name}>${ed.name}</div>
+                        ${ed.fallback ? html`<div class="text-[10px] text-gray-400 dark:text-gray-500 truncate" title=${ed.fallback}>${this.msg.mlDefault} ${ed.fallback}</div>` : nothing}
+                    </div>
+                    ${this._renderMlCount(ed.name)}
+                </div>
+                ${this._renderMlInput(ed)}
+                <p class="text-[10px] text-indigo-600 dark:text-indigo-400 leading-snug">
+                    ${this.msg.mlGoesTo} <b>${theme}</b>. ${c ? this.msg.mlChangesN.replace('{n}', String(c.n)) : this.msg.mlChangesAll}</p>
+                <div class="flex items-center gap-2">
+                    ${inDs ? html`
+                        <button class="text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-indigo-400 cursor-pointer"
+                            @click=${() => { this._mlEditor = null; }}>${this.msg.mlClose}</button>
+                        <button class="ml-auto text-xs text-gray-400 hover:text-red-500 cursor-pointer" title=${this.msg.mlRemove}
+                            @click=${() => this._removeMl(ed.name)}>✕</button>` : html`
+                        <button class="text-[11px] font-semibold px-2 py-1 rounded bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 cursor-pointer"
+                            @click=${() => { if (this._mlEditor) this._commitMl(this._mlEditor); }}>${this.msg.mlAddToDs}</button>
+                        <button class="text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-indigo-400 cursor-pointer"
+                            @click=${() => { this._mlEditor = null; }}>${this.msg.mlCancel}</button>`}
+                </div>
+            </div>
+        `;
+    }
+
+    private _mlInputClass = 'text-[11px]! font-mono px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400';
+
+    private _renderMlInput(ed: IMlEditor) {
+        const val = (e: Event) => (e.target as HTMLInputElement | HTMLSelectElement).value;
+        switch (ed.type) {
+            case 'color': return this._renderMlColorInput(ed);
+            case 'length': {
+                const parsed = parseLength(ed.value);
+                const role = roleOf(ed.value);
+                const unit = parsed?.unit ?? 'px';
+                const measures = this._global.filter(r => r.name.trim() && isLengthValue(r.value)).map(r => r.name.trim());
+                return html`
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <input type="number" step="any" class="w-16 ${this._mlInputClass}" .value=${parsed?.amount ?? ''}
+                            @change=${(e: Event) => { const a = val(e).trim(); if (a) this._mlChange({ value: `${a}${unit}` }); }} />
+                        <select class=${this._mlInputClass} @change=${(e: Event) => this._mlChange({ value: `${parsed?.amount ?? '0'}${val(e)}` })}>
+                            ${['px', 'rem', 'em', '%'].map(u => html`<option value=${u} ?selected=${u === unit}>${u}</option>`)}
+                        </select>
+                        ${measures.length ? html`
+                            <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.mlDsMeasure}</span>
+                            <select class="min-w-0 max-w-[130px] ${this._mlInputClass}" @change=${(e: Event) => { const v = val(e); if (v) this._mlChange({ value: `var(--${v})` }); }}>
+                                <option value="">—</option>
+                                ${measures.map(m => html`<option value=${m} ?selected=${m === role}>${m}</option>`)}
+                            </select>` : nothing}
+                    </div>`;
+            }
+            case 'ratio': {
+                const current = ed.value || literalFallback(ed.fallback) || '1';
+                return html`
+                    <div class="flex items-center gap-2">
+                        <input type="range" min="0" max=${ratioMax(ed.name)} step="0.05" class="flex-1 accent-indigo-500" .value=${current}
+                            @input=${(e: Event) => this._mlChange({ value: val(e) })} />
+                        <span class="w-10 text-right text-[11px] font-mono text-gray-600 dark:text-gray-300">${current}</span>
+                    </div>`;
+            }
+            case 'borderStyle':
+                return html`
+                    <div class="flex gap-1">
+                        ${BORDER_STYLES.map(s => html`
+                            <button class="text-[10px] px-2 py-0.5 rounded cursor-pointer ${ed.value.trim() === s
+                                ? 'border-2 border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                                : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-400'}"
+                                @click=${() => this._mlChange({ value: s })}>${s}</button>`)}
+                    </div>`;
+            case 'duration': {
+                const ms = parseDurationMs(ed.value);
+                return html`
+                    <div class="flex items-center gap-1.5">
+                        <input type="number" min="0" step="50" class="w-20 ${this._mlInputClass}" .value=${ms === null ? '' : String(ms)}
+                            @change=${(e: Event) => { const v = val(e).trim(); if (v) this._mlChange({ value: `${Math.max(0, Math.round(Number(v)))}ms` }); }} />
+                        <span class="text-[10px] text-gray-400">ms</span>
+                    </div>`;
+            }
+            default:
+                return html`
+                    <input class="w-full min-w-0 ${this._mlInputClass}" .value=${ed.value} placeholder=${literalFallback(ed.fallback)}
+                        @input=${(e: Event) => this._mlChange({ value: val(e) })} />`;
+        }
+    }
+
+    /** A DS role (`var(--role)`, switches by itself in dark) or a fixed color with light and dark cells. */
+    private _renderMlColorInput(ed: IMlEditor) {
+        const roles = groupColorRows(this._colors).map(g => g.base.row.name.trim()).filter(Boolean);
+        const current = roleOf(ed.light);
+        const suggested = suggestRoles(ed.name, roles);
+        if (current && !suggested.includes(current)) suggested.unshift(current);
+        const field = (variant: 'light' | 'dark') => {
+            const v = variant === 'light' ? (current ? '' : ed.light) : ed.dark;
+            const isHex = /^#[0-9a-fA-F]{6}$/.test(v);
+            return html`
+                <label class="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
+                    <span class="relative w-[18px] h-[18px] shrink-0 rounded-[3px] overflow-hidden border ${v ? 'border-black/15 dark:border-white/15' : 'border-dashed border-gray-300 dark:border-gray-600'}" style=${v ? `background:${v}` : ''}>
+                        <input type="color" class="absolute inset-0 opacity-0 cursor-pointer" .value=${isHex ? v : '#888888'}
+                            @input=${(e: Event) => this._mlChange({ [variant]: (e.target as HTMLInputElement).value.toUpperCase() })} />
+                    </span>
+                    ${variant === 'light' ? this.msg.light : this.msg.dark}
+                    <input class="w-[76px] ${this._mlInputClass}" .value=${v} placeholder=${variant === 'dark' ? '—' : ''}
+                        @input=${(e: Event) => this._mlChange({ [variant]: (e.target as HTMLInputElement).value.trim() })} />
+                </label>`;
+        };
+        return html`
+            <div class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.mlRoleLabel}</div>
+            <div class="flex flex-wrap items-center gap-1">
+                ${suggested.map(r => html`
+                    <button class="flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded cursor-pointer ${r === current
+                        ? 'border-2 border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
+                        : 'border border-gray-200 dark:border-gray-700 hover:border-indigo-400'} text-gray-700 dark:text-gray-300"
+                        @click=${() => this._mlChange({ light: `var(--${r})`, dark: '' })}>${this._mlSwatch(`var(--${r})`, 'w-2.5 h-2.5')}${r}</button>`)}
+                <select class="min-w-0 max-w-[140px] text-[10px]! px-1 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 focus:outline-none"
+                    @change=${(e: Event) => { const v = (e.target as HTMLSelectElement).value; if (v) this._mlChange({ light: `var(--${v})`, dark: '' }); }}>
+                    <option value="">${this.msg.mlRoleMore}</option>
+                    ${roles.map(r => html`<option value=${r} ?selected=${r === current}>${r}</option>`)}
+                </select>
+            </div>
+            <div class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.mlFixedLabel}</div>
+            <div class="flex items-center gap-3 flex-wrap">${field('light')}${field('dark')}</div>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.mlDarkEmpty}</p>
+        `;
+    }
+
+    /** "Component tokens": the `ml-*` keys the theme already has. No "+": a token comes in by inspecting. */
+    private _renderMlSection() {
+        const rows: ({ kind: 'color'; row: IColorRow } | { kind: 'value'; row: IValueRow })[] = [
+            ...this._mlColors.map(row => ({ kind: 'color' as const, row })),
+            ...this._mlValues.map(row => ({ kind: 'value' as const, row })),
+        ];
+        const all = [...this._mlColors, ...this._mlValues];
+        const hits = this._countVisible(all);
+        const theme = this._name.trim() || this._selectedEntry?.name || '';
+        return this._section(this.msg.mlSectionTitle, `${this.msg.mlSectionTag} · ${rows.length}`, false, html`
+            <p class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.mlSectionTheme.replace('{name}', theme)}</p>
+            ${!rows.length ? html`<span class="text-[11px] text-gray-400 dark:text-gray-500 italic">${this.msg.mlSectionEmpty}</span>` : nothing}
+            <div class="flex flex-col gap-1.5">
+                ${rows.map(x => this._rowVisible(x.row) ? this._renderMlSectionRow(x) : nothing)}
+                ${this._filtering && rows.length && !hits ? this._renderNoMatch() : nothing}
+            </div>
+            ${this._renderRemoved(['color', 'global'], true)}
+            <p class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.mlSectionAddHint}</p>
+        `, hits);
+    }
+
+    private _renderMlSectionRow(x: { kind: 'color'; row: IColorRow } | { kind: 'value'; row: IValueRow }) {
+        const name = x.row.name.trim();
+        const section: TokenSection = x.kind === 'color' ? 'color' : 'global';
+        const ed = this._mlEditor;
+        const fallback = this._mlCatalog?.get(name)?.fallback ?? '';
+        const open = () => this._openMlEditor(name, fallback, 'section');
+        let value: unknown;
+        if (x.kind === 'color') {
+            const role = roleOf(x.row.light);
+            value = role
+                ? html`<span class="flex items-center gap-1 min-w-0 max-w-[120px] text-[10px] font-mono text-gray-600 dark:text-gray-300 truncate" title=${role}>${this._mlSwatch(`var(--${role})`)}${role}</span>
+                       <span class="shrink-0 text-[9px] text-gray-400 bg-gray-100 dark:bg-gray-800 rounded px-1">${this.msg.mlRole}</span>`
+                : html`<span class="flex items-center gap-1" title=${`${this.msg.light}: ${x.row.light} · ${this.msg.dark}: ${x.row.dark || '—'}`}>
+                        ${this._mlSwatch(x.row.light, 'w-[18px] h-[18px]')}${this._mlSwatch(x.row.dark || x.row.light, 'w-[18px] h-[18px]', !x.row.dark)}</span>`;
+        } else {
+            value = html`<span class="min-w-0 max-w-[110px] text-[11px] font-mono text-gray-600 dark:text-gray-300 truncate" title=${x.row.value}>${x.row.value}</span>`;
+        }
+        return html`
+            <div class="border-l-2 pl-1 ${this._changeBar(section, name)}"
+                @mouseenter=${() => this._hoverTokens([name])} @mouseleave=${() => this._unhoverTokens()}>
+                ${ed && ed.from === 'section' && ed.name === name ? this._renderMlEditor(ed) : html`
+                <div class="flex items-center gap-2 min-w-0 bg-white dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 px-2 py-1.5">
+                    <button data-ds-token=${name} class="flex-1 min-w-0 text-left text-[11px] font-mono text-gray-700 dark:text-gray-200 truncate hover:text-indigo-500 cursor-pointer"
+                        title=${name} @click=${open}>${name}</button>
+                    ${this._changeMark(section, name)}
+                    ${value}
+                    ${this._renderMlCount(name)}
+                    <button class="shrink-0 text-[11px] text-gray-500 dark:text-gray-400 hover:underline cursor-pointer" @click=${open}>${this.msg.mlEditBtn}</button>
+                    <button class="shrink-0 text-xs text-gray-400 hover:text-red-500 cursor-pointer" title=${fallback ? `${this.msg.mlRemove} (${fallback})` : this.msg.mlRemove}
+                        @click=${() => this._removeMl(name)}>✕</button>
+                </div>`}
             </div>
         `;
     }
@@ -1913,19 +2460,21 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _buildTheme(dsIndex: string, name: string, description: string): IDesignSystemTokens {
         // Two passes so the entry lists ALL light tokens first, then ALL `_dark-` tokens —
         // not interleaved light/dark/light/dark (matches the canonical entry shape + getCssVars).
+        // The molecule tokens go back into `color` / `global`, after the theme's own rows.
+        const colorRows = [...this._colors, ...this._mlColors];
         const color: Record<string, string> = {};
-        for (const r of this._colors) {
+        for (const r of colorRows) {
             const n = r.name.trim();
             if (n) color[n] = r.light;
         }
-        for (const r of this._colors) {
+        for (const r of colorRows) {
             const n = r.name.trim();
             if (n && r.dark.trim()) color[`_dark-${n}`] = r.dark.trim();
         }
         const typography: Record<string, string> = {};
         for (const r of this._typo) if (r.name.trim()) typography[r.name.trim()] = r.value;
         const global: Record<string, string> = {};
-        for (const r of this._global) if (r.name.trim()) global[r.name.trim()] = r.value;
+        for (const r of [...this._global, ...this._mlValues]) if (r.name.trim()) global[r.name.trim()] = r.value;
 
         const fonts: DsFont[] = this._fonts
             .filter(f => f.name.trim() && f.family.trim())

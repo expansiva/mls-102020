@@ -4,14 +4,17 @@
 //   * elementsUsingTokens — hover a token row: which page elements read it (directly, or through a
 //     token that points at it: `--ml-primary: var(--primary)` makes a molecule count for `primary`);
 //   * tokensForElement    — inspect mode: which tokens an element reads, its own rules first, then the
-//     inherited properties (color, font…) it gets from ancestors up to the page host.
+//     inherited properties (color, font…) it gets from ancestors up to the page host;
+//   * moleculeHost / moleculeTokenUses — inspect mode inside a molecule: the molecule holding the
+//     element and every `--ml-*` it reads, with the fallback (the component's own default).
 // Read from the CSSOM (forEachStyleDecl), same source as the "used on this page" marks.
 //
 // The highlight is an OVERLAY: fixed boxes in a container of our own under <body>, never a class or
 // style on the page's elements — touching them would wake the used-token MutationObserver and leave
 // the app's DOM dirty. The pure pieces are exported for Node tests.
 
-import { cleanSelector, expandRefs, forEachStyleDecl, safeMatches, tokenGraph, varRefs } from '/_102020_/l2/aura/plugins/helpers/dsUsedTokens.js';
+import { cleanSelector, expandRefs, forEachStyleDecl, matchesInside, safeMatches, tokenGraph, varRefs } from '/_102020_/l2/aura/plugins/helpers/dsUsedTokens.js';
+import { mergeMlUses, parseMlUses, type MlUse } from '/_102020_/l2/aura/plugins/helpers/dsMoleculeTokens.js';
 
 /** name → names whose value reads it (`primary` → {`ml-primary`}). */
 export function reverseGraph(graph: Map<string, Set<string>>): Map<string, Set<string>> {
@@ -94,6 +97,50 @@ export function tokensForElement(el: Element, root: Element, doc: Document, toke
   const ownAll = expandRefs(own, graph);
   const inheritedAll = [...expandRefs(inherited, graph)].filter(n => !ownAll.has(n));
   return { own: [...ownAll], inherited: inheritedAll };
+}
+
+// ─── Molecule of an element ───────────────────────────────────────────
+
+// A molecule's custom element: `<group>--ml-<name>` (a per-attempt suffix `-2` included).
+const MOLECULE_TAG = /^group[a-z0-9]+--ml-[a-z0-9-]+$/;
+
+export function isMoleculeTag(tag: string): boolean {
+  return MOLECULE_TAG.test(tag.toLowerCase());
+}
+
+/** The nearest molecule holding `el` (itself included), inside `root` — a molecule inside another is the inner one. */
+export function moleculeHost(el: Element, root: Element): Element | null {
+  for (let a: Element | null = el; a && root.contains(a); a = a.parentElement) {
+    if (isMoleculeTag(a.tagName)) return a;
+  }
+  return null;
+}
+
+/** The selector names `tag` as a type selector somewhere (`tag .x`, `.y > tag`, `:is(tag)`). */
+export function selectorMentionsTag(selector: string, tag: string): boolean {
+  const t = tag.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[\\s>+~,(])${t}(?![\\w-])`, 'i').test(selector);
+}
+
+/**
+ * Every `--ml-*` a molecule reads: from the rules scoped to its tag (its own `.less`, state rules such
+ * as `.ml-input-container-error` included even when the state is off) and from any rule that matches
+ * it or something inside it. One entry per token, with the fallback it writes most often.
+ */
+export function moleculeTokenUses(mol: Element, doc: Document): MlUse[] {
+  const tag = mol.tagName.toLowerCase();
+  const uses: MlUse[] = [];
+  forEachStyleDecl(doc, (selector, style) => {
+    const css = style.cssText;
+    if (!css.includes('--ml-')) return;
+    if (!selectorMentionsTag(selector, tag) && !matchesInside(mol, selector)) return;
+    uses.push(...parseMlUses(css));
+  });
+  for (const el of [mol, ...Array.from(mol.querySelectorAll('[style]'))]) {
+    const inline = el.getAttribute('style');
+    if (inline?.includes('--ml-')) uses.push(...parseMlUses(inline));
+  }
+  return mergeMlUses(uses).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ─── Overlay highlighter ──────────────────────────────────────────────
