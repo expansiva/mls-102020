@@ -14,6 +14,8 @@ import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js'
 import { readM4Snapshot } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { pageSourceInfo, studioPagePort, type M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { composeM4ModuleEntry, type M4FinalizePage } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
+import { themesFromSource } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
+import { designSystemNames } from '/_102020_/l2/aura/plugins/helpers/dsConfigList.js';
 
 export const M4_FINALIZE_VERSION = '2026-10-16-materialize-l2-finalize-v1' as const;
 
@@ -42,6 +44,9 @@ export function configInfo(project: number): Ns5FileInfo {
 }
 export function menuInfo(identity: M4RunIdentity): Ns5FileInfo {
   return { project: identity.project, level: 4, folder: `${identity.module}/pool/l2/web`, shortName: 'menu', extension: '.json' };
+}
+export function designSystemInfo(project: number): Ns5FileInfo {
+  return { project, level: 2, folder: '', shortName: 'designSystem', extension: '.ts' };
 }
 export function moduleDefsInfo(identity: M4RunIdentity): Ns5FileInfo {
   return { project: identity.project, level: 4, folder: identity.module, shortName: 'module', extension: '.defs.ts' };
@@ -73,6 +78,9 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
   }
   const menu = port.exists(menuInfo(identity)) ? await port.readJson<unknown>(menuInfo(identity)) : null;
   const languages = port.exists(moduleDefsInfo(identity)) ? m4ModuleLanguages(await port.read(moduleDefsInfo(identity))) : { productLanguages: [], userLanguage: '' };
+  // The project's DS, by name: the module's list in the published app (no file / unreadable = left as it is).
+  const dsSource = port.exists(designSystemInfo(identity.project)) ? await port.read(designSystemInfo(identity.project)) : '';
+  const designSystems = designSystemNames(themesFromSource(dsSource) ?? []);
 
   const info = configInfo(identity.project);
   if (!port.exists(info)) throw new Error(`M4_FINALIZE_CONFIG_MISSING: ${displayPath(info)} does not exist.`);
@@ -93,7 +101,7 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
     for (const item of currentFrontend.pages as Array<{ pageId?: unknown }>) if (typeof item?.pageId === 'string') registered.add(item.pageId);
   }
   const kept = notApproved.filter(pageId => registered.has(pageId));
-  const { entry, changes, navigationAdded, navigationKept } = composeM4ModuleEntry({ ...identity, pages, keepPageIds: kept, menu, ...languages }, current);
+  const { entry, changes, navigationAdded, navigationKept } = composeM4ModuleEntry({ ...identity, pages, keepPageIds: kept, menu, ...languages, designSystems }, current);
   if (index >= 0) client.modules[index] = entry;
   else client.modules.push(entry);
 

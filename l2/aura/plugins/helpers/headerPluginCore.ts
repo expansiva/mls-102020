@@ -445,12 +445,6 @@ export function readProjectLanguages(projectConfig: unknown): Array<{ code: stri
     .filter((entry) => Boolean(entry.code));
 }
 
-/** How many design-system themes the project declares — the switcher hides itself below two. */
-export function countProjectDesignSystems(projectConfig: unknown): number {
-  if (!isRecord(projectConfig) || !Array.isArray(projectConfig.designSystems)) return 0;
-  return projectConfig.designSystems.filter(isRecord).length;
-}
-
 /**
  * Routes of the app, from `l5/config.json > projects[].modules[].navigation` — the same list the
  * shell hands the aside, and the only hrefs a header is allowed to link.

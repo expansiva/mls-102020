@@ -67,7 +67,6 @@ import {
   applyHeaderDraft,
   buildHeaderRequest,
   clearDraft,
-  countProjectDesignSystems,
   formFromProfile,
   readProjectLanguages,
   readProjectRoutes,
@@ -90,6 +89,8 @@ import {
   type ProjectRoute,
   type SelectionRegenReason,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
+import { designSystemNames } from '/_102020_/l2/aura/plugins/helpers/dsConfigList.js';
+import { readThemes } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 
 /// **collab_i18n_start**
 const message_en = {
@@ -356,6 +357,8 @@ export class PluginHeaderEditor extends PluginBaseModule {
   @state() private _routes: ProjectRoute[] = [];
   /** How many DS themes exist: below two, the base hides the switcher. */
   @state() private _dsCount = 0;
+  /** The project's DS names (designSystem.ts) — what the band's DS switcher offers. */
+  private _dsNames: string[] = [];
   /**
    * What the APPLIED band follows from the config (read from its source) — decides whether a change
    * to actions/links/locales is a Save or needs Generate. Undefined = no project header applied.
@@ -443,7 +446,10 @@ export class PluginHeaderEditor extends PluginBaseModule {
     this._routes = readProjectRoutes(config, this._projectId);
     const projectConfig = await getConfigProject(this._projectId);
     this._languages = readProjectLanguages(projectConfig);
-    this._dsCount = countProjectDesignSystems(projectConfig);
+    // The DS the project really has (designSystem.ts) — l5/project.json > designSystems is a leftover of the old
+    // platform model and says nothing about them.
+    this._dsNames = designSystemNames(await readThemes(this._projectId).catch(() => []));
+    this._dsCount = this._dsNames.length;
     // No locale selection on the profile = the header speaks every language of the project.
     this._form = formFromProfile(this._view, this._languages.map((language) => language.code));
     // A header being CREATED has no profile yet: the identity comes from the caller, not the config.
@@ -494,6 +500,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
       navigation: scope.navigation,
       moduleLinks: scope.moduleLinks,
       languages: this._languages.map((language) => language.code),
+      designSystems: this._dsNames,
     });
   }
 

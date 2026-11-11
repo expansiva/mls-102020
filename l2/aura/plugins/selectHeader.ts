@@ -41,6 +41,8 @@ import {
 import { openElementInServiceDetails, clearServiceDetails } from '/_102027_/l2/libCommom.js';
 import { bandBootConfig, mountHeaderBand, projectTokensCss } from '/_102020_/l2/aura/plugins/helpers/headerBandPreview.js';
 import { readRawSource } from '/_102020_/l2/aura/helpers/storFileIo.js';
+import { designSystemNames } from '/_102020_/l2/aura/plugins/helpers/dsConfigList.js';
+import { readThemes } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 import '/_102020_/l2/aura/plugins/pluginHeaderEditor.js';
 
@@ -583,6 +585,8 @@ export class PluginSelectHeader extends StateLitElement {
   /** One real band per card. Each header has its own file and tag, so they coexist in the registry. */
   private async _mountBands(): Promise<void> {
     if (!this.projectId) return;
+    // The project's DS, by name: the band draws its DS switcher only with two or more, like the app.
+    const designSystems = designSystemNames(await readThemes(this.projectId).catch(() => []));
     for (const entry of this._entries) {
       const host = this.querySelector(`[data-band="${entry.profileName}"]`) as HTMLElement | null;
       if (!host) continue;
@@ -606,6 +610,7 @@ export class PluginSelectHeader extends StateLitElement {
           // One module, like the app: the first one this header links, else the first one.
           ...this._previewScope(entry),
           languages: entry.locales,
+          designSystems,
         }),
         // Every role at once — and never the studio user's own session filtering the picture.
         previewAuthorities: [],

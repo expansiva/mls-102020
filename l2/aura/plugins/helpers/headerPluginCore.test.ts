@@ -12,7 +12,6 @@ import {
   readHeaderDraft,
   activateHeaderProfile,
   applyBrandTexts,
-  countProjectDesignSystems,
   listProjectHeaders,
   readHeaderProfileView,
   readLogoDraft,
@@ -135,9 +134,6 @@ test('the project languages, themes and routes are read from the two documents',
     'an entry with no code is not a language',
   );
   assert.deepEqual(readProjectLanguages(undefined), []);
-
-  assert.equal(countProjectDesignSystems({ designSystems: [{ dsIndex: '0' }, { dsIndex: '1' }] }), 2);
-  assert.equal(countProjectDesignSystems({}), 0);
 
   const routes = readProjectRoutes({
     projects: {

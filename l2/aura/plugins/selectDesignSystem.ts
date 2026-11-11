@@ -18,6 +18,8 @@ import { holdAppDesignSystem } from '/_102033_/l2/cbe/studioDesignSystem.js';
 import { collectUsedTokens, pageRegion } from '/_102020_/l2/aura/plugins/helpers/dsUsedTokens.js';
 import { NAV3_TAB_CHANGE_EVENT } from '/_102033_/l2/shared/nav3ActiveTab.js';
 import { siteProjectFromBoot } from '/_102033_/l2/shared/siteProject.js';
+import { readConfig, writeConfig } from '/_102020_/l2/aura/plugins/helpers/configIo.js';
+import { designSystemNames, withModuleDesignSystems } from '/_102020_/l2/aura/plugins/helpers/dsConfigList.js';
 import { groupColorRows, splitState, type ColorGroup } from '/_102020_/l2/aura/plugins/helpers/dsColorGroups.js';
 import { createHighlighter, elementsUsingTokens, isMoleculeTag, moleculeHost, moleculeTokenUses, tokensForElement } from '/_102020_/l2/aura/plugins/helpers/dsTokenInspect.js';
 import {
@@ -84,6 +86,7 @@ const message_en = {
     create: 'Create design system',
     saving: 'Saving…',
     saveError: 'Could not save the design system.',
+    dsListError: 'Design system saved, but the list of design systems in l5/config.json was not updated — it will be on the next save.',
     tokensSuffix: 'tokens',
     paletteTitle: 'Palette',
     paletteTag: 'brand',
@@ -242,6 +245,7 @@ const messages: Record<string, MessageType> = {
         create: 'Criar design system',
         saving: 'Salvando…',
         saveError: 'Não foi possível salvar o design system.',
+        dsListError: 'Design system salvo, mas a lista de design systems do l5/config.json não foi atualizada — será no próximo salvar.',
         tokensSuffix: 'tokens',
         paletteTitle: 'Paleta',
         paletteTag: 'marca',
@@ -397,6 +401,7 @@ const messages: Record<string, MessageType> = {
         create: 'Crear design system',
         saving: 'Guardando…',
         saveError: 'No se pudo guardar el design system.',
+        dsListError: 'Design system guardado, pero la lista de design systems del l5/config.json no se actualizó — se hará en el próximo guardado.',
         tokensSuffix: 'tokens',
         paletteTitle: 'Paleta',
         paletteTag: 'marca',
@@ -2815,6 +2820,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
             this._saving = false;
             return;
         }
+        // The published app's list of DS (l5/config.json) follows: a new or renamed DS reaches the app on the
+        // next release, like the menu and the header. A failure here does not undo the saved DS.
+        if (!(await this._syncModuleDsList(this.projectId))) this._saveError = this.msg.dsListError;
 
         // What is on screen IS the saved DS now — keep it (and follow a rename).
         // Flush a pending (debounced) edit first so the screen matches what was written.
@@ -2852,6 +2860,24 @@ export class PluginSelectDesignSystem extends StateLitElement {
         const idx = this._entries.findIndex(e => e.key === key);
         const next = idx >= 0 ? this._entries.map((e, i) => (i === idx ? entry : e)) : [...this._entries, entry];
         this._entries = next.sort((a, b) => a.key - b.key);
+    }
+
+    /**
+     * `designSystems` of every module in l5/config.json = the names of the project's DS, in file order. Read
+     * right before writing (the menu or the header may have just written the same file) and only that field
+     * changes. False when the file could not be read or written.
+     */
+    private async _syncModuleDsList(projectId: number): Promise<boolean> {
+        try {
+            const names = designSystemNames(await readThemes(projectId));
+            if (!names.length) return true;
+            const { config, changed } = withModuleDesignSystems(await readConfig(projectId), projectId, names);
+            if (changed) await writeConfig(projectId, config);
+            return true;
+        } catch (err) {
+            console.warn('[selectDesignSystem] l5/config.json designSystems not updated', err);
+            return false;
+        }
     }
 
     /** project.json designSystems[dsIndex] = GENERATION config only (no identity, no tokens). */

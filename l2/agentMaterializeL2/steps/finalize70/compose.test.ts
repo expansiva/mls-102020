@@ -192,3 +192,13 @@ test('menu helpers: hubs, authorities through a hub, first sentence', () => {
   assert.equal(m4FirstSentence('Sem ponto final'), 'Sem ponto final');
   assert.equal(m4FirstSentence('Valor de R$ 3.50 aprovado. Fim.'), 'Valor de R$ 3.50 aprovado.');
 });
+
+test('designSystems: the project DS names go in after languages; without names the field is left as it is', () => {
+  const src = sources('reembolsoDespesas', ['inicio']);
+  const withDs = composeM4ModuleEntry({ ...src, designSystems: ['Default', 'Canteiro'] });
+  assert.deepEqual(withDs.entry.designSystems, ['Default', 'Canteiro']);
+  assert.deepEqual(Object.keys(withDs.entry).slice(0, 6), ['moduleId', 'shellMode', 'basePath', 'userLanguage', 'languages', 'designSystems']);
+  const kept = composeM4ModuleEntry({ ...src, designSystems: [] }, { moduleId: 'reembolsoDespesas', designSystems: ['Old'] });
+  assert.deepEqual(kept.entry.designSystems, ['Old'], 'no names read = no change to the list');
+  assert.equal(kept.changes.includes('designSystems'), false);
+});

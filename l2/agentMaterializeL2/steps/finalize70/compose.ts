@@ -15,6 +15,8 @@
 //   description, actors, landing). Approved pages the navigation does not have are appended, in plan order, built as on
 //   the first generation. A page that exists only in the config stays. Nothing is removed.
 // - languages: l4 module.defs.ts productLanguages (what Ctrl+Alt+L cycles); userLanguage from the same file;
+// - designSystems: the names of the project's DS, in designSystem.ts order (what the boot picks by name, the header's
+//   DS select and Ctrl+Alt+D cycle) — the L5 → UI save keeps it in step afterwards;
 // - variants (page21…) are not pages: the shell swaps them on the same route.
 
 import { m4PageTag } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
@@ -38,6 +40,8 @@ export interface M4FinalizeSources {
   menu: unknown;
   productLanguages: string[];
   userLanguage: string;
+  /** The project's DS names, in designSystem.ts order; absent/empty = the field is left as it is. */
+  designSystems?: string[];
 }
 
 export interface M4NavigationItem { id: string; label: string; href: string; description: string; actors: string[]; icon?: string; landing?: true }
@@ -222,6 +226,7 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
     basePath,
     ...(sources.userLanguage ? { userLanguage: sources.userLanguage } : {}),
     ...(sources.productLanguages.length ? { languages: [...sources.productLanguages] } : {}),
+    ...(sources.designSystems?.length ? { designSystems: [...sources.designSystems] } : {}),
     navigation: navigation.map(item => ({ ...item, actors: [...(item.actors ?? [])] })),
     landings,
     frontend,

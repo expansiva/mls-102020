@@ -41,6 +41,8 @@ export interface BandBootInput {
   navigation?: Array<{ label: string; href: string; description?: string }>;
   /** Locale codes the app runs, so the switcher has something to offer. */
   languages?: string[];
+  /** The project's DS names: the band draws its DS switcher only with two or more, like the app. */
+  designSystems?: string[];
   /** Module the preview pretends to be in; `navigation` is then that module's routes only. */
   moduleId?: string;
   basePath?: string;
@@ -65,6 +67,7 @@ export function bandBootConfig(input: BandBootInput): Record<string, unknown> {
     navigation: (input.navigation ?? []).map((entry) => ({ ...entry })),
     moduleLinks: (input.moduleLinks ?? []).map((entry) => ({ ...entry })),
     languages: [...(input.languages ?? [])],
+    designSystems: [...(input.designSystems ?? [])],
     layout: {
       regions: { desktop: { header: true, aside: true, content: true }, mobile: { header: true, aside: true, content: true } },
       asideMode: { desktop: 'inline', mobile: 'drawer' },
