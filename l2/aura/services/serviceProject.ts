@@ -6,7 +6,11 @@ import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/
 import { subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { AuraInitState, getAuraState, setAuraState, saveAuraProject, projectScopeTitle } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
+import { dsIndexNameMap, readThemes, themeDsIndex } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
+import { tokensCssFromTheme, type IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
+import { applyStudioDesignSystem } from '/_102033_/l2/cbe/studioDesignSystem.js';
+import { siteProjectFromBoot } from '/_102033_/l2/shared/siteProject.js';
+import { canPaintStudioDs } from '/_102020_/l2/aura/plugins/helpers/dsLivePreview.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectDesignSystem.js';
@@ -237,25 +241,46 @@ export class ServiceProject102020 extends ServiceBase {
         const actualDs = getAuraState().actualDesignSystem;
         if (actualDs !== null && actualDs > 0 && actualDs < e.detail.max) {
             this._dsValue = actualDs;
+            void this._paintStudioDs(actualDs);
         } else if (this._dsValue === null) {
             this._dsValue = 0;
         }
         this.requestUpdate();
     }
 
-    private async _onDsCreated(value: number) {
+    private async _onDsCreated(value: number, theme?: IDesignSystemTokens) {
         // A new design system was persisted. Rebuild the knob (new entry + fresh "+" slot),
         // then select it.
         await this._initDsConfig();
         this._setKnobValue('designSystem', value);
+        if (theme) void this._paintStudioDs(value, theme);
     }
 
-    /** Tell the runtime shell (mls.sites) which content variation is active — layout 2 + ds 1 →
-     *  setPage(21). The DS knob lives only here, so this is the one place that keeps the shell
-     *  from drifting on a DS change. No-op until the base registers its handlers. */
-    private _notifySitesPage(ds: number): void {
-        const layout = getAuraState().actualLayout ?? 1;
-        try { mls.sites.setPage(Number(`${layout}${ds}`)); } catch { /* base not registered */ }
+    private _paintSeq = 0;
+
+    /**
+     * Repaint the page with DS `ds` of the active project — studio only: the first paint keeps the
+     * app's DS aside and leaving the studio gives it back (studioDesignSystem, called by the shell).
+     * Compiled from the entry itself, not `mls.sites.setDS`: that one only knows the DSes of the
+     * published config, and a DS made here is not there yet. The last call wins.
+     */
+    private async _paintStudioDs(ds: number, given?: IDesignSystemTokens): Promise<void> {
+        const seq = ++this._paintSeq;
+        const project = getAuraState().actualProject;
+        const allowed = () => canPaintStudioDs({
+            editorProjectId: project,
+            appProjectId: siteProjectFromBoot(window.collabBoot),
+            mode: (mls.sites as { getMode?: () => string } | undefined)?.getMode?.(),
+        });
+        if (!project || !allowed()) return;
+        try {
+            const theme = given ?? (await readThemes(project)).find((t, i) => themeDsIndex(t, i) === String(ds));
+            // Another switch, or the studio closed, while the entry was read.
+            if (!theme || seq !== this._paintSeq || !allowed()) return;
+            applyStudioDesignSystem(tokensCssFromTheme(theme), theme.themeName);
+        } catch (err) {
+            console.debug('[serviceProject] design system paint skipped', err);
+        }
     }
 
     // ─── Header (project scope) ───────────────────────────────────────
@@ -358,7 +383,7 @@ export class ServiceProject102020 extends ServiceBase {
                     && this._dsConfig.labels[value] !== '+') {
                     setAuraState('actualDesignSystem', value);
                     saveAuraProject();
-                    this._notifySitesPage(value);
+                    void this._paintStudioDs(value);
                 }
                 break;
             case 'header':
@@ -439,7 +464,10 @@ export class ServiceProject102020 extends ServiceBase {
         const moduleIndex = state?.actualModule ? this._modules.findIndex(m => m.name === state.actualModule) : -1;
         this._moduleValue = moduleIndex >= 0 ? moduleIndex + 1 : 0;
         const ds = state?.actualDesignSystem ?? null;
-        if (ds !== null && ds > 0 && ds < this._dsConfig.max) this._dsValue = ds;
+        if (ds !== null && ds > 0 && ds < this._dsConfig.max && ds !== this._dsValue) {
+            this._dsValue = ds;
+            void this._paintStudioDs(ds);
+        }
         const device = Object.entries(DEVICE_PATH_MAP).find(([, path]) => path === state?.actualDevice);
         if (device) this._deviceValue = Number(device[0]);
         this._updateMenuTitle();
@@ -539,7 +567,7 @@ export class ServiceProject102020 extends ServiceBase {
                     @header-activated=${(e: CustomEvent) => this._onHeaderActivated(e.detail.profileName)}
                     @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
                     @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
-                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
+                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value, e.detail.theme)}
                 >
                     ${this._renderContextStatusArea()}
                 </div>

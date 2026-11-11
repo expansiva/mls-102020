@@ -18,6 +18,7 @@
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { replaceTokensBlock, getTokens } from '/_102027_/l2/designSystemBase.js';
 import { IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
+import { parseJsLiteral } from '/_102020_/l2/aura/helpers/dsMatch/jsLiteral.js';
 
 /** Canonical file reference of the tokens module — ONE file per project. */
 export const designSystemTsRef = (project: number): string => `_${project}_/l2/designSystem.ts`;
@@ -26,8 +27,42 @@ export const designSystemTsRef = (project: number): string => `_${project}_/l2/d
 export const themeDsIndex = (theme: IDesignSystemTokens, position: number): string =>
     theme.dsIndex ?? String(position + 1);
 
-/** The project's theme entries, from the compiled designSystem.js (empty when absent). */
+/**
+ * The theme entries of a designSystem.ts SOURCE (the `tokens` array literal), or null when the source
+ * has no such array or it is not a plain literal. Read without evaluating (parseJsLiteral): the editor
+ * may reformat the file, and eval is not available under a CSP without unsafe-eval.
+ */
+export function themesFromSource(code: string): IDesignSystemTokens[] | null {
+    // Greedy to the LAST `]`: the entries themselves hold arrays (fonts, weights) — same as replaceTokensBlock.
+    const m = /export\s+const\s+tokens\s*:\s*IDesignSystemTokens\[\]\s*=\s*(\[[\s\S]*\])\s*;?/.exec(code);
+    if (!m) return null;
+    try {
+        const value = parseJsLiteral(m[1]);
+        return Array.isArray(value) ? value as IDesignSystemTokens[] : null;
+    } catch {
+        return null;
+    }
+}
+
+/** The designSystem.ts the editor holds this session, if it is open (what writeThemes writes to). */
+function currentModelCode(project: number): string | undefined {
+    try {
+        const value = mls.editor.getModels(project, 'designSystem', '', 2)?.ts?.model?.getValue?.();
+        return typeof value === 'string' ? value : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * The project's theme entries (empty when absent). From the editor's model of designSystem.ts when
+ * it is open — writeThemes writes there, and the compiled designSystem.js (what getTokens imports)
+ * lags behind a save, so a DS just created would be missing; otherwise from the compiled module.
+ */
 export async function readThemes(project: number): Promise<IDesignSystemTokens[]> {
+    const code = currentModelCode(project);
+    const fromModel = code !== undefined ? themesFromSource(code) : null;
+    if (fromModel) return fromModel;
     try {
         const themes = await getTokens(project);
         return Array.isArray(themes) ? themes : [];

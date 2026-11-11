@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canPreview, createLivePreview } from './dsLivePreview.js';
+import { canPaintStudioDs, canPreview, createLivePreview } from './dsLivePreview.js';
 
 function fakeDoc(active?: string, css = 'boot css') {
   const style = active ? { textContent: css as string | null, dataset: { designSystem: active } as Record<string, string | undefined> } : null;
@@ -73,4 +73,26 @@ test('canPreview: same project + active DS only', () => {
   assert.equal(canPreview({ editorProjectId: null, bootProjectId: 102047, entryName: 'Default', doc }), false);
   assert.equal(canPreview({ editorProjectId: 102047, bootProjectId: 102047, entryName: 'Default', doc: fakeDoc().doc }), false);
   assert.equal(canPreview({ editorProjectId: 102047, bootProjectId: 102047, entryName: undefined, doc }), false);
+});
+
+test('canPaintStudioDs: studio mode + the app on screen is the edited project', () => {
+  assert.equal(canPaintStudioDs({ editorProjectId: 102047, appProjectId: 102047, mode: 'studio' }), true);
+  assert.equal(canPaintStudioDs({ editorProjectId: 102047, appProjectId: 102047, mode: 'production' }), false);
+  assert.equal(canPaintStudioDs({ editorProjectId: 102047, appProjectId: 102047, mode: undefined }), false);
+  assert.equal(canPaintStudioDs({ editorProjectId: 102047, appProjectId: 102051, mode: 'studio' }), false);
+  assert.equal(canPaintStudioDs({ editorProjectId: 102047, appProjectId: 0, mode: 'studio' }), false);
+  assert.equal(canPaintStudioDs({ editorProjectId: null, appProjectId: 102047, mode: 'studio' }), false);
+});
+
+test('a knob switch during an unsaved edit: restore does not paint the previous DS back', () => {
+  const { doc, style } = fakeDoc('Default');
+  style!.textContent = 'boot';
+  const live = createLivePreview(doc);
+  live.apply('edited default');
+  // the knob paints another DS (studioDesignSystem writes the same style)
+  style!.textContent = 'canteiro';
+  style!.dataset.designSystem = 'Canteiro';
+  live.restore();
+  assert.equal(style!.textContent, 'canteiro');
+  assert.equal(style!.dataset.designSystem, 'Canteiro');
 });

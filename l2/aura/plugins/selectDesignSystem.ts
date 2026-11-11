@@ -13,9 +13,11 @@ import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { ITask, setTask, getTask, getTasksByScope, hasRunning, clearScope, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
-import { canPreview, createLivePreview } from '/_102020_/l2/aura/plugins/helpers/dsLivePreview.js';
+import { canPaintStudioDs, canPreview, createLivePreview } from '/_102020_/l2/aura/plugins/helpers/dsLivePreview.js';
+import { holdAppDesignSystem } from '/_102033_/l2/cbe/studioDesignSystem.js';
 import { collectUsedTokens, pageRegion } from '/_102020_/l2/aura/plugins/helpers/dsUsedTokens.js';
 import { NAV3_TAB_CHANGE_EVENT } from '/_102033_/l2/shared/nav3ActiveTab.js';
+import { siteProjectFromBoot } from '/_102033_/l2/shared/siteProject.js';
 import { groupColorRows, splitState, type ColorGroup } from '/_102020_/l2/aura/plugins/helpers/dsColorGroups.js';
 import { createHighlighter, elementsUsingTokens, isMoleculeTag, moleculeHost, moleculeTokenUses, tokensForElement } from '/_102020_/l2/aura/plugins/helpers/dsTokenInspect.js';
 import {
@@ -1250,11 +1252,12 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._liveTimer = setTimeout(() => this._applyLivePreview(), delay);
     }
 
-    /** Repaint the app with the form's tokens — only for the app's active DS of this project. */
+    /** Repaint the app with the form's tokens — the app's active DS of this project, or the "+" draft. */
     private _applyLivePreview(): void {
+        if (this._isAdd) { this._applyDraftPreview(); return; }
         const entry = this._selectedEntry;
-        if (!entry || this._isAdd || this._editingKey !== entry.key) return;
-        if (!canPreview({ editorProjectId: this.projectId, bootProjectId: window.collabBoot?.projectId, entryName: entry.name, doc: document })) return;
+        if (!entry || this._editingKey !== entry.key) return;
+        if (!canPreview({ editorProjectId: this.projectId, bootProjectId: siteProjectFromBoot(window.collabBoot), entryName: entry.name, doc: document })) return;
         try {
             const theme = this._buildTheme(entry.dsIndex, this._name.trim() || entry.name, this._desc.trim());
             // The Studio may have redefined a molecule under a suffixed tag (`…-field-2`): the preview repeats
@@ -1264,6 +1267,25 @@ export class PluginSelectDesignSystem extends StateLitElement {
         } catch (err) {
             // A half-typed value must never break the form — the last good CSS stays on screen.
             console.debug('[selectDesignSystem] live preview skipped', err);
+        }
+    }
+
+    /**
+     * "+" (a DS not saved yet): the page shows the draft — studio only, and only on the app of this
+     * project. The app's DS is held aside first, so leaving the studio never leaves the draft on it;
+     * leaving "+" without saving puts back the DS that was on screen (`_revertLivePreview`).
+     */
+    private _applyDraftPreview(): void {
+        const mode = (mls.sites as { getMode?: () => string } | undefined)?.getMode?.();
+        if (!canPaintStudioDs({ editorProjectId: this.projectId, appProjectId: siteProjectFromBoot(window.collabBoot), mode })) return;
+        try {
+            const theme = this._buildTheme(String(this._customKey), this._name.trim() || this.msg.addTitle, this._desc.trim());
+            if (theme.components) theme.components = withSuffixedTags(theme.components, this._pageMoleculeTags());
+            const css = tokensCssFromTheme(theme);
+            if (!holdAppDesignSystem()) return;
+            this._live.apply(css);
+        } catch (err) {
+            console.debug('[selectDesignSystem] draft preview skipped', err);
         }
     }
 
@@ -1312,10 +1334,12 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._palette = [...cache.palette]; this._aiBrief = cache.brief;
         this._dirty = true; this._saved = false;
         this._appliedStamp = cache.stamp;
+        this._scheduleLivePreview(150);
     }
 
     /** Throw the cached draft away and go back to the canonical starter template. */
     private _discardDraft(): void {
+        this._revertLivePreview();
         _draftCache = null;
         this._loadStarter();
         this.requestUpdate();
@@ -1887,7 +1911,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     /** What a token edit reaches (every module on this DS) and whether the app previews it live. */
     private _renderScopeNote(entry: IDsEntry) {
-        const live = canPreview({ editorProjectId: this.projectId, bootProjectId: window.collabBoot?.projectId, entryName: entry.name, doc: document });
+        const live = canPreview({ editorProjectId: this.projectId, bootProjectId: siteProjectFromBoot(window.collabBoot), entryName: entry.name, doc: document });
         return html`
             <div class="flex flex-col gap-1 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-2.5 py-2">
                 <span class="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">${this.msg.scopeNote}</span>
@@ -2795,7 +2819,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         // What is on screen IS the saved DS now — keep it (and follow a rename).
         // Flush a pending (debounced) edit first so the screen matches what was written.
         clearTimeout(this._liveTimer);
-        if (!isNew) this._applyLivePreview();
+        this._applyLivePreview();
         this._live.commit(name);
         await this._load(this.projectId);
         // The compiled designSystem.js lags behind the just-written .ts, so _load can miss a
@@ -2814,7 +2838,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
             clearScope('ds:generate');
             // Notify the host so it rebuilds the DS knob (new entry + fresh "+" slot) and selects it.
             this._editingKey = key;
-            this.dispatchEvent(new CustomEvent('ds-created', { detail: { value: key }, bubbles: true, composed: true }));
+            // The saved entry goes along: the compiled designSystem.js lags behind, and the knob paints from it.
+            this.dispatchEvent(new CustomEvent('ds-created', { detail: { value: key, theme }, bubbles: true, composed: true }));
         } else {
             this._editingKey = key;
             this.dispatchEvent(new CustomEvent('save-ds', { detail: { key, isNew, name }, bubbles: true, composed: true }));

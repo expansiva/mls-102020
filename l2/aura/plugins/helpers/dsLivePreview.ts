@@ -33,7 +33,7 @@ function sameName(a: string | undefined, b: string | undefined): boolean {
 export interface CanPreviewInput {
   /** Project the editor is bound to. */
   editorProjectId: number | null | undefined;
-  /** Project the running app booted with (`window.collabBoot.projectId`); absent = no app here. */
+  /** Project of the running app (`siteProjectFromBoot(window.collabBoot)`: client project first); absent = no app here. */
   bootProjectId: number | string | null | undefined;
   /** ORIGINAL name of the DS being edited (not the name field — it may be mid-rename). */
   entryName: string | undefined;
@@ -47,6 +47,25 @@ export function canPreview({ editorProjectId, bootProjectId, entryName, doc }: C
   const style = doc.getElementById(DS_TOKENS_STYLE_ID);
   if (!style) return false;
   return sameName(style.dataset.designSystem, entryName);
+}
+
+export interface CanPaintStudioDsInput {
+  /** Project the knob is bound to (the one being edited). */
+  editorProjectId: number | null | undefined;
+  /** Project of the running app (`siteProjectFromBoot`); 0/absent = no app here. */
+  appProjectId: number | null | undefined;
+  /** `mls.sites.getMode()` — undefined when the shell does not expose it. */
+  mode: string | undefined;
+}
+
+/**
+ * The DS knob repaints the page only in studio mode (leaving it gives the app its DS back) and only
+ * when the app on screen is the project being edited: another project's page has another DS.
+ */
+export function canPaintStudioDs({ editorProjectId, appProjectId, mode }: CanPaintStudioDsInput): boolean {
+  if (mode !== 'studio') return false;
+  if (!editorProjectId || !appProjectId) return false;
+  return Number(editorProjectId) === Number(appProjectId);
 }
 
 export interface LivePreview {
