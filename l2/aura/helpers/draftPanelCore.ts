@@ -1177,6 +1177,69 @@ function fileNeedsSave(file: IPanelStorFile): boolean {
   }
 }
 
+/** Why a project row stayed out of `collectEditedFiles`. */
+export type UnsavedRowReason = 'notLocal' | 'sameCrc' | 'noPath';
+
+export interface IUnsavedRow {
+  path: string;
+  status: string | undefined;
+  inLocalStorage: boolean | undefined;
+  reason: UnsavedRowReason;
+}
+
+/**
+ * The same gates as `fileNeedsSave`, named. `notLocal` wins when the local flag is off.
+ * `noPath` is a local row whose level, folder, short name, or extension is missing.
+ * `sameCrc` is a local row whose text CRC matches the last accepted CRC.
+ */
+function unsavedReason(file: IPanelStorFile): UnsavedRowReason | null {
+  if (file.status === 'deleted') return null;
+  if (file.inLocalStorage !== true) return 'notLocal';
+  const identity = draftIdentity(file);
+  if (!identity) return 'noPath';
+  const accepted = sentCrcOf(identity);
+  if (accepted === undefined) return null;
+  const text = currentDraftText(file);
+  if (text === undefined) return null;
+  try {
+    return draftContentCrc(text, identity.extension) === accepted ? 'sameCrc' : null;
+  } catch (err) {
+    console.error('[draftPanel] local crc failed', file.shortName, err);
+    return null;
+  }
+}
+
+function looksUnsaved(file: IPanelStorFile): boolean {
+  return file.status === 'new'
+    || file.status === 'renamed'
+    || file.status === 'changed'
+    || file.inLocalStorage === true;
+}
+
+/** Project rows Save did not take, when they still look unsaved. */
+export function explainUnsavedRows<T extends IPanelStorFile>(
+  storFiles: Readonly<Record<string, T | null | undefined>>,
+  project: number,
+): IUnsavedRow[] {
+  const sending = new Set(collectEditedFiles(storFiles, project));
+  const rows: IUnsavedRow[] = [];
+  for (const file of Object.values(storFiles)) {
+    if (!file || !isProjectFile(file, project) || sending.has(file) || !looksUnsaved(file)) continue;
+    const reason = unsavedReason(file);
+    if (!reason) {
+      console.error('[draftPanel] skipped row has no reason', shortPathOf(file));
+      continue;
+    }
+    rows.push({
+      path: shortPathOf(file),
+      status: file.status,
+      inLocalStorage: file.inLocalStorage,
+      reason,
+    });
+  }
+  return rows;
+}
+
 /** `l<level>/<folder/>shortName<extension>`. With no level, folder, or extension, the short name. */
 function shortPathOf(file: IPanelStorFile): string {
   const name = file.shortName ?? '';

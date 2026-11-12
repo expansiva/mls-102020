@@ -24,6 +24,7 @@ import {
   COLLAB_DRAFT_SAVED,
   collectEditedFiles,
   draftSaveTotals,
+  explainUnsavedRows,
   loadPanel,
   rememberOpenedDraftText,
   saveToDraft,
@@ -596,6 +597,8 @@ export async function runDraftSave(
     return done({ kind: 'failed', message: panelMessages.noFiles });
   }
   const files = collectEditedFiles(storFiles, project) as mls.stor.IFileInfo[];
+  const skipped = explainUnsavedRows(storFiles, project);
+  if (skipped.length > 0) console.info('[draftPanel] save skipped rows', skipped);
   if (files.length === 0) {
     console.warn('[studio] no edited files to save');
     return done({ kind: 'error', message: panelMessages.noFiles });

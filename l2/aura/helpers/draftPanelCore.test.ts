@@ -9,6 +9,7 @@ import {
   branchForSlug,
   callExec,
   collectEditedFiles,
+  explainUnsavedRows,
   COLLAB_DRAFT_DISCARD_HOLD,
   COLLAB_DRAFT_DISCARDED,
   COLLAB_DRAFT_SAVED,
@@ -1534,6 +1535,81 @@ test('st65 s2: draftSaveTotals is the save count; a saved file counts only until
     const deletion = draftSaveTotals({ removed }, 102047);
     assert.equal(deletion.count, 1);
     assert.equal(deletion.blocked, 0);
+  } finally {
+    if (host.mls) {
+      host.mls.common = previousCommon;
+      host.mls.editor = previousEditor;
+    }
+  }
+});
+
+test('st71 s1a: explainUnsavedRows names notLocal and sameCrc and omits a file Save sends', async () => {
+  const host = globalThis as { mls?: { common?: unknown; editor?: unknown } };
+  const previousCommon = host.mls?.common;
+  const previousEditor = host.mls?.editor;
+  if (!host.mls) host.mls = {};
+  host.mls.common = {
+    crc: {
+      crc32: (value: string) => {
+        let hash = 0;
+        for (const ch of value) hash = (hash * 33 + ch.charCodeAt(0)) >>> 0;
+        return hash;
+      },
+    },
+  };
+  host.mls.editor = { getKeyModel: () => 'none', models: {} };
+  const sameBody = 'same-body';
+  const notLocal = {
+    project: 102047,
+    status: 'new' as const,
+    inLocalStorage: false as boolean | undefined,
+    level: 2,
+    folder: 'pages',
+    shortName: 'st71skip',
+    extension: '.less',
+  };
+  const same = {
+    project: 102047,
+    status: 'new' as const,
+    inLocalStorage: true as boolean | undefined,
+    level: 2,
+    folder: 'pages',
+    shortName: 'st71same',
+    extension: '.defs.ts',
+    getContent: async () => sameBody,
+  };
+  const sent = {
+    project: 102047,
+    status: 'new' as const,
+    inLocalStorage: true as boolean | undefined,
+    level: 2,
+    folder: 'pages',
+    shortName: 'st71sent',
+    extension: '.ts',
+    getContent: async () => 'sent-body',
+  };
+  try {
+    rememberSentCrc(
+      { project: 102047, level: 2, folder: 'pages', shortName: 'st71same', extension: '.defs.ts' },
+      draftContentCrc(sameBody, '.defs.ts'),
+    );
+    await rememberOpenedDraftText([same, sent]);
+    const rows = explainUnsavedRows({ notLocal, same, sent }, 102047);
+    assert.deepEqual(rows, [
+      {
+        path: 'l2/pages/st71skip.less',
+        status: 'new',
+        inLocalStorage: false,
+        reason: 'notLocal',
+      },
+      {
+        path: 'l2/pages/st71same.defs.ts',
+        status: 'new',
+        inLocalStorage: true,
+        reason: 'sameCrc',
+      },
+    ]);
+    assert.deepEqual(collectEditedFiles({ notLocal, same, sent }, 102047), [sent]);
   } finally {
     if (host.mls) {
       host.mls.common = previousCommon;
