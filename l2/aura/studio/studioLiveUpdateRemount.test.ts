@@ -1311,6 +1311,54 @@ test('st69 s1c: a removed new file whose fetch is 404 leaves the changed list', 
   }
 });
 
+test('st72 s1: with a local copy, production fetches and skips the model; without it the model stays the source', async () => {
+  const { updateOpenTabsForFiles } = await load();
+  const page = '/_102033_/l2/pageSt72.js';
+  const previousMls = (globalThis as { mls?: unknown }).mls;
+  (globalThis as { mls?: unknown }).mls = {
+    editor: {
+      getModels(project: number, shortName: string, folder: string, level: number) {
+        if (project === 102033 && shortName === 'pageSt72' && folder === '' && level === 2) {
+          return { ts: { compilerResults: { prodJS: pageSource('preview-page-st72', 'FROM-MODEL'), cacheVersion: V2 } } };
+        }
+        return undefined;
+      },
+    },
+    stor: {
+      files: { 'k-pageSt72': { inLocalStorage: true } },
+      getKeyToFile: (file: { shortName: string }) => `k-${file.shortName}`,
+    },
+  };
+  try {
+    await withPreviewTab('preview-page-st72', 'OLD', async (tab) => {
+      const fetched: string[] = [];
+      const ask = (production: boolean) => updateOpenTabsForFiles(102033, ['l2/pageSt72.ts'], {
+        tabs: [slot(tab, page, 'preview-page-st72')],
+        draftSlug: null,
+        origin: 'http://preview.test',
+        production,
+        fetchModule: async (specifier: string) => {
+          fetched.push(specifier);
+          return jsResponse(pageSource('preview-page-st72', 'FROM-SW'));
+        },
+      });
+      const fromProduction = await ask(true);
+      assert.ok(fromProduction);
+      assert.equal(fromProduction.ok, true);
+      assert.deepEqual(fetched, [page]);
+      assert.equal(tab.child?.label, 'FROM-SW');
+      fetched.length = 0;
+      const fromModel = await ask(false);
+      assert.ok(fromModel);
+      assert.equal(fromModel.ok, true);
+      assert.deepEqual(fetched, []);
+      assert.equal(tab.child?.label, 'FROM-MODEL');
+    });
+  } finally {
+    (globalThis as { mls?: unknown }).mls = previousMls;
+  }
+});
+
 test('st69 s1c: a changed module that fetches 500 stays an error', async () => {
   const { updateOpenTabsForFiles } = await load();
   const page = '/_102033_/l2/pageSt69b.js';

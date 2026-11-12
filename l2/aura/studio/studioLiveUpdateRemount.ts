@@ -528,7 +528,7 @@ export interface IPreviewTabsDeps {
   tabs?: readonly PreviewTabSlot[];
   /** `null` is no main page. Omitted reads the slot the shell registered. */
   mainPage?: ShellMainPage | null;
-  /** Test double. Production reads the model, then the service worker. */
+  /** Test double. Production reads the model, then the service worker. `production` skips the model. */
   readModule?: (specifier: string) => Promise<ICompiledPreview | null> | ICompiledPreview | null;
   draftSlug?: string | null;
   origin?: string;
@@ -539,6 +539,8 @@ export interface IPreviewTabsDeps {
   forgetStale?: (project: number, slug: string, keep: ReadonlySet<string>) => Promise<number>;
   /** Test double. Production is `fetch(specifier, { cache: 'no-store' })`. */
   fetchModule?: (specifier: string) => Promise<Response>;
+  /** Open tabs load production. The editor model's `prodJS` is not the source. */
+  production?: boolean;
 }
 
 interface IEditorModel {
@@ -661,11 +663,14 @@ async function readPreviewSource(
   fetchModule: (specifier: string) => Promise<Response>,
   sources: Map<string, 'model' | 'fetch'>,
   gone: Set<string>,
+  production: boolean,
 ): Promise<ICompiledPreview | null> {
-  const fromModel = compiledFromModel(specifier);
-  if (fromModel) {
-    sources.set(specifier, 'model');
-    return fromModel;
+  if (!production) {
+    const fromModel = compiledFromModel(specifier);
+    if (fromModel) {
+      sources.set(specifier, 'model');
+      return fromModel;
+    }
   }
   const fetched = await fetchCompiled(specifier, fetchModule, gone);
   if (fetched) sources.set(specifier, 'fetch');
@@ -740,7 +745,8 @@ export async function updateOpenTabsForFiles(
   const sources = new Map<string, 'model' | 'fetch'>();
   const gone = new Set<string>();
   const fetchModule = deps.fetchModule ?? ((specifier: string) => fetch(specifier, { cache: 'no-store' }));
-  const readModule = deps.readModule ?? ((specifier: string) => readPreviewSource(specifier, fetchModule, sources, gone));
+  const production = deps.production === true;
+  const readModule = deps.readModule ?? ((specifier: string) => readPreviewSource(specifier, fetchModule, sources, gone, production));
   const modules = new Map<string, PreviewModuleRecord>();
   const changedSet = new Set(changed);
   const seen = new Set<string>();
@@ -797,8 +803,12 @@ export async function updateOpenTabsForFiles(
 
 /** The Studio tool registers itself. Save and Discard ask through the slot. */
 export function armPreviewTabUpdates(): void {
-  registerPreviewTabsUpdate(async (project, files) => {
-    const result = await updateOpenTabsForFiles(project, files);
+  registerPreviewTabsUpdate(async (project, files, options) => {
+    const result = await updateOpenTabsForFiles(
+      project,
+      files,
+      options?.production === true ? { production: true } : {},
+    );
     if (result && !result.ok) {
       console.error(`[remount] preview tabs were not updated: ${result.message}`);
       throw new Error(result.message);
