@@ -12,6 +12,7 @@ import {
   inspectorProperties,
   toggleImportant,
   classToAdd,
+  importantInChannel,
   animationTokens,
   classChannelOf,
   findAttributeValue,
@@ -517,6 +518,14 @@ test('with no design system loaded, an arbitrary value stays read-only with a re
 test('the role label is what the user reads', () => {
   assert.equal(roleLabel('bg-[var(--surface-subtle,#f8fafc)]'), 'surface-subtle');
   assert.equal(roleLabel('dark:text-[var(--text-muted)]'), 'text-muted');
+});
+
+test('an !important class still reads as its role (name, swatch and colour of the palette)', () => {
+  // Tailwind 4 suffix and the Tailwind 3 prefix.
+  assert.equal(roleVar('text-[var(--text-strong-hover,#f1f5f8)]!'), '--text-strong-hover');
+  assert.equal(roleLabel('text-[var(--text-strong-hover,#f1f5f8)]!'), 'text-strong-hover');
+  assert.equal(roleLabel('!bg-[var(--surface-subtle,#f8fafc)]'), 'surface-subtle');
+  assert.equal(roleLabel('hover:text-[var(--text-muted)]!'), 'text-muted');
 });
 
 // --- scanTemplateElements / resolveStructuralAnchor ---
@@ -1910,7 +1919,7 @@ test('depth wins over breadth: the deepest containing node is the answer', () =>
   assert.equal(deepestAt(deep, { x: 5, y: 5 }, TREE).name, 'a');
 });
 
-// --- Siblings that live inside a `${...}` (TASK-102020-anchor-expressions) ---
+// --- Siblings that live inside a `${...}` ---
 //
 // The two shapes below are the ones that failed in the real `changeOrderCatalogue`, reduced to what
 // matters: a section whose same-tag siblings are branches of one ternary.
@@ -2315,7 +2324,7 @@ test('cyclic accessors do not hang the pointer handler', () => {
   assert.deepEqual(ownerChain(a, { name: 'root' }, OWNER).chain, []);
 });
 
-// ── The breadcrumb of the selection (TASK-102020-ancestor-breadcrumb) ────────────────────────────
+// ── The breadcrumb of the selection ────────────────────────────
 //
 // The chain the panel offers is the ownership chain, minus what is not editable. Everything here is
 // measured on the same fixtures as `ownerChain` above, because it is the same walk: the pointer
@@ -2402,7 +2411,7 @@ test('every ancestor of a wrapper is reachable from any descendant', () => {
   }
 });
 
-// ── The template that is not linked to whoever renders it (TASK-102020-anchor-orphan-roots) ──────
+// ── The template that is not linked to whoever renders it ──────
 //
 // The failure these guard is not the resolver's matching — measured over the 5.571 elements of the
 // two real projects, `matchStep` never failed. It is the step before: a helper's template not being
@@ -2536,7 +2545,7 @@ test('an unconditional call still counts as markup that always renders', () => {
 
 test('a call in plain code is a mount point only where its variable is interpolated', () => {
   // `const extra = this.renderForm();` on its own says nothing about where the result lands, and
-  // inventing a parent would invent nesting. The `${extra}` is what says it (2026-10-21: the
+  // inventing a parent would invent nesting. The `${extra}` is what says it (the
   // generator picks screen states this way) — so the link goes there, as a conditional, and nowhere
   // else.
   const source = [
@@ -2575,7 +2584,7 @@ test('the block keywords are named, and `render` is not among them', () => {
   assert.equal(list.includes("'render'"), false, 'a real method name must never be in there');
 });
 
-// ── The i18n key as the last tiebreaker (TASK-102020-anchor-i18n-tiebreak) ───────────────────────
+// ── The i18n key as the last tiebreaker ───────────────────────
 //
 // The shape that survived every other rule: a ternary whose arms are the same tag with the same class
 // — or with none at all, which is how the "Nenhum registro encontrado" paragraph of the 102047 stayed
@@ -2741,7 +2750,7 @@ test('the key is read even when the element looks unique on screen', () => {
   }
 });
 
-// ── Attributes as the source writes them (TASK-102020-attribute-text) ────────────────────────────
+// ── Attributes as the source writes them ────────────────────────────
 
 /** The open tag of the element whose tag name is given, as the scanner found it. */
 function openStartOf(source: string, tag: string): number {
@@ -2826,7 +2835,7 @@ test('a quoted value that MIXES text and code stays markup', () => {
 });
 
 
-// ── Which element the selection goes back to after a remount (2026-09-28) ──
+// ── Which element the selection goes back to after a remount ──
 //
 // THE DEFECT, ONCE: dropping the last step's tag was the whole rule, and it is far too loose.
 // `index` counts among siblings WITH THE SAME TAG, so a `<div>` and a molecule that are each the
@@ -2902,10 +2911,10 @@ test('an ancestor with another tag is a different position, whatever the ranks s
   assert.equal(pickRestored([elsewhere], HEADER.button(OLD_TAG)), -1);
 });
 
-// --- A molecule's data-class (TASK-102020-picker-molecule-data-class) ---
+// --- A molecule's data-class ---
 //
 // The two buttons are verbatim from mls-102047/l2/agendaClinica/web/desktop/page11/consultas.ts
-// (lines 56 and 64 on 2026-10-21): "Hoje" has no data-class, "Mais consultas" has `data-class="mt-3"`.
+// (lines 56 and 64): "Hoje" has no data-class, "Mais consultas" has `data-class="mt-3"`.
 
 const AGENDA = [
   'render() {',
@@ -3080,8 +3089,14 @@ test('the "+" of a molecule inside offers the same catalog as a plain element', 
 test('pasting into a molecule inside leaves out only the parent-facing classes, and names them', () => {
   const button = 'w-full mt-2 px-3 py-2 rounded-md bg-[var(--primary,#2563eb)] text-sm animate-pulse';
   const into = pasteStyleInto('mt-3 bg-red-500', `${button} flex-1 self-end`, 'data-class');
-  assert.equal(into.literal, button, 'the looks and the motion travel');
+  assert.equal(
+    into.literal,
+    'w-full! mt-2! px-3! py-2! rounded-md! bg-[var(--primary,#2563eb)]! text-sm! animate-pulse!',
+    'the looks and the motion travel, every one important (the data-class rule)',
+  );
   assert.deepEqual(into.dropped, ['flex-1', 'self-end']);
+  // Classes already important (either form) are not marked twice.
+  assert.equal(pasteStyleInto('p-2', 'p-4! !m-2 rounded', 'data-class').literal, 'p-4! !m-2 rounded!');
 
   // From a molecule (or anything) into a plain element: everything, exactly the paste of before.
   const plain = pasteStyleInto('p-4', 'mt-3 w-full', 'class');
@@ -3091,7 +3106,7 @@ test('pasting into a molecule inside leaves out only the parent-facing classes, 
 
 // ── `return this.renderX()` — a method that hands back another method's template ─────────────────
 //
-// 102047/tarefas/meus_avisos (2026-10-21): `renderBody` ends in `return this.renderDesk();`, which is
+// 102047/tarefas/meus_avisos: `renderBody` ends in `return this.renderDesk();`, which is
 // the whole screen in its normal state. The call is plain code, so it was never linked: `renderDesk`
 // stayed an orphan root and every element under it was "not located" — the molecules with no `class`
 // (no literal to count) first of all.
@@ -3199,7 +3214,7 @@ test('methods that return each other do not loop', () => {
 
 // ── `body = this.renderX()` / `body = html`…`` … `${body}` — markup held in a variable ─────────────
 //
-// 102047/reembolsoDespesas/inicio, inicio_responsavel, despesas_da_equipe (2026-10-21): the screen
+// 102047/reembolsoDespesas/inicio, inicio_responsavel, despesas_da_equipe: the screen
 // state is picked into a local and interpolated later. The called method's template stayed an orphan,
 // and a template written in place was taken as a root of its METHOD — mounted next to what the method
 // returns instead of inside the element holding `${body}`.
@@ -3286,7 +3301,7 @@ test('a template passed as an ARGUMENT is not taken as the value of the variable
 // ── Templates of MODULE functions, and methods whose parameters hold parentheses ─────────────────
 //
 // 102047/inicio/empresa (`const row = (…) => html`…``), pessoas_organizacao (`function chip(…)`) and
-// tarefas/meus_avisos mobile (`renderError(…, retry: () => void)`), 2026-10-21. The first two are
+// tarefas/meus_avisos mobile (`renderError(…, retry: () => void)`). The first two are
 // called without `this.`; the third did not match the method pattern at all, so its templates were
 // filed under the method before it — and mounted at THAT method's calls.
 
@@ -3345,7 +3360,7 @@ test('a local arrow function inside a method does not split the method', () => {
   assert.ok(tree.links.some((link) => link.root === list && link.parent === main));
 });
 
-// --- A molecule's slots (TASK-102020-picker-molecule-slots) ---
+// --- A molecule's slots ---
 
 test('a slot the page wrote inside a molecule is the page\'s, and what the molecule rendered is not', () => {
   // <page> > <ml-button> > { <Label> (hidden slot) > <strong>, <label> (rendered root) > <span> }
@@ -3402,7 +3417,7 @@ test('a slot\'s data-class: the <Label> of the real button is found, written and
   assert.equal(spliceChannel(written.source, { startOffset: now.start, endOffset: now.end }, 'data-class', '').source, AGENDA);
 });
 
-// --- The inspector's subjects (TASK-102020-picker-inspector, phase 2) ---
+// --- The inspector's subjects ---
 
 test('every property the core can name has exactly one subject in the Style tab', () => {
   // The source is the inventory: every `'prop.x'` this module writes is a label a row can show.
@@ -3455,7 +3470,7 @@ test('motion lives in one tab: the Animations tab owns it, the Style tab does no
   assert.deepEqual(children.unknown, [], cascade);
 });
 
-// --- !important (TASK-102020-picker-inspector, phase 4) ---
+// --- !important ---
 
 test('a class marked !important is read as the plain class, with the mark kept apart', () => {
   const [suffix] = splitUtilities('md:hover:p-4!');
@@ -3513,7 +3528,7 @@ test('the Tailwind of the lockfile makes a trailing ! an !important rule', async
 });
 
 test("a class ADDED to a molecule's data-class goes in already important; into class, as written", () => {
-  // Decided with the user (2026-11-03): in data-class the new class shares the element with the variant.
+  // Decided with the user: in data-class the new class shares the element with the variant.
   assert.equal(classToAdd('p-2', 'data-class'), 'p-2!');
   assert.equal(classToAdd('md:w-full', 'data-class'), 'md:w-full!');
   assert.equal(classToAdd('text-[var(--text-strong,#111)]', 'data-class'), 'text-[var(--text-strong,#111)]!');
@@ -3522,4 +3537,24 @@ test("a class ADDED to a molecule's data-class goes in already important; into c
   assert.equal(classToAdd('!p-2', 'data-class'), '!p-2');
   // A core element, or a molecule's tag: as written.
   assert.equal(classToAdd('p-2', 'class'), 'p-2');
+});
+
+test("a class CHANGED in a molecule's data-class comes out important too; in class, as it was", () => {
+  // A native class of the variant swapped for another value: the new value has to win over the variant.
+  assert.equal(importantInChannel('flex p-4 text-[var(--text-muted,#64748b)]', 1, 'data-class'), 'flex p-4! text-[var(--text-muted,#64748b)]');
+  assert.equal(importantInChannel('flex text-[var(--text-strong,#111)]', 1, 'data-class'), 'flex text-[var(--text-strong,#111)]!');
+  assert.equal(importantInChannel('md:w-full', 0, 'data-class'), 'md:w-full!');
+  // Already important (either form): untouched. Only the changed class is marked.
+  assert.equal(importantInChannel('p-4! m-2', 0, 'data-class'), 'p-4! m-2');
+  assert.equal(importantInChannel('!p-4 m-2', 0, 'data-class'), '!p-4 m-2');
+  // A core element or a molecule's tag: as it was.
+  assert.equal(importantInChannel('flex p-4', 1, 'class'), 'flex p-4');
+});
+
+test('every value swap of the picker goes through the channel rule', () => {
+  const PICKER = readFileSync(new URL('classPickerBase.ts', import.meta.url), 'utf8');
+  // Chips, design-system roles and the typed value.
+  assert.equal((PICKER.match(/importantInChannel\(replaceUtility\(side\.literal, token\.raw, option, token\.index\), token\.index, side\.channel\)/gu) ?? []).length, 2);
+  assert.match(PICKER, /importantInChannel\(applyTypedValue\(side\.literal, token, Number\(input\.value\), spec\), token\.index, side\.channel\)/u);
+  assert.equal((PICKER.match(/applyLiteral\(replaceUtility\(/gu) ?? []).length, 0, 'no swap writes around the rule');
 });

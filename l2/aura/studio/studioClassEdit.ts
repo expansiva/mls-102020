@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioClassEdit.ts" enhancement="_blank" />
 // Maps a Tailwind utility on screen back to the `class="..."` literal in the page SOURCE, and offers
-// the neighbours of that utility (TASK-102033-class-picker).
+// the neighbours of that utility.
 //
 // Why this is the easiest edit in the whole flow: changing a class is a `classList.replace` on the
 // LIVE element — it shows up immediately, with no compile, no module re-evaluation and no hot swap.
@@ -38,8 +38,8 @@ export interface IUtilityToken {
   /** `[animation-duration:2s]` — an arbitrary PROPERTY: the css property it sets. */
   property?: string;
   /**
-   * `p-4!` (Tailwind 4) or `!p-4` (the Tailwind 3 prefix, still accepted): the class is `!important`
-   * (TASK-102020-picker-inspector, phase 4). The `!` is NOT part of `base`, so the family, the value and
+   * `p-4!` (Tailwind 4) or `!p-4` (the Tailwind 3 prefix, still accepted): the class is `!important`.
+   * The `!` is NOT part of `base`, so the family, the value and
    * the subject are read as for the plain class. Optional: tokens built by hand are not important.
    */
   important?: boolean;
@@ -352,12 +352,13 @@ export function composeUtility(token: IUtilityToken, value: string): string {
 }
 
 /**
- * The class the "+" writes, for the channel it goes into (decided with the user, 2026-11-03).
+ * The class the "+" writes, for the channel it goes into (decided with the user).
  *
- * Into a molecule's `data-class` — its inside or a slot — a NEW class goes in already `!important`: it
+ * Into a molecule's `data-class` — its inside or a slot — a class the picker writes goes in `!important`: it
  * shares the element with the variant's own classes and, without the mark, the order of the css decides
- * who wins. Into a plain `class` (a core element, a molecule's tag) it goes in as written. Only adding
- * follows this: changing the value of a class that is already there keeps it as it was.
+ * who wins. Into a plain `class` (a core element, a molecule's tag) it goes in as written. Changing the value
+ * of a class already there follows the same rule (`importantInChannel`); only the `!important` toggle, the
+ * user's explicit choice, can take the mark off.
  */
 export function classToAdd(cls: string, channel: ClassChannel): string {
   if (channel !== 'data-class') return cls;
@@ -367,7 +368,19 @@ export function classToAdd(cls: string, channel: ClassChannel): string {
 }
 
 /**
- * Turns a class `!important` or back (TASK-102020-picker-inspector, phase 4) — only that class, every
+ * The class at `index` of a literal the picker just CHANGED, marked `!important` when the channel is a molecule's
+ * `data-class` — the rule of `classToAdd` for a value swap (a chip, a design-system role, a typed value). Nothing
+ * else in the literal is touched; a plain `class` comes back as it is.
+ */
+export function importantInChannel(literal: string, index: number, channel: ClassChannel): string {
+  if (channel !== 'data-class') return literal;
+  const token = splitUtilities(literal)[index];
+  if (!token || token.important) return literal;
+  return replaceUtility(literal, token.raw, classToAdd(token.raw, channel), index);
+}
+
+/**
+ * Turns a class `!important` or back — only that class, every
  * other character of the literal kept. Turning it on writes the Tailwind 4 form (`p-4!`); turning it off
  * drops either form.
  */
@@ -1012,9 +1025,14 @@ export function colorOf(value: string): string | null {
   return null;
 }
 
-/** The role a class token points at (`bg-[var(--surface-subtle,#f8fafc)]` -> `--surface-subtle`). */
+/**
+ * The role a class token points at (`bg-[var(--surface-subtle,#f8fafc)]` -> `--surface-subtle`).
+ *
+ * An `!important` class keeps its marker after the value (`text-[var(--text-muted,#64748b)]!`, Tailwind 4) — it is
+ * dropped before reading, or the palette of an important class lost its role names, swatches and colours.
+ */
 export function roleVar(option: string): string {
-  const parsed = parseVarValue(option.slice(option.indexOf('[')));
+  const parsed = parseVarValue(option.slice(option.indexOf('[')).replace(/!$/u, ''));
   return parsed?.cssVar ?? '';
 }
 
@@ -2176,8 +2194,8 @@ export interface ITemplateElement {
    *
    * `inExpression` says "this may not render"; this says WITH WHOM. Two elements sharing it are
    * alternatives of the same expression — the two branches of a ternary — so the walker can treat
-   * them as one position that produces 0..N nodes instead of two positions that always do
-   * (TASK-102020-anchor-expressions). Innermost, because a ternary inside a `.map()` is a choice
+   * them as one position that produces 0..N nodes instead of two positions that always do.
+   * Innermost, because a ternary inside a `.map()` is a choice
    * within each repetition, not a sibling of the repetition.
    */
   expression: number;
@@ -2437,7 +2455,7 @@ const MODULE_FN = 'fn:';
  *
  * Parameters may hold ONE level of parentheses: `renderError(title, err, retry: () => void)` did not
  * match the old `\([^)]*\)`, the method was invisible, and its templates were filed under whatever
- * method came before it (102047/tarefas/meus_avisos mobile, 2026-10-21).
+ * method came before it (102047/tarefas/meus_avisos mobile).
  *
  * The module-level shapes count only at brace depth 0: the same `const x = (…) =>` inside a method is
  * a local, and a range opened there would split the method in two — the phantom-range defect again.
@@ -2624,7 +2642,7 @@ interface ITemplateVariable {
  * `let body; if (…) body = this.renderError(); else body = html`<div>…`;` … `${body}`.
  *
  * The other shape the generator uses to pick a screen state (102047/reembolsoDespesas/inicio,
- * inicio_responsavel, despesas_da_equipe, 2026-10-21). Neither half was linked: the called method's
+ * inicio_responsavel, despesas_da_equipe). Neither half was linked: the called method's
  * template stayed an orphan, and a template written in place was taken as a root of its METHOD — so
  * it was mounted next to what the method returns instead of inside the element holding `${body}`.
  *
@@ -2754,7 +2772,7 @@ function scanStatement(source: string, from: number, moduleFns: ReadonlySet<stri
  * `findTemplateCalls` reads calls inside markup only, and rightly so: a call in plain code says
  * nothing about where its result lands. A `return` is the exception — whatever the callee renders is
  * exactly what this method renders, at the same place. Missing it left the delegated template an
- * orphan root, and every element under it unaddressable (102047/tarefas/meus_avisos, 2026-10-21:
+ * orphan root, and every element under it unaddressable (102047/tarefas/meus_avisos:
  * `renderBody` ends in `return this.renderDesk();`, which is the whole screen in its normal state).
  * Measured then: 18 of the 91 pages of the 102047 delegate this way.
  *
@@ -3013,7 +3031,7 @@ interface ISourceSlot {
 /**
  * The siblings of a tag as POSITIONS, not as elements.
  *
- * The difference is the whole point of TASK-102020-anchor-expressions: a static element renders
+ * The difference is the whole point: a static element renders
  * exactly once, while everything sharing one `${...}` is a set of alternatives that together produce
  * 0..N nodes. Counting them as two independent elements is what made a section with
  * `[<div> estático, ternário(<div>, <div>)]` unresolvable — the template said three, the DOM had two.
@@ -3322,7 +3340,7 @@ export interface IEditScope {
  * A molecule is used by many projects: editing its own file from a client app would change every
  * project that renders it, and nobody clicking a chip in a page expects that. So it is refused.
  *
- * OPEN DECISION (TASK-102033-picker-undo, item 6): the original reason for the refusal was "and there
+ * OPEN DECISION: the original reason for the refusal was "and there
  * is no undo", which stopped being true — there is one now (studioEditHistory), it covers this same
  * write path, and it revalidates before touching anything. Turning this into a WARNING is therefore
  * possible; it is deliberately NOT done here, because "many projects change at once" is a product
@@ -3339,7 +3357,7 @@ export function editScope(file: string, moleculeProject: number | null): IEditSc
   return { file, shared: false };
 }
 
-// --- Copying the style of one element onto another (TASK-102033-picker-copy-style) ---
+// --- Copying the style of one element onto another ---
 //
 // "Estilizo um botão, gosto de como ficou, copio e colo no outro." One gesture, and it REPLACES: the
 // target ends up identical to the source. A merge would leave behind whatever the target has and the
@@ -3448,7 +3466,7 @@ function propertyKey(token: IUtilityToken): string {
 /**
  * The target's class attribute after the source's style is pasted onto it.
  *
- * REPLACE, not merge — decided with the user on 2026-09-01: the point is to keep the same style of
+ * REPLACE, not merge — decided with the user: the point is to keep the same style of
  * button 1 on button 2, so with nothing held back the result IS the source's literal.
  *
  * @param keep classes of the TARGET that survive (its place, typically). They win over the source's
@@ -3512,7 +3530,7 @@ export function diffLiterals(before: string, after: string): IStyleDiff {
   };
 }
 
-// --- The inspector's subjects (TASK-102020-picker-inspector, phase 2) ---
+// --- The inspector's subjects ---
 //
 // The Style tab groups its rows by SUBJECT, the way a design tool's inspector does, instead of listing
 // the classes in source order (padding far from margin, colour far from border). This is a different
@@ -3600,7 +3618,7 @@ export interface IAnimationTokens {
 }
 
 /**
- * The split between the Style tab and the Animations tab (TASK-102020-picker-inspector, phase 3).
+ * The split between the Style tab and the Animations tab.
  *
  * Motion lives in ONE place. A class of the animation subject is the Animations tab's — and so is a
  * class that is only there because an animation put it there: an entrance writes `opacity-100` next to
@@ -3638,22 +3656,22 @@ export function animationTokens(literal: string): IAnimationTokens {
   return { owned, unknown };
 }
 
-// --- The channel: `class`, or a molecule's `data-class` (TASK-102020-picker-molecule-data-class) ---
+// --- The channel: `class`, or a molecule's `data-class` ---
 //
 // A molecule does not read the `class` of its host. It reads `data-class` (the `cssClass` of
 // moleculeBase) and applies it to its INNER root, the box the user actually sees; the host is an
-// inline wrapper where width, background and padding land on nothing visible. Measured on the 102047
-// on 2026-10-21: 144 `data-class` against ~12 `class` on molecule tags, and 150 of the 151 molecules of
+// inline wrapper where width, background and padding land on nothing visible. Measured on the 102047:
+// 144 `data-class` against ~12 `class` on molecule tags, and 150 of the 151 molecules of
 // the 102040 apply `cssClass`.
 //
 // What may go through `data-class`: EVERYTHING, except what places the element in its parent (below).
 // An earlier version also held the looks back (colour, padding, border) on the grounds that they may
-// lose to the variant; the user rejected it on 2026-10-21 — not every group has variants that set
+// lose to the variant; the user rejected it — not every group has variants that set
 // those, and the picker must not decide that for them.
 //
 // What does NOT go is what places the element INSIDE ITS PARENT (`col-span`, `self`, `order`, `flex-1`): when the
 // parent is flex or grid, the item is the molecule's TAG, and the inner box's parent is that tag.
-// Measured on the 102047 + 102050 (2026-10-21): 365 of the 713 molecules sit in a flex or grid parent.
+// Measured on the 102047 + 102050: 365 of the 713 molecules sit in a flex or grid parent.
 // Those classes belong to the tag's own `class`, which the picker edits as a second section — the two
 // attributes are two boxes, and both are legitimate (27 tags of the 102047 carry a `class`).
 
@@ -3718,11 +3736,16 @@ export interface IChannelPaste {
  * Into a plain element everything travels (pasting FROM a molecule included). Into a molecule's inside
  * everything but the parent-facing classes (fitsChannel), which would do nothing there; it is still a
  * REPLACE, so the target's own such classes go as well — the same answer the paste gives everywhere.
+ * There every class lands `!important` (classToAdd): the same rule as adding or changing one, so a style
+ * copied from a plain element still wins over the variant's own classes.
  */
 export function pasteStyleInto(target: string, source: string, channel: ClassChannel): IChannelPaste {
   if (channel === 'class') return { literal: pasteStyle(target, source), dropped: [] };
   const dropped = splitUtilities(source).filter((token) => !fitsChannel(token, channel)).map((token) => token.raw);
-  return { literal: pasteStyle(target, source, [], dropped), dropped };
+  let literal = pasteStyle(target, source, [], dropped);
+  const count = splitUtilities(literal).length;
+  for (let index = 0; index < count; index++) literal = importantInChannel(literal, index, channel);
+  return { literal, dropped };
 }
 
 /**
@@ -3786,7 +3809,7 @@ export function spliceChannel(
   };
 }
 
-// --- Adding a property the element does not have (TASK-102033-picker-add-property) ---
+// --- Adding a property the element does not have ---
 //
 // Until here the picker was a MODIFIER: it could swap `p-3` for `p-4`, but it could not put padding on
 // an element that has none. Anything needing a new property ("esse card precisa de sombra") went back
@@ -4055,7 +4078,7 @@ export function applyTypedValue(
   return replaceUtility(literal, token.raw, composeUtility(token, `[${clamped}${spec.unit}]`), token.index);
 }
 
-// --- Pointing at what the mouse cannot reach (TASK-102020-select-inert-elements) ---
+// --- Pointing at what the mouse cannot reach ---
 //
 // A disabled form control does not just ignore a click: the spec has the browser PREVENT the click
 // from being dispatched on the element, and since the element is what the hit test picked, the event
@@ -4162,7 +4185,7 @@ export interface IOwnerTree<T> {
   component: (node: T) => string | null;
   /**
    * True when the node is one of a molecule's SLOT elements (`<Label>`, `<Column>`), written by the
-   * page and only hidden by the molecule (TASK-102020-picker-molecule-slots).
+   * page and only hidden by the molecule.
    *
    * Like content that came through a live anchor, it was HANDED to the component, so the component
    * above it does not own it. Optional: a tree without it behaves as before.
@@ -4280,7 +4303,7 @@ export function selectableChain<T>(owner: IOwnerChain<T>, node: T): T[] {
   return levels;
 }
 
-// --- Attributes of an element, as the SOURCE writes them (TASK-102020-attribute-text) ------------
+// --- Attributes of an element, as the SOURCE writes them ------------
 
 /**
  * What an element's open tag says about one attribute.
@@ -4371,7 +4394,7 @@ export interface IOpenTagAttribute {
   /**
    * Where the whole attribute sits in the source — name to the end of its value, the separator before
    * it excluded. What a write needs to replace or remove one attribute without touching its
-   * neighbours (TASK-102020-picker-molecule-properties).
+   * neighbours.
    */
   start: number;
   end: number;

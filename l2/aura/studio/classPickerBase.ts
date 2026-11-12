@@ -1,5 +1,5 @@
 /// <mls fileReference="_102020_/l2/aura/studio/classPickerBase.ts" enhancement="_blank" />
-// What the two class pickers SHARE: everything inside the panel (TASK-102020-picker-inspector, phase 0).
+// What the two class pickers SHARE: everything inside the panel.
 //
 // There are two pickers — the floating one (classPickerPanel), pinned over the app region, and the one
 // docked in the Pages plugin (pageClassPickerPanel). They were copies of ~1.500 lines that differed only
@@ -68,6 +68,7 @@ import {
   replaceUtility,
   toggleImportant,
   classToAdd,
+  importantInChannel,
   typedValueSpec,
   roleLabel,
   roleVar,
@@ -107,7 +108,7 @@ interface IAnimationCategory {
 }
 
 /**
- * The Animations tab, in order (TASK-102020-picker-inspector, phase 3): what happens when the element
+ * The Animations tab, in order: what happens when the element
  * appears, what loops, what answers the mouse, and the tuning that applies to all of them.
  */
 const ANIMATION_CATEGORIES: readonly IAnimationCategory[] = [
@@ -138,7 +139,7 @@ function sideId(side: IPickerSide): string {
 }
 
 /**
- * The two icons of TASK-102020-duplicate-remove.
+ * The two icons of duplicate and remove.
  *
  * NOT `⧉`, which is already the copy-STYLE icon two buttons away: the same glyph for two
  * different operations in the same row is worse than an unfamiliar one. `⎘` (next page) reads as
@@ -161,7 +162,7 @@ const TEXT_ATTR_LABEL: Record<string, string> = {
 };
 
 /**
- * One level of the selection's ancestor chain (TASK-102020-ancestor-breadcrumb).
+ * One level of the selection's ancestor chain.
  *
  * `index` is the HANDLE: the panel sends it back and the editor resolves the element. A live node
  * parked in a property of this component would be a node the chrome outlives — the same reason
@@ -177,7 +178,7 @@ export interface IPickerLevel {
 }
 
 /**
- * A text the selection carries in an ATTRIBUTE (TASK-102020-attribute-text).
+ * A text the selection carries in an ATTRIBUTE.
  *
  * `placeholder`, `title`, `aria-label` and `alt` are text the user READS and, until this, the only
  * text on the page with no way in: they have no box of their own, so the pointer cannot land on them
@@ -230,8 +231,8 @@ export interface IPickerSide {
 }
 
 /**
- * One of a molecule's slots present in the page (`<Label>`, `<Column>`), through its `data-class`
- * (TASK-102020-picker-molecule-slots). The molecule hides it and applies the class to what it renders
+ * One of a molecule's slots present in the page (`<Label>`, `<Column>`), through its `data-class`.
+ * The molecule hides it and applies the class to what it renders
  * for that slot.
  */
 export interface IPickerSlot {
@@ -268,8 +269,7 @@ export interface IPickerTarget {
   /** Tag of the selected element, for the header. */
   tag: string;
   /**
-   * A molecule's INNER box, through its `data-class` — absent for anything that is not a molecule
-   * (TASK-102020-picker-molecule-data-class).
+   * A molecule's INNER box, through its `data-class` — absent for anything that is not a molecule.
    *
    * The classes tab then has two sections: the tag (`literal`, the box the parent lays out) and the
    * inside (this, the box the user sees). The animations tab and copy/paste act on this one.
@@ -335,7 +335,7 @@ export interface IPickerTarget {
   moveUpReason?: IMessageRef;
   moveDownReason?: IMessageRef;
   /**
-   * Whether the element can be duplicated and removed (TASK-102020-duplicate-remove).
+   * Whether the element can be duplicated and removed.
    *
    * Answered by the real planners, like the move's — and the NOTES are what the user has to know
    * before clicking duplicate: how many copies a repeated node makes, and the id the copy carries.
@@ -349,7 +349,7 @@ export interface IPickerTarget {
 }
 
 /**
- * One molecule the user may adopt (TASK-102020-adopt-molecules).
+ * One molecule the user may adopt.
  *
  * The `tag` is the catalog's, verbatim — the panel never builds one, and the editor writes exactly
  * what it is handed back.
@@ -398,7 +398,7 @@ export interface IPickerAdopt {
 }
 
 /**
- * The Properties tab, as the editor answers it (TASK-102020-picker-molecule-properties).
+ * The Properties tab, as the editor answers it.
  *
  * Absent until the tab is opened: the group's configuration is a module of its own, and the molecule's
  * `.defs.ts` is what names the group.
@@ -530,7 +530,7 @@ export abstract class ClassPickerBase extends StateLitElement {
   /** Which section's "+" is open — a molecule has several (its inside, its tag, its slots). */
   @state() private addChannel = 'class';
   /**
-   * Which part of a molecule the Style tab edits (TASK-102020-picker-inspector, phase 1): its inside
+   * Which part of a molecule the Style tab edits: its inside
    * (`data-class`), its tag (`class`) or one of its slots, by index in `target.slots`. One at a time —
    * the stacked sections were the clutter.
    */
@@ -1045,7 +1045,7 @@ export abstract class ClassPickerBase extends StateLitElement {
     return Boolean(this.target?.inner);
   }
 
-  // ─── Properties tab (TASK-102020-picker-molecule-properties) ───────────────
+  // ─── Properties tab ───────────────
 
   /**
    * The molecule's configuration attributes, one control per type.
@@ -1148,7 +1148,7 @@ export abstract class ClassPickerBase extends StateLitElement {
   }
 
   /**
-   * A badge while the page is in a SIMULATED state (TASK-102020-scenario-panel).
+   * A badge while the page is in a SIMULATED state.
    *
    * The scenario panel puts the page into a chosen state so the branches that are normally invisible
    * can be edited — and two message `<p>`s look identical. Without this, editing the class of the
@@ -1176,7 +1176,7 @@ export abstract class ClassPickerBase extends StateLitElement {
   protected renderClasses() {
     const inner = this.innerSide;
     if (!inner) return html`<div class="acp-rows">${this.renderSection(this.tagSide)}</div>`;
-    // A molecule: ONE part at a time, chosen above (TASK-102020-picker-inspector, phase 1). Each part
+    // A molecule: ONE part at a time, chosen above. Each part
     // brings its own refusal and warning — the tag's never sits on top of the inside's rows.
     const part = this.editPart;
     const side = typeof part === 'number' && this.target?.slots[part]
@@ -1320,7 +1320,7 @@ export abstract class ClassPickerBase extends StateLitElement {
   }
 
   /**
-   * One attribute's rows, grouped by SUBJECT (TASK-102020-picker-inspector, phase 2).
+   * One attribute's rows, grouped by SUBJECT.
    *
    * Each group is a line with a summary of what it holds — readable folded — and, open, its rows and
    * its own "+". Every group starts folded, so an element is a short list of subjects and not a wall
@@ -1348,7 +1348,7 @@ export abstract class ClassPickerBase extends StateLitElement {
   protected renderGroup(group: InspectorGroup, side: IPickerSide, tokens: IUtilityToken[], adds: IAddableProperty[]) {
     if (!tokens.length && !adds.length) return nothing;
     const key = `${sideId(side)}:${group}`;
-    // Every group starts FOLDED (decided with the user, 2026-11-03): the summary on the line already
+    // Every group starts FOLDED (decided with the user): the summary on the line already
     // says what is there, and opening is the gesture that asks for the rows.
     const open = this.groupsOpen[key] ?? false;
     const summary = tokens.map((token) => token.raw).join(' ');
@@ -1370,7 +1370,7 @@ export abstract class ClassPickerBase extends StateLitElement {
 
   /**
    * The "+" of one subject: the properties this element does not have yet, from the same catalog as
-   * before (TASK-102033-picker-add-property) — chosen inside the subject, so the old two-step menu
+   * before — chosen inside the subject, so the old two-step menu
    * (group, then property) is gone. Colour opens the design-system palette right here.
    */
   protected renderGroupAdd(group: InspectorGroup, side: IPickerSide, adds: IAddableProperty[]) {
@@ -1434,7 +1434,7 @@ export abstract class ClassPickerBase extends StateLitElement {
         class="acp-chip ${isCurrent ? 'acp-current' : ''} ${jitOnly ? 'acp-jit' : ''}"
         title=${jitOnly ? `${option} — ${t('panel.publishNote')}` : option}
         ?disabled=${!editable || isCurrent}
-        @click=${() => this.applyLiteral(replaceUtility(side.literal, token.raw, option, token.index), `${token.raw} → ${option}`, side)}
+        @click=${() => this.applyLiteral(importantInChannel(replaceUtility(side.literal, token.raw, option, token.index), token.index, side.channel), `${token.raw} → ${option}`, side)}
       >${option.split(':').pop() ?? option}${jitOnly ? html`<span class="acp-star">*</span>` : nothing}</button>`;
     })}${typed ? this.renderTypedValue(token, typed, side) : nothing}</span></div>`;
   }
@@ -1448,9 +1448,9 @@ export abstract class ClassPickerBase extends StateLitElement {
    * only find by COUNTING its literal — there the literal is the address (see canRemoveLast).
    */
   /**
-   * The `!important` of a row (TASK-102020-picker-inspector, phase 4): lit (blue, like a selection) when the
+   * The `!important` of a row: lit (blue, like a selection) when the
    * class is important, quiet when it is not, and a click turns it on or off. Written out in mono like the
-   * classes, on purpose: a lone `!` in a box read as a warning (the user's smoke, 2026-11-03). The reason to reach for it is in the tooltip — a
+   * classes, on purpose: a lone `!` in a box read as a warning. The reason to reach for it is in the tooltip — a
    * molecule's `data-class` that loses to the variant's own class wins with it.
    */
   protected importantButton(token: IUtilityToken, side: IPickerSide) {
@@ -1568,7 +1568,7 @@ export abstract class ClassPickerBase extends StateLitElement {
   }
 
   /**
-   * The ways to paste the copied style here — each one REPLACES (the 2026-09-01 decision), so the
+   * The ways to paste the copied style here — each one REPLACES (a decision with the user), so the
    * target ends up like the source.
    *
    * From a slot: into the selected slot, into every slot of the same name (no need to reopen the tree),
@@ -1678,7 +1678,7 @@ export abstract class ClassPickerBase extends StateLitElement {
   }
 
   /**
-   * The chrome's actions (TASK-102020-picker-inspector, phase 1): undo and redo in sight, the rest in a
+   * The chrome's actions: undo and redo in sight, the rest in a
    * ⋯ menu with their NAMES written.
    *
    * Ten icons of one weight, from four subjects, was the clutter: the panel's own chrome now shows only
@@ -1838,7 +1838,7 @@ export abstract class ClassPickerBase extends StateLitElement {
         return html`<button type="button" class="acp-role-item ${isCurrent ? 'acp-current' : ''}"
           @click=${() => {
     this.roleEditing = null;
-    this.applyLiteral(replaceUtility(side.literal, token.raw, option, token.index), `${roleLabel(token.raw)} → ${roleLabel(option)}`, side);
+    this.applyLiteral(importantInChannel(replaceUtility(side.literal, token.raw, option, token.index), token.index, side.channel), `${roleLabel(token.raw)} → ${roleLabel(option)}`, side);
   }}>${row(option)}${isCurrent ? html`<span>✓</span>` : nothing}</button>`;
       })}</span>` : nothing}
     </span>`;
@@ -1869,7 +1869,7 @@ export abstract class ClassPickerBase extends StateLitElement {
    * render time rather than subscribed — this tab is only on screen while it is open, and the panel
    * re-renders on every selection and every edit.
    */
-  // ─── Molecules tab (TASK-102020-adopt-molecules) ───────────────────────────
+  // ─── Molecules tab ───────────────────────────
 
   /**
    * The one operation that changes the page's VOCABULARY, and the only tab that shows the write
@@ -2038,7 +2038,7 @@ export abstract class ClassPickerBase extends StateLitElement {
   // ─── Animations tab ────────────────────────────────────────────────────────
 
   /**
-   * The Animations tab by CATEGORY (TASK-102020-picker-inspector, phase 3).
+   * The Animations tab by CATEGORY.
    *
    * It used to navigate between SCREENS (root → entrance / continuous / hover / advanced, with a back
    * link). It now has the Style tab's shape: categories that fold, each with a summary of what is on,
@@ -2393,7 +2393,7 @@ export abstract class ClassPickerBase extends StateLitElement {
       this.status(t('status.needNumber'));
       return;
     }
-    const next = applyTypedValue(side.literal, token, Number(input.value), spec);
+    const next = importantInChannel(applyTypedValue(side.literal, token, Number(input.value), spec), token.index, side.channel);
     this.typedEditing = null;
     this.applyLiteral(next, `${token.raw} → ${splitUtilities(next)[token.index]?.raw ?? ''}`, side);
   }
