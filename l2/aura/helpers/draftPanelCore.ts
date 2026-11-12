@@ -10,7 +10,7 @@
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
 
 import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
-import { draftContentCrc, rememberDraftPaths, rememberSentCrc, requestDraftRecount, sentCrcOf, undoDraftPaths, withDraftUndoBrowserOnly, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { deletedDraftFile, draftContentCrc, forgetDraftPaths, rememberDraftPaths, rememberSentCrc, requestDraftRecount, savedOriginToDrop, sentCrcOf, undoDraftPaths, undoPathsForDraftFile, withDraftUndoBrowserOnly, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import { modelTextDiffers, openModelText } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
@@ -42,6 +42,12 @@ export interface IPanelStorFile {
   extension?: string;
   /** Present on a real stor file. The save reads it when no capture was held. */
   getContent?(): Promise<string | Blob | null>;
+  /** Present on a real stor file. A `new` rename keeps the previous name here. */
+  getValueInfo?(): Promise<{
+    originalFolder?: string;
+    originalProject?: number;
+    originalShortName?: string;
+  } | null | undefined>;
 }
 
 /** One file sitting in the browser, not yet saved to the draft. */
@@ -206,6 +212,12 @@ export interface IExecSuccess {
   database?: string;
   /** Reason on a `draftResetDatabase` HTTP 500, which has no `code`. */
   cause?: string;
+  /** `draftDataSource` body. Absent on every other action. */
+  source?: string;
+  at?: string | null;
+  by?: string | null;
+  /** Per-option `{ ok, reason }` from `draftDataSource`, when the server sends it. */
+  dataOptions?: Record<string, unknown>;
 }
 
 export type ExecResult = IExecSuccess | IExecFailure;
@@ -356,6 +368,14 @@ export async function callExec(
   if (Array.isArray(parsed.drafts)) success.drafts = parsed.drafts as IListedDraft[];
   if (typeof parsed.database === 'string') success.database = parsed.database;
   if (typeof parsed.cause === 'string') success.cause = parsed.cause;
+  if (typeof parsed.source === 'string') success.source = parsed.source;
+  if (Object.prototype.hasOwnProperty.call(parsed, 'at') && (parsed.at === null || typeof parsed.at === 'string')) {
+    success.at = parsed.at;
+  }
+  if (Object.prototype.hasOwnProperty.call(parsed, 'by') && (parsed.by === null || typeof parsed.by === 'string')) {
+    success.by = parsed.by;
+  }
+  if (isRecord(parsed.options)) success.dataOptions = parsed.options;
   return success;
 }
 
@@ -570,6 +590,136 @@ export async function resetDraftDatabase(
   }
   if (!result.database) return fail('draftResetDatabase returned no database');
   return { database: result.database };
+}
+
+export const DRAFT_DATA_SOURCES = ['seed', 'copy', 'readonly', 'same'] as const;
+export type DraftDataSourceName = (typeof DRAFT_DATA_SOURCES)[number];
+export type DraftDataChoiceId = 'seed' | 'copy' | 'readonly' | 'same';
+
+export interface IDraftDataChoice {
+  id: DraftDataChoiceId;
+  enabled: boolean;
+  /** Empty when the choice can be used. The panel translates an empty reason. */
+  reason: string;
+}
+
+export interface IDraftDataView {
+  source: DraftDataSourceName;
+  at: string | null;
+  by: string | null;
+  /** Key present means the option is off. The value is the server reason, or '' when it sent none. */
+  denied: Partial<Record<DraftDataChoiceId, string>>;
+}
+
+const DRAFT_DATA_CHOICES: readonly DraftDataChoiceId[] = ['seed', 'copy', 'readonly', 'same'];
+const DRAFT_DATA_ACTION: Record<DraftDataChoiceId, string> = {
+  seed: 'draftResetDatabase',
+  copy: 'draftCopy',
+  readonly: 'draftReadonly',
+  same: 'draftSame',
+};
+
+export class DraftDataRequestError extends Error {
+  readonly code: string;
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = 'DraftDataRequestError';
+    this.code = code;
+  }
+}
+
+function isDraftDataSource(value: string): value is DraftDataSourceName {
+  return (DRAFT_DATA_SOURCES as readonly string[]).includes(value);
+}
+
+/** A choice with a key in `denied` is off, even when the reason is empty. */
+export function draftDataChoices(denied: Partial<Record<DraftDataChoiceId, string>>): IDraftDataChoice[] {
+  return DRAFT_DATA_CHOICES.map((id) => {
+    if (!Object.prototype.hasOwnProperty.call(denied, id)) return { id, enabled: true, reason: '' };
+    return { id, enabled: false, reason: denied[id] ?? '' };
+  });
+}
+
+/** The main scenario keeps a fixed warning while the draft reads or writes production. */
+export function showsDraftDataWarning(source: DraftDataSourceName | null | undefined): 'readonly' | 'same' | null {
+  if (source === 'readonly' || source === 'same') return source;
+  return null;
+}
+
+/** Team draft: the question names that the change hits everyone. */
+export function draftDataConfirm(question: string, team: boolean, affectsAll: string): string {
+  if (!team) return question;
+  const extra = affectsAll.trim();
+  return extra ? `${question} ${extra}` : question;
+}
+
+function deniedFromOptions(options: Record<string, unknown> | undefined): Partial<Record<DraftDataChoiceId, string>> {
+  const denied: Partial<Record<DraftDataChoiceId, string>> = {};
+  if (!options) return denied;
+  for (const id of DRAFT_DATA_CHOICES) {
+    const row = options[id];
+    if (!isRecord(row) || row.ok !== false) continue;
+    if (typeof row.reason === 'string' && row.reason.trim()) {
+      denied[id] = row.reason;
+      continue;
+    }
+    console.error(`[draftPanel] draft data option ${id} is off with no reason`);
+    denied[id] = '';
+  }
+  return denied;
+}
+
+function refuseDraftData(action: string, result: IExecFailure): never {
+  const message = result.msg ?? result.code;
+  console.error(`[draftPanel] ${action} failed: ${message}`);
+  throw new DraftDataRequestError(message, result.code);
+}
+
+/** Current source. A missing file on the server is `seed`. An unreadable file throws. */
+export async function loadDraftData(
+  fetchImpl: FetchImpl,
+  project: number,
+  slug: string,
+): Promise<IDraftDataView> {
+  const result = await callExec(fetchImpl, 'draftDataSource', { project, draft: slug });
+  if (!result.ok) refuseDraftData('draftDataSource', result);
+  if (!result.source || !isDraftDataSource(result.source)) {
+    console.error('[draftPanel] draftDataSource returned no source');
+    throw new DraftDataRequestError('draftDataSource returned no source', 'DRAFT_DATA');
+  }
+  return {
+    source: result.source,
+    at: result.at ?? null,
+    by: result.by ?? null,
+    denied: deniedFromOptions(result.dataOptions),
+  };
+}
+
+/** One data action. The caller confirms first. `seed` is `draftResetDatabase`. */
+export async function applyDraftDataChoice(
+  fetchImpl: FetchImpl,
+  project: number,
+  slug: string,
+  choice: DraftDataChoiceId,
+): Promise<{ source: DraftDataSourceName; database?: string }> {
+  const action = DRAFT_DATA_ACTION[choice];
+  const result = await callExec(fetchImpl, action, { project, draft: slug });
+  if (!result.ok) refuseDraftData(action, result);
+  if (choice === 'seed') {
+    if (result.status !== 'reset' || !result.database) {
+      const reason = result.cause?.trim() ? result.cause : (result.status ?? 'draftResetDatabase failed');
+      console.error(`[draftPanel] draftResetDatabase: ${reason}`);
+      throw new DraftDataRequestError(reason, 'DRAFT_DATA');
+    }
+    return { source: 'seed', database: result.database };
+  }
+  const want = choice === 'copy' ? 'copied' : choice;
+  if (result.status !== want) {
+    const reason = result.msg ?? result.status ?? `${action} failed`;
+    console.error(`[draftPanel] ${action}: ${reason}`);
+    throw new DraftDataRequestError(reason, 'DRAFT_DATA');
+  }
+  return { source: choice === 'copy' ? 'copy' : choice };
 }
 
 /** One path segment. A slash or `..` would restore something outside the module. */
@@ -818,10 +968,13 @@ export interface IUndoFileEffects {
 /**
  * One path back to the published version, on the same route as `discardModule`.
  * A path that is only in the browser clears the local copy and does not call the server.
- * A path saved in the draft calls `draftRestorePaths` with that path alone (`ref` `main`):
- * a changed file returns to the published text, a new file is removed.
+ * A path saved in the draft calls `draftRestorePaths` once (`ref` `main`).
+ * A published rename sends the new name and the published name: the published name
+ * comes back and the new name leaves the draft and the browser.
+ * A `new` file that was renamed and saved sends the new name and, when it is still
+ * listed, the saved name. Both leave. Nothing is written back into the browser.
  * The server failure throws before the browser changes.
- * After a restore, the path leaves `draftPaths`, the count is asked again, and the open tabs are updated.
+ * After a restore, those paths leave `draftPaths`, the count is asked again, and the open tabs are updated.
  */
 export async function undoFile(
   effects: IUndoFileEffects,
@@ -840,14 +993,30 @@ export async function undoFile(
     return [...draftPaths];
   }
   if (!SLUG_RE.test(slug)) return fail(`undo draft slug is invalid: ${slug}`);
-  await undoDraftPaths(project, slug, [filePath], async () => {
-    if (effects.file?.status === 'new') {
-      await effects.removeNew(effects.file);
-    } else if (effects.file) {
-      await effects.clearLocal(effects.file);
-    }
+  const targets = effects.file
+    ? await undoPathsForDraftFile(effects.file, filePath, draftPaths)
+    : [filePath];
+  await undoDraftPaths(project, slug, targets, async () => {
+    await dropUndoneBrowserFile(effects);
   }, effects.fetchImpl);
-  return draftPaths.filter((path) => path !== filePath);
+  const dropped = new Set(targets);
+  return draftPaths.filter((path) => !dropped.has(path));
+}
+
+/**
+ * Drops the browser row after the server accepts the undo.
+ * `deleteFile` removes the row only when the status is `new`, so a renamed row
+ * (the new name) is marked `new` first. A changed file only clears its local copy.
+ */
+async function dropUndoneBrowserFile(effects: IUndoFileEffects): Promise<void> {
+  const file = effects.file;
+  if (!file) return;
+  if (file.status === 'renamed') file.status = 'new';
+  if (file.status === 'new') {
+    await effects.removeNew(file);
+    return;
+  }
+  await effects.clearLocal(file);
 }
 
 /** `DRAFT_CONFLICT: <files>` — the panel turns this into `syncConflict`. */
@@ -1452,6 +1621,36 @@ const blockedReasons = new WeakMap<IPanelStorFile, IDraftBlockReason>();
  * driver already wrote the other files: the named files go back to the browser, and `clearLocal`
  * runs for the rest.
  */
+async function originDeletesForSave<T extends IPanelStorFile>(
+  clean: readonly T[],
+): Promise<{ stubs: T[]; byFile: Map<T, string> }> {
+  const stubs: T[] = [];
+  const byFile = new Map<T, string>();
+  const sending = new Set(clean.map((file) => shortPathOf(file)));
+  const dropped = new Set<string>();
+  for (const file of clean) {
+    const origin = await savedOriginToDrop(file);
+    if (!origin || sending.has(origin) || dropped.has(origin)) continue;
+    const stub = deletedDraftFile(file.project, origin);
+    if (!stub) continue;
+    stubs.push(stub as T);
+    byFile.set(file, origin);
+    dropped.add(origin);
+  }
+  return { stubs, byFile };
+}
+
+function forgetSavedOrigins<T extends IPanelStorFile>(files: readonly T[], byFile: Map<T, string>): void {
+  if (files.length === 0) return;
+  const origins: string[] = [];
+  for (const file of files) {
+    const origin = byFile.get(file);
+    if (origin) origins.push(origin);
+  }
+  if (origins.length === 0) return;
+  forgetDraftPaths(files[0].project, origins);
+}
+
 export async function saveToDraft<T extends IPanelStorFile>(
   files: readonly T[],
   comment: string,
@@ -1466,6 +1665,7 @@ export async function saveToDraft<T extends IPanelStorFile>(
     else clean.push(file);
   }
   if (clean.length === 0) return { blocked };
+  const originDeletes = await originDeletesForSave(clean);
   const flags = clean.map((file) => file.inLocalStorage);
   const restoreFlags = (which: readonly T[] = clean): void => {
     for (const file of which) {
@@ -1475,9 +1675,10 @@ export async function saveToDraft<T extends IPanelStorFile>(
     }
   };
   for (const file of clean) file.inLocalStorage = false;
+  const payload = originDeletes.stubs.length > 0 ? [...clean, ...originDeletes.stubs] : clean;
   let results: readonly ISetContentsResult[];
   try {
-    results = await setContents(clean, comment);
+    results = await setContents(payload, comment);
   } catch (err) {
     const failure = parseSetContentsFailure(err);
     if (!failure) {
@@ -1516,6 +1717,7 @@ export async function saveToDraft<T extends IPanelStorFile>(
       if (!matched.has(item.path)) console.error(`[draftPanel] refused file was not in this save: ${item.path}`);
     }
     for (const file of saved) await clearLocal(file);
+    forgetSavedOrigins(saved, originDeletes.byFile);
     const firstSaved = saved[0];
     if (firstSaved) dispatchDraftSaved(firstSaved.project, saved.map((file) => shortPathOf(file)));
     return { blocked };
@@ -1525,6 +1727,7 @@ export async function saveToDraft<T extends IPanelStorFile>(
     return fail('setContents refused the draft save');
   }
   for (const file of clean) await clearLocal(file);
+  forgetSavedOrigins(clean, originDeletes.byFile);
   const first = clean[0];
   if (first) dispatchDraftSaved(first.project, clean.map((file) => shortPathOf(file)));
   return { blocked };

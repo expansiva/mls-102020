@@ -619,13 +619,21 @@ function isJavaScript(contentType: string, source: string): boolean {
   return type.length === 0 || type.includes('text/plain') || type.includes('octet-stream');
 }
 
-async function fetchCompiled(specifier: string, fetchModule: (specifier: string) => Promise<Response>): Promise<ICompiledPreview | null> {
+async function fetchCompiled(
+  specifier: string,
+  fetchModule: (specifier: string) => Promise<Response>,
+  gone: Set<string>,
+): Promise<ICompiledPreview | null> {
   let response: Response;
   try {
     response = await fetchModule(specifier);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error(`[remount] ${specifier}: ${detail}`);
+    return null;
+  }
+  if (response.status === 404) {
+    gone.add(specifier);
     return null;
   }
   if (!response.ok) {
@@ -652,13 +660,14 @@ async function readPreviewSource(
   specifier: string,
   fetchModule: (specifier: string) => Promise<Response>,
   sources: Map<string, 'model' | 'fetch'>,
+  gone: Set<string>,
 ): Promise<ICompiledPreview | null> {
   const fromModel = compiledFromModel(specifier);
   if (fromModel) {
     sources.set(specifier, 'model');
     return fromModel;
   }
-  const fetched = await fetchCompiled(specifier, fetchModule);
+  const fetched = await fetchCompiled(specifier, fetchModule, gone);
   if (fetched) sources.set(specifier, 'fetch');
   return fetched;
 }
@@ -729,8 +738,9 @@ export async function updateOpenTabsForFiles(
   const mainPage = deps.mainPage !== undefined ? deps.mainPage : shellMainPageSlot();
   const pages = consideredPages(tabs, mainPage);
   const sources = new Map<string, 'model' | 'fetch'>();
+  const gone = new Set<string>();
   const fetchModule = deps.fetchModule ?? ((specifier: string) => fetch(specifier, { cache: 'no-store' }));
-  const readModule = deps.readModule ?? ((specifier: string) => readPreviewSource(specifier, fetchModule, sources));
+  const readModule = deps.readModule ?? ((specifier: string) => readPreviewSource(specifier, fetchModule, sources, gone));
   const modules = new Map<string, PreviewModuleRecord>();
   const changedSet = new Set(changed);
   const seen = new Set<string>();
@@ -747,7 +757,9 @@ export async function updateOpenTabsForFiles(
     await eachLimited(batch, MODULE_FETCHES, async (specifier) => {
       const compiled = await readModule(specifier);
       if (!compiled) {
+        if (changedSet.has(specifier) && gone.has(specifier)) return;
         if (changedSet.has(specifier)) missingChanged.push(specifier);
+        else if (gone.has(specifier)) console.error(`[remount] ${specifier}: HTTP 404`);
         else console.error(`[remount] ${specifier}: compiled JavaScript was not read`);
         return;
       }
@@ -755,10 +767,16 @@ export async function updateOpenTabsForFiles(
       for (const imported of importedSpecifiers(compiled.source)) pending.push(imported);
     });
   }
+  const left = changed.filter((specifier) => gone.has(specifier));
+  if (left.length > 0) {
+    console.info(`[remount] left the changed list after HTTP 404: ${[...left].sort().join(', ')}`);
+  }
+  const stayed = changed.filter((specifier) => !gone.has(specifier));
   if (missingChanged.length > 0) {
     reportPreviewUpdate(changed, pages, sources, [], []);
     return missingJavaScript(missingChanged);
   }
+  if (stayed.length === 0) return null;
   if (pages.length === 0) {
     console.error('[remount] no open page to update');
     reportPreviewUpdate(changed, pages, sources, [], []);
@@ -767,7 +785,7 @@ export async function updateOpenTabsForFiles(
   const origin = deps.origin ?? (typeof location !== 'undefined' ? location.origin : '');
   return updateOpenPreviewTabs({
     modules: [...modules.values()],
-    changed,
+    changed: stayed,
     tabs,
     mainPage,
     draftSlug,
