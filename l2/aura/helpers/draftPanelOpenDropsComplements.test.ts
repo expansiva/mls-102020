@@ -3,7 +3,11 @@
 // (loadPanel, rememberOpenedDraftText, collectEditedFiles) vs the only path
 // that drops .less/.test.ts/.defs.ts and keeps .ts/.html.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { applyDraftFiles, type DraftFilesDeps } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import { getBaseTemplate } from '/_102029_/l2/libCommom.js';
 import { removeNewStorFilesWithTemplateDefault } from '/_102027_/l2/libStor.js';
@@ -51,7 +55,14 @@ async function sourceFor(extension: string): Promise<string> {
   return getBaseTemplate({ project: PROJECT, folder: FOLDER, shortName: NAME, extension }, enhancement);
 }
 
-test('st71 s0b: opening the panel keeps 5 rows; template-default sweep leaves .ts and .html', async () => {
+interface MountedRows {
+  files: Record<string, IPageFile>;
+  extensionsOf: () => string[];
+  setDriver: (getDefaultDriver: (project: number) => Promise<{ driverVersion?: string }>) => void;
+  restore: () => void;
+}
+
+async function mountFiveNewRows(): Promise<MountedRows> {
   const host = globalThis as { mls?: unknown };
   const previousMls = host.mls;
   const files: Record<string, IPageFile> = {};
@@ -78,7 +89,7 @@ test('st71 s0b: opening the panel keeps 5 rows; template-default sweep leaves .t
     files[fileKey(file)] = file;
   }
 
-  host.mls = {
+  const mls = {
     actualProject: PROJECT,
     istrace: false,
     events: { fireFileAction: () => {} },
@@ -111,11 +122,97 @@ test('st71 s0b: opening the panel keeps 5 rows; template-default sweep leaves .t
           return true;
         },
       },
+      others: undefined as { getDefaultDriver?: (project: number) => Promise<{ driverVersion?: string }> } | undefined,
     },
   };
+  host.mls = mls;
 
   const keysOf = (): string[] => Object.keys(files).filter((key) => files[key]).sort();
   const extensionsOf = (): string[] => keysOf().map((key) => key.split('|').pop() ?? '').sort();
+  return {
+    files,
+    extensionsOf,
+    setDriver(getDefaultDriver) { mls.stor.others = { getDefaultDriver }; },
+    restore() { host.mls = previousMls; },
+  };
+}
+
+interface SaveHost {
+  showLoader(loader: boolean): void;
+  templateSweepApplies(): Promise<boolean>;
+  myMessage: { msgTotFile: string };
+  totFileSize: string;
+  scenery: string;
+  initInfoProject(): Promise<void>;
+  setInfos(): Promise<void>;
+}
+
+function serviceSaveBody(signature: string): string {
+  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../../mls-100554/l2/serviceSave.ts'), 'utf8');
+  const start = source.indexOf(signature);
+  if (start < 0) throw new Error(signature + ' not found in serviceSave.ts');
+  const bodyStart = source.indexOf('{', start);
+  let depth = 0;
+  let end = bodyStart;
+  for (; end < source.length; end++) {
+    const ch = source[end];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        end++;
+        break;
+      }
+    }
+  }
+  return source.slice(bodyStart, end);
+}
+
+function transpileSave(wrapped: string, fileName: string): string {
+  const transpiled = ts.transpileModule(wrapped, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    fileName,
+    reportDiagnostics: true,
+  });
+  const errors = (transpiled.diagnostics ?? []).filter((item) => item.category === ts.DiagnosticCategory.Error);
+  if (errors.length > 0) {
+    throw new Error(errors.map((item) => ts.flattenDiagnosticMessageText(item.messageText, '\n')).join('\n'));
+  }
+  return transpiled.outputText;
+}
+
+function loadServiceSave(): {
+  init: (this: SaveHost, isSetInfoProject?: boolean) => Promise<void>;
+  templateSweepApplies: (this: SaveHost) => Promise<boolean>;
+} {
+  const initBody = serviceSaveBody('private async init(isSetInfoProject: boolean = true)');
+  const appliesBody = serviceSaveBody('private async templateSweepApplies(): Promise<boolean>');
+  const wrapped = `async function templateSweepApplies() ${appliesBody}
+async function init(isSetInfoProject = true) ${initBody}
+return { init, templateSweepApplies };`;
+  const output = transpileSave(wrapped, 'serviceSave.init.ts');
+  const factory = new Function('removeNewStorFilesWithTemplateDefault', output);
+  return factory(removeNewStorFilesWithTemplateDefault);
+}
+
+function saveHost(): SaveHost {
+  const host: SaveHost = {
+    showLoader() {},
+    templateSweepApplies: async () => false,
+    myMessage: { msgTotFile: 'Total' },
+    totFileSize: '',
+    scenery: '',
+    async initInfoProject() {},
+    async setInfos() {},
+  };
+  return host;
+}
+
+test('st71 page files through the draft panel and the legacy save sweep', async (t) => {
+  await t.test('st71 s0b: opening the panel keeps 5 rows; template-default sweep leaves .ts and .html', async () => {
+  const mounted = await mountFiveNewRows();
+  const files = mounted.files;
+  const extensionsOf = mounted.extensionsOf;
 
   try {
     assert.deepEqual(extensionsOf(), ['.defs.ts', '.html', '.less', '.test.ts', '.ts']);
@@ -158,6 +255,31 @@ test('st71 s0b: opening the panel keeps 5 rows; template-default sweep leaves .t
     assert.deepEqual(removedExt, ['.defs.ts', '.less', '.test.ts']);
     assert.deepEqual(extensionsOf(), ['.html', '.ts']);
   } finally {
-    host.mls = previousMls;
+    mounted.restore();
   }
+  });
+
+  await t.test('st71 s1c: VM driver keeps the five new rows; legacy driver leaves .ts and .html', async () => {
+    const loaded = loadServiceSave();
+    const host = saveHost();
+    host.templateSweepApplies = loaded.templateSweepApplies;
+
+    const vm = await mountFiveNewRows();
+    vm.setDriver(async () => ({ driverVersion: '1.0.0-vm.1' }));
+    try {
+      await loaded.init.call(host);
+      assert.deepEqual(vm.extensionsOf(), ['.defs.ts', '.html', '.less', '.test.ts', '.ts']);
+    } finally {
+      vm.restore();
+    }
+
+    const legacy = await mountFiveNewRows();
+    legacy.setDriver(async () => ({ driverVersion: '1.0.0.4' }));
+    try {
+      await loaded.init.call(host);
+      assert.deepEqual(legacy.extensionsOf(), ['.html', '.ts']);
+    } finally {
+      legacy.restore();
+    }
+  });
 });
