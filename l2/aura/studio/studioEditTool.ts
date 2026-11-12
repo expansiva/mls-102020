@@ -598,7 +598,7 @@ export async function runDraftSave(
   }
   const files = collectEditedFiles(storFiles, project) as mls.stor.IFileInfo[];
   const skipped = explainUnsavedRows(storFiles, project);
-  if (skipped.length > 0) console.info('[draftPanel] save skipped rows', skipped);
+  if (skipped.length > 0) console.info('[draftPanel] save skipped rows ' + JSON.stringify(skipped));
   if (files.length === 0) {
     console.warn('[studio] no edited files to save');
     return done({ kind: 'error', message: panelMessages.noFiles });
