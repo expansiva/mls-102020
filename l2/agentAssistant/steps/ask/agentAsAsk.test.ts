@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { askPlanId, checkClarificationPayload, readPlanIdFromJson, roundOfPlanId } from '/_102020_/l2/agentAssistant/helpers/asIds.js';
-import { buildCatalog } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+import { buildCatalog } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 import { createState, planNext } from '/_102020_/l2/agentAssistant/helpers/asPlan.js';
 import { allDecisionAnswered, buildDecisionResult, initialDecisionAnswers } from '/_102020_/l2/aura/molecules/shared/widgetDecisionClarificationLogic.js';
 import { fakeBff, fixtureModule } from '/_102020_/l2/agentAssistant/helpers/asFixture.test.js';

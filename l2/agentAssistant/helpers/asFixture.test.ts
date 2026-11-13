@@ -4,7 +4,7 @@
 // the exact shapes the generators emit — l4 ontology modules, an l2 contract with named types and
 // a `readonly` member, and l1 requests defs. Shared by the catalog and plan tests.
 
-import type { AsBffCall, AsModuleSources } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsBffCall, AsModuleSources } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 
 const entity = (name: string, body: Record<string, unknown>): string =>
   `/// <mls fileReference="_1_/l4/resto/ontology/${name}.defs.ts" enhancement="_blank"/>\n\nimport type { X } from '/_102035_/l2/solution/types.js';\n\nexport const restoEntity${name} = ${JSON.stringify({ schemaVersion: 'v3', moduleName: 'resto', entityId: name, ...body }, null, 2)} as const satisfies X;\n\nexport default restoEntity${name};\n`;

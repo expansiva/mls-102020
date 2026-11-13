@@ -1,8 +1,8 @@
-/// <mls fileReference="_102020_/l2/agentAssistant/helpers/asCatalog.test.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/helpers/assistantCatalog/asCatalog.test.ts" enhancement="_blank"/>
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCatalog, catalogForPrompt, humanize } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+import { buildCatalog, catalogForPrompt, humanize } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 import { fixtureModule } from '/_102020_/l2/agentAssistant/helpers/asFixture.test.js';
 
 const catalog = buildCatalog([fixtureModule()]);

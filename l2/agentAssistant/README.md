@@ -48,9 +48,7 @@ steps/interpret/         agentAsInterpret (the model call) + prompt.md + gate.ts
 steps/ask/               agentAsAsk (one clarification round; executes on confirmation) + prompt.md
 steps/answer/            agentAsAnswer (answer/message screen, OK closes) + prompt.md (answer) + envelope.md (message) + manual.md (manual)
 helpers/
-  asTypes                data model (catalog + conversation state)
-  asSource               JSON object out of defs modules; TypeScript type parser for the l2 contracts
-  asCatalog              catalog from l1 requests + l2 contracts + l4 ontology (pure)
+  (asTypes, asSource, asCatalog now live in l2/helpers/assistantCatalog/: data model, defs/contract parsers, catalog builder; pure, shared with the L1 emitter)
   asStor                 reads those files from mls.stor (l5 project.json, controllers -> contractPath)
   asLookup               list queries through the BFF, rows, matching of the user's words
   asPlan                 the conversation as a pure state machine (planNext / applyAnswers / advance / buildWireInput)

@@ -6,9 +6,9 @@
 // smuggled into a value, a lookup that does not list the referenced entity, a filter the lookup
 // does not accept. What survives is safe to resolve.
 
-import type { AsCandidate, AsCatalog, AsManualSelection, AsMode, AsRefIntent } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsCandidate, AsCatalog, AsManualSelection, AsMode, AsRefIntent } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 import type { AsManual } from '/_102020_/l2/agentAssistant/helpers/asManual.js';
-import { asArray, asRecord, asString } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+import { asArray, asRecord, asString } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 
 export const AS_MAX_CANDIDATES = 4;      // alternatives the user picks from
 export const AS_MAX_SEQUENCE = 6;        // actions run in one sentence

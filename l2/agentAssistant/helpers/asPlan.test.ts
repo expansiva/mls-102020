@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCatalog } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+import { buildCatalog } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 import {
   AS_CONFIRM_OPTION,
   AS_CONFIRM_QUESTION,
@@ -23,7 +23,7 @@ import {
   planNext,
   validateValue,
 } from '/_102020_/l2/agentAssistant/helpers/asPlan.js';
-import type { AsCandidate, AsInputField, AsNext, AsPending } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsCandidate, AsInputField, AsNext, AsPending } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 import { fakeBff, fixtureModule } from '/_102020_/l2/agentAssistant/helpers/asFixture.test.js';
 import { asLabelsFor } from '/_102020_/l2/agentAssistant/helpers/asLabels.js';
 

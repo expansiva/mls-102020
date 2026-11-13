@@ -5,10 +5,10 @@
 // are live come from l5/project.json (modules[].backend.routeKeys); which contract each page uses
 // comes from the controllers defs (handlers[].contractPath).
 
-import type { AsCatalog, AsModuleSources } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsCatalog, AsModuleSources } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 import { buildManual, type AsManual, type AsManualSources } from '/_102020_/l2/agentAssistant/helpers/asManual.js';
-import { asArray, asRecord, asString, buildCatalog } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
-import { extractExportedObject } from '/_102020_/l2/agentAssistant/helpers/asSource.js';
+import { asArray, asRecord, asString, buildCatalog } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
+import { extractExportedObject } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
 
 export const AS_AGENT_PROJECT = 102020;
 export const AS_AGENT_FOLDER = 'agentAssistant';

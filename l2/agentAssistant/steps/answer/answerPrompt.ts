@@ -2,7 +2,7 @@
 
 // Pure assembly of the answer call (node-testable).
 
-import type { AsState } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsState } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 
 export function buildAnswerHumanPrompt(state: AsState, purpose: string): string {
   const result = state.results[state.results.length - 1];

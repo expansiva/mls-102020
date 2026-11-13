@@ -13,9 +13,9 @@
 // reaches the command whose contract `writes` `<Entity>.<operation>` (catalog), and that command's
 // route belongs to one screen (controllers defs).
 
-import type { AsCatalog, AsCommand, AsManualSelection } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
-import { asArray, asRecord, asString } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
-import { extractExportedObject } from '/_102020_/l2/agentAssistant/helpers/asSource.js';
+import type { AsCatalog, AsCommand, AsManualSelection } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
+import { asArray, asRecord, asString } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
+import { extractExportedObject } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
 
 export interface AsManualSources {
   module: string;

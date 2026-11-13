@@ -6,8 +6,8 @@
 // entity's displayField and the displayField of every related entity the query returns
 // (a Comanda row carries its Mesa, so "mesa 1" finds the comanda of table 1).
 
-import type { AsBffCall, AsCatalog, AsLookup, AsRow } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
-import { asRecord, findEntity } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+import type { AsBffCall, AsCatalog, AsLookup, AsRow } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
+import { asRecord, findEntity } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 import { parseDateInput, parseTimestampInput } from '/_102020_/l2/agentAssistant/helpers/asDates.js';
 
 export const AS_LOOKUP_PAGE_SIZE = 50;

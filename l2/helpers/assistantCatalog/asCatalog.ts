@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentAssistant/helpers/asCatalog.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/helpers/assistantCatalog/asCatalog.ts" enhancement="_blank"/>
 
 // Builds the action catalog of a generated app from its own files (pure; the stor IO is in
 // asStor). Meaning comes from the l4 ontology (titles, displayField, record targets), the wire
@@ -16,8 +16,8 @@ import type {
   AsModuleSources,
   AsRelated,
   AsTypeNode,
-} from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
-import { extractExportedObject, flattenType, parseContractSource, type AsTypeLeaf } from '/_102020_/l2/agentAssistant/helpers/asSource.js';
+} from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
+import { extractExportedObject, flattenType, parseContractSource, type AsTypeLeaf } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
 
 export function buildCatalog(modules: AsModuleSources[]): AsCatalog {
   const catalog: AsCatalog = { commands: [], queries: [], lookups: [], entities: [], issues: [] };

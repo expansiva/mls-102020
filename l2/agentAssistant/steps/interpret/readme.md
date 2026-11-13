@@ -1,7 +1,7 @@
 # interpret — the model call
 
 - **Input:** `longMemory.userText` and `longMemory.project`, plus the catalog built by `asStor` +
-  `asCatalog`.
+  `asCatalog` (`l2/helpers/assistantCatalog/`).
 - **Call:** `prompt.md` (modelType `code`, strict tool) + the tool `submitAssistantPlan`
   (`schemas/interpret.schema.json`). The human message is the sentence plus `catalogForPrompt`.
   That view leaves out `version` inputs and keeps `refEntity` on record inputs.

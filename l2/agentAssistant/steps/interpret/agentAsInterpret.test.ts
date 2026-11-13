@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { callToolProvider, liveRuns, liveTestsEnabled, parseEnvFile } from '/_102025_/l2/testLlmClient.js';
-import { buildCatalog } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+import { buildCatalog } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 import { gateInterpretation } from '/_102020_/l2/agentAssistant/steps/interpret/gate.js';
 import {
   AS_INTERPRET_TOOL,

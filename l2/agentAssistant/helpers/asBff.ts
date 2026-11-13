@@ -5,7 +5,7 @@
 // validateInput / scope checks. Works where the agent runs inside the app (runtime VM messages
 // panel); in the Studio there is no /execBff and the call reports that plainly.
 
-import type { AsBffCall, AsBffResponse } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsBffCall, AsBffResponse } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 
 export const execBffCall: AsBffCall = async (routine, params) => {
   let response: Response;

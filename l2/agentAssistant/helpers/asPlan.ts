@@ -27,9 +27,9 @@ import type {
   AsRefIntent,
   AsRow,
   AsState,
-} from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
-import { AS_STATE_SCHEMA } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
-import { humanize, lookupNeedsParams, lookupsFor } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+} from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
+import { AS_STATE_SCHEMA } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
+import { humanize, lookupNeedsParams, lookupsFor } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 import { AS_LOOKUP_PAGE_SIZE, matchRows, normalizeText, runLookup, setPath } from '/_102020_/l2/agentAssistant/helpers/asLookup.js';
 import { asLabelsFor, type AsLabels } from '/_102020_/l2/agentAssistant/helpers/asLabels.js';
 import { formatDateForUser, formatTimestampForUser, parseDateInput, parseTimestampInput } from '/_102020_/l2/agentAssistant/helpers/asDates.js';

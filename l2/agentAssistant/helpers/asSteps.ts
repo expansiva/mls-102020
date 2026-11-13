@@ -11,7 +11,7 @@ import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { addOrUpdateTask, updateThreadPendingTasks } from '/_102036_/l2/collabMessagesIndexedDB.js';
 import { appendLongTermMemory, getAllSteps, notifyTaskChange, notifyThreadChange } from '/_102027_/l2/aiAgentHelper.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
-import type { AsState } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsState } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 import { parseState } from '/_102020_/l2/agentAssistant/helpers/asPlan.js';
 import { AS_MEMORY_KEY } from '/_102020_/l2/agentAssistant/helpers/asIds.js';
 

@@ -1,8 +1,8 @@
-/// <mls fileReference="_102020_/l2/agentAssistant/helpers/asSource.test.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/helpers/assistantCatalog/asSource.test.ts" enhancement="_blank"/>
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractExportedObject, flattenType, parseContractSource, parseTypeText } from '/_102020_/l2/agentAssistant/helpers/asSource.js';
+import { extractExportedObject, flattenType, parseContractSource, parseTypeText } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
 import { CONTRACT, ONTOLOGY } from '/_102020_/l2/agentAssistant/helpers/asFixture.test.js';
 
 test('the JSON object of a defs module is cut out even when followed by `as const satisfies`', () => {

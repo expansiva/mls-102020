@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentAssistant/helpers/asTypes.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/helpers/assistantCatalog/asTypes.ts" enhancement="_blank"/>
 
 // Data model of agentAssistant. Everything here travels: the catalog is rebuilt from the
 // generated app's own files (l1 requests/controllers defs, l2 contracts, l4 ontology), and the

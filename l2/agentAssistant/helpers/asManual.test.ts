@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCatalog } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+import { buildCatalog } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 import { buildManual, manualContext, manualIndex, pagesOfJourney, type AsManualSources } from '/_102020_/l2/agentAssistant/helpers/asManual.js';
 import { fixtureModule } from '/_102020_/l2/agentAssistant/helpers/asFixture.test.js';
 

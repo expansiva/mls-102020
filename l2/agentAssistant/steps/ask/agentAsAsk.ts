@@ -15,7 +15,7 @@ import { execBffCall } from '/_102020_/l2/agentAssistant/helpers/asBff.js';
 import { asLabelsFor } from '/_102020_/l2/agentAssistant/helpers/asLabels.js';
 import { createBusyHost } from '/_102020_/l2/agentAssistant/helpers/asBusy.js';
 import { advance, applyAnswers, finalFor, outcomeTitle } from '/_102020_/l2/agentAssistant/helpers/asPlan.js';
-import type { AsAnswer, AsState } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsAnswer, AsState } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 import {
   AS_ANSWER_AGENT,
   AS_ANSWER_PLAN_ID,

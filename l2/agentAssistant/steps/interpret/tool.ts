@@ -3,9 +3,9 @@
 // Pure prompt/tool assembly of the interpret call (unit-testable without mls).
 
 import { buildVToolInstruction, createVToolSchema, type VLlmTool } from '/_102020_/l2/aura/molecules/shared/llmTool.js';
-import type { AsCatalog } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsCatalog } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 import type { AsToday } from '/_102020_/l2/agentAssistant/helpers/asDates.js';
-import { catalogForPrompt } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+import { catalogForPrompt } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 
 export const AS_INTERPRET_TOOL = 'submitAssistantPlan';
 export const AS_INTERPRET_RESULT_KEYS = ['userLanguage', 'reply', 'mode', 'candidates', 'manual'];

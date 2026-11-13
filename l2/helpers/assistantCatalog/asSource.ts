@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentAssistant/helpers/asSource.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/helpers/assistantCatalog/asSource.ts" enhancement="_blank"/>
 
 // Pure readers for the generated app's source files (no mls, no DOM).
 // - l1 defs and l4 ontology are `export const <name> = { ...JSON... }` modules: the object
@@ -7,7 +7,7 @@
 //   subset the contract generator emits (object literals, unions of string literals, arrays,
 //   tuples, named interfaces/types).
 
-import type { AsContractRoute, AsTypeField, AsTypeNode } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsContractRoute, AsTypeField, AsTypeNode } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 
 // ---- JSON object literal in a defs module ----
 

@@ -2,9 +2,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCatalog } from '/_102020_/l2/agentAssistant/helpers/asCatalog.js';
+import { buildCatalog } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 import { matchRows, runLookup, setPath } from '/_102020_/l2/agentAssistant/helpers/asLookup.js';
-import type { AsBffCall, AsRow } from '/_102020_/l2/agentAssistant/helpers/asTypes.js';
+import type { AsBffCall, AsRow } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 import { fakeBff, fixtureModule } from '/_102020_/l2/agentAssistant/helpers/asFixture.test.js';
 
 const catalog = buildCatalog([fixtureModule()]);
