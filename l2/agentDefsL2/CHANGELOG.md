@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-15 — d2_177
+
+- The bff55 prompt states that filters, cuts and limits come from L4 inputs (rules, fields, capabilities and grants);
+  a maximum quantity, cut, fixed number or threshold the L4 does not name is not written; a list that can grow beyond
+  one screen is paged as the prompt already defines, never truncated.
+
 ## 2026-10-05 — d2_79
 
 - A field leaf of a type or an input keeps its ontology path, nested (`details: { … }`), with a join under the other

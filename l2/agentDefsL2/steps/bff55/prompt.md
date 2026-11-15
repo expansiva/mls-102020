@@ -8,6 +8,7 @@ Decide how many endpoints there are, the shape of each output, paging, filters a
 app: transfer and performance. Load what the page shows when it opens in one call, already in the shape the page uses:
 a header with its lines, an indicator already computed, a list already filtered by the situation the intent names.
 Fetch on demand what the person searches or selects. Page a list only when it can grow beyond what one screen needs.
+What the endpoint filters, cuts or limits comes from the inputs (L4 rules, fields, capabilities and grants); do not write a maximum quantity, a cut, a fixed number or a threshold the L4 does not name; a list that can grow beyond one screen is paged as this prompt already defines, never truncated.
 A command returns the record it changed, in its new state, with its lines and totals. An indicator is computed in the
 endpoint: the output is the number, never a raw list for the page to sum.
 
