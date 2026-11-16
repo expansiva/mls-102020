@@ -11,10 +11,13 @@ import {
   previewForActor,
   readModuleMenu,
   replaceModuleMenu,
+  searchMenuIcons,
   setHomePage,
   setLanding,
   setMenuActor,
   setMenuDescription,
+  setMenuIcon,
+  setMenuIconSvg,
   setMenuLabel,
   showInMenu,
   type ModuleEntry,
@@ -160,8 +163,8 @@ test('landing: set, moved, cleared; refused when the actor does not see the page
 
 test('preview uses the shell filter: each actor sees its own pages and its landing', () => {
   assert.deepEqual(previewForActor(tarefas(), 'tarefas', 'membroEquipe'), [
-    { id: 'inicio', label: 'Início', landing: true },
-    { id: 'minhas_tarefas', label: 'Minhas tarefas', landing: false },
+    { id: 'inicio', label: 'Início', icon: '', iconSvg: '', landing: true },
+    { id: 'minhas_tarefas', label: 'Minhas tarefas', icon: '', iconSvg: '', landing: false },
   ]);
   assert.equal(previewForActor(tarefas(), 'tarefas', 'gestor').length, 4);
 });
@@ -238,4 +241,137 @@ test('replaceModuleMenu writes the menu of one module into a fresh config and ke
   assert.deepEqual(next.projects['102020'], config.projects['102020']);
   assert.equal(findModuleEntry(config, 102047, 'tarefas')!.navigation, config.projects['102047'].modules[1].navigation);
   assert.throws(() => replaceModuleMenu(config, 102047, 'naoExiste', edited), /MENU_MODULE_MISSING/u);
+});
+
+// ─── icon ────────────────────────────────────────────────────────────────────
+
+test('reading without icons: every row has icon "" and no issue', () => {
+  const view = readModuleMenu(tarefas());
+  assert.ok(view.rows.every(row => row.icon === ''));
+  assert.deepEqual(view.issues, []);
+});
+
+test('setting an icon writes only navigation[i].icon; the fingerprint sees it', () => {
+  const before = tarefas();
+  const { entry, refused } = setMenuIcon(before, 'participantes', 'users');
+  assert.equal(refused, undefined);
+  assert.equal(nav(entry)[4].icon, 'users');
+  assert.equal(readModuleMenu(entry).rows[4].icon, 'users');
+  assert.equal(pages(entry)[4].icon, undefined);
+  assert.notEqual(moduleMenuFingerprint(entry), moduleMenuFingerprint(before));
+  delete nav(entry)[4].icon;
+  assert.deepEqual(entry, before, 'nothing else changed');
+});
+
+test('"no icon" removes the key instead of writing ""', () => {
+  const withIcon = setMenuIcon(tarefas(), 'inicio', 'house').entry;
+  const { entry } = setMenuIcon(withIcon, 'inicio', '');
+  assert.equal('icon' in nav(entry)[0], false);
+  assert.deepEqual(entry, tarefas());
+});
+
+test('same icon again, or "no icon" on an item without one, is a no-op returning the same entry', () => {
+  const withIcon = setMenuIcon(tarefas(), 'inicio', 'house').entry;
+  assert.equal(setMenuIcon(withIcon, 'inicio', 'house').entry, withIcon);
+  const plain = tarefas();
+  assert.equal(setMenuIcon(plain, 'inicio', '').entry, plain);
+});
+
+test('an icon outside the Lucide catalog, or on a page out of the menu, is refused', () => {
+  const before = tarefas();
+  assert.equal(setMenuIcon(before, 'inicio', 'not-an-icon').refused, 'unknown-icon');
+  const hidden = hideFromMenu(before, 'inicio').entry;
+  assert.equal(setMenuIcon(hidden, 'inicio', 'house').refused, 'not-in-menu');
+});
+
+test('an unknown icon already in the config is an issue; fixing it removes the key', () => {
+  const broken = tarefas();
+  nav(broken)[1].icon = 'old-icon-name';
+  const view = readModuleMenu(broken);
+  assert.deepEqual(view.issues, [{ code: 'unknown-icon', pageId: 'minhas_tarefas' }]);
+  assert.equal(view.rows[1].icon, 'old-icon-name');
+  const { entry } = fixMenuIssue(broken, view.issues[0]);
+  assert.equal('icon' in nav(entry)[1], false);
+  assert.deepEqual(readModuleMenu(entry).issues, []);
+});
+
+test('the icon survives replaceModuleMenu and shows in the actor preview', () => {
+  const edited = setMenuIcon(tarefas(), 'painel_tarefas', 'layout-dashboard').entry;
+  const config = { projects: { '102047': { modules: [tarefas()] } } };
+  const written = findModuleEntry(replaceModuleMenu(config, 102047, 'tarefas', edited), 102047, 'tarefas')!;
+  assert.equal(nav(written)[2].icon, 'layout-dashboard');
+  const preview = previewForActor(edited, 'tarefas', 'gestor');
+  assert.equal(preview.find(item => item.id === 'painel_tarefas')?.icon, 'layout-dashboard');
+});
+
+test('searchMenuIcons: case-insensitive substring, empty query lists all', () => {
+  const all = searchMenuIcons('');
+  assert.ok(all.length > 1000);
+  assert.ok(all.includes('house'));
+  const users = searchMenuIcons('  USERS ');
+  assert.ok(users.length > 0);
+  assert.ok(users.every(name => name.includes('users')));
+  assert.deepEqual(searchMenuIcons('zzzz-nothing'), []);
+});
+
+// ─── own SVG icon ────────────────────────────────────────────────────────────
+
+const OWN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16"/></svg>';
+
+test('setMenuIconSvg writes iconSvg, drops the Lucide icon, and the fingerprint sees it', () => {
+  const withLucide = setMenuIcon(tarefas(), 'participantes', 'users').entry;
+  const { entry, refused } = setMenuIconSvg(withLucide, 'participantes', `  ${OWN_SVG} `);
+  assert.equal(refused, undefined);
+  assert.equal(nav(entry)[4].iconSvg, OWN_SVG);
+  assert.equal('icon' in nav(entry)[4], false);
+  assert.equal(readModuleMenu(entry).rows[4].iconSvg, OWN_SVG);
+  assert.notEqual(moduleMenuFingerprint(entry), moduleMenuFingerprint(withLucide));
+  assert.deepEqual(readModuleMenu(entry).issues, []);
+});
+
+test('setMenuIcon drops iconSvg; "no icon" removes both keys', () => {
+  const withSvg = setMenuIconSvg(tarefas(), 'inicio', OWN_SVG).entry;
+  const lucide = setMenuIcon(withSvg, 'inicio', 'house').entry;
+  assert.equal(nav(lucide)[0].icon, 'house');
+  assert.equal('iconSvg' in nav(lucide)[0], false);
+  const none = setMenuIcon(withSvg, 'inicio', '').entry;
+  assert.equal('icon' in nav(none)[0] || 'iconSvg' in nav(none)[0], false);
+  assert.deepEqual(none, tarefas());
+});
+
+test('setMenuIconSvg refuses unsafe or colored markup and a page out of the menu; same svg again is a no-op', () => {
+  const before = tarefas();
+  assert.equal(setMenuIconSvg(before, 'inicio', '<svg viewBox="0 0 24 24"><script>x()</script></svg>').refused, 'unsafe-svg');
+  assert.equal(setMenuIconSvg(before, 'inicio', '<svg viewBox="0 0 24 24"><path d="M0 0" stroke="#f00"/></svg>').refused, 'unsafe-svg');
+  assert.equal(setMenuIconSvg(hideFromMenu(before, 'inicio').entry, 'inicio', OWN_SVG).refused, 'not-in-menu');
+  const withSvg = setMenuIconSvg(before, 'inicio', OWN_SVG).entry;
+  assert.equal(setMenuIconSvg(withSvg, 'inicio', OWN_SVG).entry, withSvg);
+});
+
+test('an unsafe iconSvg in the config is an issue; fixing removes it', () => {
+  const broken = tarefas();
+  nav(broken)[2].iconSvg = '<svg viewBox="0 0 24 24" onload="x()"></svg>';
+  const view = readModuleMenu(broken);
+  assert.deepEqual(view.issues, [{ code: 'unsafe-icon-svg', pageId: 'painel_tarefas' }]);
+  const { entry } = fixMenuIssue(broken, view.issues[0]);
+  assert.equal('iconSvg' in nav(entry)[2], false);
+});
+
+test('icon and iconSvg together is an issue; fixing keeps the svg and removes the icon', () => {
+  const broken = tarefas();
+  nav(broken)[3].icon = 'house';
+  nav(broken)[3].iconSvg = OWN_SVG;
+  const view = readModuleMenu(broken);
+  assert.deepEqual(view.issues, [{ code: 'icon-and-svg', pageId: 'tarefas_equipe' }]);
+  const { entry } = fixMenuIssue(broken, view.issues[0]);
+  assert.equal('icon' in nav(entry)[3], false);
+  assert.equal(nav(entry)[3].iconSvg, OWN_SVG);
+});
+
+test('the iconSvg shows in the actor preview and survives replaceModuleMenu', () => {
+  const edited = setMenuIconSvg(tarefas(), 'painel_tarefas', OWN_SVG).entry;
+  assert.equal(previewForActor(edited, 'tarefas', 'gestor').find(item => item.id === 'painel_tarefas')?.iconSvg, OWN_SVG);
+  const config = { projects: { '102047': { modules: [tarefas()] } } };
+  const written = findModuleEntry(replaceModuleMenu(config, 102047, 'tarefas', edited), 102047, 'tarefas')!;
+  assert.equal(nav(written)[2].iconSvg, OWN_SVG);
 });

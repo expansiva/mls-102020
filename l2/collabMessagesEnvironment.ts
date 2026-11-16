@@ -2,6 +2,7 @@
  
 import { CollabMessagesEnvironment, CollabProgramMenu, CollabProgramMenuItem } from '/_102036_/l2/environmentContract.js';
 import { IAgentMeta, ExecutionContext, TaskData, Message } from '/_102036_/l2/shared/interfaces.js';
+import { readMenuIconSvg } from '/_102036_/l2/inlineSvg.js';
 
 import { loadAgent, executeBeforePrompt } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
@@ -36,7 +37,7 @@ export const collabEnvironment: CollabMessagesEnvironment = {
 
 // --- Apps menu, sourced from the workspace config.json (moved to <project>/l5/config.json) ---
 
-interface IConfigNavItem { id: string; label?: string; href?: string; description?: string; icon?: string }
+interface IConfigNavItem { id: string; label?: string; href?: string; description?: string; icon?: string; iconSvg?: string }
 interface IConfigPage { pageId?: string; route?: string; source?: string; title?: string }
 interface IConfigModule {
     moduleId: string;
@@ -109,13 +110,17 @@ async function getProgramMenu(): Promise<CollabProgramMenu[]> {
                 navigation = def?.navigation ?? [];
             }
 
-            const items: CollabProgramMenuItem[] = navigation.map((nav) => ({
-                title: nav.label ?? nav.id,
-                icon: nav.icon ?? '',
-                url: nav.href ?? '',
-                pageName: nav.id,
-                target: undefined
-            }));
+            const items: CollabProgramMenuItem[] = navigation.map((nav) => {
+                const iconSvg = readMenuIconSvg(nav.iconSvg, `${module.moduleId}/${nav.id}`);
+                return {
+                    title: nav.label ?? nav.id,
+                    icon: nav.icon ?? '',
+                    ...(iconSvg ? { iconSvg } : {}),
+                    url: nav.href ?? '',
+                    pageName: nav.id,
+                    target: undefined
+                };
+            });
 
             if (items.length === 0) continue;
 

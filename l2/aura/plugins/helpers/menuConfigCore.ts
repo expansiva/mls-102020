@@ -6,7 +6,9 @@
 //
 // The config is the source of truth of the menu (decided 30/10/2026). The same data sits in three places of
 // the module entry, and each edit keeps them in agreement:
-//   * `navigation[]`     — the aside menu, in its order: label, description, href, actors (visibility filter);
+//   * `navigation[]`     — the aside menu, in its order: label, description, href, actors (visibility filter),
+//                          and the icon drawn by the collab-messages apps tab (navigation only): `icon` (a
+//                          Lucide name) OR `iconSvg` (own markup, 102036 isSafeMenuIconSvg) — never both;
 //   * `frontend.pages[]` — the routes: `title` is the route title; the FIRST page also answers `/<module>`;
 //   * `landings[]`       — start page per actor (+ the `landing` flag of the navigation item). Not read by the
 //                          shell nor the server today; kept coherent for when they are.
@@ -16,10 +18,12 @@
 // the `landing` flag: an edit that changes `landings` recomputes it on every item. Unknown keys are kept.
 
 import { visibleNavigation } from '/_102033_/l2/shared/navigationVisibility.js';
+import { LUCIDE_ICONS, isLucideIcon } from '/_102035_/l2/solution/lucideIcons.js';
+import { isSafeMenuIconSvg } from '/_102036_/l2/inlineSvg.js';
 
 export type ModuleEntry = Record<string, unknown>;
 
-interface NavItem { id: string; label: string; href: string; description?: string; actors?: string[]; landing?: boolean; [key: string]: unknown }
+interface NavItem { id: string; label: string; href: string; description?: string; icon?: string; iconSvg?: string; actors?: string[]; landing?: boolean; [key: string]: unknown }
 interface PageItem { pageId: string; route: string; title?: string; actors?: string[]; [key: string]: unknown }
 interface Landing { actorId: string; pageId: string; route: string; [key: string]: unknown }
 
@@ -27,6 +31,10 @@ export interface MenuRow {
   pageId: string;
   label: string;
   description: string;
+  /** Lucide icon name of the menu item; '' when it has none. */
+  icon: string;
+  /** Own SVG markup of the menu item; '' when it has none. Wins over `icon` in the apps tab. */
+  iconSvg: string;
   actors: string[];
   route: string;
   /** Actors whose start page (`landings`) is this page. */
@@ -39,7 +47,10 @@ export type MenuIssueCode =
   | 'href-differs'
   | 'actors-differ'
   | 'landing-orphan'
-  | 'landing-flag-differs';
+  | 'landing-flag-differs'
+  | 'unknown-icon'
+  | 'unsafe-icon-svg'
+  | 'icon-and-svg';
 
 export interface MenuIssue { code: MenuIssueCode; pageId: string; actorId?: string }
 
@@ -128,7 +139,12 @@ export function readModuleMenu(entry: ModuleEntry): ModuleMenuView {
     if (!sameSet(itemActors, strings(page.actors))) issues.push({ code: 'actors-differ', pageId: item.id });
     const landingOf = landings.filter(landing => landing.pageId === item.id).map(landing => str(landing.actorId));
     if (Boolean(item.landing) !== landingOf.length > 0) issues.push({ code: 'landing-flag-differs', pageId: item.id });
-    rows.push({ pageId: item.id, label: str(item.label), description: str(item.description), actors: itemActors, route: str(page.route), landingOf });
+    const icon = str(item.icon);
+    if (icon && !isLucideIcon(icon)) issues.push({ code: 'unknown-icon', pageId: item.id });
+    const iconSvg = str(item.iconSvg);
+    if (iconSvg && !isSafeMenuIconSvg(iconSvg)) issues.push({ code: 'unsafe-icon-svg', pageId: item.id });
+    if (iconSvg && icon) issues.push({ code: 'icon-and-svg', pageId: item.id });
+    rows.push({ pageId: item.id, label: str(item.label), description: str(item.description), icon, iconSvg, actors: itemActors, route: str(page.route), landingOf });
   }
   for (const landing of landings) {
     const item = nav.find(navItem => navItem.id === landing.pageId);
@@ -141,10 +157,16 @@ export function readModuleMenu(entry: ModuleEntry): ModuleMenuView {
 }
 
 /** The navigation the aside would show to one actor: the shell's own filter (102033 navigationVisibility). */
-export function previewForActor(entry: ModuleEntry, moduleId: string, actor: string): Array<{ id: string; label: string; landing: boolean }> {
+export function previewForActor(entry: ModuleEntry, moduleId: string, actor: string): Array<{ id: string; label: string; icon: string; iconSvg: string; landing: boolean }> {
   const visible = visibleNavigation(navOf(entry), [`${moduleId}:${actor}`], moduleId);
   const landing = landingsOf(entry).find(item => item.actorId === actor)?.pageId;
-  return visible.map(item => ({ id: item.id, label: str(item.label), landing: item.id === landing }));
+  return visible.map(item => ({ id: item.id, label: str(item.label), icon: str(item.icon), iconSvg: str(item.iconSvg), landing: item.id === landing }));
+}
+
+/** Lucide names that contain the query (case-insensitive), in catalog order. An empty query lists them all. */
+export function searchMenuIcons(query: string): readonly string[] {
+  const search = query.trim().toLowerCase();
+  return search ? LUCIDE_ICONS.filter(name => name.includes(search)) : LUCIDE_ICONS;
 }
 
 /** Only the menu fields of the entry: two entries with the same fingerprint have the same menu. */
@@ -174,6 +196,40 @@ export function setMenuDescription(entry: ModuleEntry, pageId: string, descripti
   const text = description.trim();
   if (text) item.description = text;
   else delete item.description;
+  return { entry: next };
+}
+
+/**
+ * Sets the Lucide icon of a menu item, in `navigation` only (the pages have no icon), and drops an own
+ * `iconSvg` (one icon per item). '' is "no icon": both keys go, so no `"icon": ""` is left behind. A
+ * name outside the Lucide catalog is refused.
+ */
+export function setMenuIcon(entry: ModuleEntry, pageId: string, icon: string): MenuEditResult {
+  const name = icon.trim();
+  if (name && !isLucideIcon(name)) return { entry, refused: 'unknown-icon' };
+  const { next, nav } = draft(entry);
+  const item = nav.find(navItem => navItem.id === pageId);
+  if (!item) return { entry, refused: 'not-in-menu' };
+  if ((name ? item.icon === name : !('icon' in item)) && !('iconSvg' in item)) return { entry };
+  if (name) item.icon = name;
+  else delete item.icon;
+  delete item.iconSvg;
+  return { entry: next };
+}
+
+/**
+ * Sets an own SVG as the icon of a menu item and drops its Lucide `icon`. The markup must pass the apps
+ * menu rule (102036 isSafeMenuIconSvg: monochrome, small, nothing that scripts or fetches).
+ */
+export function setMenuIconSvg(entry: ModuleEntry, pageId: string, markup: string): MenuEditResult {
+  const svg = markup.trim();
+  if (!isSafeMenuIconSvg(svg)) return { entry, refused: 'unsafe-svg' };
+  const { next, nav } = draft(entry);
+  const item = nav.find(navItem => navItem.id === pageId);
+  if (!item) return { entry, refused: 'not-in-menu' };
+  if (item.iconSvg === svg && !('icon' in item)) return { entry };
+  item.iconSvg = svg;
+  delete item.icon;
   return { entry: next };
 }
 
@@ -295,6 +351,15 @@ export function fixMenuIssue(entry: ModuleEntry, issue: MenuIssue): MenuEditResu
       return { entry: next };
     case 'landing-flag-differs':
       commitLandings(next, landings);
+      return { entry: next };
+    case 'unknown-icon':
+    case 'icon-and-svg':
+      if (!item || !('icon' in item)) return { entry };
+      delete item.icon;
+      return { entry: next };
+    case 'unsafe-icon-svg':
+      if (!item || !('iconSvg' in item)) return { entry };
+      delete item.iconSvg;
       return { entry: next };
     default:
       return { entry };
