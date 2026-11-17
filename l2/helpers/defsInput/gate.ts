@@ -36,7 +36,7 @@ const SUPPORTED = {
   rules: '2026-09-16-ns5-rules-v2',
   workflows: '2026-09-17-ns5-workflows-v3',
   access: '2026-09-12-ns5-access-v3',
-  integration: '2026-09-12-ns5-integration-v2',
+  integration: ['2026-09-12-ns5-integration-v2', '2026-11-17-ns5-integration-v3'],
   menu: '2026-09-20-p2-menu-v2.2',
   needs: '2026-09-21-p2-needs-v1',
   backend: '2026-09-21-p1-backend-v1.2',
@@ -538,12 +538,13 @@ function validateDestinationCollisions(state: GateState, pages: D2SelectedPage[]
   }
 }
 
-function checkVersion(state: GateState, value: Record<string, unknown>, expected: string, file: string): void {
-  if (text(value.schemaVersion) !== expected) {
+function checkVersion(state: GateState, value: Record<string, unknown>, expected: string | readonly string[], file: string): void {
+  const accepted = typeof expected === 'string' ? [expected] : expected;
+  if (!accepted.includes(text(value.schemaVersion))) {
     const regenerate = file === 'pool/l2/web/backend.json' || file === 'pool/l2/web/effort.json'
       ? ' Regenerate this artifact with its current producer.'
       : '';
-    error(state, 'UNSUPPORTED_VERSION', file, `expected ${expected}, got '${text(value.schemaVersion)}'.${regenerate}`);
+    error(state, 'UNSUPPORTED_VERSION', file, `expected ${accepted.join(' or ')}, got '${text(value.schemaVersion)}'.${regenerate}`);
   }
 }
 
