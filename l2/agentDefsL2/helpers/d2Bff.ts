@@ -6,6 +6,7 @@ import mdm from '/_102034_/l4/ontology/mdm.defs.js';
 import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs, D2Page11OrganismNeeds } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
+import { d2ExternalCallAsk, type D2ExternalCallSources } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2RequiredRelationTargets, d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
@@ -602,6 +603,10 @@ export function d2BffValueLeaves(rows: readonly D2BffLeaf[], design: Pick<D2BffD
 }
 
 const covers = (origin: string, target: string): boolean => target === origin || target.startsWith(`${origin}.`);
+const textSource = (entity: unknown): string => {
+  const source = (entity as { source?: unknown } | undefined)?.source;
+  return typeof source === 'string' ? source : '';
+};
 const entityOf = (path: string): string => path.split('.')[0];
 const isIdentity = (path: string): boolean => { const [, field, extra] = path.split('.'); return !extra && (field === 'id' || field === 'version'); };
 
@@ -613,6 +618,8 @@ export interface D2BffCheckContext {
   entities: Record<string, Ns5OntologyAnyEntity>;
   grants: readonly D2Grant[];
   rules: Record<string, string>;
+  /** Set when the page can write an `external` entity. `entity` and `mdm` never read it. */
+  external?: D2ExternalCallSources;
 }
 
 /** The submit intents of the page (desktop and mobile) with the write each one's draft binds. */
@@ -629,12 +636,21 @@ export function d2PageSubmits(context: Pick<D2BffCheckContext, 'page11' | 'draft
   return out;
 }
 
-/** What a write asks for, by origin (d2_72): transition payload, the page's edits plus required context ids on create, id/version otherwise. */
-export function d2WriteRequiredInput(write: D2NeedWrite, entities: Record<string, Ns5OntologyAnyEntity>, pageEdits: readonly string[]): string[] {
+/** What a write asks for, by origin (d2_72): transition payload, the page's edits plus required context ids on create, id/version otherwise. An `external` entity asks for the connection call's input names instead of `Entity.id` / `Entity.version`. */
+export function d2WriteRequiredInput(write: D2NeedWrite, entities: Record<string, Ns5OntologyAnyEntity>, pageEdits: readonly string[], external?: D2ExternalCallSources): string[] {
   const entityId = write.entity;
   const entity = entities[entityId];
   const identity = [`${entityId}.id`, `${entityId}.version`];
   const edits = pageEdits.filter(path => entityOf(path) === entityId);
+  if ((entity as { kind?: string } | undefined)?.kind === 'external') {
+    const ask = d2ExternalCallAsk({
+      entityId, operation: write.operation, transitionRef: write.transitionRef, entity,
+      connections: external?.connections ?? [], journeys: external?.journeys ?? {},
+      catalogText: external?.catalogs[textSource(entity)] ?? '',
+    });
+    const names = ask ? [...ask.names, ...(ask.expectsVersion ? ['expectVersion'] : [])] : [];
+    return [...new Set([...edits, ...names])];
+  }
   if (write.operation === 'transition') return [...new Set([...d2TransitionPayload(entity, entityId, write.transitionRef ?? ''), ...identity])];
   if (write.operation === 'update') return [...new Set([...edits, ...identity])];
   if (write.operation !== 'create') return identity;
@@ -685,10 +701,13 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
     if (!pageWrite) continue; // reported by B.4
     const owned = editsOfSubmit(intentId);
     const edits = owned.some(path => entityOf(path) === pageWrite.entity) ? owned : pageEdits;
-    const carried = d2BffValueLeaves(command.input, design).filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths);
+    const leaves = d2BffValueLeaves(command.input, design);
+    const carried = leaves.filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths);
     const relatedCover = (path: string): boolean => d2RequiredRelationTargets(context.entities[pageWrite.entity], pageWrite.entity).some(rel =>
       rel.via === path && carried.some(origin => entityOf(origin) === rel.to));
-    const missing = d2WriteRequiredInput(pageWrite, context.entities, edits).filter(path => !carried.some(origin => covers(origin, path)) && !relatedCover(path));
+    const missing = d2WriteRequiredInput(pageWrite, context.entities, edits, context.external).filter(token => token.includes('.')
+      ? !carried.some(origin => covers(origin, token)) && !relatedCover(token)
+      : !leaves.some(item => item.leaf.name === token));
     if (missing.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, `command ${command.id} (${command.writes}) asks for ${missing.join(', ')}; each input leaf that fills a stored value names that Entity.path as a field origin.`);
   }
 

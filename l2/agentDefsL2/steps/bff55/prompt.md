@@ -16,7 +16,7 @@ Kinds and triggers:
 - qry runs onLoad or on interaction; cmd runs on a submit intent and its when is that intent id.
 - Every submit intent has exactly one cmd. Its writes is the write the page draft binds to that intent.
 - A cmd input carries what its write asks for: the transition payload; on create, the fields the page edits for that
-  entity and the required foreign key of the context; on update and transition, the id and the version.
+  entity and the required foreign key of the context; on update and transition, the id and the version when the entity declares them; for an entity of another system, the inputs of the connection operation.
 
 Types and origins:
 - types are named shapes reused by several endpoints, such as a record with its lines. A field is a leaf: string,

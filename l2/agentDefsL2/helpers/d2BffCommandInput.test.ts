@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { checkD2Bff, type D2BffCheckContext, type D2BffDesign, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import type { D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 
@@ -125,4 +126,97 @@ test('create still asks for the required foreign key when the command carries no
   const found = issues(context, built);
   assert.equal(found.length, 1);
   assert.match(found[0], /A\.bId/);
+});
+
+const catalogSource = '/_102034_/l4/ontology/connections/cm.defs.ts';
+const catalogText = `
+export interface CmUpdateAgentInput { agentId: string; name?: string; }
+export interface CmDiscardAgentDraftInput { draftId: string; }
+export const cm = { "operations": [
+  { "operationId": "updateAgent", "direction": "call", "inputType": "CmUpdateAgentInput", "expectsVersion": true },
+  { "operationId": "discardAgentDraft", "direction": "call", "inputType": "CmDiscardAgentDraftInput" }
+] };
+`;
+const externalEntities = {
+  Agent: { kind: 'external', source: catalogSource, record: { fields: { name: { type: 'string' } } } } as Ns5OntologyAnyEntity,
+  AgentDraft: { kind: 'external', source: catalogSource, record: { fields: {} } } as Ns5OntologyAnyEntity,
+};
+const externalSources = {
+  connections: [
+    { connectionId: 'cm', operationId: 'updateAgent', direction: 'call', usedBy: ['changeAgentBehavior.requestChange'], effect: 'update' },
+    { connectionId: 'cm', operationId: 'discardAgentDraft', direction: 'call', usedBy: ['reviewAgentDraft.discardDraft'], effect: 'update' },
+  ],
+  journeys: {
+    changeAgentBehavior: { business: { steps: [{ stepId: 'requestChange', kind: 'act', entity: 'Agent', effect: 'update' }] } },
+    reviewAgentDraft: { business: { steps: [{ stepId: 'discardDraft', kind: 'act', entity: 'AgentDraft', effect: 'transition', transitionRef: 'discardDraft' }] } },
+  },
+  catalogs: { [catalogSource]: catalogText },
+};
+
+function contextLeaf(name: string): D2BffLeaf {
+  return { name, type: 'string', origin: { kind: 'context', paths: [] } };
+}
+
+function externalDesign(commands: Array<{ id: string; when: string; writes: string; input: string[] }>): D2BffDesign {
+  const built = design(commands.map(command => ({ ...command, input: [] })));
+  for (const command of commands) {
+    const endpoint = built.endpoints.find(item => item.id === command.id);
+    if (endpoint) endpoint.input = command.input.map(contextLeaf);
+  }
+  return built;
+}
+
+function externalContext(writes: D2BffCheckContext['need']['writes'], submits: Record<string, { write: string }>): D2BffCheckContext {
+  return {
+    ...base,
+    entities: externalEntities,
+    external: externalSources,
+    page11: { desktop: page(Object.fromEntries(Object.keys(submits).map(id => [id, organism(id)]))), mobile: page({}) },
+    drafts: {
+      desktop: needs(Object.fromEntries(Object.entries(submits).map(([id, row]) => [id, { reads: [], edits: [], selects: '', submits: [{ intentId: id, write: row.write }] }]))),
+      mobile: needs({}),
+    },
+    need: { pageId: 'review', actors: [], reads: [], writes },
+  };
+}
+
+test('an external update asks for the call input and expectVersion, and a transition without the mark does not', () => {
+  const context = externalContext(
+    [{ entity: 'Agent', operation: 'update' }, { entity: 'AgentDraft', operation: 'transition', transitionRef: 'discardDraft' }],
+    { requestChange: { write: 'Agent.update' }, discardDraft: { write: 'AgentDraft.discardDraft' } },
+  );
+  const built = externalDesign([
+    { id: 'mudar', when: 'requestChange', writes: 'Agent.update', input: ['agentId', 'expectVersion'] },
+    { id: 'descartar', when: 'discardDraft', writes: 'AgentDraft.discardDraft', input: ['draftId'] },
+  ]);
+  assert.deepEqual(issues(context, built), []);
+  assert.equal(checkD2Bff(built, context).some(item => item.code === 'D2_BFF_ORIGIN_UNKNOWN'), false);
+});
+
+test('an external command missing a call input is D2_BFF_COMMAND_INPUT and does not invent Entity.id', () => {
+  const context = externalContext(
+    [{ entity: 'Agent', operation: 'update' }],
+    { requestChange: { write: 'Agent.update' } },
+  );
+  const built = externalDesign([{ id: 'mudar', when: 'requestChange', writes: 'Agent.update', input: ['expectVersion'] }]);
+  const found = issues(context, built);
+  assert.equal(found.length, 1);
+  assert.match(found[0], /agentId/);
+  assert.doesNotMatch(found[0], /Agent\.id|Agent\.version|D2_BFF_ORIGIN_UNKNOWN/);
+});
+
+test('operation semantics reads the external call instead of entity transitions', () => {
+  const bindings = resolveD2OperationBindings({
+    module: 'agents',
+    entities: { AgentDraft: externalEntities.AgentDraft },
+    access: { grants: [] },
+    rules: { rules: {} },
+    digests: [
+      { path: 'l4/agents/ontology/AgentDraft.defs.ts', sha256: 'a', bytes: 1, schemaVersion: '' },
+      { path: 'l4/agents/access.defs.ts', sha256: 'b', bytes: 1, schemaVersion: '' },
+      { path: 'l4/agents/rules.defs.ts', sha256: 'c', bytes: 1, schemaVersion: '' },
+    ],
+    external: externalSources,
+  }, 'review', [{ route: '/descartar', usecaseRef: 'discardDraft' }], [{ usecaseId: 'discardDraft', entity: 'AgentDraft', operation: 'transition' }], ['companyAdmin']);
+  assert.deepEqual(bindings[0]?.inputFields.map(field => field.path), ['draftId']);
 });
