@@ -131,12 +131,7 @@ export function resolveD2OperationBindings(
   return output;
 }
 
-/**
- * The `call` a write on an `external` entity uses: the connection line whose `usedBy` names the act
- * `<journeyId>.<stepId>`, then the required top-level fields of that operation's `inputType`.
- * Returns null when the act, the line or the catalog text is absent.
- */
-export function d2ExternalCallAsk(input: {
+export interface D2ExternalCallInput {
   entityId: string;
   operation: string;
   transitionRef?: string;
@@ -144,7 +139,22 @@ export function d2ExternalCallAsk(input: {
   connections: readonly unknown[];
   journeys: Record<string, unknown>;
   catalogText: string;
-}): D2ExternalCallAsk | null {
+}
+
+/** Why a write on an `external` entity has no connection call. Absent when the call resolves. */
+export type D2ExternalCallGap = 'act' | 'catalog' | 'call';
+
+/**
+ * The `call` a write on an `external` entity uses: the connection line whose `usedBy` names the act
+ * `<journeyId>.<stepId>`, then the required top-level fields of that operation's `inputType`.
+ * Returns null when the act, the line or the catalog text is absent; `d2ExternalCallGap` says which.
+ */
+export function d2ExternalCallAsk(input: D2ExternalCallInput): D2ExternalCallAsk | null {
+  return explainD2ExternalCall(input).ask;
+}
+
+/** `ask` when the call resolves; `gap` names the first piece that is absent (act, catalog, or call line). */
+export function explainD2ExternalCall(input: D2ExternalCallInput): { ask: D2ExternalCallAsk | null; gap: D2ExternalCallGap | null } {
   const ref = text(input.transitionRef);
   const keys: string[] = [];
   for (const [journeyId, journey] of Object.entries(input.journeys)) {
@@ -160,16 +170,17 @@ export function d2ExternalCallAsk(input: {
       if (matches && stepId) keys.push(`${journeyId}.${stepId}`);
     }
   }
-  if (!keys.length || !input.catalogText) return null;
+  if (!keys.length) return { ask: null, gap: 'act' };
+  if (!input.catalogText) return { ask: null, gap: 'catalog' };
   const line = rows(input.connections).find(row => text(row.direction) === 'call' && strings(row.usedBy).some(item => keys.includes(item)));
-  if (!line) return null;
+  if (!line) return { ask: null, gap: 'call' };
   const catalog = rec(extractExportedObject(input.catalogText));
   const operationRow = rows(catalog.operations).find(row => text(row.operationId) === text(line.operationId) && text(row.direction) === 'call');
-  if (!operationRow) return null;
+  if (!operationRow) return { ask: null, gap: 'catalog' };
   const inputType = text(operationRow.inputType);
   const node = inputType ? parseContractSource(input.catalogText).types[inputType] : undefined;
   const names = node?.kind === 'object' ? node.fields.filter(field => !field.optional).map(field => field.name) : [];
-  return { names, expectsVersion: operationRow.expectsVersion === true };
+  return { ask: { names, expectsVersion: operationRow.expectsVersion === true }, gap: null };
 }
 
 function ruleMap(value: unknown): Map<string, string> {

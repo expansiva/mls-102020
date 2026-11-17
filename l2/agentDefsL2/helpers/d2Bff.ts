@@ -6,7 +6,7 @@ import mdm from '/_102034_/l4/ontology/mdm.defs.js';
 import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs, D2Page11OrganismNeeds } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
-import { d2ExternalCallAsk, type D2ExternalCallSources } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
+import { d2ExternalCallAsk, explainD2ExternalCall, type D2ExternalCallGap, type D2ExternalCallSources } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2RequiredRelationTargets, d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
@@ -603,6 +603,13 @@ export function d2BffValueLeaves(rows: readonly D2BffLeaf[], design: Pick<D2BffD
 }
 
 const covers = (origin: string, target: string): boolean => target === origin || target.startsWith(`${origin}.`);
+const externalCallGapMessage = (entityId: string, operation: string, gap: D2ExternalCallGap): string => {
+  const write = `${entityId}.${operation}`;
+  if (gap === 'act') return `external write ${write} has no act for this entity and operation.`;
+  if (gap === 'call') return `external write ${write} has no call line whose usedBy names that act.`;
+  return `external write ${write} has no catalog for the entity source, or the catalog has no call operation for that line.`;
+};
+
 const textSource = (entity: unknown): string => {
   const source = (entity as { source?: unknown } | undefined)?.source;
   return typeof source === 'string' ? source : '';
@@ -648,7 +655,8 @@ export function d2WriteRequiredInput(write: D2NeedWrite, entities: Record<string
       connections: external?.connections ?? [], journeys: external?.journeys ?? {},
       catalogText: external?.catalogs[textSource(entity)] ?? '',
     });
-    const names = ask ? [...ask.names, ...(ask.expectsVersion ? ['expectVersion'] : [])] : [];
+    if (!ask) return edits;
+    const names = [...ask.names, ...(ask.expectsVersion ? ['expectVersion'] : [])];
     return [...new Set([...edits, ...names])];
   }
   if (write.operation === 'transition') return [...new Set([...d2TransitionPayload(entity, entityId, write.transitionRef ?? ''), ...identity])];
@@ -705,6 +713,15 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
     const carried = leaves.filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths);
     const relatedCover = (path: string): boolean => d2RequiredRelationTargets(context.entities[pageWrite.entity], pageWrite.entity).some(rel =>
       rel.via === path && carried.some(origin => entityOf(origin) === rel.to));
+    if ((context.entities[pageWrite.entity] as { kind?: string } | undefined)?.kind === 'external') {
+      const gap = explainD2ExternalCall({
+        entityId: pageWrite.entity, operation: pageWrite.operation, transitionRef: pageWrite.transitionRef,
+        entity: context.entities[pageWrite.entity],
+        connections: context.external?.connections ?? [], journeys: context.external?.journeys ?? {},
+        catalogText: context.external?.catalogs[textSource(context.entities[pageWrite.entity])] ?? '',
+      }).gap;
+      if (gap) add('D2_EXTERNAL_CALL_UNRESOLVED', `endpoints.${command.id}.writes`, externalCallGapMessage(pageWrite.entity, pageWrite.operation, gap));
+    }
     const missing = d2WriteRequiredInput(pageWrite, context.entities, edits, context.external).filter(token => token.includes('.')
       ? !carried.some(origin => covers(origin, token)) && !relatedCover(token)
       : !leaves.some(item => item.leaf.name === token));

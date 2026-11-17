@@ -193,6 +193,20 @@ test('an external update asks for the call input and expectVersion, and a transi
   assert.equal(checkD2Bff(built, context).some(item => item.code === 'D2_BFF_ORIGIN_UNKNOWN'), false);
 });
 
+test('an external write with no call line is D2_EXTERNAL_CALL_UNRESOLVED', () => {
+  const context = externalContext(
+    [{ entity: 'Agent', operation: 'update' }],
+    { requestChange: { write: 'Agent.update' } },
+  );
+  context.external = { ...externalSources, connections: externalSources.connections.filter(row => row.operationId !== 'updateAgent') };
+  const built = externalDesign([{ id: 'mudar', when: 'requestChange', writes: 'Agent.update', input: ['name'] }]);
+  const found = checkD2Bff(built, context).filter(item => item.code === 'D2_EXTERNAL_CALL_UNRESOLVED');
+  assert.equal(found.length, 1);
+  assert.match(found[0].message, /call line/);
+  assert.match(found[0].message, /usedBy/);
+  assert.equal(checkD2Bff(built, context).some(item => item.code === 'D2_BFF_ORIGIN_UNKNOWN'), false);
+});
+
 test('an external command missing a call input is D2_BFF_COMMAND_INPUT and does not invent Entity.id', () => {
   const context = externalContext(
     [{ entity: 'Agent', operation: 'update' }],
