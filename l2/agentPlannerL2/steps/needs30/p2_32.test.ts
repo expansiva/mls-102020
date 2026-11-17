@@ -102,3 +102,22 @@ void test('p2_32: branchingTransitions keeps its contracts30 result after the mo
   const hiring = load('hiring');
   assert.deepEqual(branchingTransitions('Application', hiring.sources).map(item => item.transitionId).sort(), ['moveToHired', 'moveToInterview', 'moveToOffer', 'rejectApplication']);
 });
+
+void test('l4_p4_108: a decide step on an external entity writes nothing and raises no issue; a lifecycle entity without a group still does', () => {
+  const expense = load('expense');
+  const asEntity = (kind: string, withTransitions: boolean): P2L4Sources => ({
+    ...expense.sources,
+    entities: expense.sources.entities.map(entity => entity.entityId === 'Despesa'
+      ? { ...entity, kind, transitions: withTransitions ? entity.transitions : [] }
+      : entity),
+  });
+  // external: no transitions, no throw, no write on Despesa from the decide step
+  const external = build(expense, asEntity('external', false));
+  const decided = external.pages.find(item => item.pageId === 'despesas_da_equipe');
+  assert.ok(decided);
+  assert.deepEqual(decided.writes.filter(item => item.entity === 'Despesa' && item.transitionRef), []);
+  // the same entity as a table without a group keeps the error
+  assert.throws(() => build(expense, asEntity('entity', false)), /P2_NEEDS_DECIDE_GROUP_EMPTY/);
+  // and with its lifecycle it is the p2_32 behaviour
+  assert.deepEqual(writesOf(build(expense, asEntity('entity', true)).pages, 'despesas_da_equipe'), ['Despesa.transition:aprovarDespesa', 'Despesa.transition:rejeitarDespesa']);
+});

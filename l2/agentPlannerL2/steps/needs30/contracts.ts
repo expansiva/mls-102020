@@ -242,6 +242,8 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): PoolNeedsPage[] {
  */
 function decideTransitions(journey: P2JourneyView, stepIndex: number, sources: P2L4Sources, issues: string[]): string[] {
   const step = journey.steps[stepIndex];
+  // l4_p4_108: a record that lives in another system has no lifecycle to branch; what moves it is the call of each branch's act.
+  if (sources.entities.find(item => item.entityId === step.entity)?.kind === 'external') return [];
   const groups = transitionGroups(step.entity, sources);
   const written = new Set(journey.steps.filter(item => item.kind === 'act' && item.entity === step.entity && item.transitionRef).map(item => item.transitionRef!));
   const next = journey.steps.slice(stepIndex + 1).find(item => item.kind === 'act' && item.entity === step.entity && item.transitionRef);
