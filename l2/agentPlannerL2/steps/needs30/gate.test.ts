@@ -161,3 +161,24 @@ void test('gate is structural: unknown entity, page, transition, enums', () => {
   assert.equal(adulteratedGrantGate.ok, false);
   assert.ok(adulteratedGrantGate.issues.some(issue => issue.code === 'P2_NEEDS_ACCESS_GRANT_INVALID'));
 });
+
+void test('l4_p4_108: a transition write on an external entity is not checked against a lifecycle it does not have', () => {
+  const { file, menu, sources, grants } = loadOk();
+  const write: PoolNeedsFile = structuredClone(file);
+  write.pages[0].writes.push({
+    entity: 'Matricula', operation: 'transition', transitionRef: 'settle', from: ['journey:x/y'],
+  });
+  // with a lifecycle: the unknown transition is still charged (the p2_30 behaviour)
+  assert.ok(validateP2Needs(write, menu, sources, grants).issues.some(issue => issue.code === 'P2_NEEDS_TRANSITION_UNKNOWN'));
+  // as an external record: the name of the action is checked elsewhere (finalize80 I1, a `call` row naming the step)
+  const asExternal: P2L4Sources = {
+    ...sources,
+    entities: sources.entities.map(entity => entity.entityId === 'Matricula' ? { ...entity, kind: 'external', transitions: [] } : entity),
+  };
+  const gate = validateP2Needs(write, menu, asExternal, grants);
+  assert.equal(gate.issues.some(issue => issue.code === 'P2_NEEDS_TRANSITION_UNKNOWN'), false);
+  // a transition write without any transitionRef is still an error on an external record
+  const noRef: PoolNeedsFile = structuredClone(file);
+  noRef.pages[0].writes.push({ entity: 'Matricula', operation: 'transition', from: ['journey:x/y'] } as PoolNeedsFile['pages'][number]['writes'][number]);
+  assert.ok(validateP2Needs(noRef, menu, asExternal, grants).issues.some(issue => issue.code === 'P2_NEEDS_TRANSITION_UNKNOWN'));
+});
