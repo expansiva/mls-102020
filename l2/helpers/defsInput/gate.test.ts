@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import { buildD2InputSnapshot } from '/_102020_/l2/helpers/defsInput/gate.js';
 import type { D2InputArtifacts } from '/_102020_/l2/helpers/defsInput/contracts.js';
+import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXPENSE = path.join(HERE, '../../agentPlannerL2/steps/needs30/fixtures/p2_32/expense');
@@ -59,3 +60,60 @@ void test('recorded integration v2 without connections is read; an unknown versi
     ['l4/integration.defs.ts'],
   );
 });
+
+const OUTSIDE_SOURCE = '/_102020_/l2/helpers/defsInput/externalCallFixture.defs.ts';
+
+void test('the gate reads an external call for input fields and leaves an entity binding unchanged', async () => {
+  const artifacts = artifactsOf(EXPENSE);
+  const module = (artifacts.module as { moduleName: string }).moduleName;
+  (artifacts.ontologyIndex as { entities: Array<Record<string, unknown>> }).entities.push({ entityId: 'OutsideRecord', kind: 'external' });
+  artifacts.entities.OutsideRecord = {
+    schemaVersion: '2026-09-17-ns5-ontology-v3.1', moduleName: module, entityId: 'OutsideRecord', kind: 'external', source: OUTSIDE_SOURCE,
+    record: { fields: { name: { type: 'string', required: true } } },
+  };
+  const journey = artifacts.journeys.registrarEnviarDespesa as { business: { steps: Array<Record<string, unknown>> } };
+  journey.business.steps.push(
+    { stepId: 'saveOutside', kind: 'act', entity: 'OutsideRecord', effect: 'update' },
+    { stepId: 'dropOutside', kind: 'act', entity: 'OutsideRecord', effect: 'transition', transitionRef: 'dropOutside' },
+  );
+  (artifacts.integration as { connections: unknown[] }).connections = [
+    { connectionId: 'outside', operationId: 'saveOutside', direction: 'call', usedBy: ['registrarEnviarDespesa.saveOutside'] },
+    { connectionId: 'outside', operationId: 'dropOutside', direction: 'call', usedBy: ['registrarEnviarDespesa.dropOutside'] },
+  ];
+  const backend = artifacts.backend as { endpoints: Array<Record<string, unknown>>; usecases: Array<Record<string, unknown>> };
+  const effort = artifacts.effort as { totals: { endpoints: { toCreate: number }; usecases: { toCreate: number } }; screens: Array<{ pageId: string; endpoints: string[] }>; endpoints: Array<Record<string, unknown>>; usecases: Array<Record<string, unknown>> };
+  for (const [usecaseId, operation] of [['saveOutside', 'update'], ['dropOutside', 'transition']] as const) {
+    const route = `reembolsoDespesas.minhas_despesas.cmd${usecaseId}`;
+    backend.endpoints.push({ route, page: 'minhas_despesas', kind: 'cmd', usecaseRef: usecaseId, status: 'toCreate', tableRefs: [], noTable: 'ok' });
+    backend.usecases.push({ usecaseId, entity: 'OutsideRecord', operation, ports: [], status: 'toCreate', existing: '', reason: '', tableRefs: [], noTable: 'ok' });
+    effort.endpoints.push({ route, page: 'minhas_despesas', kind: 'cmd', usecaseRef: usecaseId, status: 'toCreate' });
+    effort.usecases.push({ usecaseId, entity: 'OutsideRecord', operation, status: 'toCreate', existing: '' });
+    effort.screens.find(screen => screen.pageId === 'minhas_despesas')!.endpoints.push(route);
+  }
+  effort.totals.endpoints.toCreate += 2;
+  effort.totals.usecases.toCreate += 2;
+  const digest = (rel: string) => ({ path: `l4/${module}/${rel}`, sha256: 'a', bytes: 1, schemaVersion: '' });
+  artifacts.sources = [
+    digest('module.defs.ts'), digest('journeys/index.defs.ts'), digest('ontology/index.defs.ts'),
+    digest('rules.defs.ts'), digest('workflows.defs.ts'), digest('access.defs.ts'), digest('integration.defs.ts'),
+    ...Object.keys(artifacts.journeys).map(id => digest(`journeys/${id}.defs.ts`)),
+    ...Object.keys(artifacts.entities).map(id => digest(`ontology/${id}.defs.ts`)),
+  ];
+
+  const snapshot = await buildD2InputSnapshot({ project: 102047, module }, artifacts);
+  const page = snapshot.selection.pages.find(item => item.pageId === 'minhas_despesas')!;
+  const fields = (operation: string) => page.operationBindings?.find(item => item.entityId === 'OutsideRecord' && item.operation === operation)?.inputFields.map(field => field.path);
+  assert.deepEqual(fields('update'), ['recordId', 'expectVersion']);
+  assert.deepEqual(fields('transition'), ['recordId']);
+
+  const entityUsecases = page.usecases.filter(usecase => textRef(usecase.entity) === 'Despesa');
+  const despesaIds = new Set(entityUsecases.map(usecase => textRef(usecase.usecaseId)));
+  const entityEndpoints = page.endpoints.filter(endpoint => despesaIds.has(textRef(endpoint.usecaseRef)));
+  const direct = resolveD2OperationBindings({
+    module, entities: artifacts.entities, access: artifacts.access, rules: artifacts.rules, digests: artifacts.sources,
+  }, page.pageId, entityEndpoints, entityUsecases, page.actors);
+  const fromGate = (page.operationBindings ?? []).filter(item => item.entityId === 'Despesa');
+  assert.deepEqual(fromGate.map(item => item.inputFields), direct.map(item => item.inputFields));
+});
+
+function textRef(value: unknown): string { return typeof value === 'string' ? value : ''; }

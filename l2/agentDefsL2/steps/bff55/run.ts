@@ -1,8 +1,5 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/bff55/run.ts" enhancement="_blank"/>
 
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { displayPath, readJson, readSourceText, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
@@ -15,6 +12,7 @@ import {
   buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN, D2_BFF_UPDATE_MODES,
   type D2BffDesign, type D2BffIssue, type D2Grant, type D2Menu, type D2NeedPage,
 } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { externalCatalogTexts } from '/_102020_/l2/helpers/defsInput/externalCatalog.js';
 import type { D2ExternalCallSources } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import type { D2PageRefusal } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
 import { d2SharedDeriveIssues, deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
@@ -301,18 +299,3 @@ export function d2BffContextFrom(input: {
   };
 }
 
-const MLS_BASE = fileURLToPath(new URL('../../../../../', import.meta.url));
-
-/** Catalog files named by `external` entities (`/_102034_/l4/...`). A missing file leaves that source out. */
-async function externalCatalogTexts(entities: Record<string, unknown>): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  for (const entity of Object.values(entities)) {
-    const row = entity as { kind?: unknown; source?: unknown } | null;
-    const source = row?.kind === 'external' && typeof row.source === 'string' ? row.source : '';
-    const match = /^\/_(\d+)_\/(.+)$/.exec(source);
-    if (!match || out[source]) continue;
-    try { out[source] = await readFile(path.join(MLS_BASE, `mls-${match[1]}`, match[2]), 'utf8'); }
-    catch { /* the check then asks only for the page edits */ }
-  }
-  return out;
-}

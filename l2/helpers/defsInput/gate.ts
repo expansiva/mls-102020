@@ -1,5 +1,6 @@
 /// <mls fileReference="_102020_/l2/helpers/defsInput/gate.ts" enhancement="_blank"/>
 
+import { externalCatalogTexts } from '/_102020_/l2/helpers/defsInput/externalCatalog.js';
 import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import {
   D2_INPUT_VERSION,
@@ -144,6 +145,8 @@ export async function buildD2InputSnapshot(
 
   const pages: D2SelectedPage[] = [];
   const semanticErrors: Error[] = [];
+  let externalCatalogs: Record<string, string> | undefined;
+  const catalogsForExternal = async () => (externalCatalogs ??= await externalCatalogTexts(artifacts.entities));
   for (const page of menuScan.pages.values()) {
     const pageId = page.pageId;
     const need = needRows.get(pageId) || {};
@@ -153,12 +156,15 @@ export async function buildD2InputSnapshot(
     const endpointRows = [...backendEndpoints.values()].filter(endpoint => text(endpoint.page) === pageId)
       .sort((left, right) => text(left.route).localeCompare(text(right.route)));
     const usecaseIds = new Set(endpointRows.map(endpoint => text(endpoint.usecaseRef)).filter(Boolean));
+    const usecaseRows = [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0);
+    const pageHasExternal = usecaseRows.some(row => text(rec(artifacts.entities[text(row.entity)]).kind) === 'external');
     const destinations = destinationsFor(identity, pageId);
     let operationBindings: D2SelectedPage['operationBindings'] = [];
     try {
       operationBindings = resolveD2OperationBindings({
         module: identity.module, entities: artifacts.entities, access, rules, digests: artifacts.sources,
-      }, pageId, endpointRows, [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0),
+        ...(pageHasExternal ? { external: { connections: rows(integration.connections), journeys: artifacts.journeys, catalogs: await catalogsForExternal() } } : {}),
+      }, pageId, endpointRows, usecaseRows,
       unique([...strings(need.actors), ...(authority.actorsByPage.get(pageId) || [])]));
     } catch (error) { semanticErrors.push(error instanceof Error ? error : new Error(String(error))); }
     pages.push({
@@ -173,7 +179,7 @@ export async function buildD2InputSnapshot(
       reads: arr(need.reads),
       writes: arr(need.writes),
       endpoints: endpointRows,
-      usecases: [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0),
+      usecases: usecaseRows,
       operationBindings,
       destinations,
     });
