@@ -114,7 +114,6 @@ const message_en = {
   home: 'Page of /{module}',
   homeHint: 'The page that opens at the module address. Reordering the menu does not change it.',
   landings: 'Start page per role',
-  landingsHint: 'Kept in the config, but the app does not use it yet.',
   noLanding: '(none)',
   preview: 'How a role sees the menu',
   start: 'start',
@@ -196,7 +195,6 @@ const messages: Record<string, MessageType> = {
     home: 'Página de /{module}',
     homeHint: 'A página que abre no endereço do módulo. Reordenar o menu não a altera.',
     landings: 'Página inicial por papel',
-    landingsHint: 'Fica gravada no config, mas o app ainda não a usa.',
     noLanding: '(nenhuma)',
     preview: 'Como um papel vê o menu',
     start: 'inicial',
@@ -666,7 +664,6 @@ export class PluginMenuEditor extends PluginBaseModule {
       </div>
       <div class=${CARD}>
         <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.landings}</span>
-        <span class="text-[11px] text-amber-700 dark:text-amber-300">${this.msg.landingsHint}</span>
         ${view.actors.map(actor => html`
           <label class="flex items-center gap-2 text-sm">
             <span class="w-40 shrink-0 truncate">${actor}</span>
