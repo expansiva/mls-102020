@@ -74,6 +74,21 @@ import {
 } from '/_102020_/l2/aura/molecules/shared/configuration.js';
 import { getClassPickerMode, onDockedClassPickerChange, type IClassPickerSink } from '/_102020_/l2/aura/studio/classPickerDock.js';
 import {
+  buildPageTree,
+  findNode,
+  treeDropRefusal,
+  type IPageTree,
+  type IPageTreeAccess,
+} from '/_102020_/l2/aura/studio/pageTreeCore.js';
+import {
+  onPageTreeDockChange,
+  TREE_HOVER,
+  TREE_MOVE,
+  TREE_SELECT,
+  type IPageTreeSink,
+  type ITreeMoveDetail,
+} from '/_102020_/l2/aura/studio/pageTreeDock.js';
+import {
   ADOPT_NO_TARGET,
   composeAdopt,
   planAdopt,
@@ -194,6 +209,20 @@ const CONTROL_CLASS = 'se-control';
 
 /** How many frames to wait for the rebuilt page to render before giving the selection up. */
 const RESELECT_ATTEMPTS = 5;
+
+/**
+ * How long the page must be quiet before the tree is rebuilt.
+ *
+ * A remount, a data load or a preview arrives as a burst of mutations; one rebuild per burst is
+ * enough, and the tree lagging a fifth of a second behind the page is not something a person sees.
+ */
+const TREE_DEBOUNCE_MS = 200;
+
+/** Where an element goes next to another one on screen. */
+interface IDomPlace {
+  pivot: HTMLElement;
+  side: 'before' | 'after';
+}
 
 /**
  * Attributes that hold TEXT THE USER READS.
@@ -491,6 +520,13 @@ type EditStep =
     to: { start: number; end: number };
     what: string;
     el: WeakRef<HTMLElement>;
+    /**
+     * Where the element sat ON SCREEN before the move, and where it went: the neighbour it is put
+     * back next to. One neighbour over is not enough once a move can cross several siblings (the
+     * page tree); without a pivot the undo falls back to the one-place step.
+     */
+    back?: { pivot: WeakRef<HTMLElement>; side: 'before' | 'after' };
+    forth?: { pivot: WeakRef<HTMLElement>; side: 'before' | 'after' };
   }
   | {
     /**
@@ -731,6 +767,24 @@ export class StudioEditor {
    */
   private dockedPanelEl: IClassPickerSink | null = null;
   private unsubDock: (() => void) | null = null;
+  /** The page tree panel (pageTreeDock), when one is on screen. */
+  private treePanelEl: IPageTreeSink | null = null;
+  private unsubTreeDock: (() => void) | null = null;
+  /** The tree last published, and the element behind each of its ids (`handles[id]`). */
+  private tree: IPageTree | null = null;
+  private treeHandles: HTMLElement[] = [];
+  private treeTimer: number | null = null;
+  /** Watches the page for anything that changes its structure, while a tree is being shown. */
+  private treeObserver: MutationObserver | null = null;
+  /** A slot picked in the tree: the picker opens on it once the molecule's slots are resolved. */
+  private pendingSlotFocus: HTMLElement | null = null;
+  /**
+   * The slot the tree shows as selected while its molecule is the selection. `next` is set by the
+   * tree right before it selects the molecule; `selectElement` keeps it only for that molecule, so any
+   * other way in (a click, the breadcrumb) drops it.
+   */
+  private treeSlot: { el: HTMLElement; owner: HTMLElement } | null = null;
+  private nextTreeSlot: { el: HTMLElement; owner: HTMLElement } | null = null;
   private classPanel: IClassPanelState | null = null;
   /** The Molecules tab's answer; null once it was asked and nothing candidates. */
   private adopt: IAdoptState | null = null;
@@ -800,6 +854,7 @@ export class StudioEditor {
     this.createStatusEl();
     this.createClassPanel();
     this.unsubDock = onDockedClassPickerChange((panel) => this.setDockedPanel(panel));
+    this.unsubTreeDock = onPageTreeDockChange((panel) => this.setTreePanel(panel));
     // The target is resolved when the editor is armed (setMode), not here: attaching while `off`
     // must not build a Monaco model nobody asked for.
     this.watchHost(host);
@@ -823,6 +878,8 @@ export class StudioEditor {
       this.hideClassPanel();
       this.publishSelection(null);
       void this.refreshTarget();
+      // Another page: the old tree's handles point at elements that are gone.
+      this.scheduleTree();
     });
     this.hostObserver.observe(host, { childList: true });
 
@@ -892,6 +949,10 @@ export class StudioEditor {
       this.dockedPanelEl.target = undefined;
       this.dockedPanelEl = null;
     }
+    this.unsubTreeDock?.();
+    this.unsubTreeDock = null;
+    // Like the docked picker, the tree panel belongs to the side panel: emptied, not removed.
+    this.setTreePanel(null);
     this.classPanelEl?.remove();
     this.classPanelEl = null;
     this.classPanel = null;
@@ -938,12 +999,15 @@ export class StudioEditor {
       this.hideClassPanel();
       this.selectedEl = null;
       this.lastHoveredEl = null;
+      // Off means no page to show: the tree empties and stops watching.
+      this.syncTreeWatch();
       return;
     }
 
     if (wasOff) {
       this.addListeners();
       void this.refreshTarget();
+      this.syncTreeWatch();
     }
     this.applyCursor();
   }
@@ -1330,6 +1394,10 @@ export class StudioEditor {
   private selectElement(el: HTMLElement): void {
     // A new selection means the user moved on from whatever the last message said.
     this.statusText = '';
+    // Only the tree, selecting a slot's molecule, hands a slot over; every other way in drops it.
+    this.treeSlot = this.nextTreeSlot?.owner === el ? this.nextTreeSlot : null;
+    this.nextTreeSlot = null;
+    if (!this.treeSlot) this.pendingSlotFocus = null;
     this.selectedEl = el;
     // Forget the hover cache: the mousemove handler skips redraws while the pointer stays on the
     // same element, so without this the hover outline would not come back over the element just
@@ -2935,6 +3003,15 @@ export class StudioEditor {
       removeReason: slice.remove,
       duplicateNotes: slice.notes,
     };
+    // A slot picked in the tree, asked for ONCE: consumed as soon as the molecule's slots carry it
+    // (they arrive after the first feed), so a later write does not drag the picker back to it.
+    if (this.pendingSlotFocus && this.treeSlot?.owner === state.el) {
+      const focus = state.slots.findIndex((slot) => slot.el === this.pendingSlotFocus);
+      if (focus >= 0) {
+        target.focusSlot = focus;
+        this.pendingSlotFocus = null;
+      }
+    }
     panel.builtClasses = this.builtClasses;
     panel.dsRoles = this.dsRoles;
     panel.jitLive = isStudioTailwindLive();
@@ -3251,6 +3328,8 @@ export class StudioEditor {
    * write: the literal is part of the projection, and an edit changes it.
    */
   private publishSelection(el: HTMLElement | null): void {
+    // The tree follows the selection whichever way it came (click, breadcrumb, Esc, the tree itself).
+    this.syncTreeSelection();
     if (!el) {
       setEditSelection(null);
       this.publishHistory();
@@ -3286,6 +3365,9 @@ export class StudioEditor {
   /** A file now has a local edit: "there is something to save", never "it is saved". */
   private publishEdited(file: IStudioEditTarget): void {
     addEditDirty(`${file.project}:${file.folder}/${file.shortName}`);
+    // A write can change the structure (move, duplicate, remove, adopt); the observer would catch the
+    // DOM side, but a write the screen does not show yet still changes what the tree must say.
+    this.scheduleTree();
     this.publishSelection(this.selectedEl);
   }
 
@@ -3642,6 +3724,280 @@ export class StudioEditor {
     this.publishEdited(file);
   }
 
+  // --- The page tree (pageTreePanel, the Structure section of the Visual tab) ---
+  //
+  // The tree is built from the SAME ownership question the pointer asks (pageTreeCore), and every
+  // selection it makes goes through `selectElement` — the one path. What it adds is a way in that the
+  // pointer does not have: elements too small, covered or hidden to click, and a drop next to any
+  // sibling instead of only the neighbour.
+
+  /** A tree panel arrived or left (see pageTreeDock). */
+  private setTreePanel(panel: IPageTreeSink | null): void {
+    if (panel === this.treePanelEl) return;
+    if (this.treePanelEl) {
+      this.wireTreePanel(this.treePanelEl, false);
+      this.treePanelEl.tree = null;
+      this.treePanelEl.selectedId = null;
+    }
+    this.treePanelEl = panel;
+    if (panel) this.wireTreePanel(panel, true);
+    this.syncTreeWatch();
+  }
+
+  private wireTreePanel(panel: HTMLElement, on: boolean): void {
+    const method = (on ? panel.addEventListener : panel.removeEventListener).bind(panel) as
+      (type: string, listener: EventListener) => void;
+    method(TREE_SELECT, this.onTreeSelect as EventListener);
+    method(TREE_HOVER, this.onTreeHover as EventListener);
+    method(TREE_MOVE, this.onTreeMove as EventListener);
+  }
+
+  /**
+   * Watches the page only while it is worth it: armed AND a tree on screen. Nothing else pays for
+   * the observer or the rebuilds.
+   */
+  private syncTreeWatch(): void {
+    const want = this.mode !== 'off' && this.treePanelEl !== null && this.host !== null;
+    if (want && !this.treeObserver && this.host) {
+      // The structure changes on a remount, a data load, a scene switch (style/hidden) and a write.
+      this.treeObserver = new MutationObserver(() => this.scheduleTree());
+      this.treeObserver.observe(this.host, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'hidden', 'style', 'data-organism-id'],
+      });
+    }
+    if (!want) {
+      this.treeObserver?.disconnect();
+      this.treeObserver = null;
+      if (this.treeTimer !== null) {
+        clearTimeout(this.treeTimer);
+        this.treeTimer = null;
+      }
+      this.tree = null;
+      this.treeHandles = [];
+      if (this.treePanelEl) {
+        this.treePanelEl.tree = null;
+        this.treePanelEl.selectedId = null;
+      }
+      return;
+    }
+    this.scheduleTree();
+  }
+
+  private scheduleTree(): void {
+    if (!this.treePanelEl || this.mode === 'off') return;
+    if (this.treeTimer !== null) clearTimeout(this.treeTimer);
+    this.treeTimer = window.setTimeout(() => {
+      this.treeTimer = null;
+      this.publishTree();
+    }, TREE_DEBOUNCE_MS);
+  }
+
+  /** Rebuilds the tree of the page on screen and hands it to the panel, as data. */
+  private publishTree(): void {
+    const panel = this.treePanelEl;
+    if (!panel) return;
+    const host = this.host;
+    const page = host ? findPageElement(host) : null;
+    if (!host || !page || this.mode === 'off') {
+      this.tree = null;
+      this.treeHandles = [];
+      panel.tree = null;
+      panel.selectedId = null;
+      return;
+    }
+    // Our own chrome and a text edit in flight are in the DOM and in no source.
+    const nodes = Array.from(host.querySelectorAll<HTMLElement>('*'))
+      .filter((el) => !el.closest(`.${CONTROL_CLASS}`) && el !== this.editSpan);
+    const { tree, handles } = buildPageTree<HTMLElement>(page as HTMLElement, nodes, this.treeAccess(host));
+    this.tree = tree;
+    this.treeHandles = handles;
+    panel.tree = tree;
+    this.syncTreeSelection();
+  }
+
+  /** The DOM side of pageTreeCore — the same ownership accessors as the pointer (`ownerTree`). */
+  private treeAccess(host: HTMLElement): IPageTreeAccess<HTMLElement> {
+    const owner = this.ownerTree();
+    return {
+      chain: (el) => ownerChain(el, host, owner),
+      tag: (el) => el.tagName.toLowerCase(),
+      slotName: (el) => this.slotNameOf(el),
+      isMolecule: (el) => owner.component(el) !== null,
+      attr: (el, name) => el.getAttribute(name),
+      attributeNames: (el) => el.getAttributeNames(),
+      ownText: (el) => Array.from(el.childNodes)
+        .filter((child) => child.nodeType === Node.TEXT_NODE)
+        .map((child) => child.textContent ?? '')
+        .join(' '),
+      // No box, and not because it is inside a slot's own hidden source (that is the molecule design).
+      hidden: (el) => el.getClientRects().length === 0 && !this.insideSlotSource(el),
+    };
+  }
+
+  /** The slot name as the molecule declares it (`Label`), or null when `el` is not a slot element. */
+  private slotNameOf(el: HTMLElement): string | null {
+    if (!this.isSlotSource(el)) return null;
+    for (let node = el.parentElement; node && node !== this.host; node = node.parentElement) {
+      const names = (node as unknown as { slotTags?: string[] }).slotTags;
+      if (Array.isArray(names) && names.length) {
+        return names.find((tag) => String(tag).toUpperCase() === el.tagName) ?? el.tagName.toLowerCase();
+      }
+    }
+    return el.tagName.toLowerCase();
+  }
+
+  private insideSlotSource(el: HTMLElement): boolean {
+    for (let node = el.parentElement; node && node !== this.host; node = node.parentElement) {
+      if (this.isSlotSource(node)) return true;
+    }
+    return false;
+  }
+
+  /** The tree id of an element: the item and not its group, when it is one (items come after). */
+  private treeIdOf(el: HTMLElement | null): number | null {
+    if (!el || !this.tree) return null;
+    const id = this.treeHandles.lastIndexOf(el);
+    return id >= 0 ? id : null;
+  }
+
+  /** Tells the panel which node is selected: the slot picked in the tree, or the element itself. */
+  private syncTreeSelection(): void {
+    const panel = this.treePanelEl;
+    if (!panel) return;
+    const slot = this.treeSlot && this.treeSlot.owner === this.selectedEl ? this.treeSlot.el : null;
+    panel.selectedId = this.treeIdOf(slot ?? this.selectedEl);
+  }
+
+  /** The molecule a slot node belongs to: the nearest molecule above it in the tree. */
+  private treeMoleculeOf(id: number): HTMLElement | null {
+    const tree = this.tree;
+    if (!tree) return null;
+    for (let at = tree.parentOf[id]; at >= 0; at = tree.parentOf[at]) {
+      if (findNode(tree, at)?.kind === 'molecule') return this.treeHandles[at] ?? null;
+    }
+    return null;
+  }
+
+  /** A click in the tree: the node it names becomes the selection, by the same path as a click. */
+  private onTreeSelect = (e: CustomEvent<number>): void => {
+    if (this.mode === 'off' || !this.tree) return;
+    const id = e.detail;
+    const el = this.treeHandles[id];
+    if (!el) return;
+    if (!el.isConnected) {
+      this.setStatus(t('status.gone'));
+      this.scheduleTree();
+      return;
+    }
+    // A slot has no box to select: the molecule is selected, and the picker opens on the slot.
+    if (findNode(this.tree, id)?.kind === 'slot') {
+      const molecule = this.treeMoleculeOf(id);
+      if (!molecule?.isConnected) return;
+      this.nextTreeSlot = { el, owner: molecule };
+      this.pendingSlotFocus = el;
+      this.selectElement(molecule);
+      return;
+    }
+    this.selectElement(el);
+    // Picked by name, maybe far from the viewport: bring it into view (only if it has a box).
+    if (el.getClientRects().length > 0) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
+
+  /** Hovering a node marks it on screen; a group marks the area of all its items. */
+  private onTreeHover = (e: CustomEvent<number | null>): void => {
+    if (this.mode === 'off') return;
+    const id = e.detail;
+    const node = id === null || !this.tree ? null : findNode(this.tree, id);
+    let els: (HTMLElement | null)[] = [];
+    if (node && id !== null) {
+      if (node.repeated) els = node.children.map((item) => this.treeHandles[item.id] ?? null);
+      else if (node.kind === 'slot') els = [this.treeMoleculeOf(id)];
+      else els = [this.treeHandles[id] ?? null];
+    }
+    const boxes = els
+      .filter((el): el is HTMLElement => Boolean(el?.isConnected))
+      .map((el) => el.getBoundingClientRect())
+      .filter((box) => box.width > 0 || box.height > 0);
+    // The pointer's own hover must redraw on its next move, whatever this drew.
+    this.lastHoveredEl = null;
+    if (!boxes.length) {
+      this.drawSelection();
+      return;
+    }
+    const top = Math.min(...boxes.map((box) => box.top));
+    const left = Math.min(...boxes.map((box) => box.left));
+    const bottom = Math.max(...boxes.map((box) => box.bottom));
+    const right = Math.max(...boxes.map((box) => box.right));
+    this.drawHoverRect({ top, left, width: right - left, height: bottom - top });
+  };
+
+  private onTreeMove = (e: CustomEvent<ITreeMoveDetail>): void => {
+    void this.moveInTree(e.detail);
+  };
+
+  /**
+   * A drop in the tree: the element goes before or after another sibling, at any distance.
+   *
+   * One write and one undo step, through `writeMove` like the arrows. The tree's own rule
+   * (`treeDropRefusal`) answers first, while dragging; the source planner has the last word.
+   */
+  public async moveInTree(detail: ITreeMoveDetail): Promise<void> {
+    if (this.mode === 'off' || !this.tree) return;
+    const tree = this.tree;
+    const refusal = treeDropRefusal(tree, detail.moved, detail.target);
+    if (refusal) {
+      this.setStatus(t(`tree.drop.${refusal}`));
+      return;
+    }
+    const el = this.treeHandles[detail.moved];
+    const pivot = this.treeHandles[detail.target];
+    if (!el?.isConnected || !pivot?.isConnected) {
+      this.setStatus(t('status.gone'));
+      this.scheduleTree();
+      return;
+    }
+
+    // How many places, among the tree siblings. Zero is a drop where it already is.
+    const siblings = findNode(tree, tree.parentOf[detail.moved])?.children.map((kid) => kid.id) ?? [];
+    const from = siblings.indexOf(detail.moved);
+    let to = siblings.indexOf(detail.target) + (detail.side === 'after' ? 1 : 0);
+    if (to > from) to -= 1;
+    const count = Math.abs(to - from);
+    if (!count) {
+      this.setStatus(t('tree.drop.self'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    const resolved = this.resolveMoveTo(el, pivot, detail.side);
+    if (!resolved.ok) {
+      this.setStatus(tr(resolved.reason));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      await this.writeMove({
+        file: resolved.file,
+        plan: resolved.plan,
+        el,
+        what: t('status.treeMoved', { tag: el.tagName.toLowerCase(), count }),
+        warning: resolved.renders > 1 ? repeatedRenderWarning(resolved.renders) : undefined,
+        record: true,
+        place: { pivot, side: detail.side },
+      });
+    } finally {
+      this.applying = false;
+    }
+    this.selectElement(el);
+  }
+
   // --- Moving an element among its siblings ---
 
   /**
@@ -3677,9 +4033,20 @@ export class StudioEditor {
   ) {
     const neighbour = this.domSibling(el, direction);
     if (!neighbour) return { ok: false, reason: MOVE_NO_TARGET };
+    return this.resolveMoveTo(el, neighbour, direction === 'up' ? 'before' : 'after');
+  }
 
+  /**
+   * The move next to ANY sibling, at any distance — the arrows ask for the neighbour, the page tree
+   * for whichever sibling the drop named. The same planner answers both, so the tree cannot write a
+   * move the source rule would refuse.
+   */
+  private resolveMoveTo(el: HTMLElement, sibling: HTMLElement, side: 'before' | 'after'): (
+    { ok: true; file: IStudioEditTarget; plan: IMovePlan; renders: number }
+    | { ok: false; reason: IMessageRef }
+  ) {
     const movedPath = this.domPathOf(el);
-    const targetPath = this.domPathOf(neighbour);
+    const targetPath = this.domPathOf(sibling);
     if (!movedPath.length || !targetPath.length) return { ok: false, reason: NOT_LOCATED };
 
     for (const candidate of this.candidates ?? (this.target ? [this.target] : [])) {
@@ -3693,7 +4060,7 @@ export class StudioEditor {
         source, tree,
         tree.elements.indexOf(moved.element),
         tree.elements.indexOf(target.element),
-        direction === 'up' ? 'before' : 'after',
+        side,
       );
       if (!plan.ok) return { ok: false, reason: plan.reason };
       return { ok: true, file: candidate, plan, renders: Math.max(moved.renders, target.renders) };
@@ -3772,6 +4139,8 @@ export class StudioEditor {
     what: string;
     warning?: IMessageRef;
     record: boolean;
+    /** Where the element lands on screen; absent = one neighbour over, the way the slice went. */
+    place?: IDomPlace | null;
   }): Promise<boolean> {
     const { file, plan, what } = write;
     const source = file.model.model.getValue();
@@ -3782,17 +4151,19 @@ export class StudioEditor {
     }
 
     const el = write.el?.isConnected ? write.el : null;
+    // Where it was, captured before it moves: the undo puts it back next to this.
+    const back = el ? this.domPlaceOf(el) : null;
+    let forth: IDomPlace | null = null;
     if (el) {
-      // The screen follows the source: the element goes the way the slice went. The neighbour comes
-      // from `domSibling` and not from `previousElementSibling`, so the overlay and the panel — which
-      // are siblings in the DOM and in no source — are never used as the pivot.
+      // The screen follows the source. The pivot comes from the gesture (a sibling named in the tree,
+      // or the one an undo recorded) or from `domSibling` — never from `previousElementSibling`, so
+      // the overlay and the panel, which are siblings in the DOM and in no source, are never used.
       const parent = el.parentElement;
-      const insertingBefore = plan.insertAt <= plan.slice.start;
-      const neighbour = this.domSibling(el, insertingBefore ? 'up' : 'down');
-      if (parent && neighbour) {
-        if (insertingBefore) parent.insertBefore(el, neighbour);
-        else parent.insertBefore(el, neighbour.nextSibling);
-      }
+      const named = write.place;
+      forth = named && named.pivot.isConnected && named.pivot !== el && named.pivot.parentElement === parent
+        ? named
+        : this.neighbourPlace(el, plan);
+      if (parent && forth) parent.insertBefore(el, forth.side === 'before' ? forth.pivot : forth.pivot.nextSibling);
     }
 
     await this.commitSource(file, result.source, what, write.warning);
@@ -3808,9 +4179,26 @@ export class StudioEditor {
         to: result.moved,
         what,
         el: new WeakRef(write.el),
+        back: back ? { pivot: new WeakRef(back.pivot), side: back.side } : undefined,
+        forth: forth ? { pivot: new WeakRef(forth.pivot), side: forth.side } : undefined,
       });
     }
     return true;
+  }
+
+  /** One neighbour over, in the direction the slice went — the arrows' move, and the fallback. */
+  private neighbourPlace(el: HTMLElement, plan: IMovePlan): IDomPlace | null {
+    const before = plan.insertAt <= plan.slice.start;
+    const pivot = this.domSibling(el, before ? 'up' : 'down');
+    return pivot ? { pivot, side: before ? 'before' : 'after' } : null;
+  }
+
+  /** Where an element sits now, as "after the one above it" (or "before the one below"). */
+  private domPlaceOf(el: HTMLElement): IDomPlace | null {
+    const above = this.domSibling(el, 'up');
+    if (above) return { pivot: above, side: 'after' };
+    const below = this.domSibling(el, 'down');
+    return below ? { pivot: below, side: 'before' } : null;
   }
 
   // --- Reordering a molecule's slots, with the slots paired to them ---
@@ -4726,7 +5114,11 @@ export class StudioEditor {
         ? planReverse(source, landed, step.slice, step.from)
         : planReverse(source, landed, step.slice, step.to.start);
       if (!back.ok) return false;
-      return this.writeMove({ file, plan: back, el: step.el.deref() ?? null, what, record: false });
+      // On screen, back next to the neighbour it had (or forward to the one it went to).
+      const recorded = undoing ? step.back : step.forth;
+      const pivot = recorded?.pivot.deref();
+      const place = pivot && recorded ? { pivot, side: recorded.side } : null;
+      return this.writeMove({ file, plan: back, el: step.el.deref() ?? null, what, record: false, place });
     }
 
     if (step.kind === 'slotMove') {
@@ -4960,11 +5352,15 @@ export class StudioEditor {
   }
 
   private drawHover(el: HTMLElement): void {
+    this.drawHoverRect(el === this.selectedEl ? null : el.getBoundingClientRect());
+  }
+
+  /** The hover box over any rectangle — one element's, or the area of a group of them (the tree). */
+  private drawHoverRect(rect: { top: number; left: number; width: number; height: number } | null): void {
     if (!this.overlayEl || this.overlayHidden) return;
     let html = this.selectionHtml();
 
-    if (el !== this.selectedEl) {
-      const rect = el.getBoundingClientRect();
+    if (rect) {
       html += `<div class="se-hover-highlight" style="
         position:fixed;
         top:${rect.top}px; left:${rect.left}px;

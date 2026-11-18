@@ -278,6 +278,11 @@ export interface IPickerTarget {
   /** A molecule's slots present in the page; empty for anything else. */
   slots: IPickerSlot[];
   /**
+   * The slot to open on arrival, by position in `slots` — set once, when the selection came from a
+   * slot of the page tree (a slot has no box of its own to click). Absent otherwise.
+   */
+  focusSlot?: number;
+  /**
    * The chain from the page's own element down to the selection, root-first.
    *
    * It exists because the pointer cannot reach a wrapper whose children cover it — 1 element in 5 of
@@ -635,6 +640,13 @@ export abstract class ClassPickerBase extends StateLitElement {
     if (changed.has('target')) this.menuOpen = false;
     // A slot that is no longer there (the page was rebuilt) is not a part to stay on.
     if (typeof this.editPart === 'number' && !this.target?.slots[this.editPart]) this.editPart = 'inner';
+    // The page tree picked a slot: open the Slots section on it. After the reset above, which a new
+    // element triggers, so the request is not wiped by the selection that carries it.
+    const focus = this.target?.focusSlot;
+    if (changed.has('target') && typeof focus === 'number' && this.target?.slots[focus]) {
+      this.editPart = focus;
+      this.slotTreeOpen = true;
+    }
     // A different element means a different sentence behind the same attribute name. The editor
     // re-validates the key against what it offered, so a stale choice cannot write — but it could
     // still SHOW the wrong key, and that is a lie the panel must not tell.

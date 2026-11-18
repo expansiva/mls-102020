@@ -55,6 +55,7 @@ const message_en = {
     generatePage: 'Generate page',
     notGenerated: 'Not generated',
     editPage: 'Change this page',
+    editUnavailable: 'This page is not in a generated page folder (web/<device>/pageNN), so the AI cannot change it.',
     editPlaceholder: 'Describe the change (e.g. center the buttons of the list)…',
     editReview: 'Review',
     editPlanning: 'Analyzing…',
@@ -73,7 +74,8 @@ const message_en = {
     editElementIn: 'in',
     editElementRemove: 'Do not send this element',
     editElementElsewhere: 'The selected element is not on this page and device: it will not be sent.',
-    tabVisual: 'Visual changes',
+    tabVisual: 'Visual',
+    tabAi: 'AI',
     tabStates: 'States',
     tabPage: 'Page',
     themeTitle: 'Theme while editing',
@@ -124,6 +126,7 @@ const messages: Record<string, MessageType> = {
         generatePage: 'Gerar página',
         notGenerated: 'Não gerada',
         editPage: 'Alterar esta página',
+        editUnavailable: 'Esta página não está numa pasta de página gerada (web/<dispositivo>/pageNN), então a IA não consegue alterá-la.',
         editPlaceholder: 'Descreva a mudança (ex.: centralize os botões da lista)…',
         editReview: 'Revisar',
         editPlanning: 'Analisando…',
@@ -142,7 +145,8 @@ const messages: Record<string, MessageType> = {
         editElementIn: 'em',
         editElementRemove: 'Não enviar este elemento',
         editElementElsewhere: 'O elemento selecionado não é desta página e device: não será enviado.',
-        tabVisual: 'Alterações visuais',
+        tabVisual: 'Visual',
+        tabAi: 'IA',
         tabStates: 'Estados',
         tabPage: 'Página',
         themeTitle: 'Tema durante a edição',
@@ -190,6 +194,7 @@ const messages: Record<string, MessageType> = {
         generatePage: 'Generar página',
         notGenerated: 'No generada',
         editPage: 'Cambiar esta página',
+        editUnavailable: 'Esta página no está en una carpeta de página generada (web/<dispositivo>/pageNN), así que la IA no puede cambiarla.',
         editPlaceholder: 'Describa el cambio (p. ej. centre los botones de la lista)…',
         editReview: 'Revisar',
         editPlanning: 'Analizando…',
@@ -208,7 +213,8 @@ const messages: Record<string, MessageType> = {
         editElementIn: 'en',
         editElementRemove: 'No enviar este elemento',
         editElementElsewhere: 'El elemento seleccionado no es de esta página y dispositivo: no se enviará.',
-        tabVisual: 'Cambios visuales',
+        tabVisual: 'Visual',
+        tabAi: 'IA',
         tabStates: 'Estados',
         tabPage: 'Página',
         themeTitle: 'Tema durante la edición',
@@ -269,7 +275,7 @@ interface IEditNotes {
     warnings: string[];
 }
 
-type DetailTab = 'visual' | 'states' | 'page';
+type DetailTab = 'visual' | 'ai' | 'states' | 'page';
 
 // ─── Constants ───────────────────────────────────────────────────────
 
@@ -420,8 +426,9 @@ export class PluginSelectPage extends StateLitElement {
         if (key !== 'aura.edit.selection') return;
         this._selection = (value ?? getAuraEdit()?.selection ?? null) as IAuraEditSelection | null;
         this._selectionOff = {};
-        // Selecting an element means editing it: bring the tab with the prompt and the picker forward.
-        if (this._selection) this._tab = 'visual';
+        // Selecting an element means editing it: bring the picker's tab forward — unless the AI tab is open,
+        // where the selection is the element the request is about and must not take the person away.
+        if (this._selection && this._tab !== 'ai') this._tab = 'visual';
     }
 
     willUpdate(changed: Map<string, unknown>) {
@@ -729,7 +736,10 @@ export class PluginSelectPage extends StateLitElement {
         return html`
             ${this._renderDsVersionPanel(page)}
             ${this._renderTabs()}
-            ${this._renderTabPanel('visual', html`${this._renderEditPanel(page)}${this._renderClassPicker()}`)}
+            ${this._renderTabPanel('visual', html`${this._renderPageTree()}${this._renderClassPicker()}`)}
+            ${this._renderTabPanel('ai', this._editTarget(page)
+                ? this._renderEditPanel(page)
+                : html`<p class="text-xs text-gray-500 dark:text-gray-400 px-1">${this.msg.editUnavailable}</p>`)}
             ${this._renderTabPanel('states', this._renderPageStates())}
             ${this._renderTabPanel('page', html`${this._renderPageInfo(page)}${this._renderDeviceSwitch(page)}${this._renderThemeSwitch()}`)}
         `;
@@ -804,6 +814,7 @@ export class PluginSelectPage extends StateLitElement {
     private _renderTabs() {
         const tabs: Array<{ id: DetailTab; label: string }> = [
             { id: 'visual', label: this.msg.tabVisual },
+            { id: 'ai', label: this.msg.tabAi },
             { id: 'states', label: this.msg.tabStates },
             { id: 'page', label: this.msg.tabPage },
         ];
@@ -1088,6 +1099,15 @@ export class PluginSelectPage extends StateLitElement {
     private _renderPageStates() {
         void import('/_102020_/l2/aura/plugins/pluginPageStates.js');
         return html`<aura--plugins--page-states-102020></aura--plugins--page-states-102020>`;
+    }
+
+    // The page tree (pageTreePanel): the "Structure" section, collapsible, on top of the Visual tab so
+    // finding an element and editing it never needs a tab switch. Like the docked picker it stays
+    // mounted while another tab is open (the tab panels only hide), so the editor never loses it.
+    // Loaded lazily, for the same reason as the picker.
+    private _renderPageTree() {
+        void import('/_102020_/l2/aura/studio/pageTreePanel.js');
+        return html`<aura--studio--page-tree-102020></aura--studio--page-tree-102020>`;
     }
 
     // The class picker DOCKED here (pageClassPickerPanel) — a second take on the floating one, kept

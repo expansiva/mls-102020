@@ -1,0 +1,129 @@
+/// <mls fileReference="_102020_/l2/aura/studio/pageTreePanel.less" enhancement="_102027_/l2/enhancementStyle"/>
+// The page tree's looks (pageTreePanel), on the same palette as the docked picker.
+//
+// The same rules as pageClassPickerPanel.less: every class carries the apt- prefix (same document as
+// the client page, and the Tailwind JIT scans it), and NO BACKTICK AND NO DOLLAR-BRACE in a block
+// comment (the compiled css goes inside a JS template literal). Colours are the side panel's own,
+// light and dark, as tokens on the host — never the design system's.
+
+aura--studio--page-tree-102020 {
+  & {
+    --apt-bg: #ffffff;
+    --apt-surface: #f9fafb;
+    --apt-border: #e5e7eb;
+    --apt-strong: #111827;
+    --apt-text: #374151;
+    --apt-muted: #6b7280;
+    --apt-faint: #9ca3af;
+    --apt-accent: #6366f1;
+    --apt-accent-faint: rgba(99,102,241,0.10);
+    --apt-select: #ec4899;
+    --apt-select-faint: rgba(236,72,153,0.10);
+    --apt-organism: #7c3aed;
+    --apt-molecule: #0284c7;
+    --apt-slot: #d97706;
+    --apt-hit: rgba(250,204,21,0.35);
+    --apt-err: #ef4444;
+    --apt-err-faint: rgba(239,68,68,0.08);
+    --apt-input-bg: #ffffff;
+    --apt-badge-bg: #f3f4f6;
+
+    display: block;
+    background: var(--apt-bg); color: var(--apt-text);
+    border: 1px solid var(--apt-border);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 12px;
+  }
+  .dark & {
+    --apt-bg: #030712;
+    --apt-surface: rgba(17,24,39,0.5);
+    --apt-border: #1f2937;
+    --apt-strong: #f3f4f6;
+    --apt-text: #d1d5db;
+    --apt-muted: #9ca3af;
+    --apt-faint: #6b7280;
+    --apt-accent-faint: rgba(99,102,241,0.20);
+    --apt-select-faint: rgba(236,72,153,0.20);
+    --apt-organism: #a78bfa;
+    --apt-molecule: #38bdf8;
+    --apt-slot: #fbbf24;
+    --apt-hit: rgba(161,98,7,0.5);
+    --apt-err-faint: rgba(239,68,68,0.15);
+    --apt-input-bg: #111827;
+    --apt-badge-bg: #1f2937;
+  }
+
+  .apt-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 10px 0 0;
+    background: var(--apt-surface);
+  }
+  .apt-toggle {
+    flex: 1 1 auto; display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border: 0; background: transparent; cursor: pointer;
+    font: inherit; font-size: 11px; font-weight: 600; color: var(--apt-text); text-align: left;
+  }
+  .apt-note { font-size: 10.5px; color: var(--apt-faint); white-space: nowrap; }
+
+  .apt-tools {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; border-top: 1px solid var(--apt-border); border-bottom: 1px solid var(--apt-border);
+  }
+  .apt-search {
+    flex: 1 1 auto; min-width: 0;
+    padding: 3px 8px; border: 1px solid var(--apt-border); border-radius: 4px;
+    background: var(--apt-input-bg); color: var(--apt-text); font: inherit; font-size: 12px;
+  }
+  .apt-icon {
+    border: 0; background: transparent; cursor: pointer; color: var(--apt-muted); font-size: 13px; padding: 0 2px;
+  }
+  .apt-icon:hover { color: var(--apt-strong); }
+
+  .apt-list { max-height: 300px; overflow: auto; padding: 4px 0; outline: none; }
+  .apt-list:focus-visible { box-shadow: inset 0 0 0 2px var(--apt-accent-faint); }
+  .apt-empty { padding: 10px 12px; color: var(--apt-muted); }
+
+  .apt-row {
+    display: flex; align-items: center; gap: 4px;
+    padding-top: 2px; padding-bottom: 2px; padding-right: 8px;
+    cursor: pointer; user-select: none; white-space: nowrap;
+    border-radius: 4px; margin: 0 4px;
+  }
+  .apt-row:hover { background: var(--apt-accent-faint); }
+  .apt-row.apt-focus { box-shadow: inset 0 0 0 1px var(--apt-accent); }
+  .apt-row.apt-selected { background: var(--apt-select-faint); box-shadow: inset 0 0 0 1px var(--apt-select); }
+  .apt-row.apt-dim { opacity: 0.5; }
+  .apt-row.apt-dragging { opacity: 0.35; }
+  .apt-row.apt-drop-before { box-shadow: inset 0 2px 0 0 var(--apt-accent); }
+  .apt-row.apt-drop-after { box-shadow: inset 0 -2px 0 0 var(--apt-accent); }
+  .apt-row.apt-drop-no { background: var(--apt-err-faint); box-shadow: inset 0 0 0 1px var(--apt-err); }
+
+  .apt-chev {
+    flex: 0 0 14px; width: 14px; padding: 0; border: 0; background: transparent;
+    color: var(--apt-faint); cursor: pointer; font-size: 10px; line-height: 1;
+  }
+  .apt-chev.apt-none { cursor: default; }
+  .apt-ico { flex: 0 0 14px; text-align: center; color: var(--apt-faint); }
+  .apt-kind-organism .apt-ico, .apt-kind-organism .apt-main { color: var(--apt-organism); }
+  .apt-kind-molecule .apt-ico { color: var(--apt-molecule); }
+  .apt-kind-slot .apt-ico { color: var(--apt-slot); }
+  .apt-kind-organism .apt-main, .apt-kind-molecule .apt-main {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px;
+  }
+  .apt-main { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--apt-strong); }
+  .apt-hit .apt-main { background: var(--apt-hit); border-radius: 2px; }
+  .apt-second { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--apt-muted); }
+  .apt-layout { flex: 0 0 auto; font-size: 10.5px; color: var(--apt-faint); }
+  .apt-badge {
+    flex: 0 0 auto; font-size: 10.5px; padding: 0 4px; border-radius: 3px;
+    background: var(--apt-badge-bg); color: var(--apt-muted);
+  }
+  .apt-grip { margin-left: auto; flex: 0 0 auto; color: var(--apt-faint); cursor: grab; opacity: 0; }
+  .apt-row:hover .apt-grip { opacity: 1; }
+
+  .apt-drop-reason {
+    padding: 4px 10px; border-top: 1px solid var(--apt-border);
+    font-size: 11px; color: var(--apt-err);
+  }
+}
