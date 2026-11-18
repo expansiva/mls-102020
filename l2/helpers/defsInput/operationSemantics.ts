@@ -2,6 +2,7 @@
 
 import type { D2OperationBinding, D2SourceDigest } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { extractExportedObject, parseContractSource } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
+import { externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 export interface D2OperationSemanticsSources {
   module: string;
@@ -9,7 +10,7 @@ export interface D2OperationSemanticsSources {
   access: unknown;
   rules: unknown;
   digests: D2SourceDigest[];
-  /** Present when the page writes an `external` entity: the call line, the journeys, the catalog texts keyed by `source`. */
+  /** Present when the page writes an `external` entity: the call line, the journeys, the catalog texts keyed by `connectionId`. */
   external?: D2ExternalCallSources;
 }
 
@@ -61,7 +62,7 @@ export function resolveD2OperationBindings(
     const callAsk = external ? d2ExternalCallAsk({
       entityId, operation, transitionRef: isTransition ? usecaseId : '', entity,
       connections: sources.external?.connections ?? [], journeys: sources.external?.journeys ?? {},
-      catalogText: sources.external?.catalogs[text(entity.source)] ?? '',
+      catalogText: sources.external?.catalogs[externalConnectionId(entity)] ?? '',
     }) : null;
     const actorRef = isTransition ? strings(transition?.by).find(actor => actors.includes(actor)) || actors[0] || '' : actors[0] || '';
     const fields = recordFields(entity);

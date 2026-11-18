@@ -128,7 +128,6 @@ test('create still asks for the required foreign key when the command carries no
   assert.match(found[0], /A\.bId/);
 });
 
-const catalogSource = '/_102034_/l4/ontology/connections/cm.defs.ts';
 const catalogText = `
 export interface CmUpdateAgentInput { agentId: string; name?: string; }
 export interface CmDiscardAgentDraftInput { draftId: string; }
@@ -138,8 +137,8 @@ export const cm = { "operations": [
 ] };
 `;
 const externalEntities = {
-  Agent: { kind: 'external', source: catalogSource, record: { fields: { name: { type: 'string' } } } } as Ns5OntologyAnyEntity,
-  AgentDraft: { kind: 'external', source: catalogSource, record: { fields: {} } } as Ns5OntologyAnyEntity,
+  Agent: { kind: 'external', connectionId: 'cm', record: { fields: { name: { type: 'string' } } } } as Ns5OntologyAnyEntity,
+  AgentDraft: { kind: 'external', connectionId: 'cm', record: { fields: {} } } as Ns5OntologyAnyEntity,
 };
 const externalSources = {
   connections: [
@@ -150,7 +149,7 @@ const externalSources = {
     changeAgentBehavior: { business: { steps: [{ stepId: 'requestChange', kind: 'act', entity: 'Agent', effect: 'update' }] } },
     reviewAgentDraft: { business: { steps: [{ stepId: 'discardDraft', kind: 'act', entity: 'AgentDraft', effect: 'transition', transitionRef: 'discardDraft' }] } },
   },
-  catalogs: { [catalogSource]: catalogText },
+  catalogs: { cm: catalogText },
 };
 
 function contextLeaf(name: string): D2BffLeaf {
@@ -222,7 +221,7 @@ test('an external command missing a call input is D2_BFF_COMMAND_INPUT and does 
 test('an external command keeps the call names of field leaves; an entity command still takes the field key', () => {
   const record = { fields: { agent: { type: 'string' }, changeRequest: { type: 'string' }, changes: { type: 'object', fields: { changeRef: { type: 'string' } } } } };
   const behavior = {
-    kind: 'external' as const, source: catalogSource, record,
+    kind: 'external' as const, connectionId: 'cm', record,
   } as Ns5OntologyAnyEntity;
   const fieldLeaf = (name: string, path: string, optional = false): D2BffLeaf => ({
     name, type: 'string', ...(optional ? { optional: true } : {}), origin: { kind: 'field', paths: [path] },

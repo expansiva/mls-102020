@@ -7,6 +7,7 @@ import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL
 import type { D2Page11Needs, D2Page11OrganismNeeds } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
 import { d2ExternalCallAsk, explainD2ExternalCall, type D2ExternalCallGap, type D2ExternalCallSources } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
+import { externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2RequiredRelationTargets, d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
@@ -612,12 +613,7 @@ const externalCallGapMessage = (entityId: string, operation: string, gap: D2Exte
   const write = `${entityId}.${operation}`;
   if (gap === 'act') return `external write ${write} has no act for this entity and operation.`;
   if (gap === 'call') return `external write ${write} has no call line whose usedBy names that act.`;
-  return `external write ${write} has no catalog for the entity source, or the catalog has no call operation for that line.`;
-};
-
-const textSource = (entity: unknown): string => {
-  const source = (entity as { source?: unknown } | undefined)?.source;
-  return typeof source === 'string' ? source : '';
+  return `external write ${write} has no catalog for the connection, or the catalog has no call operation for that line.`;
 };
 const entityOf = (path: string): string => path.split('.')[0];
 const isIdentity = (path: string): boolean => { const [, field, extra] = path.split('.'); return !extra && (field === 'id' || field === 'version'); };
@@ -658,7 +654,7 @@ export function d2WriteRequiredInput(write: D2NeedWrite, entities: Record<string
     const ask = d2ExternalCallAsk({
       entityId, operation: write.operation, transitionRef: write.transitionRef, entity,
       connections: external?.connections ?? [], journeys: external?.journeys ?? {},
-      catalogText: external?.catalogs[textSource(entity)] ?? '',
+      catalogText: external?.catalogs[externalConnectionId(entity)] ?? '',
     });
     if (!ask) return edits;
     const names = [...ask.names, ...(ask.expectsVersion ? ['expectVersion'] : [])];
@@ -723,7 +719,7 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
         entityId: pageWrite.entity, operation: pageWrite.operation, transitionRef: pageWrite.transitionRef,
         entity: context.entities[pageWrite.entity],
         connections: context.external?.connections ?? [], journeys: context.external?.journeys ?? {},
-        catalogText: context.external?.catalogs[textSource(context.entities[pageWrite.entity])] ?? '',
+        catalogText: context.external?.catalogs[externalConnectionId(context.entities[pageWrite.entity])] ?? '',
       }).gap;
       if (gap) add('D2_EXTERNAL_CALL_UNRESOLVED', `endpoints.${command.id}.writes`, externalCallGapMessage(pageWrite.entity, pageWrite.operation, gap));
     }

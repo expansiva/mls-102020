@@ -3,18 +3,20 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { catalogFilePath, externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 const MLS_BASE = fileURLToPath(new URL('../../../../', import.meta.url));
 
-/** Catalog files named by `external` entities (`/_102034_/l4/...`). A missing file leaves that source out. */
+/** Catalog texts keyed by `connectionId`. A missing file or an invalid id leaves that connection out. */
 export async function externalCatalogTexts(entities: Record<string, unknown>): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const entity of Object.values(entities)) {
-    const row = entity as { kind?: unknown; source?: unknown } | null;
-    const source = row?.kind === 'external' && typeof row.source === 'string' ? row.source : '';
-    const match = /^\/_(\d+)_\/(.+)$/.exec(source);
-    if (!match || out[source]) continue;
-    try { out[source] = await readFile(path.join(MLS_BASE, `mls-${match[1]}`, match[2]), 'utf8'); }
+    const row = entity as { kind?: unknown } | null;
+    if (row?.kind !== 'external') continue;
+    const id = externalConnectionId(row);
+    const match = /^\/_(\d+)_\/(.+)$/.exec(catalogFilePath(id));
+    if (!id || !match || out[id]) continue;
+    try { out[id] = await readFile(path.join(MLS_BASE, `mls-${match[1]}`, match[2]), 'utf8'); }
     catch { /* the check then asks only for the page edits */ }
   }
   return out;

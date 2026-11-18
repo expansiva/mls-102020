@@ -61,14 +61,12 @@ void test('recorded integration v2 without connections is read; an unknown versi
   );
 });
 
-const OUTSIDE_SOURCE = '/_102020_/l2/helpers/defsInput/externalCallFixture.defs.ts';
-
 void test('the gate reads an external call for input fields and leaves an entity binding unchanged', async () => {
   const artifacts = artifactsOf(EXPENSE);
   const module = (artifacts.module as { moduleName: string }).moduleName;
   (artifacts.ontologyIndex as { entities: Array<Record<string, unknown>> }).entities.push({ entityId: 'OutsideRecord', kind: 'external' });
   artifacts.entities.OutsideRecord = {
-    schemaVersion: '2026-09-17-ns5-ontology-v3.1', moduleName: module, entityId: 'OutsideRecord', kind: 'external', source: OUTSIDE_SOURCE,
+    schemaVersion: '2026-09-17-ns5-ontology-v3.1', moduleName: module, entityId: 'OutsideRecord', kind: 'external', connectionId: 'cm',
     record: { fields: { name: { type: 'string', required: true } } },
   };
   const journey = artifacts.journeys.registrarEnviarDespesa as { business: { steps: Array<Record<string, unknown>> } };
@@ -77,8 +75,8 @@ void test('the gate reads an external call for input fields and leaves an entity
     { stepId: 'dropOutside', kind: 'act', entity: 'OutsideRecord', effect: 'transition', transitionRef: 'dropOutside' },
   );
   (artifacts.integration as { connections: unknown[] }).connections = [
-    { connectionId: 'outside', operationId: 'saveOutside', direction: 'call', usedBy: ['registrarEnviarDespesa.saveOutside'] },
-    { connectionId: 'outside', operationId: 'dropOutside', direction: 'call', usedBy: ['registrarEnviarDespesa.dropOutside'] },
+    { connectionId: 'cm', operationId: 'updateAgent', direction: 'call', usedBy: ['registrarEnviarDespesa.saveOutside'] },
+    { connectionId: 'cm', operationId: 'discardAgentDraft', direction: 'call', usedBy: ['registrarEnviarDespesa.dropOutside'] },
   ];
   const backend = artifacts.backend as { endpoints: Array<Record<string, unknown>>; usecases: Array<Record<string, unknown>> };
   const effort = artifacts.effort as { totals: { endpoints: { toCreate: number }; usecases: { toCreate: number } }; screens: Array<{ pageId: string; endpoints: string[] }>; endpoints: Array<Record<string, unknown>>; usecases: Array<Record<string, unknown>> };
@@ -103,8 +101,8 @@ void test('the gate reads an external call for input fields and leaves an entity
   const snapshot = await buildD2InputSnapshot({ project: 102047, module }, artifacts);
   const page = snapshot.selection.pages.find(item => item.pageId === 'minhas_despesas')!;
   const fields = (operation: string) => page.operationBindings?.find(item => item.entityId === 'OutsideRecord' && item.operation === operation)?.inputFields.map(field => field.path);
-  assert.deepEqual(fields('update'), ['recordId', 'expectVersion']);
-  assert.deepEqual(fields('transition'), ['recordId']);
+  assert.deepEqual(fields('update'), ['agentId', 'expectVersion']);
+  assert.deepEqual(fields('transition'), ['draftId']);
 
   const entityUsecases = page.usecases.filter(usecase => textRef(usecase.entity) === 'Despesa');
   const despesaIds = new Set(entityUsecases.map(usecase => textRef(usecase.usecaseId)));
