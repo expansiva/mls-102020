@@ -21,6 +21,7 @@ import {
     type UxLang,
 } from '/_102020_/l2/aura/helpers/uxTemplates.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
+import '/_102020_/l2/aura/plugins/infoTip.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -30,7 +31,9 @@ const message_en = {
     desc: 'A UX is a set of templates, one per page: each page can follow a different experience of its category.',
     pagesWithTemplate: 'pages with template',
     nameHeader: 'Name',
-    nameHint: 'Enter saves, Esc cancels.',
+    nameHint: 'Enter saves · Esc cancels',
+    renameLabel: 'Rename',
+    infoLabel: 'About this section',
     addTitle: 'New UX',
     addDesc: 'Create a new UX. Pick the templates of each page after creating it.',
     namePlaceholder: 'e.g. Ux 2',
@@ -40,15 +43,13 @@ const message_en = {
     moleculesHeader: 'Molecules',
     useMoleculesLabel: 'Use molecules',
     useMoleculesDesc: 'Molecules are the ready-made web components pages are built from. When on, the generator picks a molecule per element; when off, pages of this UX get no web components.',
-    moleculesOn: 'On',
-    moleculesOff: 'Off',
     templatesHeader: 'Template of the page',
     templatesDesc: 'The experience this page follows in this UX. Without a choice, the page keeps the template of its first version (page11).',
     templatesDescBase: 'The experience page11 follows. Picking another one is applied when UX 1 is generated (module panel): page11 gets the new template and molecules chosen again for it; its organisms stay.',
     defaultBadge: 'default',
     currentBadge: 'current',
-    basePending: 'Not applied yet: generate UX 1 in the module panel to rewrite page11 with this template.',
-    keepCurrent: 'Keep the current template',
+    basePending: 'Applies when UX 1 is generated (module panel).',
+    keepCurrent: 'keep current',
     bestFor: 'Best for',
     backToDefault: 'Back to default',
     loading: 'Loading…',
@@ -67,7 +68,9 @@ const messages: Record<string, MessageType> = {
         desc: 'Uma UX é um conjunto de templates, um por página: cada página pode seguir uma experiência diferente da sua categoria.',
         pagesWithTemplate: 'páginas com template',
         nameHeader: 'Nome',
-        nameHint: 'Enter grava, Esc cancela.',
+        nameHint: 'Enter grava · Esc cancela',
+        renameLabel: 'Renomear',
+        infoLabel: 'Sobre esta seção',
         addTitle: 'Nova UX',
         addDesc: 'Crie uma nova UX. Os templates de cada página são escolhidos depois de criá-la.',
         namePlaceholder: 'ex.: Ux 2',
@@ -77,15 +80,13 @@ const messages: Record<string, MessageType> = {
         moleculesHeader: 'Moléculas',
         useMoleculesLabel: 'Usar moléculas',
         useMoleculesDesc: 'Moléculas são os web components prontos com que as páginas são montadas. Quando ligado, o gerador escolhe uma molécula por elemento; quando desligado, as páginas desta UX não recebem web components.',
-        moleculesOn: 'Ligado',
-        moleculesOff: 'Desligado',
         templatesHeader: 'Template da página',
         templatesDesc: 'A experiência que esta página segue nesta UX. Sem escolha, a página fica com o template da sua primeira versão (page11).',
         templatesDescBase: 'A experiência que o page11 segue. Escolher outra só vale quando a UX 1 for gerada (painel do módulo): o page11 recebe o template novo e moléculas escolhidas de novo para ele; os organismos ficam.',
         defaultBadge: 'padrão',
         currentBadge: 'atual',
-        basePending: 'Ainda não aplicado: gere a UX 1 no painel do módulo para reescrever o page11 com este template.',
-        keepCurrent: 'Manter o template atual',
+        basePending: 'Aplica ao gerar a UX 1 (painel do módulo).',
+        keepCurrent: 'manter atual',
         bestFor: 'Melhor para',
         backToDefault: 'Voltar ao padrão',
         loading: 'Carregando…',
@@ -101,7 +102,9 @@ const messages: Record<string, MessageType> = {
         desc: 'Una UX es un conjunto de templates, uno por página: cada página puede seguir una experiencia distinta de su categoría.',
         pagesWithTemplate: 'páginas con template',
         nameHeader: 'Nombre',
-        nameHint: 'Enter guarda, Esc cancela.',
+        nameHint: 'Enter guarda · Esc cancela',
+        renameLabel: 'Renombrar',
+        infoLabel: 'Sobre esta sección',
         addTitle: 'Nueva UX',
         addDesc: 'Cree una nueva UX. Los templates de cada página se eligen después de crearla.',
         namePlaceholder: 'ej.: Ux 2',
@@ -111,15 +114,13 @@ const messages: Record<string, MessageType> = {
         moleculesHeader: 'Moléculas',
         useMoleculesLabel: 'Usar moléculas',
         useMoleculesDesc: 'Las moléculas son los web components listos con los que se construyen las páginas. Cuando está activado, el generador elige una molécula por elemento; cuando está desactivado, las páginas de esta UX no reciben web components.',
-        moleculesOn: 'Activado',
-        moleculesOff: 'Desactivado',
         templatesHeader: 'Template de la página',
         templatesDesc: 'La experiencia que sigue esta página en esta UX. Sin elección, la página mantiene el template de su primera versión (page11).',
         templatesDescBase: 'La experiencia que sigue el page11. Elegir otra se aplica cuando se genera la UX 1 (panel del módulo): el page11 recibe el template nuevo y moléculas elegidas de nuevo para él; sus organismos se mantienen.',
         defaultBadge: 'predeterminado',
         currentBadge: 'actual',
-        basePending: 'Aún no aplicado: genere la UX 1 en el panel del módulo para reescribir el page11 con este template.',
-        keepCurrent: 'Mantener el template actual',
+        basePending: 'Se aplica al generar la UX 1 (panel del módulo).',
+        keepCurrent: 'mantener actual',
         bestFor: 'Ideal para',
         backToDefault: 'Volver al predeterminado',
         loading: 'Cargando…',
@@ -174,9 +175,6 @@ export class PluginSelectUx extends StateLitElement {
 
     @state() private _uxOptions: IUxOption[] = [];
 
-    // ─── Name editing (selected UX) ───────────────────────────────────
-    @state() private _nameDraft: string | null = null;   // null = not editing
-
     // ─── "+" slot state ───────────────────────────────────────────────
     @state() private _addName: string = '';
     @state() private _addSaving: boolean = false;
@@ -212,7 +210,6 @@ export class PluginSelectUx extends StateLitElement {
     }
 
     willUpdate(changed: Map<string, unknown>) {
-        if (changed.has('value')) this._nameDraft = null;
         const key = this.module && this.page ? uxPageKey(this.module, this.page) : '';
         // Also on a UX change: UX 1 generation rewrites page11, so its template may have changed since the last read.
         if (key !== this._templatesFor || (key && changed.has('value'))) void this._loadPageTemplates(key);
@@ -294,15 +291,15 @@ export class PluginSelectUx extends StateLitElement {
         if (!selected) return nothing;
         return html`
             <div class="flex flex-col gap-4">
-                ${this._renderHeader(v, max, selected.layout.name ?? String(v), this.msg.desc)}
-                ${this._renderNameSection(selected)}
+                ${this._renderHeader(v, max, selected.layout.name ?? String(v), this.msg.desc, selected)}
                 ${this._renderMoleculesSection(selected)}
                 ${this._renderTemplatesSection(selected)}
             </div>
         `;
     }
 
-    private _renderHeader(value: number, max: number, itemName: string, desc: string) {
+    /** `renameable` is the selected UX: only it can be renamed from the navigator (not "every UX" nor "+"). */
+    private _renderHeader(value: number, max: number, itemName: string, desc: string, renameable?: IUxOption) {
         return html`
             <aura--plugins--nav-header-102020
                 .fixedLabel=${this.msg.title}
@@ -311,8 +308,23 @@ export class PluginSelectUx extends StateLitElement {
                 .value=${value}
                 .min=${0}
                 .max=${max}
+                .editable=${!!renameable}
+                .editLabel=${this.msg.renameLabel}
+                .editHint=${this.msg.nameHint}
                 @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                @name-change=${(e: CustomEvent) => { if (renameable) this._onRename(renameable, e.detail.name); }}
             ></aura--plugins--nav-header-102020>
+        `;
+    }
+
+    /** Section title with an ⓘ that holds the section's explanation; the popover spans this row. */
+    private _renderSectionTitle(title: unknown, info: string, extra: unknown = nothing) {
+        return html`
+            <div class="relative flex items-center gap-1.5 border-b border-gray-200 dark:border-gray-700 pb-1.5">
+                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${title}</span>
+                <aura--plugins--info-tip-102020 .text=${info} .label=${this.msg.infoLabel}></aura--plugins--info-tip-102020>
+                ${extra}
+            </div>
         `;
     }
 
@@ -332,39 +344,14 @@ export class PluginSelectUx extends StateLitElement {
         `;
     }
 
-    // ─── Selected UX: name ────────────────────────────────────────────
+    // ─── Selected UX: name (renamed from the navigator) ───────────────
 
-    private _renderNameSection(opt: IUxOption) {
-        const value = this._nameDraft ?? opt.layout.name ?? '';
-        return html`
-            <div class="flex flex-col gap-2">
-                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-1.5">${this.msg.nameHeader}</span>
-                <input
-                    type="text"
-                    class="text-sm px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
-                    .value=${value}
-                    @input=${(e: Event) => { this._nameDraft = (e.target as HTMLInputElement).value; }}
-                    @keydown=${(e: KeyboardEvent) => this._onNameKeydown(e, opt)}
-                />
-                <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.nameHint}</span>
-            </div>
-        `;
-    }
-
-    private _onNameKeydown(e: KeyboardEvent, opt: IUxOption) {
-        if (e.key === 'Escape') {
-            this._nameDraft = null;
-            (e.target as HTMLInputElement).value = opt.layout.name ?? '';
-            (e.target as HTMLInputElement).blur();
-            return;
-        }
-        if (e.key !== 'Enter') return;
-        const name = (this._nameDraft ?? '').trim();
-        if (!name || name === opt.layout.name) { this._nameDraft = null; return; }
+    private _onRename(opt: IUxOption, name: string) {
+        const trimmed = (name ?? '').trim();
+        if (!trimmed || trimmed === opt.layout.name) return;
         // Only `name` changes: the templates are keyed by page, never by the UX name.
-        void this._updateLayout(opt.value, layout => { layout.name = name; }).then(ok => {
+        void this._updateLayout(opt.value, layout => { layout.name = trimmed; }).then(ok => {
             if (!ok) return;
-            this._nameDraft = null;
             this.dispatchEvent(new CustomEvent('layout-renamed', { detail: { value: opt.value }, bubbles: true, composed: true }));
         });
     }
@@ -376,8 +363,7 @@ export class PluginSelectUx extends StateLitElement {
         const on = opt.layout.useMolecules !== false;
         return html`
             <div class="flex flex-col gap-2">
-                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-1.5">${this.msg.moleculesHeader}</span>
-                <span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${this.msg.useMoleculesDesc}</span>
+                ${this._renderSectionTitle(this.msg.moleculesHeader, this.msg.useMoleculesDesc)}
                 <div class="flex items-center gap-2.5 pt-0.5">
                     <button
                         type="button"
@@ -389,12 +375,7 @@ export class PluginSelectUx extends StateLitElement {
                     >
                         <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}"></span>
                     </button>
-                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">
-                        ${this.msg.useMoleculesLabel}
-                        <span class="ml-1 text-[10px] font-semibold ${on ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}">
-                            · ${on ? this.msg.moleculesOn : this.msg.moleculesOff}
-                        </span>
-                    </span>
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">${this.msg.useMoleculesLabel}</span>
                 </div>
             </div>
         `;
@@ -407,11 +388,11 @@ export class PluginSelectUx extends StateLitElement {
 
     private _renderTemplatesSection(opt: IUxOption) {
         const isBase = opt.value === 1;
-        const header = html`
-            <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-1.5">
-                ${this.msg.templatesHeader}${this.page ? html` <span class="font-mono text-xs text-gray-400 dark:text-gray-500">· ${this.page}</span>` : nothing}
-            </span>
-        `;
+        const header = this._renderSectionTitle(
+            this.msg.templatesHeader,
+            isBase ? this.msg.templatesDescBase : this.msg.templatesDesc,
+            this.page ? html`<span class="ml-auto font-mono text-[11px] text-gray-400 dark:text-gray-500 truncate">${this.page}</span>` : nothing,
+        );
         const note = (text: string) => html`<div class="flex flex-col gap-2">${header}<span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${text}</span></div>`;
 
         if (!this.module || !this.page) return note(this.msg.noPage);
@@ -422,58 +403,70 @@ export class PluginSelectUx extends StateLitElement {
         if (reason) return note(this.msg[reason]);
 
         const effective = resolveEffectiveTemplate(opt.layout, key, this._page11Template, options);
+        const changed = !effective.isDefault && !effective.missing;
         return html`
             <div class="flex flex-col gap-2">
                 ${header}
-                <span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${isBase ? this.msg.templatesDescBase : this.msg.templatesDesc}</span>
-                ${isBase && !effective.isDefault && !effective.missing ? html`
-                    <span class="text-xs text-amber-600 dark:text-amber-400 leading-snug">${this.msg.basePending}</span>
-                ` : nothing}
                 ${effective.missing ? html`
-                    <div class="flex flex-col gap-1.5 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-2.5 py-1.5">
-                        <span class="text-xs text-amber-600 dark:text-amber-400">${this.msg.templateMissing} <span class="font-mono">${effective.template}</span></span>
-                        ${this._renderBackToDefault(opt, key)}
+                    <div class="flex flex-col gap-1 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-2.5 py-1.5">
+                        <span class="text-xs text-amber-700 dark:text-amber-400">${this.msg.templateMissing} <span class="font-mono">${effective.template}</span></span>
+                        ${this._renderBackToDefault(opt, key, 'amber')}
                     </div>
                 ` : nothing}
-                <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-1.5">
                     ${options.map(o => this._renderTemplateCard(opt, key, o, o.template === effective.template, isBase))}
                 </div>
-                ${!effective.isDefault && !effective.missing ? this._renderBackToDefault(opt, key) : nothing}
+                ${changed && isBase ? html`
+                    <div class="flex items-center justify-between gap-2 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-2.5 py-1.5">
+                        <span class="text-xs text-amber-700 dark:text-amber-400 leading-snug">⚠ ${this.msg.basePending}</span>
+                        ${this._renderBackToDefault(opt, key, 'amber')}
+                    </div>
+                ` : nothing}
+                ${changed && !isBase ? html`<div class="flex justify-end">${this._renderBackToDefault(opt, key, 'gray')}</div>` : nothing}
             </div>
         `;
     }
 
+    /**
+     * Compact card: name + badge, then the description on one line. Only the selected card shows the full
+     * description and "best for"; the template file and experience id live in the tooltip.
+     */
     private _renderTemplateCard(opt: IUxOption, key: string, option: IUxTemplateOption, isSelected: boolean, isBase: boolean) {
         return html`
             <div
                 class="
-                    rounded-xl border p-2.5 transition-all flex flex-col gap-1 cursor-pointer
+                    rounded-lg border px-2.5 py-2 transition-colors flex flex-col gap-1 cursor-pointer
                     ${isSelected
-                        ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm'
+                        ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
                         : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700'}
                 "
+                title="${option.template.split('/').pop()} · ${option.experience}"
                 @click=${() => this._onPickTemplate(opt, key, option)}
             >
                 <div class="flex items-center gap-1.5">
-                    ${isSelected ? html`<div class="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 shrink-0"></div>` : nothing}
+                    <div class="w-1.5 h-1.5 rounded-full shrink-0 ${isSelected ? 'bg-indigo-500 dark:bg-indigo-400' : 'bg-transparent'}"></div>
                     <span class="text-xs font-semibold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-200'}">${option.label}</span>
                     ${option.isDefault ? html`
                         <span class="text-[10px] px-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">${isBase ? this.msg.currentBadge : this.msg.defaultBadge}</span>
                     ` : nothing}
                 </div>
-                <span class="text-[10px] font-mono text-gray-400 dark:text-gray-500 break-all">${option.template.split('/').pop()} · ${option.experience}</span>
-                <span class="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">${option.description}</span>
-                ${option.bestFor ? html`
-                    <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug"><span class="font-semibold">${this.msg.bestFor}:</span> ${option.bestFor}</span>
+                <span class="pl-3 text-[11px] text-gray-500 dark:text-gray-400 leading-snug ${isSelected ? '' : 'line-clamp-1'}">${option.description}</span>
+                ${isSelected && option.bestFor ? html`
+                    <span class="ml-3 self-start text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 leading-snug">${this.msg.bestFor}: ${option.bestFor}</span>
                 ` : nothing}
             </div>
         `;
     }
 
-    private _renderBackToDefault(opt: IUxOption, key: string) {
+    /** "Keep current" (UX 1) / "Back to default" (other UX) as a link: it deletes this page's entry. */
+    private _renderBackToDefault(opt: IUxOption, key: string, tone: 'amber' | 'gray') {
+        const color = tone === 'amber'
+            ? 'text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300'
+            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200';
         return html`
             <button
-                class="self-start text-xs px-2.5 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 cursor-pointer"
+                type="button"
+                class="shrink-0 self-start text-[11px] underline underline-offset-2 cursor-pointer ${color}"
                 @click=${() => this._updateLayout(opt.value, layout => setPageTemplate(layout, key, null))}
             >${opt.value === 1 ? this.msg.keepCurrent : this.msg.backToDefault}</button>
         `;
