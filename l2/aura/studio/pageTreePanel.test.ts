@@ -98,7 +98,7 @@ test('the stylesheet keeps the prefix and has no backtick or dollar-brace (it la
 });
 
 test('the tree sits on top of the Visual tab, above the picker; the AI request has its own tab', () => {
-  assert.match(SELECT_PAGE, /_renderTabPanel\('visual', html`\$\{this\._renderPageTree\(\)\}\$\{this\._renderClassPicker\(\)\}`\)/u);
+  assert.match(SELECT_PAGE, /_renderTabPanel\('visual', html`(?:\$\{this\._renderLayoutLines\(\)\})?\$\{this\._renderPageTree\(\)\}\$\{this\._renderClassPicker\(\)\}`\)/u);
   assert.match(SELECT_PAGE, /_renderTabPanel\('ai', this\._editTarget\(page\)\s*\? this\._renderEditPanel\(page\)/u);
   // Selecting an element while the AI tab is open keeps it open: the selection is what the request is about.
   assert.match(SELECT_PAGE, /if \(this\._selection && this\._tab !== 'ai'\) this\._tab = 'visual';/u);

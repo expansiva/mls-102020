@@ -15,6 +15,14 @@ import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
 import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { readGenomeUxBaseChoice } from '/_102020_/l2/aura/agentGenomeUx/genomeUxIo.js';
+import {
+    getAdvancedPrefs,
+    onAdvancedPrefsChange,
+    toggleLine,
+    updateAdvancedPrefs,
+    type IAdvancedPrefs,
+    type LayoutLine,
+} from '/_102020_/l2/aura/studio/studioAdvancedMode.js';
 import type { StudioTheme } from '/_102033_/l2/cbe/studioTheme.js';
 import type { StudioDevice } from '/_102033_/l2/cbe/studioDevice.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
@@ -82,6 +90,24 @@ const message_en = {
     themeLight: 'Light',
     themeDark: 'Dark',
     themeHint: 'Only in studio mode: leaving it, the app goes back to its own theme.',
+    advancedTitle: 'Advanced mode',
+    advancedOff: 'Off',
+    advancedOn: 'On',
+    advancedHint: 'Shows advanced tools in the Visual tab, such as the layout lines (Ctrl+Alt+G). Only on this browser.',
+    linesTitle: 'Layout lines',
+    linesOutline: 'Outlines',
+    linesSpacing: 'Spacing',
+    linesGrid: 'Grid',
+    linesOutlineTip: 'A line around every box of the page',
+    linesSpacingTip: 'Margin (orange), padding (green) and gap (purple)',
+    linesGridTip: 'The columns of every grid of the page',
+    linesByDepth: 'colour per level',
+    linesMono: 'one colour',
+    linesValuesHover: 'values: on hover',
+    linesValuesAlways: 'values: always',
+    linesTwelve: '12 columns',
+    linesBaseline: '8px rhythm',
+    linesShortcut: 'Ctrl+Alt+G turns them off and back on',
     deviceTitle: 'Device',
     deviceDesktop: 'Desktop',
     deviceMobile: 'Mobile',
@@ -153,6 +179,24 @@ const messages: Record<string, MessageType> = {
         themeLight: 'Claro',
         themeDark: 'Escuro',
         themeHint: 'Só no modo studio: ao sair dele, o app volta ao tema que tinha.',
+        advancedTitle: 'Modo avançado',
+        advancedOff: 'Desligado',
+        advancedOn: 'Ligado',
+        advancedHint: 'Mostra ferramentas avançadas na aba Visual, como as linhas do layout (Ctrl+Alt+G). Vale só neste navegador.',
+        linesTitle: 'Linhas do layout',
+        linesOutline: 'Contornos',
+        linesSpacing: 'Espaçamento',
+        linesGrid: 'Grade',
+        linesOutlineTip: 'Uma linha em volta de cada caixa da página',
+        linesSpacingTip: 'Margem (laranja), padding (verde) e gap (roxo)',
+        linesGridTip: 'As colunas de cada grid da página',
+        linesByDepth: 'cor por nível',
+        linesMono: 'uma cor',
+        linesValuesHover: 'valores: no hover',
+        linesValuesAlways: 'valores: sempre',
+        linesTwelve: '12 colunas',
+        linesBaseline: 'ritmo 8px',
+        linesShortcut: 'Ctrl+Alt+G desliga e religa',
         deviceTitle: 'Dispositivo',
         deviceDesktop: 'Desktop',
         deviceMobile: 'Mobile',
@@ -221,6 +265,24 @@ const messages: Record<string, MessageType> = {
         themeLight: 'Claro',
         themeDark: 'Oscuro',
         themeHint: 'Solo en el modo studio: al salir, la app vuelve a su propio tema.',
+        advancedTitle: 'Modo avanzado',
+        advancedOff: 'Apagado',
+        advancedOn: 'Encendido',
+        advancedHint: 'Muestra herramientas avanzadas en la pestaña Visual, como las líneas del layout (Ctrl+Alt+G). Solo en este navegador.',
+        linesTitle: 'Líneas del layout',
+        linesOutline: 'Contornos',
+        linesSpacing: 'Espaciado',
+        linesGrid: 'Cuadrícula',
+        linesOutlineTip: 'Una línea alrededor de cada caja de la página',
+        linesSpacingTip: 'Margen (naranja), padding (verde) y gap (morado)',
+        linesGridTip: 'Las columnas de cada grid de la página',
+        linesByDepth: 'color por nivel',
+        linesMono: 'un color',
+        linesValuesHover: 'valores: al pasar el ratón',
+        linesValuesAlways: 'valores: siempre',
+        linesTwelve: '12 columnas',
+        linesBaseline: 'ritmo de 8px',
+        linesShortcut: 'Ctrl+Alt+G las apaga y las vuelve a encender',
         deviceTitle: 'Dispositivo',
         deviceDesktop: 'Desktop',
         deviceMobile: 'Móvil',
@@ -328,6 +390,9 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _tab: DetailTab = 'visual';
     // The studio's light/dark switch; null = not in the client's studio mode (no switch to show).
     @state() private _studioTheme: StudioTheme | null = null;
+    // The advanced mode (studioAdvancedMode): the switch in the Page tab, the layout lines in the Visual tab.
+    @state() private _advanced: IAdvancedPrefs = getAdvancedPrefs();
+    private _unsubAdvanced: (() => void) | null = null;
     // The page variant the studio shows (Desktop | Mobile); null = not in the client's studio mode.
     @state() private _contentDevice: StudioDevice | null = null;
     @state() private _deviceBusy = false;
@@ -343,6 +408,8 @@ export class PluginSelectPage extends StateLitElement {
     connectedCallback() {
         super.connectedCallback();
         this._unsubTasks = subscribeTaskManager(() => this.requestUpdate());
+        // Followed, not only read: the shortcut (Ctrl+Alt+G) changes the chips from the editor.
+        this._unsubAdvanced = onAdvancedPrefsChange(prefs => { this._advanced = prefs; });
         this._selection = getAuraEdit()?.selection ?? null;
         subscribe('aura.edit.selection', this);
         subscribe('aura.actualDevice', this);
@@ -414,6 +481,8 @@ export class PluginSelectPage extends StateLitElement {
     disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubTasks?.();
+        this._unsubAdvanced?.();
+        this._unsubAdvanced = null;
         unsubscribe('aura.edit.selection', this);
         unsubscribe('aura.actualDevice', this);
     }
@@ -736,12 +805,12 @@ export class PluginSelectPage extends StateLitElement {
         return html`
             ${this._renderDsVersionPanel(page)}
             ${this._renderTabs()}
-            ${this._renderTabPanel('visual', html`${this._renderPageTree()}${this._renderClassPicker()}`)}
+            ${this._renderTabPanel('visual', html`${this._renderLayoutLines()}${this._renderPageTree()}${this._renderClassPicker()}`)}
             ${this._renderTabPanel('ai', this._editTarget(page)
                 ? this._renderEditPanel(page)
                 : html`<p class="text-xs text-gray-500 dark:text-gray-400 px-1">${this.msg.editUnavailable}</p>`)}
             ${this._renderTabPanel('states', this._renderPageStates())}
-            ${this._renderTabPanel('page', html`${this._renderPageInfo(page)}${this._renderDeviceSwitch(page)}${this._renderThemeSwitch()}`)}
+            ${this._renderTabPanel('page', html`${this._renderPageInfo(page)}${this._renderDeviceSwitch(page)}${this._renderThemeSwitch()}${this._renderAdvancedSwitch()}`)}
         `;
     }
 
@@ -807,6 +876,77 @@ export class PluginSelectPage extends StateLitElement {
                     `)}
                 </div>
                 <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.themeHint}</span>
+            </div>
+        `;
+    }
+
+    // The advanced mode's switch, OFF by default. Off, nothing it gates shows up or runs (the chips below, the
+    // layer over the page, the Ctrl+Alt+G shortcut).
+    private _renderAdvancedSwitch() {
+        const on = this._advanced.advanced;
+        const options = [
+            { value: false, label: this.msg.advancedOff },
+            { value: true, label: this.msg.advancedOn },
+        ];
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.advancedTitle}</span>
+                <div role="radiogroup" class="flex self-start rounded-md border border-gray-300 dark:border-gray-700 overflow-hidden">
+                    ${options.map(o => html`
+                        <button
+                            type="button"
+                            role="radio"
+                            aria-checked=${String(on === o.value)}
+                            class="px-3 py-1 text-xs transition-colors cursor-pointer
+                                ${on === o.value
+                                    ? 'bg-indigo-500 dark:bg-indigo-600 text-white'
+                                    : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+                            @click=${() => updateAdvancedPrefs(p => ({ ...p, advanced: o.value }))}
+                        >${o.label}</button>
+                    `)}
+                </div>
+                <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.advancedHint}</span>
+            </div>
+        `;
+    }
+
+    // The layout lines (advanced mode only): three independent chips, and the options of the ones that are on.
+    private _renderLayoutLines() {
+        const prefs = this._advanced;
+        if (!prefs.advanced) return nothing;
+        const chip = (on: boolean, label: string, onClick: () => void, title = '') => html`
+            <button type="button" title=${title} aria-pressed=${String(on)}
+                class="px-2 py-0.5 rounded-md border text-[11px] cursor-pointer transition-colors
+                    ${on
+                        ? 'bg-indigo-500 dark:bg-indigo-600 border-indigo-500 dark:border-indigo-600 text-white'
+                        : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+                @click=${onClick}>${label}</button>`;
+        const line = (id: LayoutLine, label: string, title: string) =>
+            chip(prefs.lines.includes(id), label, () => updateAdvancedPrefs(p => toggleLine(p, id)), title);
+        const option = (on: boolean, label: string, change: (p: IAdvancedPrefs) => IAdvancedPrefs) =>
+            chip(on, label, () => updateAdvancedPrefs(change));
+        const options = [
+            prefs.lines.includes('outline')
+                ? option(prefs.outlineMono, prefs.outlineMono ? this.msg.linesMono : this.msg.linesByDepth, p => ({ ...p, outlineMono: !p.outlineMono }))
+                : nothing,
+            prefs.lines.includes('spacing')
+                ? option(prefs.valuesAlways, prefs.valuesAlways ? this.msg.linesValuesAlways : this.msg.linesValuesHover, p => ({ ...p, valuesAlways: !p.valuesAlways }))
+                : nothing,
+            prefs.lines.includes('grid') ? option(prefs.twelveColumns, this.msg.linesTwelve, p => ({ ...p, twelveColumns: !p.twelveColumns })) : nothing,
+            prefs.lines.includes('grid') ? option(prefs.baseline, this.msg.linesBaseline, p => ({ ...p, baseline: !p.baseline })) : nothing,
+        ];
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2 flex flex-col gap-1.5">
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-semibold text-gray-600 dark:text-gray-300">${this.msg.linesTitle}</span>
+                    <span class="ml-auto text-[10px] text-gray-400 dark:text-gray-500">${this.msg.linesShortcut}</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                    ${line('outline', this.msg.linesOutline, this.msg.linesOutlineTip)}
+                    ${line('spacing', this.msg.linesSpacing, this.msg.linesSpacingTip)}
+                    ${line('grid', this.msg.linesGrid, this.msg.linesGridTip)}
+                </div>
+                ${prefs.lines.length ? html`<div class="flex flex-wrap gap-1.5">${options}</div>` : nothing}
             </div>
         `;
     }

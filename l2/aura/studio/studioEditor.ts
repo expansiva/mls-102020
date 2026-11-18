@@ -81,6 +81,15 @@ import {
   type IPageTreeAccess,
 } from '/_102020_/l2/aura/studio/pageTreeCore.js';
 import {
+  activeLines,
+  getAdvancedPrefs,
+  onAdvancedPrefsChange,
+  toggleAllLines,
+  updateAdvancedPrefs,
+  type IAdvancedPrefs,
+} from '/_102020_/l2/aura/studio/studioAdvancedMode.js';
+import { LayoutLines } from '/_102020_/l2/aura/studio/studioLayoutLines.js';
+import {
   onPageTreeDockChange,
   TREE_HOVER,
   TREE_MOVE,
@@ -785,6 +794,9 @@ export class StudioEditor {
    */
   private treeSlot: { el: HTMLElement; owner: HTMLElement } | null = null;
   private nextTreeSlot: { el: HTMLElement; owner: HTMLElement } | null = null;
+  /** The layout lines (advanced mode): exists only while armed AND some line is on. */
+  private layoutLines: LayoutLines | null = null;
+  private unsubAdvanced: (() => void) | null = null;
   private classPanel: IClassPanelState | null = null;
   /** The Molecules tab's answer; null once it was asked and nothing candidates. */
   private adopt: IAdoptState | null = null;
@@ -911,6 +923,7 @@ export class StudioEditor {
     const hidden = !visible;
     if (hidden === this.overlayHidden) return;
     this.overlayHidden = hidden;
+    this.layoutLines?.setVisible(!hidden);
     if (hidden) {
       this.selectedEl = null;
       this.lastHoveredEl = null;
@@ -1001,6 +1014,11 @@ export class StudioEditor {
       this.lastHoveredEl = null;
       // Off means no page to show: the tree empties and stops watching.
       this.syncTreeWatch();
+      // And the layout lines give the page back (attribute, stylesheet, layer, listeners).
+      this.unsubAdvanced?.();
+      this.unsubAdvanced = null;
+      this.layoutLines?.destroy();
+      this.layoutLines = null;
       return;
     }
 
@@ -1008,6 +1026,7 @@ export class StudioEditor {
       this.addListeners();
       void this.refreshTarget();
       this.syncTreeWatch();
+      this.unsubAdvanced = onAdvancedPrefsChange((prefs) => this.applyAdvancedPrefs(prefs));
     }
     this.applyCursor();
   }
@@ -1197,6 +1216,8 @@ export class StudioEditor {
     if (this.editSpan && (hovered === this.editSpan || this.editSpan.contains(hovered))) return;
 
     this.lastHoveredEl = hovered;
+    // The spacing values follow the same element the hover box marks.
+    this.layoutLines?.setHovered(hovered);
     if (this.mode === 'inspect') this.drawBoxModel(hovered);
     else this.drawHover(hovered);
   };
@@ -1309,6 +1330,7 @@ export class StudioEditor {
 
   private onHostMouseLeave = (): void => {
     if (this.currentMode() === 'off') return;
+    this.layoutLines?.setHovered(null);
     this.lastHoveredEl = null;
     this.drawSelection();
   };
@@ -1338,6 +1360,16 @@ export class StudioEditor {
       e.preventDefault();
       e.stopPropagation();
       if (!this.selectParentLevel()) this.hideClassPanel();
+      return;
+    }
+
+    // Ctrl+Alt+G turns the layout lines off, or the last set back on — only with the advanced mode on:
+    // with it off the key is not ours.
+    if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === 'g') {
+      if (this.editSpan || this.isTypingTarget(e) || !getAdvancedPrefs().advanced) return;
+      e.preventDefault();
+      e.stopPropagation();
+      updateAdvancedPrefs(toggleAllLines);
       return;
     }
 
@@ -3722,6 +3754,32 @@ export class StudioEditor {
     // Reaching those is the SAVE's job (see saveTarget, which the editor does not call).
     this.setStatus(`${what} ${where} — ${live.message}${note} ${t('status.localOnly')}`);
     this.publishEdited(file);
+  }
+
+  // --- The layout lines (advanced mode) ---
+
+  /**
+   * The advanced mode's preferences changed (or the editor just armed): the lines follow. The layer
+   * exists only while some line is ACTIVE — the gate open and a chip on — so a person who never turned
+   * the advanced mode on gets no layer, no stylesheet and no listener.
+   */
+  private applyAdvancedPrefs(prefs: IAdvancedPrefs): void {
+    const host = this.host;
+    if (this.mode === 'off' || !host || !activeLines(prefs).length) {
+      this.layoutLines?.destroy();
+      this.layoutLines = null;
+      return;
+    }
+    if (!this.layoutLines) {
+      this.layoutLines = new LayoutLines({
+        host,
+        page: () => (this.host ? findPageElement(this.host) as HTMLElement | null : null),
+        isControl: (el) => el.closest(`.${CONTROL_CLASS}`) !== null || el === this.editSpan,
+        controlClass: CONTROL_CLASS,
+      });
+      this.layoutLines.setVisible(!this.overlayHidden);
+    }
+    this.layoutLines.setPrefs(prefs);
   }
 
   // --- The page tree (pageTreePanel, the Structure section of the Visual tab) ---
