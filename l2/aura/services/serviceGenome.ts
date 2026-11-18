@@ -149,7 +149,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
     async onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._pageReloadToken += 1; // re-scan the page list on each service (re)open
-        const file = await this._getActual3File();
+        const file = await this._pageInContext();
         // BEFORE the layout knob, and that order is the fix: `_initLayoutKnob` reads the project, and
         // the project of this service is settled by the file in the l3 and the module it implies.
         // Running it first asked a question nobody had answered yet, once per service open.
@@ -519,7 +519,7 @@ export class ServiceGenome102020 extends ServiceBase {
         const studio = this._studioSelection;
         const file = studio?.file
             ? { project: studio.file.project, shortName: studio.file.shortName, folder: studio.file.folder }
-            : await this._getActual3File();
+            : await this._pageInContext();
         if (!file) return;
         const storFiles = await mls.stor.getFiles({ ...file, level: 2, loadContent: false })
         // Bound to a local so the live-update call at the end of this method still knows it is there:
@@ -952,6 +952,29 @@ export class ServiceGenome102020 extends ServiceBase {
         mls.actual[3].setFullName(lastFileOpened[3] as string);
     }
 
+    /**
+     * The page this service acts on: the file open in the l3 editor or, when there is none, the page on
+     * screen (`aura.actualPage`).
+     *
+     * After a reload the l3 editor has not reopened anything yet, and the page on screen was published
+     * BEFORE this service subscribed to it — the subscription only hears later changes. With neither,
+     * no page was in context, `mls.actualModule` was never set, and the UX and molecules knobs stayed
+     * dimmed (even with a molecule selected) until something changed the page.
+     */
+    private async _pageInContext(): Promise<mls.stor.IFileInfo | null> {
+        const file = await this._getActual3File();
+        if (file) return file;
+        const page = getAuraState().actualPage;
+        if (!page?.folder || !page.shortName) return null;
+        return {
+            project: page.project,
+            shortName: page.shortName,
+            folder: page.folder,
+            level: page.level,
+            extension: page.extension,
+        } as mls.stor.IFileInfo;
+    }
+
     private async _getActual3File(): Promise<mls.stor.IFileInfo | null> {
         const fromStore = await mls.actual[3].getStorFile() ?? null;
         if (fromStore) return fromStore;
@@ -1168,7 +1191,7 @@ export class ServiceGenome102020 extends ServiceBase {
         try {
             const fa = JSON.parse(ev.desc) as mls.events.IFileAction;
             if (fa.action !== 'open' || fa.position !== 'left') return;
-            const file = await this._getActual3File();
+            const file = await this._pageInContext();
             this._updateCurrentPage(file);
             this.requestUpdate();
         } catch { /* ignore */ }
@@ -1200,7 +1223,7 @@ export class ServiceGenome102020 extends ServiceBase {
     }
 
     async firstUpdated() {
-        const file = await this._getActual3File();
+        const file = await this._pageInContext();
         await this._trySetActualModule(file);
         await this._updateCurrentPage(file);
         // Same order as onServiceClick: the module has to be set before the project config is read.

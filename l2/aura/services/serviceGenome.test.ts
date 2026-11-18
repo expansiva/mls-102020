@@ -135,7 +135,15 @@ test('the swap addresses ONE occurrence, in the shape the replacer already parse
 test('the swap writes the file the editor resolved, not the one open in the l3', () => {
   const changed = methodOf(GENOME, 'private async _onMoleculesChanged');
   assert.match(changed, /studio\?\.file/u, 'the studio answer comes first');
-  assert.match(changed, /_getActual3File\(\)/u, 'and the l3 route is the fallback');
+  assert.match(changed, /_pageInContext\(\)/u, 'and the page in context (l3 file, else the page on screen) is the fallback');
+});
+
+test('after a reload, with no l3 file yet, the page on screen is the context', () => {
+  const context = methodOf(GENOME, 'private async _pageInContext');
+  assert.match(context, /this\._getActual3File\(\)/u, 'the l3 file first');
+  assert.match(context, /getAuraState\(\)\.actualPage/u, 'then the page on screen');
+  // Every place that sets the context asks the same question.
+  assert.doesNotMatch(GENOME.replace(context, ''), /= await this\._getActual3File\(\)/u);
 });
 
 // ── Changing the page had to change the page IN THE APP (2026-09-11) ────────
