@@ -19,6 +19,10 @@ import { recordEditInDefs } from '/_102020_/l2/aura/studio/studioDefsHistory.js'
 import { t as tStudio, tr } from '/_102020_/l2/aura/studio/studioMessages.js';
 import { resolveStructuralAnchor, scanTemplateTree } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { currentEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
+import { MoleculePreview, moleculeModuleUrl } from '/_102020_/l2/aura/studio/studioMoleculePreview.js';
+import { MoleculeCatalog, catalogFileOf } from '/_102020_/l2/aura/studio/studioMoleculeCatalog.js';
+import { getGroupLabel, groupLabels } from '/_102020_/l2/aura/molecules/skills/groupLabels.js';
+import { getMessageKey } from '/_102029_/l2/libCommom.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectPage.js';
@@ -195,6 +199,12 @@ export class ServiceGenome102020 extends ServiceBase {
     @state() private _oldSelectedTag: string = '';
     @state() private _moleculeError: string = '';
     @state() private _moleculeReplaceMode: 'selected' | 'all' = 'selected';
+    /** The variant shown on the page without being applied (hover/focus in the panel); null = none. */
+    @state() private _moleculePreviewValue: number | null = null;
+    /** The variant whose on-screen preview could not be shown, for the panel to say so. */
+    @state() private _moleculePreviewUnavailable: number | null = null;
+    private readonly _moleculePreview = new MoleculePreview();
+    private readonly _moleculeCatalog = new MoleculeCatalog();
     @state() private _actualPage: mls.editor.IModelBase | null = null;
 
     // ─── Selection ────────────────────────────────────────────────────
@@ -238,6 +248,8 @@ export class ServiceGenome102020 extends ServiceBase {
         const pageId = `${page.project}:${page.folder}:${page.shortName}`;
         if (pageId === this._followedPage) return;
         this._followedPage = pageId;
+        this._clearMoleculePreview();
+        this._moleculeCatalog.close();
         // Another module (or project): the page knob lists the pages of the module it loaded, and choosing one of
         // those would navigate the app back to that module. Its list is re-read; within the module only the value moves.
         const listKey = `${page.project}:${page.folder.split('/')[0]}`;
@@ -356,6 +368,10 @@ export class ServiceGenome102020 extends ServiceBase {
     }
 
     private async _onPreviewSelectedElementChanged(tag: string) {
+        // Another selection: a preview of the previous one must not stay on the page.
+        this._clearMoleculePreview();
+        // Its catalog belongs to the group that was selected.
+        if (!tag || this._extractGroupFromTag(tag) !== this._selectedMoleculeGroup) this._moleculeCatalog.close();
         await this._ensureMoleculesLoaded();
         const isWC = this._isWebComponent(tag);
         const groupsMolecules = this._getMolecules();
@@ -426,7 +442,77 @@ export class ServiceGenome102020 extends ServiceBase {
         void this._diagnose('selection changed');
     }
 
+    /**
+     * Shows variant `value` in place of the selected molecule, ON SCREEN ONLY (studioMoleculePreview),
+     * or puts the page back with `null`. Nothing here reaches the source, the defs history or the undo
+     * stack: the click on the variant is the real swap.
+     */
+    private async _onMoleculePreview(value: number | null): Promise<void> {
+        const file = value ? this._selectedMoleculeFiles[value - 1] : null;
+        const host = currentEditHost()?.host;
+        const occurrence = this._studioSelection?.occurrence ?? -1;
+        if (!file || !host || !this._oldSelectedTag) {
+            this._clearMoleculePreview();
+            return;
+        }
+        const result = await this._moleculePreview.show({
+            host,
+            fromTag: this._oldSelectedTag,
+            occurrence,
+            all: this._moleculeReplaceMode === 'all',
+            toTag: convertFileToTag(file),
+            moduleUrl: moleculeModuleUrl(file as { project: number; folder: string; shortName: string }),
+        });
+        if (result === 'stale') return;
+        this._moleculePreviewValue = result === 'shown' ? value : null;
+        this._moleculePreviewUnavailable = result === 'unavailable' ? value : null;
+        if (result === 'unavailable') {
+            console.warn(`[serviceGenome] molecule preview unavailable: <${this._oldSelectedTag}> #${occurrence} -> ${file.shortName}`);
+        }
+    }
+
+    /**
+     * The index page of the selected molecule's group, when the molecules project has one: that
+     * page is the catalog "Ver catálogo" opens. The group folder is the one its molecules live in.
+     */
+    private _catalogFile(): { project: number; folder: string; shortName: string } | null {
+        const folder = (this._selectedMoleculeFiles[0] as { folder?: string } | undefined)?.folder;
+        if (!folder) return null;
+        const file = catalogFileOf(MOLECULES_PROJECT, folder);
+        if (!file) return null;
+        const exists = (Object.values(mls.stor.files) as any[]).some((f) =>
+            f.project === file.project && f.folder === file.folder && f.shortName === file.shortName && f.extension === '.ts');
+        return exists ? file : null;
+    }
+
+    private async _openMoleculeCatalog(): Promise<void> {
+        const file = this._catalogFile();
+        const region = currentEditHost()?.host;
+        if (!file || !region) return;
+        // The catalog covers the page: a variant being previewed under it would only confuse.
+        this._clearMoleculePreview();
+        const label = getGroupLabel(this._selectedMoleculeGroup, getMessageKey(groupLabels));
+        await this._moleculeCatalog.open({
+            region,
+            title: label?.title ?? this._selectedMoleculeGroup,
+            group: this._selectedMoleculeGroup,
+            variantCount: this._selectedMoleculeFiles.length,
+            moduleUrl: moleculeModuleUrl(file),
+            tag: convertFileToTag(file),
+            moleculeUrls: this._selectedMoleculeFiles.map((f) =>
+                moleculeModuleUrl(f as { project: number; folder: string; shortName: string })),
+        });
+    }
+
+    private _clearMoleculePreview(): void {
+        this._moleculePreview.clear();
+        this._moleculePreviewValue = null;
+        this._moleculePreviewUnavailable = null;
+    }
+
     private async _onMoleculesChanged(value: number | null) {
+        // The page goes back to what the source says before the source changes.
+        this._clearMoleculePreview();
 
         // The FILE: the in-place editor already resolved which file renders the selection, so that
         // answer is used directly. Without one, the l3 file open in the editor is the fallback.
@@ -852,6 +938,7 @@ export class ServiceGenome102020 extends ServiceBase {
     }
 
     private _onKnobClick(key: string) {
+        if (key !== 'molecules') { this._clearMoleculePreview(); this._moleculeCatalog.close(); }
         this._selectedKnob = key;
         this.requestUpdate();
     }
@@ -1103,6 +1190,8 @@ export class ServiceGenome102020 extends ServiceBase {
 
     disconnectedCallback() {
         super.disconnectedCallback();
+        this._clearMoleculePreview();
+        this._moleculeCatalog.close();
         delete (window as unknown as Record<string, unknown>).auraGenomeDiagnose;
         unsubscribe('aura.edit.selection', this);
         unsubscribe('aura.actualPage', this);
@@ -1221,7 +1310,7 @@ export class ServiceGenome102020 extends ServiceBase {
                     @layout-created=${(e: CustomEvent) => this._onLayoutCreated(e.detail.value)}
                     @layout-renamed=${() => this._initLayoutKnob()}
                     @select-molecule=${(e: CustomEvent) => this._setKnobValue('molecules', e.detail.value)}
-                    @molecule-replace-mode=${(e: CustomEvent) => { this._moleculeReplaceMode = e.detail.value; this.requestUpdate(); }}
+                    @molecule-replace-mode=${(e: CustomEvent) => { this._clearMoleculePreview(); this._moleculeReplaceMode = e.detail.value; this.requestUpdate(); }}
                 >
                     ${this._renderContextStatusArea()}
                 </div>
@@ -1268,6 +1357,11 @@ export class ServiceGenome102020 extends ServiceBase {
                         .value=${this._moleculesValue}
                         .replaceMode=${this._moleculeReplaceMode}
                         .error=${this._moleculeError}
+                        .previewValue=${this._moleculePreviewValue}
+                        .previewUnavailable=${this._moleculePreviewUnavailable}
+                        .catalogAvailable=${!!this._catalogFile()}
+                        @molecule-catalog=${() => void this._openMoleculeCatalog()}
+                        @molecule-preview=${(e: CustomEvent) => void this._onMoleculePreview(e.detail.value)}
                     ></aura--plugins--select-molecule-102020>
                 `;
             default:

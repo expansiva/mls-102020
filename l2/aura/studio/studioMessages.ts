@@ -791,6 +791,12 @@ const message_pt = {
   'tree.drop.slot': 'slot: a ordem dos slots muda pelas setas do painel do elemento',
   'tree.drop.page': 'a página não muda de lugar',
   'status.treeMoved': '<{tag}> movido {count} posição(ões)',
+
+  // ── Molecule catalog drawer ("Ver catálogo" in the Moléculas panel) ───────
+  'catalog.close': 'Fechar',
+  'catalog.loading': 'Carregando o catálogo…',
+  'catalog.failed': 'Não foi possível carregar o catálogo deste grupo.',
+  'catalog.variants': '{count} variantes',
 };
 /// **collab_i18n_end**
 
@@ -1544,6 +1550,11 @@ const message_en: typeof message_pt = {
   'tree.drop.slot': 'slot: the order of slots changes with the arrows of the element panel',
   'tree.drop.page': 'the page does not move',
   'status.treeMoved': '<{tag}> moved {count} place(s)',
+
+  'catalog.close': 'Close',
+  'catalog.loading': 'Loading the catalog…',
+  'catalog.failed': 'Could not load the catalog of this group.',
+  'catalog.variants': '{count} variants',
 };
 
 export type StudioMessageId = keyof typeof message_pt;
