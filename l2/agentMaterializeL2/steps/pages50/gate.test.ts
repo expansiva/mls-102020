@@ -414,3 +414,68 @@ test('history entries of an organism that left the page11, or of a molecule out 
   assert.deepEqual(result.kept, [keep, page]);
   assert.deepEqual(result.dropped.map(item => item.reason), ['organism naoExisteMais is not in the page11', 'molecule groupviewdata--ml-nao-existe is not in the catalog']);
 });
+
+test('requiredMissing with two or more form fields warns when the page never reads stateKeys', () => {
+  const page = 'class Page { render() { return html``; } }';
+  const unread = (sharedSource: string, device: 'desktop' | 'mobile' = 'desktop') => gateM4PageSource(page, { ...target(), device, sharedSource }).filter(item => item.code === 'M4_PAGE_REQUIRED_KEYS_UNREAD');
+  const agentConfiguration = `
+    public async saveAgentConfiguration(): Promise<void> {
+      const missing: string[] = [];
+      if (agentId === null) missing.push('agentId');
+      if (draft.name === null || draft.name.trim() === '') missing.push('name');
+      if (draft.isOn === null) missing.push('isOn');
+      this.publish('saveAgentConfigurationError', { code: 'client.requiredMissing', message: '', details: { stateKeys: missing } });
+    }`;
+  for (const device of ['desktop', 'mobile'] as const) {
+    const issues = unread(agentConfiguration, device);
+    assert.equal(issues.length, 1);
+    assert.equal(issues[0].severity, 'advisory');
+    assert.match(issues[0].message, /Command saveAgentConfiguration asks for 2 fields; name the missing ones by the form labels, reading error\.details\.stateKeys \(name, isOn\)\./u);
+  }
+  const agentBehavior = `
+    public async sendChange(): Promise<void> {
+      const missing: string[] = [];
+      if (draft.changeRequest === null) missing.push('agentBehaviorDraft.changeRequest');
+      this.publish('sendChangeError', { code: 'client.requiredMissing', message: '', details: { stateKeys: missing } });
+    }`;
+  const myConduct = `
+    public async saveMyConduct(): Promise<void> {
+      const missing: string[] = [];
+      if (agentId === null) missing.push('agentId');
+      if (conduct === null) missing.push('conduct');
+      if (changeRequest === null) missing.push('saveMyConductDraft.changeRequest');
+      this.publish('saveMyConductError', { code: 'client.requiredMissing', message: '', details: { stateKeys: missing } });
+    }`;
+  assert.deepEqual(unread(agentBehavior), []);
+  assert.deepEqual(unread(myConduct), []);
+  const solicitacoes = `
+    private requiredMissing(stateKeys: string[]): ErrorState {
+      return { code: 'client.requiredMissing', message: '', details: { stateKeys } };
+    }
+    public async criarSolicitacao(): Promise<void> {
+      const missing: string[] = [];
+      if (produtoId === null) missing.push('criarSolicitacaoDraft.produtoId');
+      if (quantidade === null) missing.push('criarSolicitacaoDraft.quantidade');
+      if (justificativa === null) missing.push('criarSolicitacaoDraft.justificativa');
+      if (dataNecessidade === null) missing.push('criarSolicitacaoDraft.dataNecessidade');
+      this.publish('criarSolicitacaoError', this.requiredMissing(missing));
+    }`;
+  const created = unread(solicitacoes);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].severity, 'advisory');
+  assert.match(created[0].message, /Command criarSolicitacao asks for 3 fields[\s\S]*\(criarSolicitacaoDraft\.quantidade, criarSolicitacaoDraft\.justificativa, criarSolicitacaoDraft\.dataNecessidade\)\./u);
+  const minhasTarefas = `
+    private requiredMissing(id: CommandId, stateKeys: string[]): void {
+      this.publish(COMMAND_ERROR_MEMBER[id], { code: 'client.requiredMissing', message: '', details: { stateKeys } });
+    }
+    public async cmdSalvarAlteracoes(): Promise<void> {
+      const missing: string[] = [];
+      if (draft.title === null) missing.push('salvarDraft.title');
+      if (draft.detail === null) missing.push('salvarDraft.detail');
+      this.requiredMissing('cmdSalvarAlteracoes', missing);
+    }`;
+  const readsKeys = `${page}\nconst keys = (error.details as { stateKeys?: unknown }).stateKeys;`;
+  assert.deepEqual(gateM4PageSource(readsKeys, { ...target(), sharedSource: minhasTarefas }).filter(item => item.code === 'M4_PAGE_REQUIRED_KEYS_UNREAD'), []);
+  const noMissing = `public async load(): Promise<void> { this.publish('loadError', { code: 'client.unexpected', message: '' }); }`;
+  assert.deepEqual(unread(noMissing), []);
+});

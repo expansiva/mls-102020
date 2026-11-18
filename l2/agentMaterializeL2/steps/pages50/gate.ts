@@ -36,6 +36,8 @@ export interface M4PageTarget {
   moleculeEvents?: Record<string, string[]>;
   /** The requests only the page can start (m4PageOnlyRequests); each must be called by the page. */
   pageOnlyRequests?: M4PageOnlyRequest[];
+  /** Shared .ts of this page. Absent skips the requiredMissing label check. */
+  sharedSource?: string;
   /** The Studio edits to redo (m4PageHistory `kept`); absent = none. Its molecule swaps widen the allowed tags. */
   history?: DefsHistoryEntry[];
 }
@@ -418,6 +420,47 @@ export function m4PageHistory(page11: L2Page11Definition, history: readonly Defs
   return { kept, dropped };
 }
 
+/** A draft key the form can label: not an id, a version, a ref, or a selection. */
+function isFormFieldKey(key: string): boolean {
+  if (key.startsWith('selected')) return false;
+  if (/\.(?:id|version)$/u.test(key) || /(?:Id|Ref)$/u.test(key)) return false;
+  return true;
+}
+
+/**
+ * Commands whose `missing` list publishes `client.requiredMissing` with two or more form fields.
+ * A key counts when it names a draft (`…Draft.…`, or a leaf read as `draft.<leaf>` in the same method).
+ */
+function m4RequiredMissingFormFields(sharedSource: string): Array<{ command: string; keys: string[] }> {
+  const code = stripComments(sharedSource);
+  const methods: Array<{ name: string; body: string }> = [];
+  const decl = /(?:^|\n)[ \t]*(?:(?:public|private|protected|async)\s+)*(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?::[^{]+)?\{/gu;
+  for (const match of code.matchAll(decl)) {
+    const open = match.index + match[0].length - 1;
+    methods.push({ name: match[1], body: code.slice(open + 1, skipBalanced(code, open)) });
+  }
+  const helpers = new Set(methods.filter(method => /['"]client\.requiredMissing['"]/u.test(method.body) && /\bstateKeys\b/u.test(method.body)).map(method => method.name));
+  const found: Array<{ command: string; keys: string[] }> = [];
+  for (const method of methods) {
+    const commands = new Map<string, string[]>();
+    const note = (command: string) => {
+      if (commands.has(command)) return;
+      const keys = [...method.body.matchAll(/\bmissing\.push\(\s*['"]([^'"]+)['"]\s*\)/gu)].map(item => item[1])
+        .filter(key => isFormFieldKey(key) && (key.includes('Draft') || new RegExp(`\\bdraft\\.${key.split('.').pop()}\\b`, 'u').test(method.body)));
+      if (keys.length >= 2) commands.set(command, keys);
+    };
+    for (const match of method.body.matchAll(/this\.publish\(\s*['"]([A-Za-z_$][\w$]*)['"][\s\S]{0,500}?['"]client\.requiredMissing['"][\s\S]{0,240}?stateKeys:\s*missing\b/gu)) note(match[1].replace(/Error$/u, ''));
+    for (const match of method.body.matchAll(/this\.publish\(\s*['"]([A-Za-z_$][\w$]*)['"]\s*,\s*this\.([A-Za-z_$][\w$]*)\(\s*missing\s*\)/gu)) {
+      if (helpers.has(match[2])) note(match[1].replace(/Error$/u, ''));
+    }
+    for (const match of method.body.matchAll(/this\.([A-Za-z_$][\w$]*)\(\s*['"]([A-Za-z_$][\w$]*)['"]\s*,\s*missing\s*\)/gu)) {
+      if (helpers.has(match[1])) note(match[2]);
+    }
+    for (const [command, keys] of commands) found.push({ command, keys });
+  }
+  return found;
+}
+
 export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIssue[] {
   const issues: M4PageIssue[] = [];
   const push = (code: string, message: string) => issues.push({ code, message, severity: 'error' });
@@ -544,6 +587,14 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
     const named = item.steps.map(step => `"${step}"`).join(', ');
     const forSteps = item.steps.length ? ` The journey step${item.steps.length > 1 ? 's' : ''} ${named} need${item.steps.length > 1 ? '' : 's'} it.` : '';
     issues.push({ code: 'M4_PAGE_REQUEST_UNCALLED', severity: 'error', always: true, message: `Nothing calls ${method}: the shared does not start it and the page never calls this.${method}(…).${forSteps} Wire it to the control that does it (picking a record, the typed value of a search field, a load-more action, a button), as its JSDoc in the shared declaration describes.` });
+  }
+
+  // A command that publishes client.requiredMissing for two or more form fields, while the page never
+  // reads error.details.stateKeys, cannot name the missing fields by their labels (18/11/2026).
+  if (target.sharedSource && !/\bstateKeys\b/u.test(code)) {
+    for (const item of m4RequiredMissingFormFields(target.sharedSource)) {
+      advise('M4_PAGE_REQUIRED_KEYS_UNREAD', `Command ${item.command} asks for ${item.keys.length} fields; name the missing ones by the form labels, reading error.details.stateKeys (${item.keys.join(', ')}).`);
+    }
   }
 
   // Intents.

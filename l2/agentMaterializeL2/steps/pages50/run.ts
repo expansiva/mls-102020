@@ -153,7 +153,8 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
   const declaration = await port.read(sharedDeclarationInfo(identity, pageId));
   // What the shared starts by itself is read from its code; the other requests are the page's to start.
   const sharedInfo = sharedSourceInfo(identity, pageId);
-  const pageOnlyRequests = m4PageOnlyRequests(shared, port.exists(sharedInfo) ? await port.read(sharedInfo) : '', Object.values(page.methods ?? {}));
+  const sharedText = port.exists(sharedInfo) ? await port.read(sharedInfo) : '';
+  const pageOnlyRequests = m4PageOnlyRequests(shared, sharedText, Object.values(page.methods ?? {}));
   const contractSource = await port.read(m4DefsInfo(identity, 'contract', pageId));
   const rowTypes = m4RowTypes(contractSource);
   const platformTypes = await m4PlatformTypes(contractSource, port);
@@ -200,6 +201,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     methods: page.methods ?? {},
     moleculeEvents: await m4PageMoleculeEvents(tags, port),
     pageOnlyRequests,
+    sharedSource: sharedText,
     ...(history.kept.length ? { history: history.kept } : {}),
   };
   const prompt = await port.read(pagePromptInfo);
