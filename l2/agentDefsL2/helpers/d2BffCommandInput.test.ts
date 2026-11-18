@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
-import { checkD2Bff, type D2BffCheckContext, type D2BffDesign, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { checkD2Bff, normalizeD2BffDesign, type D2BffCheckContext, type D2BffDesign, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import type { D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
@@ -217,6 +217,55 @@ test('an external command missing a call input is D2_BFF_COMMAND_INPUT and does 
   assert.equal(found.length, 1);
   assert.match(found[0], /agentId/);
   assert.doesNotMatch(found[0], /Agent\.id|Agent\.version|D2_BFF_ORIGIN_UNKNOWN/);
+});
+
+test('an external command keeps the call names of field leaves; an entity command still takes the field key', () => {
+  const record = { fields: { agent: { type: 'string' }, changeRequest: { type: 'string' }, changes: { type: 'object', fields: { changeRef: { type: 'string' } } } } };
+  const behavior = {
+    kind: 'external' as const, source: catalogSource, record,
+  } as Ns5OntologyAnyEntity;
+  const fieldLeaf = (name: string, path: string, optional = false): D2BffLeaf => ({
+    name, type: 'string', ...(optional ? { optional: true } : {}), origin: { kind: 'field', paths: [path] },
+  });
+  const raw = design([{ id: 'sendBehaviorChange', when: 'requestChange', writes: 'AgentBehavior.update', input: [] }]);
+  const endpoint = raw.endpoints.find(item => item.id === 'sendBehaviorChange');
+  if (!endpoint) throw new Error('missing command');
+  endpoint.input = [
+    fieldLeaf('agentId', 'AgentBehavior.agent'),
+    { name: 'expectVersion', type: 'number', origin: { kind: 'context', paths: [] } },
+    fieldLeaf('undoChangeRef', 'AgentBehavior.changes.changeRef', true),
+  ];
+  const context = externalContext(
+    [{ entity: 'AgentBehavior', operation: 'update' }],
+    { requestChange: { write: 'AgentBehavior.update' } },
+  );
+  context.entities = { ...externalEntities, AgentBehavior: behavior };
+  context.external = {
+    ...externalSources,
+    connections: [...externalSources.connections, { connectionId: 'cm', operationId: 'updateAgent', direction: 'call', usedBy: ['changeAgentBehavior.requestChange'], effect: 'update' }],
+    journeys: {
+      ...externalSources.journeys,
+      changeAgentBehavior: { business: { steps: [{ stepId: 'requestChange', kind: 'act', entity: 'AgentBehavior', effect: 'update' }] } },
+    },
+  };
+  const kept = normalizeD2BffDesign(raw, context.entities);
+  assert.deepEqual(kept.endpoints.find(item => item.id === 'sendBehaviorChange')?.input.map(item => item.name), ['agentId', 'expectVersion', 'undoChangeRef']);
+  assert.deepEqual(issues(context, kept), []);
+
+  endpoint.input = endpoint.input.filter(item => item.name !== 'agentId');
+  const missing = normalizeD2BffDesign(raw, context.entities);
+  const found = issues(context, missing);
+  assert.equal(found.length, 1);
+  assert.match(found[0], /agentId/);
+
+  const stored = { ...behavior, kind: 'entity' } as Ns5OntologyAnyEntity;
+  endpoint.input = [
+    fieldLeaf('agentId', 'AgentBehavior.agent'),
+    { name: 'expectVersion', type: 'number', origin: { kind: 'context', paths: [] } },
+    fieldLeaf('undoChangeRef', 'AgentBehavior.changes.changeRef', true),
+  ];
+  const renamed = normalizeD2BffDesign(raw, { AgentBehavior: stored });
+  assert.deepEqual(renamed.endpoints.find(item => item.id === 'sendBehaviorChange')?.input.map(item => item.name), ['agent', 'expectVersion', 'changes.changeRef']);
 });
 
 test('operation semantics reads the external call instead of entity transitions', () => {

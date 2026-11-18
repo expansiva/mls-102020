@@ -282,6 +282,8 @@ function parseBindings(value: unknown, fail: (path: string, what: string) => nev
  * entity's leaf as is and prefix the others with their entity. Bindings follow the renamed output keys.
  * Two leaves of one field in a query input keep the names the answer wrote. Two leaves of one field in a type keep the
  * name and the type the answer wrote (`textId: string`) and stay distinct (d2_120). A command input folds them.
+ * A command that writes an external entity keeps every input name the answer wrote: that name is the connection
+ * call's input. The type still comes from the ontology. An entity or mdm command still takes the field key.
  */
 export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = ''): D2BffDesign {
   // The contract interface of the page owns its name: a type that took it is renamed, with its references (d2_76).
@@ -300,13 +302,14 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   const platformTypes = new Set<string>();
   // A field leaf of a type or an input keeps its path in the ontology (d2_79): relative to the root entity, or under the
   // other entity's name when it is a join. An output key stays one name (bindings and states point at it).
-  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountChains: string[][] = [], nameUnderField = false): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
+  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountChains: string[][] = [], nameUnderField = false, keepAnswerNames = false): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
     const field = (leaf: D2BffLeaf): string => (leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '');
     // A query input uses two leaves of one field as two roles (from/to). They keep the names the answer wrote.
     // A type with several leaves of one field keeps each answer name and type (d2_120). A command input folds them.
+    // An external command keeps every answer name: the gate matches the connection call's input, not the field key.
     const originCounts = new Map<string, number>();
     if (keepSameOrigin || nameUnderField) for (const path of rows.map(field).filter(Boolean)) originCounts.set(path, (originCounts.get(path) ?? 0) + 1);
-    const keepsName = (leaf: D2BffLeaf): boolean => keepSameOrigin && (originCounts.get(field(leaf)) ?? 0) > 1;
+    const keepsName = (leaf: D2BffLeaf): boolean => keepAnswerNames || (keepSameOrigin && (originCounts.get(field(leaf)) ?? 0) > 1);
     const underField = (leaf: D2BffLeaf): boolean => nameUnderField && (originCounts.get(field(leaf)) ?? 0) > 1;
     // The root: the entity of the `Entity.id` leaf, the written entity of a command input, else the entity most fields
     // come from (a line without its id still belongs to its own entity; the others are joins).
@@ -394,7 +397,9 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   const endpoints = design.endpoints.map(endpoint => {
     const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`, '', false);
     outputs.set(endpoint.id, output.renamed);
-    const input = fix(endpoint.input, `endpoints.${endpoint.id}.input`, endpoint.writes ? entityOf(endpoint.writes) : '', true, endpoint.kind === 'qry', []);
+    const written = endpoint.writes ? entityOf(endpoint.writes) : '';
+    const keepCallNames = endpoint.kind === 'cmd' && (entitiesOf[written] as { kind?: string } | undefined)?.kind === 'external';
+    const input = fix(endpoint.input, `endpoints.${endpoint.id}.input`, written, true, endpoint.kind === 'qry', [], false, keepCallNames);
     return {
       ...endpoint,
       input: input.rows,
