@@ -227,10 +227,10 @@ test('siblings are the ones in the same template plus the helpers mounted among 
 
 // --- Source guards for the editor that uses it ---
 
-const EDITOR = readFileSync(new URL('studioEditor.ts', import.meta.url), 'utf8');
+const EDITOR = readFileSync(new URL('studioEditor.ts', import.meta.url), 'utf8').replace(/\r\n/gu, '\n');
 /** The floating panel as it renders: its chrome plus the content it inherits (classPickerBase). */
-const PANEL = readFileSync(new URL('classPickerBase.ts', import.meta.url), 'utf8')
-  + readFileSync(new URL('classPickerPanel.ts', import.meta.url), 'utf8');
+const PANEL = readFileSync(new URL('classPickerBase.ts', import.meta.url), 'utf8').replace(/\r\n/gu, '\n')
+  + readFileSync(new URL('classPickerPanel.ts', import.meta.url), 'utf8').replace(/\r\n/gu, '\n');
 
 /** Code lines only: a mention inside a comment is documentation, not a call. */
 function codeLines(source: string): string[] {

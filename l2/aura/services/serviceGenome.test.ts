@@ -20,9 +20,9 @@ import test from 'node:test';
 import { routeForSource, sourceOfPageFile } from '/_102020_/l2/aura/helpers/pageRoutes.js';
 
 const SERVICES = fileURLToPath(new URL('.', import.meta.url));
-const GENOME = readFileSync(`${SERVICES}serviceGenome.ts`, 'utf8');
-const PROJECT = readFileSync(`${SERVICES}serviceProject.ts`, 'utf8');
-const NAVIGATION = readFileSync(fileURLToPath(new URL('../helpers/pageNavigation.ts', import.meta.url)), 'utf8');
+const GENOME = readFileSync(`${SERVICES}serviceGenome.ts`, 'utf8').replace(/\r\n/gu, '\n');
+const PROJECT = readFileSync(`${SERVICES}serviceProject.ts`, 'utf8').replace(/\r\n/gu, '\n');
+const NAVIGATION = readFileSync(fileURLToPath(new URL('../helpers/pageNavigation.ts', import.meta.url)), 'utf8').replace(/\r\n/gu, '\n');
 
 /** The body of a method, from its signature to the next one at the same indentation. */
 function methodOf(source: string, signature: string): string {
@@ -263,7 +263,7 @@ test('a swap that fails says what the replacer said', () => {
 // this knob diverged, and nothing said so.
 
 const STUDIO = fileURLToPath(new URL('../studio/', import.meta.url));
-const MESSAGES = readFileSync(`${STUDIO}studioMessages.ts`, 'utf8');
+const MESSAGES = readFileSync(`${STUDIO}studioMessages.ts`, 'utf8').replace(/\r\n/gu, '\n');
 
 test('the swap reaches the local store without waiting for the debounce', () => {
   const changed = methodOf(GENOME, 'private async _onMoleculesChanged');

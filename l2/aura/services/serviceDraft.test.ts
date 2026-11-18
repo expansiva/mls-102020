@@ -10,9 +10,9 @@ import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
 
 
 const SERVICES = fileURLToPath(new URL('.', import.meta.url));
-const DRAFT = readFileSync(`${SERVICES}serviceDraft.ts`, 'utf8');
-const TOOL = readFileSync(fileURLToPath(new URL('../studio/studioEditTool.ts', import.meta.url)), 'utf8');
-const PLUGIN = readFileSync(fileURLToPath(new URL('../../pluginCollabCoreIndex.ts', import.meta.url)), 'utf8');
+const DRAFT = readFileSync(`${SERVICES}serviceDraft.ts`, 'utf8').replace(/\r\n/gu, '\n');
+const TOOL = readFileSync(fileURLToPath(new URL('../studio/studioEditTool.ts', import.meta.url)), 'utf8').replace(/\r\n/gu, '\n');
+const PLUGIN = readFileSync(fileURLToPath(new URL('../../pluginCollabCoreIndex.ts', import.meta.url)), 'utf8').replace(/\r\n/gu, '\n');
 
 /** The body of a method, from its signature to the next one at the same indentation. */
 function methodOf(source: string, signature: string): string {
@@ -118,7 +118,7 @@ test('the panel shows an upload part in en, pt and es and listens for collabDraf
 
 test('panel buttons use the Studio BUTTON classes', () => {
     // The same tokens as the header editor's BUTTON / BUTTON_PRIMARY, plus the pointer cursor.
-    const header = readFileSync(fileURLToPath(new URL('../plugins/pluginHeaderEditor.ts', import.meta.url)), 'utf8');
+    const header = readFileSync(fileURLToPath(new URL('../plugins/pluginHeaderEditor.ts', import.meta.url)), 'utf8').replace(/\r\n/gu, '\n');
     const tokens = (source: string, name: string): string[] => {
         const start = source.indexOf(`const ${name} = `);
         assert.notEqual(start, -1, `${name} is declared`);
@@ -238,7 +238,7 @@ test('a merged publish leaves the busy phase and a failed release stays on the p
 });
 
 test('st66 s4c: the panel and the core do not reload the page, and a failed tab update is shown', () => {
-    const core = readFileSync(fileURLToPath(new URL('../helpers/draftPanelCore.ts', import.meta.url)), 'utf8');
+    const core = readFileSync(fileURLToPath(new URL('../helpers/draftPanelCore.ts', import.meta.url)), 'utf8').replace(/\r\n/gu, '\n');
     assert.equal(/effects\.reload\(/.test(core), false);
     assert.equal(DRAFT.includes('location.reload'), false);
     assert.equal(DRAFT.includes('_offerReload'), false);
@@ -296,7 +296,7 @@ test('undo asks, then restores a saved file through undoFile and still clears a 
 });
 
 test('serviceDraft.less stays within 15 lines', () => {
-    const less = readFileSync(`${SERVICES}serviceDraft.less`, 'utf8');
+    const less = readFileSync(`${SERVICES}serviceDraft.less`, 'utf8').replace(/\r\n/gu, '\n');
     const lines = less.endsWith('\n') ? less.split('\n').length - 1 : less.split('\n').length;
     assert.ok(lines <= 24, `serviceDraft.less has ${lines} lines`);
 });
