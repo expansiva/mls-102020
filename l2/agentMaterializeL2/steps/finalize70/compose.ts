@@ -13,7 +13,8 @@
 //   (fallback: its first page in menu order);
 // - module already generated: every current navigation item, frontend page and landing stays as it is (order, label,
 //   description, actors, landing). Approved pages the navigation does not have are appended, in plan order, built as on
-//   the first generation. A page that exists only in the config stays. Nothing is removed.
+//   the first generation. A page that exists only in the config stays. Nothing is removed, except the external-systems
+//   item (`external_systems`): it is appended when the module declares a system and dropped when it no longer does.
 // - languages: l4 module.defs.ts productLanguages (what Ctrl+Alt+L cycles); userLanguage from the same file;
 // - designSystems: the names of the project's DS, in designSystem.ts order (what the boot picks by name, the header's
 //   DS select and Ctrl+Alt+D cycle) — the L5 → UI save keeps it in step afterwards;
@@ -42,7 +43,12 @@ export interface M4FinalizeSources {
   userLanguage: string;
   /** The project's DS names, in designSystem.ts order; absent/empty = the field is left as it is. */
   designSystems?: string[];
+  /** Ids from l4 integration `externalSystems`. Absent or empty: no external-systems menu item. */
+  externalSystemIds?: string[];
 }
+
+/** Stable id of the admin link to the platform screen. Not a page of the module. */
+export const M4_EXTERNAL_SYSTEMS_NAV_ID = 'external_systems';
 
 export interface M4NavigationItem { id: string; label: string; href: string; description: string; actors: string[]; icon?: string; landing?: true }
 export interface M4FinalizeResult {
@@ -113,6 +119,24 @@ export function m4MenuActors(menu: unknown, hubs: Map<string, string[]>): Map<st
   return out;
 }
 
+function externalSystemsItem(module: string): M4NavigationItem {
+  return {
+    id: M4_EXTERNAL_SYSTEMS_NAV_ID,
+    label: 'External systems',
+    href: `/monitor/external-systems?module=${module}`,
+    description: 'Settings for the systems this module talks to.',
+    actors: ['admin'],
+  };
+}
+
+/** Append the admin link when a system is declared and it is missing; drop it when none remains. An existing link stays as it is. */
+function applyExternalSystemsItem(navigation: M4NavigationItem[], module: string, externalSystemIds: string[]): M4NavigationItem[] {
+  const index = navigation.findIndex(item => item.id === M4_EXTERNAL_SYSTEMS_NAV_ID);
+  if (externalSystemIds.length === 0) return index < 0 ? navigation : navigation.filter(item => item.id !== M4_EXTERNAL_SYSTEMS_NAV_ID);
+  if (index >= 0) return navigation;
+  return [...navigation, externalSystemsItem(module)];
+}
+
 /** actor → its pages in the order of its authorities list (a hub gives its children in menu order). */
 export function m4MenuFirstPages(menu: unknown, hubs: Map<string, string[]>): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -168,7 +192,7 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
     const addedNav = planned.filter(item => !keptIds.has(item.pageId)).map(item => composeApproved(item.pageId, item.label, item.icon));
     navigation = [...keptNav, ...addedNav];
     navigationAdded = addedNav.map(item => item.id);
-    navigationKept = keptNav.length;
+    navigationKept = 0;
     const currentLandings = Array.isArray(current.landings) ? current.landings as Array<{ actorId: string; pageId: string; route: string }> : [];
     landings = currentLandings.map(landing => structuredClone(landing));
     // A new actor lands the way the first generation would. An actor that already has a landing keeps it,
@@ -215,6 +239,10 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
     navigationAdded = navigation.map(item => item.id);
     navigationKept = 0;
   }
+
+  // The external-systems link is not a page: it never lands, and it is not counted in navigationAdded/navigationKept.
+  navigationKept = navigation.filter(item => item.id !== M4_EXTERNAL_SYSTEMS_NAV_ID && !navigationAdded.includes(item.id)).length;
+  navigation = applyExternalSystemsItem(navigation, module, sources.externalSystemIds ?? []);
 
   const before = current ?? {};
   const entry: Record<string, unknown> = current ? structuredClone(current) : { moduleId: module };

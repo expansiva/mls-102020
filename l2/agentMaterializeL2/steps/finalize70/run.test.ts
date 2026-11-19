@@ -7,7 +7,7 @@ import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { m4OwnedFile } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
 import { pageSourceInfo } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
-import { configInfo, formatM4FinalizeReport, menuInfo, moduleDefsInfo, runM4Finalize, type M4FinalizePort, type M4FinalizeReceipt } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
+import { configInfo, formatM4FinalizeReport, integrationDefsInfo, m4ExternalSystemIds, menuInfo, moduleDefsInfo, runM4Finalize, type M4FinalizePort, type M4FinalizeReceipt } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
 
 const root = new URL('./fixtures/reembolsoDespesas/', import.meta.url);
 const disk = (path: string) => readFileSync(new URL(path, root), 'utf8');
@@ -117,6 +117,30 @@ test('the report names the navigation ids appended and how many stayed', () => {
     pages: ['nova'], notApproved: [], kept: [], navigationAdded: ['nova'], navigationKept: 2, changes: ['navigation'], written: true,
   } as M4FinalizeReceipt;
   assert.equal(formatM4FinalizeReport(receipt).split('\n')[1], 'navigation: added nova; kept 2.');
+});
+
+test('m4ExternalSystemIds reads the exported object and treats a missing field as none', () => {
+  const source = 'export const integration = { "externalSystems": [{ "id": "erp" }, { "id": "erp" }, { "id": "  " }, { "title": "x" }, { "id": "crm" }] };';
+  assert.deepEqual(m4ExternalSystemIds(source), ['erp', 'crm']);
+  assert.deepEqual(m4ExternalSystemIds('export const integration = { "inbound": [] };'), []);
+  assert.deepEqual(m4ExternalSystemIds('not an export'), []);
+});
+
+test('an integration with a system adds the admin link and does not register it as a page', async () => {
+  const port = await memory(PAGES);
+  port.files.set(key(integrationDefsInfo(identity)), 'export const integration = { "externalSystems": [{ "id": "erp", "title": "ERP", "description": "Books.", "settings": [], "operations": [] }] };\n');
+  const first = await runM4Finalize(identity, port);
+  const entry = JSON.parse(port.files.get('102047/l5//config.json')!).projects['102047'].modules[1];
+  const link = entry.navigation[entry.navigation.length - 1];
+  assert.equal(link.id, 'external_systems');
+  assert.equal(link.href, '/monitor/external-systems?module=reembolsoDespesas');
+  assert.deepEqual(link.actors, ['admin']);
+  assert.equal(link.landing, undefined);
+  assert.equal(entry.frontend.pages.some((item: { pageId: string }) => item.pageId === 'external_systems'), false);
+  assert.equal(entry.landings.some((item: { pageId: string }) => item.pageId === 'external_systems'), false);
+  assert.equal(first.receipt.navigationAdded.includes('external_systems'), false);
+  const second = await runM4Finalize(identity, port);
+  assert.equal(second.receipt.written, false, 'the link stays, so the second run writes nothing');
 });
 
 test('no approved page at all writes nothing', async () => {

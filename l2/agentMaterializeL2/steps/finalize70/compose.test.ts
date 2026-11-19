@@ -193,6 +193,56 @@ test('menu helpers: hubs, authorities through a hub, first sentence', () => {
   assert.equal(m4FirstSentence('Valor de R$ 3.50 aprovado. Fim.'), 'Valor de R$ 3.50 aprovado.');
 });
 
+test('external systems: one admin link on the first generation, and none when the module has no system', () => {
+  const src = sources('reembolsoDespesas', ['inicio', 'minhas_despesas']);
+  const fresh = composeM4ModuleEntry({ ...src, externalSystemIds: ['erp'] });
+  const navigation = fresh.entry.navigation as Array<Record<string, unknown>>;
+  assert.deepEqual(navigation[navigation.length - 1], {
+    id: 'external_systems',
+    label: 'External systems',
+    href: '/monitor/external-systems?module=reembolsoDespesas',
+    description: 'Settings for the systems this module talks to.',
+    actors: ['admin'],
+  });
+  assert.equal(fresh.navigationAdded.includes('external_systems'), false);
+  assert.equal(fresh.navigationKept, 0);
+  const landings = fresh.entry.landings as Array<{ pageId: string }>;
+  assert.equal(landings.some(item => item.pageId === 'external_systems'), false);
+  assert.equal((fresh.entry.frontend as { pages: Array<{ pageId: string }> }).pages.some(item => item.pageId === 'external_systems'), false);
+  const none = composeM4ModuleEntry(src);
+  assert.equal((none.entry.navigation as Array<{ id: string }>).some(item => item.id === 'external_systems'), false);
+});
+
+test('external systems: an existing module gains the link, keeps a hand edit, and loses only that link', () => {
+  const src = sources('reembolsoDespesas', ['inicio']);
+  const current = {
+    moduleId: 'reembolsoDespesas',
+    navigation: [
+      { id: 'inicio', label: 'Começo', href: '/reembolsoDespesas/inicio', description: 'à mão', actors: ['colaborador'], landing: true as const },
+    ],
+    landings: [{ actorId: 'colaborador', pageId: 'inicio', route: '/reembolsoDespesas/inicio' }],
+    frontend: { pages: [{ pageId: 'inicio', route: '/reembolsoDespesas/inicio' }] },
+  };
+  const gained = composeM4ModuleEntry({ ...src, externalSystemIds: ['erp', 'crm'] }, current);
+  assert.deepEqual((gained.entry.navigation as Array<{ id: string }>).map(item => item.id), ['inicio', 'external_systems']);
+  assert.deepEqual(gained.navigationAdded, []);
+  assert.equal(gained.navigationKept, 1);
+  assert.deepEqual(gained.entry.landings, current.landings);
+  assert.deepEqual((gained.entry.frontend as { pages: unknown[] }).pages, current.frontend.pages);
+
+  const edited = structuredClone(gained.entry);
+  (edited.navigation as Array<{ label: string }>)[1].label = 'Sistemas';
+  const still = composeM4ModuleEntry({ ...src, externalSystemIds: ['erp'] }, edited);
+  assert.equal((still.entry.navigation as Array<{ id: string; label: string }>).find(item => item.id === 'external_systems')!.label, 'Sistemas');
+  assert.equal(still.navigationKept, 1);
+
+  const gone = composeM4ModuleEntry({ ...src, externalSystemIds: [] }, edited);
+  assert.deepEqual((gone.entry.navigation as Array<{ id: string }>).map(item => item.id), ['inicio']);
+  assert.deepEqual(gone.entry.landings, current.landings);
+  assert.deepEqual((gone.entry.frontend as { pages: unknown[] }).pages, current.frontend.pages);
+  assert.equal(gone.navigationKept, 1);
+});
+
 test('designSystems: the project DS names go in after languages; without names the field is left as it is', () => {
   const src = sources('reembolsoDespesas', ['inicio']);
   const withDs = composeM4ModuleEntry({ ...src, designSystems: ['Default', 'Canteiro'] });

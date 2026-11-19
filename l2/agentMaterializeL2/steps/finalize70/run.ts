@@ -13,7 +13,8 @@ import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shar
 import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
 import { readM4Snapshot } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { pageSourceInfo, studioPagePort, type M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
-import { composeM4ModuleEntry, type M4FinalizePage } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
+import { extractExportedObject } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
+import { composeM4ModuleEntry, M4_EXTERNAL_SYSTEMS_NAV_ID, type M4FinalizePage } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
 import { themesFromSource } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 import { designSystemNames } from '/_102020_/l2/aura/plugins/helpers/dsConfigList.js';
 
@@ -51,6 +52,25 @@ export function designSystemInfo(project: number): Ns5FileInfo {
 export function moduleDefsInfo(identity: M4RunIdentity): Ns5FileInfo {
   return { project: identity.project, level: 4, folder: identity.module, shortName: 'module', extension: '.defs.ts' };
 }
+export function integrationDefsInfo(identity: M4RunIdentity): Ns5FileInfo {
+  return { project: identity.project, level: 4, folder: identity.module, shortName: 'integration', extension: '.defs.ts' };
+}
+
+/** Ids of `externalSystems` on l4/<module>/integration.defs.ts. Missing file, missing field or unreadable export: none. */
+export function m4ExternalSystemIds(source: string): string[] {
+  const parsed = extractExportedObject(source);
+  if (!parsed || typeof parsed !== 'object') return [];
+  const list = (parsed as { externalSystems?: unknown }).externalSystems;
+  if (!Array.isArray(list)) return [];
+  const ids: string[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const id = (item as { id?: unknown }).id;
+    if (typeof id !== 'string' || !id.trim() || ids.includes(id)) continue;
+    ids.push(id);
+  }
+  return ids;
+}
 
 /** productLanguages and userLanguage of l4/<module>/module.defs.ts (read as text: it is not importable). */
 export function m4ModuleLanguages(source: string): { productLanguages: string[]; userLanguage: string } {
@@ -78,6 +98,7 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
   }
   const menu = port.exists(menuInfo(identity)) ? await port.readJson<unknown>(menuInfo(identity)) : null;
   const languages = port.exists(moduleDefsInfo(identity)) ? m4ModuleLanguages(await port.read(moduleDefsInfo(identity))) : { productLanguages: [], userLanguage: '' };
+  const externalSystemIds = port.exists(integrationDefsInfo(identity)) ? m4ExternalSystemIds(await port.read(integrationDefsInfo(identity))) : [];
   // The project's DS, by name: the module's list in the published app (no file / unreadable = left as it is).
   const dsSource = port.exists(designSystemInfo(identity.project)) ? await port.read(designSystemInfo(identity.project)) : '';
   const designSystems = designSystemNames(themesFromSource(dsSource) ?? []);
@@ -94,14 +115,16 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
   const current = index >= 0 ? client.modules[index] : undefined;
   const registered = new Set<string>();
   if (Array.isArray(current?.navigation)) {
-    for (const item of current.navigation as Array<{ id?: unknown }>) if (typeof item?.id === 'string') registered.add(item.id);
+    for (const item of current.navigation as Array<{ id?: unknown }>) {
+      if (typeof item?.id === 'string' && item.id !== M4_EXTERNAL_SYSTEMS_NAV_ID) registered.add(item.id);
+    }
   }
   const currentFrontend = current?.frontend && typeof current.frontend === 'object' ? current.frontend as { pages?: unknown } : undefined;
   if (Array.isArray(currentFrontend?.pages)) {
     for (const item of currentFrontend.pages as Array<{ pageId?: unknown }>) if (typeof item?.pageId === 'string') registered.add(item.pageId);
   }
   const kept = notApproved.filter(pageId => registered.has(pageId));
-  const { entry, changes, navigationAdded, navigationKept } = composeM4ModuleEntry({ ...identity, pages, keepPageIds: kept, menu, ...languages, designSystems }, current);
+  const { entry, changes, navigationAdded, navigationKept } = composeM4ModuleEntry({ ...identity, pages, keepPageIds: kept, menu, ...languages, designSystems, externalSystemIds }, current);
   if (index >= 0) client.modules[index] = entry;
   else client.modules.push(entry);
 
@@ -112,7 +135,7 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
     pages: pages.map(page => page.pageId), notApproved, kept, navigationAdded, navigationKept, changes: written ? changes : [], written,
   };
   const path = m4OwnedFile(identity, 'finalize70');
-  await port.writeJson(path, { ...receipt, sourcesHash: await sha256Text(JSON.stringify({ pages, menu, languages })) });
+  await port.writeJson(path, { ...receipt, sourcesHash: await sha256Text(JSON.stringify({ pages, menu, languages, externalSystemIds })) });
   return { receipt, path: displayPath(path) };
 }
 
