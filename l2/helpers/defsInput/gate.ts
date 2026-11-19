@@ -37,7 +37,7 @@ const SUPPORTED = {
   rules: '2026-09-16-ns5-rules-v2',
   workflows: '2026-09-17-ns5-workflows-v3',
   access: '2026-09-12-ns5-access-v3',
-  integration: ['2026-09-12-ns5-integration-v2', '2026-11-17-ns5-integration-v3'],
+  integration: ['2026-09-12-ns5-integration-v2', '2026-11-17-ns5-integration-v3', '2026-11-19-ns5-integration-v4'],
   menu: '2026-09-20-p2-menu-v2.2',
   needs: '2026-09-21-p2-needs-v1',
   backend: '2026-09-21-p1-backend-v1.2',

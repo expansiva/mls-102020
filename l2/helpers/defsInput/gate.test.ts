@@ -61,6 +61,27 @@ void test('recorded integration v2 without connections is read; an unknown versi
   );
 });
 
+void test('a copied integration v4 passes the entry gate and v3 stays the same', async () => {
+  const v3 = artifactsOf(EXPENSE);
+  (v3.integration as { schemaVersion: string }).schemaVersion = '2026-11-17-ns5-integration-v3';
+  delete (v3.integration as { connections?: unknown }).connections;
+  const v3Problems = await problems(v3);
+  assert.equal(v3Problems.some(item => item.code === 'UNSUPPORTED_VERSION'), false, JSON.stringify(v3Problems));
+
+  const copied = parseNs4ClassicDefsSource<{ schemaVersion: string; externalSystems: unknown }>(
+    readFileSync(path.join(HERE, 'fixtures/repoInsideModule-integration.defs.ts'), 'utf8'),
+  );
+  assert.equal(copied.schemaVersion, '2026-11-19-ns5-integration-v4');
+  const v4 = artifactsOf(EXPENSE);
+  const integration = v4.integration as { schemaVersion: string; externalSystems?: unknown; connections?: unknown };
+  integration.schemaVersion = copied.schemaVersion;
+  integration.externalSystems = copied.externalSystems;
+  delete integration.connections;
+  const v4Problems = await problems(v4);
+  assert.equal(v4Problems.some(item => item.code === 'UNSUPPORTED_VERSION'), false, JSON.stringify(v4Problems));
+  assert.deepEqual(v4Problems, v3Problems);
+});
+
 void test('the gate reads an external call for input fields and leaves an entity binding unchanged', async () => {
   const artifacts = artifactsOf(EXPENSE);
   const module = (artifacts.module as { moduleName: string }).moduleName;
