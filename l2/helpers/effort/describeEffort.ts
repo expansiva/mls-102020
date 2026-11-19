@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/helpers/effort/describeEffort.ts" enhancement="_blank"/>
 
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
+import { externalSystemMenuNote } from '/_102020_/l2/helpers/defsInput/externalSystemNote.js';
 import { isTextOnlyChange, L4_TEXT_ATTRIBUTES, type EffortAgentRef, type EffortAnswer, type EffortInput, type EffortPromptRequest, type EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
 const MASTER = { project: '102020', kind: 'l2', device: 'web' } as const;
@@ -624,6 +625,21 @@ export function describeEffortFrom(input: EffortInput, contracts: Record<string,
     return answer(input, [], `l4 file ${path} is not a known kind; Apply cannot plan it`);
   }
   if (input.item.kind === 'inbound') return answer(input, [], 'inbound integration is not supported by Apply yet');
+  if (input.item.kind === 'connection') {
+    return notedEmpty(input, 'a connection reaches the screen through the use case and the route, which are L1');
+  }
+  if (input.item.kind === 'plugin') {
+    return notedEmpty(input, 'a plugin reaches the screen through the use case and the route, which are L1');
+  }
+  if (input.item.kind === 'externalSystem') {
+    const id = input.item.changeId.startsWith('externalSystem:')
+      ? input.item.changeId.slice('externalSystem:'.length)
+      : input.item.changeId;
+    if (input.item.op === 'removed') {
+      return notedEmpty(input, `external system ${id} was removed; no screen reads it`);
+    }
+    return notedEmpty(input, externalSystemMenuNote(id));
+  }
   if (input.item.kind === 'entity' && input.item.op === 'added') {
     return notedEmpty(input, 'a new entity reaches the screens through its journeys');
   }

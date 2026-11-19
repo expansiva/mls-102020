@@ -1246,6 +1246,48 @@ void test('each effort gap is a treatment, an empty answer with a reason, or a r
   assert.equal(badId.abend?.reason.includes('rule-sem-prefixo'), true);
 });
 
+void test('connection, plugin and externalSystem answer empty with a reason', () => {
+  const pages = contracts();
+  const reasons: string[] = [];
+  const original = console.info;
+  console.info = (...args: unknown[]) => { reasons.push(args.map(item => String(item)).join(' ')); };
+  const rows: ReturnType<typeof describeEffortFrom>[] = [];
+  const cases: Array<[string, 'connection' | 'plugin' | 'externalSystem']> = [
+    ['connection:cm.listAgents', 'connection'],
+    ['plugin:stripe', 'plugin'],
+    ['externalSystem:repoHost', 'externalSystem'],
+  ];
+  try {
+    for (const [changeId, kind] of cases) {
+      for (const op of L4_DIFF_OPS) {
+        rows.push(describeEffortFrom(input({
+          changeId, kind, op, entity: '',
+          before: op === 'added' ? undefined : { id: changeId },
+          after: op === 'removed' ? undefined : { id: changeId },
+        }), pages));
+      }
+    }
+  } finally {
+    console.info = original;
+  }
+  assert.equal(rows.length, 9);
+  for (const row of rows) {
+    assert.equal(row.status, 'computed', row.item);
+    assert.equal(row.abend, undefined, row.item);
+    assert.deepEqual(row.materialize, []);
+    assert.equal(reasons.some(line => line.startsWith(row.item)), true, row.item);
+  }
+  assert.ok(reasons.some(line => line.includes('connection:cm.listAgents') && line.includes('which are L1')));
+  assert.ok(reasons.some(line => line.includes('plugin:stripe') && line.includes('which are L1')));
+  const menu = "External system 'repoHost': the configuration menu entry for the outside system is not generated yet (H4).";
+  assert.ok(reasons.filter(line => line.includes(menu)).length >= 2);
+  assert.ok(reasons.some(line => line.includes('external system repoHost was removed')));
+  const inbound = describeEffortFrom(input({ changeId: 'inbound:aviso', kind: 'inbound', op: 'added', entity: '' }), pages);
+  assert.equal(inbound.abend?.reason, 'inbound integration is not supported by Apply yet');
+  const outbound = describeEffortFrom(input({ changeId: 'outbound:aviso', kind: 'outbound', op: 'changed', entity: '' }), pages);
+  assert.equal(outbound.status, 'computed');
+});
+
 void test('every kind and op abends only as a known user refusal', () => {
   const pages = contracts();
   const allowed = [

@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/helpers/defsInput/gate.ts" enhancement="_blank"/>
 
 import { externalCatalogTexts } from '/_102020_/l2/helpers/defsInput/externalCatalog.js';
+import { externalSystemMenuNote } from '/_102020_/l2/helpers/defsInput/externalSystemNote.js';
 import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import {
   D2_INPUT_VERSION,
@@ -605,7 +606,7 @@ function reviewExternalSystemMenus(state: GateState, integration: Record<string,
       state,
       'EXTERNAL_SYSTEM_MENU_NOT_GENERATED',
       `l4/${module}/integration.defs.ts`,
-      `External system '${id}': the configuration menu entry for the outside system is not generated yet (H4).`,
+      externalSystemMenuNote(id),
     );
   }
 }
