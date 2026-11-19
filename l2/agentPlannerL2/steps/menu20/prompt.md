@@ -44,7 +44,11 @@ For each journey × actor, pick one place. The signals are the ones already in t
 
 - `hub`: the person picks a record of `context` (an l4 entity) before acting — the "Project". Has `text` and `children`. When the grant is anchored on the person themselves, the hub opens with that record already selected; say so in `text`.
 - `page`: a screen. No `text`. Has `organisms[]`. `icon` is a Lucide icon name that represents the screen, or `""` when none fits. Do not invent a name; an unknown name is dropped by the code.
-- `group`: a folder with no context. Use only when there are many leaves.
+- `group`: a folder with no context. Use only when there are many leaves, except the one node below.
+
+## Systems outside the module
+
+When the human prompt has the section `## Systems outside the module`, the tree has exactly one `group` node: `id` is `external_systems`, `children` is `[]`, `label` is a short name in `userLanguage` for the entry where the admin configures the systems outside the module, and `text` is one sentence in `userLanguage` of what the admin does there. Do not list that node in `authorities`. When the section is absent, that node does not exist.
 
 Ids are `snake_case`. Suffix an actor only when the same thing exists for different actors outside a hub.
 

@@ -842,7 +842,7 @@ void test('menu20 prompt: home organisms only from beyond-journeys sources', () 
 
 void test('human prompt carries journeys, grants, processes and candidates', () => {
   const loaded = loadSources();
-  const human = buildP2MenuHumanPrompt({ menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes } });
+  const human = buildP2MenuHumanPrompt({ menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes, externalSystems: [] } });
   assert.match(human, /## Candidates \(deterministic; candidates, not the answer\)/);
   assert.match(human, /matricularAluno/);
   assert.match(human, /lembrarGeracaoMensalidades/);
@@ -884,7 +884,7 @@ void test('candidate prompt includes the config navigation as current screens, n
     actors: ['recepcao'],
   }];
   const human = buildP2MenuHumanPrompt({
-    menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes },
+    menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes, externalSystems: [] },
     currentNavigation,
   });
   assert.match(human, /the module's current screens — keep their ids, labels and wording; change only what the l4 diff changes/);
@@ -1276,7 +1276,7 @@ void test('d2_160 placements: schema, parser, gate and menu.json', () => {
   assert.equal(prompt.includes('Actions are not nodes'), false);
   const sourcePrompt = 'criar mensalidadesAcademia em português. academia com alunos e planos.';
   const human = buildP2MenuHumanPrompt({
-    menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes, sourcePrompt },
+    menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes, externalSystems: [], sourcePrompt },
   });
   assert.ok(human.indexOf('## Module') >= 0 && human.indexOf('## Module') < human.indexOf('## Actors'));
   assert.ok(human.includes(sourcePrompt));
@@ -1345,4 +1345,40 @@ void test('d2_161 page icon is optional on disk and checked against Lucide after
   await afterP2MenuPromptStep(agentMeta(), contextWith(step, payload), step, step, 1);
   const approved = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { warnings: string[] };
   assert.deepEqual(approved.warnings, [`icon dropped: ${firstPage(before).id} not-a-real-icon`]);
+});
+
+void test('human prompt names systems outside the module only when the module has them', () => {
+  const loaded = loadSources();
+  const base = { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes, externalSystems: [] };
+  const absent = buildP2MenuHumanPrompt({ menuSources: base });
+  assert.equal(absent.includes('## Systems outside the module'), false);
+  const present = buildP2MenuHumanPrompt({
+    menuSources: {
+      ...base,
+      externalSystems: [{ id: 'northLedger', title: 'North ledger', description: 'Keeps amounts the module asks for.' }],
+    },
+  });
+  assert.match(present, /## Systems outside the module/);
+  assert.match(present, /"id": "northLedger"/);
+  assert.match(present, /"title": "North ledger"/);
+  assert.equal(present.includes('settings'), false);
+});
+
+void test('a recorded pt-BR menu answer with the external_systems group passes the gate', () => {
+  const loaded = loadSources();
+  const raw = loadDraft() as { tree: unknown[] };
+  raw.tree.push({
+    id: 'external_systems',
+    kind: 'group',
+    label: 'Sistemas de fora',
+    text: 'O admin configura os sistemas de fora deste módulo.',
+    children: [],
+  });
+  const draft = normalizeMenuV2(raw);
+  const node = draft.tree.find(item => item.id === 'external_systems');
+  assert.equal(node?.kind, 'group');
+  assert.equal(node?.kind === 'group' ? node.label : '', 'Sistemas de fora');
+  assert.equal(JSON.stringify(draft.authorities).includes('external_systems'), false);
+  const gate = validateP2Menu(draft, loaded);
+  assert.equal(gate.ok, true, gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
 });
