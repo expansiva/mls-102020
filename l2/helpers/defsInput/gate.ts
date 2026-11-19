@@ -81,6 +81,7 @@ export async function buildD2InputSnapshot(
   checkVersion(state, workflows, SUPPORTED.workflows, 'l4/workflows.defs.ts');
   checkVersion(state, access, SUPPORTED.access, 'l4/access.defs.ts');
   checkVersion(state, integration, SUPPORTED.integration, 'l4/integration.defs.ts');
+  reviewExternalSystemMenus(state, integration, identity.module);
   checkVersion(state, menu, SUPPORTED.menu, 'pool/l2/web/menu.json');
   checkVersion(state, needs, SUPPORTED.needs, 'pool/l1/web/needs.json');
   checkVersion(state, backend, SUPPORTED.backend, 'pool/l2/web/backend.json');
@@ -594,6 +595,19 @@ function error(state: GateState, code: string, file: string, message: string, pa
 
 function review(state: GateState, code: string, file: string, message: string, pageId?: string, route?: string): void {
   state.problems.push({ severity: 'review', code, file, message, ...(pageId ? { pageId } : {}), ...(route ? { route } : {}) });
+}
+
+function reviewExternalSystemMenus(state: GateState, integration: Record<string, unknown>, module: string): void {
+  for (const system of rows(integration.externalSystems)) {
+    const id = text(system.id);
+    if (!id) continue;
+    review(
+      state,
+      'EXTERNAL_SYSTEM_MENU_NOT_GENERATED',
+      `l4/${module}/integration.defs.ts`,
+      `External system '${id}': the configuration menu entry for the outside system is not generated yet (H4).`,
+    );
+  }
 }
 
 function rec(value: unknown): Record<string, unknown> {
