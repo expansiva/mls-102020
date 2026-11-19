@@ -82,36 +82,30 @@ void test('a copied integration v4 passes the entry gate and v3 stays the same',
   assert.deepEqual(v4Problems, v3Problems);
 });
 
-void test('a v4 external system is a review, and v3 or v4 without systems stay quiet', async () => {
-  const quiet = async (artifacts: D2InputArtifacts) => {
+void test('a v4 external system does not raise a menu review, and v3 or v4 without systems stay quiet', async () => {
+  const reviewCodes = async (artifacts: D2InputArtifacts) => {
     const snapshot = await buildD2InputSnapshot({ project: 102047, module: moduleOf(artifacts) }, withDigests(artifacts));
     assert.equal(snapshot.problems.some(item => item.code === 'EXTERNAL_SYSTEM_MENU_NOT_GENERATED'), false, JSON.stringify(snapshot.problems));
+    return snapshot.problems.filter(item => item.severity === 'review').map(item => item.code).sort();
   };
 
   const v3 = artifactsOf(EXPENSE);
   (v3.integration as { schemaVersion: string }).schemaVersion = '2026-11-17-ns5-integration-v3';
   delete (v3.integration as { connections?: unknown }).connections;
-  await quiet(v3);
+  await reviewCodes(v3);
 
   const bare = artifactsOf(EXPENSE);
   (bare.integration as { schemaVersion: string; externalSystems?: unknown }).schemaVersion = '2026-11-19-ns5-integration-v4';
   delete (bare.integration as { externalSystems?: unknown }).externalSystems;
   delete (bare.integration as { connections?: unknown }).connections;
-  await quiet(bare);
+  const bareReviews = await reviewCodes(bare);
 
-  const warned = artifactsOf(EXPENSE);
-  const integration = warned.integration as { schemaVersion: string; externalSystems?: unknown; connections?: unknown };
+  const withSystems = artifactsOf(EXPENSE);
+  const integration = withSystems.integration as { schemaVersion: string; externalSystems?: unknown; connections?: unknown };
   integration.schemaVersion = '2026-11-19-ns5-integration-v4';
   integration.externalSystems = [{ id: 'repoHost' }, { id: '' }, { id: 12 }];
   delete integration.connections;
-  const module = moduleOf(warned);
-  const snapshot = await buildD2InputSnapshot({ project: 102047, module }, withDigests(warned));
-  const notices = snapshot.problems.filter(item => item.code === 'EXTERNAL_SYSTEM_MENU_NOT_GENERATED');
-  assert.deepEqual(notices.map(item => ({ severity: item.severity, file: item.file, message: item.message })), [{
-    severity: 'review',
-    file: `l4/${module}/integration.defs.ts`,
-    message: "External system 'repoHost': the configuration menu entry for the outside system is not generated yet (H4).",
-  }]);
+  assert.deepEqual(await reviewCodes(withSystems), bareReviews);
 });
 
 function moduleOf(artifacts: D2InputArtifacts): string {

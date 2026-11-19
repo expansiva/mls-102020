@@ -1279,9 +1279,10 @@ void test('connection, plugin and externalSystem answer empty with a reason', ()
   }
   assert.ok(reasons.some(line => line.includes('connection:cm.listAgents') && line.includes('which are L1')));
   assert.ok(reasons.some(line => line.includes('plugin:stripe') && line.includes('which are L1')));
-  const menu = "External system 'repoHost': the configuration menu entry for the outside system is not generated yet (H4).";
-  assert.ok(reasons.filter(line => line.includes(menu)).length >= 2);
-  assert.ok(reasons.some(line => line.includes('external system repoHost was removed')));
+  const menu = reasons.filter(line => line.includes('externalSystem:repoHost') && line.includes('finalize70') && line.includes('external_systems'));
+  assert.equal(menu.length, 3);
+  assert.equal(menu.filter(line => line.includes('exists while the module has an outside system')).length, 2);
+  assert.equal(menu.filter(line => line.includes('no outside system left')).length, 1);
   const inbound = describeEffortFrom(input({ changeId: 'inbound:aviso', kind: 'inbound', op: 'added', entity: '' }), pages);
   assert.equal(inbound.abend?.reason, 'inbound integration is not supported by Apply yet');
   const outbound = describeEffortFrom(input({ changeId: 'outbound:aviso', kind: 'outbound', op: 'changed', entity: '' }), pages);
