@@ -288,6 +288,27 @@ export function showInMenu(entry: ModuleEntry, pageId: string): MenuEditResult {
   return { entry: next };
 }
 
+/**
+ * Changes the route of a page everywhere it is copied: `frontend.pages[].route`, the `href` of its menu
+ * item and the `route` of the landings on it. Typing the route in one place and leaving the copies behind
+ * is what the `href-differs` issue reports. A route must start with '/'.
+ */
+export function setPageRoute(entry: ModuleEntry, pageId: string, route: string): MenuEditResult {
+  const text = route.trim();
+  if (!text.startsWith('/')) return { entry, refused: 'bad-route' };
+  const { next, nav, pages, landings } = draft(entry);
+  const page = pages.find(pageItem => pageItem.pageId === pageId);
+  if (!page) return { entry, refused: 'no-page' };
+  if (page.route === text) return { entry };
+  page.route = text;
+  const item = nav.find(navItem => navItem.id === pageId);
+  if (item) item.href = text;
+  if (landings.some(landing => landing.pageId === pageId)) {
+    next.landings = landings.map(landing => (landing.pageId === pageId ? { ...landing, route: text } : landing));
+  }
+  return { entry: next };
+}
+
 /** Moves the page to the head of `frontend.pages`, which makes it answer `/<module>`. Nothing else moves. */
 export function setHomePage(entry: ModuleEntry, pageId: string): MenuEditResult {
   const { next, pages } = draft(entry);

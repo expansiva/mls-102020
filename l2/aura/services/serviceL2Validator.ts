@@ -4,6 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { createModel } from '/_102027_/l2/libModel.js';
+import { checkContractRoutes, type ContractSource, type RouteRow } from '/_102020_/l2/aura/helpers/l2ContractRoutes.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -75,19 +76,7 @@ const messages: Record<string, MessageType> = {
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-interface IRouteRow {
-    key: string;
-    page: string;
-    routeName: string;
-    route: string;
-    contractPath: string;
-    sharedPath: string | null;
-    backendPath: string | null;
-    backendProject: number | null;
-    calledInFrontend: boolean;
-    existsInBackend: boolean;
-    hasIssue: boolean;
-}
+type IRouteRow = RouteRow;
 
 interface IPageRow {
     key: string;
@@ -271,59 +260,6 @@ export class ServiceL2Validator102020 extends ServiceBase {
         return pages;
     }
 
-    /** First `export const … = {…} as const;` artifact block — same idiom the codegen agents use
-     *  (e.g. agentCbHttpController.ts). Unwraps to the artifact's `data`. */
-    private _parseArtifactData(content: string): Record<string, unknown> | undefined {
-        const s = content.indexOf('= ');
-        const e = content.indexOf(' as const');
-        if (s === -1 || e <= s) return undefined;
-        try {
-            const parsed = JSON.parse(content.slice(s + 2, e));
-            if (!parsed || typeof parsed !== 'object') return undefined;
-            const data = (parsed as { data?: unknown }).data;
-            return data && typeof data === 'object' ? data as Record<string, unknown> : parsed as Record<string, unknown>;
-        } catch {
-            return undefined;
-        }
-    }
-
-    private _tsPath(file: mls.stor.IFileInfo): string {
-        return `${file.folder}/${file.shortName}${file.extension}`;
-    }
-
-    /** The routes a page contract declares: the quoted keys of its `export interface <X>Contracts { … }`
-     *  (`'agendaClinica.pacientes.loadPatients': { input…; output… }`). Only the keys at the first
-     *  level of that interface — the nested input/output shapes are not routes. */
-    private _contractRoutes(content: string): string[] {
-        const head = /export interface \w*Contracts\s*\{/.exec(content);
-        if (!head) return [];
-        const routes: string[] = [];
-        let depth = 1;
-        let lineStart = true;
-        for (let i = head.index + head[0].length; i < content.length && depth > 0; i++) {
-            const ch = content[i];
-            if (ch === '{') depth++;
-            else if (ch === '}') depth--;
-            else if (depth === 1 && lineStart && (ch === "'" || ch === '"')) {
-                const key = new RegExp(`^${ch}([\\w.]+)${ch}\\s*\\??:`).exec(content.slice(i));
-                if (key) routes.push(key[1]);
-            }
-            if (ch === '\n') lineStart = true;
-            else if (ch !== ' ' && ch !== '\t') lineStart = false;
-        }
-        return routes;
-    }
-
-    /** The shared passes the route as an ARGUMENT — right after `(` or `,` — and uses execBff. That
-     *  covers the three shapes the generator writes: `execBff<Output<'r'>>('r', …)`, a generic
-     *  wrapper `this.query('r', …)` that hands it to `execBff(request, …)`, and helpers like
-     *  `runCommand('id', 'r', …)`. In type positions (`Output<'r'>`, `| 'r'`) it follows `<` or `|`. */
-    private _callsRoute(sharedContent: string, route: string): boolean {
-        if (!/\bexecBff\b/.test(sharedContent)) return false;
-        const escaped = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`[(,]\\s*['"\`]${escaped}['"\`]`).test(sharedContent);
-    }
-
     /** Navigates to l1 and opens the backend controller file for this route in serviceSourceL1 —
      *  mirrors pluginExploreList.ts's own `fireEvents('open', file, {})` exactly (not just the
      *  FileAction fire): create the file's model first, set `mls.actual[1]` to it, THEN fire —
@@ -370,56 +306,17 @@ export class ServiceL2Validator102020 extends ServiceBase {
     }
 
     // ─── Check: contract route → actually called by the frontend, AND → really exists in l1 ─
-    // Every route declared in every page's contracts file is listed, not just the broken ones.
+    // The rule lives in helpers/l2ContractRoutes.ts (shared with the modules dashboard); this reads the files.
 
     private async _checkRoutes(
         contractFiles: mls.stor.IFileInfo[],
         sharedFiles: mls.stor.IFileInfo[],
         controllerDefsFiles: mls.stor.IFileInfo[],
     ): Promise<IRouteRow[]> {
-        const backendRoutes = new Map<string, { path: string; project: number }>();
-        for (const f of controllerDefsFiles) {
-            const data = this._parseArtifactData(String(await f.getContent()));
-            const handlers = Array.isArray((data as { handlers?: unknown } | undefined)?.handlers)
-                ? (data as { handlers: Array<Record<string, unknown>> }).handlers
-                : [];
-            for (const handler of handlers) {
-                // The route is declared in the controller's .defs.ts, but the link opens the controller
-                // itself: serviceSourceL1 only opens the .ts of a file.
-                if (typeof handler.route === 'string') backendRoutes.set(handler.route, { path: `${f.folder}/${f.shortName}.ts`, project: f.project });
-            }
-        }
-
-        const sharedByShortName = new Map(sharedFiles.map((f) => [f.shortName, f]));
-        const rows: IRouteRow[] = [];
-
-        for (const contractFile of contractFiles) {
-            const content = String(await contractFile.getContent());
-            const sharedFile = sharedByShortName.get(contractFile.shortName);
-            const sharedContent = sharedFile ? String(await sharedFile.getContent()) : '';
-
-            for (const route of this._contractRoutes(content)) {
-                const routeName = route.split('.').pop() || route;
-                const calledInFrontend = sharedFile ? this._callsRoute(sharedContent, route) : false;
-                const backendInfo = backendRoutes.get(route);
-                const existsInBackend = Boolean(backendInfo);
-                rows.push({
-                    key: `${contractFile.shortName}:${routeName}`,
-                    page: contractFile.shortName,
-                    routeName,
-                    route,
-                    contractPath: this._tsPath(contractFile),
-                    sharedPath: sharedFile ? this._tsPath(sharedFile) : null,
-                    backendPath: backendInfo?.path ?? null,
-                    backendProject: backendInfo?.project ?? null,
-                    calledInFrontend,
-                    existsInBackend,
-                    hasIssue: !calledInFrontend || !existsInBackend,
-                });
-            }
-        }
-        rows.sort((a, b) => a.page.localeCompare(b.page) || a.routeName.localeCompare(b.routeName));
-        return rows;
+        const read = (files: mls.stor.IFileInfo[]): Promise<ContractSource[]> => Promise.all(files.map(async (f) => ({
+            project: f.project, folder: f.folder, shortName: f.shortName, extension: f.extension, content: String(await f.getContent()),
+        })));
+        return checkContractRoutes(await read(contractFiles), await read(sharedFiles), await read(controllerDefsFiles));
     }
 
     // ─── Render ───────────────────────────────────────────────────────

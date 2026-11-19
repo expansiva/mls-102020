@@ -19,6 +19,7 @@ import {
   setMenuIcon,
   setMenuIconSvg,
   setMenuLabel,
+  setPageRoute,
   showInMenu,
   type ModuleEntry,
 } from '/_102020_/l2/aura/plugins/helpers/menuConfigCore.js';
@@ -374,4 +375,17 @@ test('the iconSvg shows in the actor preview and survives replaceModuleMenu', ()
   const config = { projects: { '102047': { modules: [tarefas()] } } };
   const written = findModuleEntry(replaceModuleMenu(config, 102047, 'tarefas', edited), 102047, 'tarefas')!;
   assert.equal(nav(written)[2].iconSvg, OWN_SVG);
+});
+
+test('setPageRoute changes the route, the menu link and the start pages together', () => {
+  const result = setPageRoute(tarefas(), 'inicio', '/tarefas/home');
+  assert.equal(result.refused, undefined);
+  assert.equal(pages(result.entry).find(page => page.pageId === 'inicio')?.route, '/tarefas/home');
+  assert.equal(nav(result.entry).find(item => item.id === 'inicio')?.href, '/tarefas/home');
+  const landings = result.entry.landings as Array<Record<string, string>>;
+  assert.equal(landings.find(landing => landing.pageId === 'inicio')?.route, '/tarefas/home');
+  assert.equal(landings.find(landing => landing.pageId === 'painel_tarefas')?.route, '/tarefas/painel_tarefas', 'other landings untouched');
+  assert.deepEqual(readModuleMenu(result.entry).issues, []);
+  assert.equal(setPageRoute(tarefas(), 'inicio', 'sem-barra').refused, 'bad-route');
+  assert.equal(setPageRoute(tarefas(), 'nao_existe', '/x').refused, 'no-page');
 });

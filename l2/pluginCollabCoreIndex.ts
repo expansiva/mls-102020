@@ -30,6 +30,25 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 widget: '_102020_/l2/aura/services/serviceExploreProjects'
             },
             {
+                // The l5/config.json of the project as sections, next to the 100555 items of the L6
+                // project panel (selectProject). Declared here, not in 100554: 102020 is what knows
+                // what a client app is. Proposal: collabMyFiles/configideia.md.
+                category: 'Details',
+                scope: ['l5Project'],
+                priority: 1,
+                auth: ['admin'],
+                widget: '_102020_/l2/aura/plugins/pluginAppConfig'
+            },
+            {
+                // Every module of the project and where it is (spec, pages, backend, routes, tests),
+                // next to the App Config. Proposal: collabMyFiles/DashboardIdea.md.
+                category: 'Details',
+                scope: ['l5Project'],
+                priority: 1,
+                auth: ['admin'],
+                widget: '_102020_/l2/aura/plugins/pluginModulesDashboard'
+            },
+            {
                 category: 'Services',
                 scope: ['l1ServicesLeft'],
                 priority: 1,
@@ -84,6 +103,13 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 priority: 1,
                 auth: ['*'],
                 widget: '_102020_/l2/aura/services/serviceL2Validator'
+            },
+            {
+                category: 'Services',
+                scope: ['l2ServicesLeft'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_102020_/l2/aura/services/serviceComponentExplorer'
             },
             {
                 category: 'Services',
