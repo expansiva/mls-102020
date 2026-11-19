@@ -7,6 +7,7 @@ import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { m4OwnedFile } from '/_102020_/l2/agentMaterializeL2/helpers/core.js';
 import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js';
 import { pageSourceInfo } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
+import { EXTERNAL_SYSTEM_MENU_NODE_MISSING } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
 import { configInfo, formatM4FinalizeReport, integrationDefsInfo, m4ExternalSystemIds, menuInfo, moduleDefsInfo, runM4Finalize, type M4FinalizePort, type M4FinalizeReceipt } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
 
 const root = new URL('./fixtures/reembolsoDespesas/', import.meta.url);
@@ -126,19 +127,35 @@ test('m4ExternalSystemIds reads the exported object and treats a missing field a
   assert.deepEqual(m4ExternalSystemIds('not an export'), []);
 });
 
-test('an integration with a system adds the admin link and does not register it as a page', async () => {
+test('an integration with a system and no plan node reports the problem and writes no link', async () => {
   const port = await memory(PAGES);
+  port.files.set(key(integrationDefsInfo(identity)), 'export const integration = { "externalSystems": [{ "id": "erp", "title": "ERP", "description": "Books.", "settings": [], "operations": [] }] };\n');
+  const first = await runM4Finalize(identity, port);
+  const entry = JSON.parse(port.files.get('102047/l5//config.json')!).projects['102047'].modules[1];
+  assert.equal(entry.navigation.some((item: { id: string }) => item.id === 'external_systems'), false);
+  assert.deepEqual(first.receipt.problems, [EXTERNAL_SYSTEM_MENU_NODE_MISSING]);
+  assert.match(formatM4FinalizeReport(first.receipt), new RegExp(EXTERNAL_SYSTEM_MENU_NODE_MISSING, 'u'));
+});
+
+test('an integration with a plan node adds the admin link from the plan and does not register it as a page', async () => {
+  const port = await memory(PAGES);
+  const menu = JSON.parse(port.files.get(key(menuInfo(identity)))!) as { tree: unknown[] };
+  menu.tree.push({ id: 'external_systems', kind: 'group', label: 'Sistemas de fora', text: 'O admin configura os sistemas.', children: [] });
+  port.files.set(key(menuInfo(identity)), JSON.stringify(menu));
   port.files.set(key(integrationDefsInfo(identity)), 'export const integration = { "externalSystems": [{ "id": "erp", "title": "ERP", "description": "Books.", "settings": [], "operations": [] }] };\n');
   const first = await runM4Finalize(identity, port);
   const entry = JSON.parse(port.files.get('102047/l5//config.json')!).projects['102047'].modules[1];
   const link = entry.navigation[entry.navigation.length - 1];
   assert.equal(link.id, 'external_systems');
+  assert.equal(link.label, 'Sistemas de fora');
+  assert.equal(link.description, 'O admin configura os sistemas.');
   assert.equal(link.href, '/monitor/external-systems?module=reembolsoDespesas');
   assert.deepEqual(link.actors, ['admin']);
   assert.equal(link.landing, undefined);
   assert.equal(entry.frontend.pages.some((item: { pageId: string }) => item.pageId === 'external_systems'), false);
   assert.equal(entry.landings.some((item: { pageId: string }) => item.pageId === 'external_systems'), false);
   assert.equal(first.receipt.navigationAdded.includes('external_systems'), false);
+  assert.deepEqual(first.receipt.problems, []);
   const second = await runM4Finalize(identity, port);
   assert.equal(second.receipt.written, false, 'the link stays, so the second run writes nothing');
 });

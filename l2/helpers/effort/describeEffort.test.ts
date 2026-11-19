@@ -1279,7 +1279,7 @@ void test('connection, plugin and externalSystem answer empty with a reason', ()
   }
   assert.ok(reasons.some(line => line.includes('connection:cm.listAgents') && line.includes('which are L1')));
   assert.ok(reasons.some(line => line.includes('plugin:stripe') && line.includes('which are L1')));
-  const menu = reasons.filter(line => line.includes('externalSystem:repoHost') && line.includes('finalize70') && line.includes('external_systems'));
+  const menu = reasons.filter(line => line.includes('externalSystem:repoHost') && line.includes('menu20') && line.includes('finalize70') && line.includes('external_systems'));
   assert.equal(menu.length, 3);
   assert.equal(menu.filter(line => line.includes('exists while the module has an outside system')).length, 2);
   assert.equal(menu.filter(line => line.includes('no outside system left')).length, 1);

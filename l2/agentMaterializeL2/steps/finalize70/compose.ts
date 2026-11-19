@@ -60,9 +60,14 @@ export interface M4FinalizeResult {
   navigationAdded: string[];
   /** Navigation items left as they were. Zero on the first generation. */
   navigationKept: number;
+  /** Distinct problems. The external-systems link is not written when its menu node is missing. */
+  problems: string[];
 }
 
-interface MenuNode { id?: unknown; kind?: unknown; label?: unknown; icon?: unknown; children?: unknown }
+/** The module declares an outside system and the menu plan has no usable `external_systems` group. */
+export const EXTERNAL_SYSTEM_MENU_NODE_MISSING = 'EXTERNAL_SYSTEM_MENU_NODE_MISSING';
+
+interface MenuNode { id?: unknown; kind?: unknown; label?: unknown; text?: unknown; icon?: unknown; children?: unknown }
 
 const str = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const nodes = (value: unknown): MenuNode[] => (Array.isArray(value) ? value.filter((item): item is MenuNode => Boolean(item) && typeof item === 'object') : []);
@@ -119,22 +124,39 @@ export function m4MenuActors(menu: unknown, hubs: Map<string, string[]>): Map<st
   return out;
 }
 
-function externalSystemsItem(module: string): M4NavigationItem {
-  return {
-    id: M4_EXTERNAL_SYSTEMS_NAV_ID,
-    label: 'External systems',
-    href: `/monitor/external-systems?module=${module}`,
-    description: 'Settings for the systems this module talks to.',
-    actors: ['admin'],
+/** The `group` of id `external_systems`, anywhere in the menu tree. Its label and text are the plan's words. */
+function externalSystemsNode(menu: unknown): MenuNode | undefined {
+  const walk = (list: MenuNode[]): MenuNode | undefined => {
+    for (const node of list) {
+      if (str(node.id) === M4_EXTERNAL_SYSTEMS_NAV_ID && str(node.kind) === 'group') return node;
+      const found = walk(nodes(node.children));
+      if (found) return found;
+    }
+    return undefined;
   };
+  return walk(nodes((menu as { tree?: unknown } | null)?.tree));
 }
 
-/** Append the admin link when a system is declared and it is missing; drop it when none remains. An existing link stays as it is. */
-function applyExternalSystemsItem(navigation: M4NavigationItem[], module: string, externalSystemIds: string[]): M4NavigationItem[] {
+/** Append the admin link when a system is declared and the plan names it; drop it when none remains. An existing link stays as it is. */
+function applyExternalSystemsItem(navigation: M4NavigationItem[], module: string, menu: unknown, externalSystemIds: string[]): { navigation: M4NavigationItem[]; problems: string[] } {
   const index = navigation.findIndex(item => item.id === M4_EXTERNAL_SYSTEMS_NAV_ID);
-  if (externalSystemIds.length === 0) return index < 0 ? navigation : navigation.filter(item => item.id !== M4_EXTERNAL_SYSTEMS_NAV_ID);
-  if (index >= 0) return navigation;
-  return [...navigation, externalSystemsItem(module)];
+  if (externalSystemIds.length === 0) {
+    return { navigation: index < 0 ? navigation : navigation.filter(item => item.id !== M4_EXTERNAL_SYSTEMS_NAV_ID), problems: [] };
+  }
+  if (index >= 0) return { navigation, problems: [] };
+  const node = externalSystemsNode(menu);
+  const label = str(node?.label);
+  if (!label) return { navigation, problems: [EXTERNAL_SYSTEM_MENU_NODE_MISSING] };
+  return {
+    navigation: [...navigation, {
+      id: M4_EXTERNAL_SYSTEMS_NAV_ID,
+      label,
+      href: `/monitor/external-systems?module=${module}`,
+      description: m4FirstSentence(str(node?.text)),
+      actors: ['admin'],
+    }],
+    problems: [],
+  };
 }
 
 /** actor → its pages in the order of its authorities list (a hub gives its children in menu order). */
@@ -242,7 +264,9 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
 
   // The external-systems link is not a page: it never lands, and it is not counted in navigationAdded/navigationKept.
   navigationKept = navigation.filter(item => item.id !== M4_EXTERNAL_SYSTEMS_NAV_ID && !navigationAdded.includes(item.id)).length;
-  navigation = applyExternalSystemsItem(navigation, module, sources.externalSystemIds ?? []);
+  const applied = applyExternalSystemsItem(navigation, module, sources.menu, sources.externalSystemIds ?? []);
+  navigation = applied.navigation;
+  const problems = applied.problems;
 
   const before = current ?? {};
   const entry: Record<string, unknown> = current ? structuredClone(current) : { moduleId: module };
@@ -268,5 +292,5 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
     entry.headerLinks = [];
     changes.push('headerLinks');
   }
-  return { entry, changes, navigation, navigationAdded, navigationKept };
+  return { entry, changes, navigation, navigationAdded, navigationKept, problems };
 }

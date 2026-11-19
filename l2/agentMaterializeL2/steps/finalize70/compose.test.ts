@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
-import { composeM4ModuleEntry, m4FirstSentence, m4MenuActors, m4MenuPages, type M4FinalizePage } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
+import { composeM4ModuleEntry, EXTERNAL_SYSTEM_MENU_NODE_MISSING, m4FirstSentence, m4MenuActors, m4MenuPages, type M4FinalizePage, type M4FinalizeSources } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
 import { m4ModuleLanguages } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
 
 const root = new URL('./fixtures/reembolsoDespesas/', import.meta.url);
@@ -193,23 +193,50 @@ test('menu helpers: hubs, authorities through a hub, first sentence', () => {
   assert.equal(m4FirstSentence('Valor de R$ 3.50 aprovado. Fim.'), 'Valor de R$ 3.50 aprovado.');
 });
 
-test('external systems: one admin link on the first generation, and none when the module has no system', () => {
+function menuWithExternal(src: M4FinalizeSources, label: string, text: string, nest = false): M4FinalizeSources {
+  const menu = structuredClone(src.menu) as { tree: Array<Record<string, unknown>> };
+  const node = { id: 'external_systems', kind: 'group', label, text, children: [] };
+  if (nest) menu.tree.push({ id: 'config', kind: 'group', label: 'Config', text: 'Area.', children: [node] });
+  else menu.tree.push(node);
+  return { ...src, menu };
+}
+
+test('external systems: the plan label and text become the admin link, in whatever language the plan wrote', () => {
   const src = sources('reembolsoDespesas', ['inicio', 'minhas_despesas']);
-  const fresh = composeM4ModuleEntry({ ...src, externalSystemIds: ['erp'] });
-  const navigation = fresh.entry.navigation as Array<Record<string, unknown>>;
+  const pt = composeM4ModuleEntry({ ...menuWithExternal(src, 'Sistemas de fora', 'O admin configura os sistemas. O resto fica de fora.'), externalSystemIds: ['erp'] });
+  const navigation = pt.entry.navigation as Array<Record<string, unknown>>;
   assert.deepEqual(navigation[navigation.length - 1], {
     id: 'external_systems',
-    label: 'External systems',
+    label: 'Sistemas de fora',
     href: '/monitor/external-systems?module=reembolsoDespesas',
-    description: 'Settings for the systems this module talks to.',
+    description: 'O admin configura os sistemas.',
     actors: ['admin'],
   });
-  assert.equal(fresh.navigationAdded.includes('external_systems'), false);
-  assert.equal(fresh.navigationKept, 0);
-  const landings = fresh.entry.landings as Array<{ pageId: string }>;
+  assert.deepEqual(pt.problems, []);
+  assert.equal(pt.navigationAdded.includes('external_systems'), false);
+  assert.equal(pt.navigationKept, 0);
+  const landings = pt.entry.landings as Array<{ pageId: string }>;
   assert.equal(landings.some(item => item.pageId === 'external_systems'), false);
-  assert.equal((fresh.entry.frontend as { pages: Array<{ pageId: string }> }).pages.some(item => item.pageId === 'external_systems'), false);
+  assert.equal((pt.entry.frontend as { pages: Array<{ pageId: string }> }).pages.some(item => item.pageId === 'external_systems'), false);
+
+  const en = composeM4ModuleEntry({ ...menuWithExternal(src, 'Outside systems', 'The admin configures the systems.'), externalSystemIds: ['erp'] });
+  const enItem = (en.entry.navigation as Array<{ id: string; label: string; description: string }>).find(item => item.id === 'external_systems')!;
+  assert.equal(enItem.label, 'Outside systems');
+  assert.equal(enItem.description, 'The admin configures the systems.');
+
+  const nested = composeM4ModuleEntry({ ...menuWithExternal(src, 'Sistemas de fora', 'O admin configura os sistemas.', true), externalSystemIds: ['erp'] });
+  assert.equal((nested.entry.navigation as Array<{ label: string }>).at(-1)!.label, 'Sistemas de fora');
+});
+
+test('external systems: no plan node means the problem and no link; no system means neither', () => {
+  const src = sources('reembolsoDespesas', ['inicio']);
+  const missing = composeM4ModuleEntry({ ...src, externalSystemIds: ['erp'] });
+  assert.deepEqual(missing.problems, [EXTERNAL_SYSTEM_MENU_NODE_MISSING]);
+  assert.equal((missing.entry.navigation as Array<{ id: string }>).some(item => item.id === 'external_systems'), false);
+  const blank = composeM4ModuleEntry({ ...menuWithExternal(src, '  ', 'texto'), externalSystemIds: ['erp'] });
+  assert.deepEqual(blank.problems, [EXTERNAL_SYSTEM_MENU_NODE_MISSING]);
   const none = composeM4ModuleEntry(src);
+  assert.deepEqual(none.problems, []);
   assert.equal((none.entry.navigation as Array<{ id: string }>).some(item => item.id === 'external_systems'), false);
 });
 
@@ -223,7 +250,7 @@ test('external systems: an existing module gains the link, keeps a hand edit, an
     landings: [{ actorId: 'colaborador', pageId: 'inicio', route: '/reembolsoDespesas/inicio' }],
     frontend: { pages: [{ pageId: 'inicio', route: '/reembolsoDespesas/inicio' }] },
   };
-  const gained = composeM4ModuleEntry({ ...src, externalSystemIds: ['erp', 'crm'] }, current);
+  const gained = composeM4ModuleEntry({ ...menuWithExternal(src, 'Sistemas de fora', 'O admin configura os sistemas.'), externalSystemIds: ['erp', 'crm'] }, current);
   assert.deepEqual((gained.entry.navigation as Array<{ id: string }>).map(item => item.id), ['inicio', 'external_systems']);
   assert.deepEqual(gained.navigationAdded, []);
   assert.equal(gained.navigationKept, 1);
@@ -233,6 +260,7 @@ test('external systems: an existing module gains the link, keeps a hand edit, an
   const edited = structuredClone(gained.entry);
   (edited.navigation as Array<{ label: string }>)[1].label = 'Sistemas';
   const still = composeM4ModuleEntry({ ...src, externalSystemIds: ['erp'] }, edited);
+  assert.deepEqual(still.problems, []);
   assert.equal((still.entry.navigation as Array<{ id: string; label: string }>).find(item => item.id === 'external_systems')!.label, 'Sistemas');
   assert.equal(still.navigationKept, 1);
 
