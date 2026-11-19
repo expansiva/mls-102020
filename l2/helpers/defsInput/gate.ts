@@ -1,5 +1,6 @@
 /// <mls fileReference="_102020_/l2/helpers/defsInput/gate.ts" enhancement="_blank"/>
 
+import { externalCatalogTexts } from '/_102020_/l2/helpers/defsInput/externalCatalog.js';
 import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import {
   D2_INPUT_VERSION,
@@ -36,7 +37,7 @@ const SUPPORTED = {
   rules: '2026-09-16-ns5-rules-v2',
   workflows: '2026-09-17-ns5-workflows-v3',
   access: '2026-09-12-ns5-access-v3',
-  integration: '2026-09-12-ns5-integration-v2',
+  integration: ['2026-09-12-ns5-integration-v2', '2026-11-17-ns5-integration-v3'],
   menu: '2026-09-20-p2-menu-v2.2',
   needs: '2026-09-21-p2-needs-v1',
   backend: '2026-09-21-p1-backend-v1.2',
@@ -144,6 +145,8 @@ export async function buildD2InputSnapshot(
 
   const pages: D2SelectedPage[] = [];
   const semanticErrors: Error[] = [];
+  let externalCatalogs: Record<string, string> | undefined;
+  const catalogsForExternal = async () => (externalCatalogs ??= await externalCatalogTexts(artifacts.entities));
   for (const page of menuScan.pages.values()) {
     const pageId = page.pageId;
     const need = needRows.get(pageId) || {};
@@ -153,12 +156,15 @@ export async function buildD2InputSnapshot(
     const endpointRows = [...backendEndpoints.values()].filter(endpoint => text(endpoint.page) === pageId)
       .sort((left, right) => text(left.route).localeCompare(text(right.route)));
     const usecaseIds = new Set(endpointRows.map(endpoint => text(endpoint.usecaseRef)).filter(Boolean));
+    const usecaseRows = [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0);
+    const pageHasExternal = usecaseRows.some(row => text(rec(artifacts.entities[text(row.entity)]).kind) === 'external');
     const destinations = destinationsFor(identity, pageId);
     let operationBindings: D2SelectedPage['operationBindings'] = [];
     try {
       operationBindings = resolveD2OperationBindings({
         module: identity.module, entities: artifacts.entities, access, rules, digests: artifacts.sources,
-      }, pageId, endpointRows, [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0),
+        ...(pageHasExternal ? { external: { connections: rows(integration.connections), journeys: artifacts.journeys, catalogs: await catalogsForExternal() } } : {}),
+      }, pageId, endpointRows, usecaseRows,
       unique([...strings(need.actors), ...(authority.actorsByPage.get(pageId) || [])]));
     } catch (error) { semanticErrors.push(error instanceof Error ? error : new Error(String(error))); }
     pages.push({
@@ -173,7 +179,7 @@ export async function buildD2InputSnapshot(
       reads: arr(need.reads),
       writes: arr(need.writes),
       endpoints: endpointRows,
-      usecases: [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0),
+      usecases: usecaseRows,
       operationBindings,
       destinations,
     });
@@ -538,12 +544,13 @@ function validateDestinationCollisions(state: GateState, pages: D2SelectedPage[]
   }
 }
 
-function checkVersion(state: GateState, value: Record<string, unknown>, expected: string, file: string): void {
-  if (text(value.schemaVersion) !== expected) {
+function checkVersion(state: GateState, value: Record<string, unknown>, expected: string | readonly string[], file: string): void {
+  const accepted = typeof expected === 'string' ? [expected] : expected;
+  if (!accepted.includes(text(value.schemaVersion))) {
     const regenerate = file === 'pool/l2/web/backend.json' || file === 'pool/l2/web/effort.json'
       ? ' Regenerate this artifact with its current producer.'
       : '';
-    error(state, 'UNSUPPORTED_VERSION', file, `expected ${expected}, got '${text(value.schemaVersion)}'.${regenerate}`);
+    error(state, 'UNSUPPORTED_VERSION', file, `expected ${accepted.join(' or ')}, got '${text(value.schemaVersion)}'.${regenerate}`);
   }
 }
 

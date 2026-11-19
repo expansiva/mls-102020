@@ -12,6 +12,8 @@ import {
   buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN, D2_BFF_UPDATE_MODES,
   type D2BffDesign, type D2BffIssue, type D2Grant, type D2Menu, type D2NeedPage,
 } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { externalCatalogTexts } from '/_102020_/l2/helpers/defsInput/externalCatalog.js';
+import type { D2ExternalCallSources } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import type { D2PageRefusal } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
 import { d2SharedDeriveIssues, deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
 
@@ -38,6 +40,8 @@ export interface D2BffContext {
   rules: Record<string, string>;
   /** The L4 journeys the menu links to this page. */
   journeys: Array<{ journeyId: string; business: unknown }>;
+  /** Connection calls for `external` writes. Absent in callers that only build the prompt slice. */
+  external?: D2ExternalCallSources;
   prompt: string;
   /** The design approved before, when the page is redone (d2_71). */
   approved: D2BffDesign | null;
@@ -246,6 +250,7 @@ export async function loadD2BffContext(identity: D2RunIdentity, pageId: string):
       pageId, page11Text: { desktop: texts[0], mobile: texts[1] }, drafts: { desktop: drafts[0], mobile: drafts[1] },
       need, menu: artifacts.menu as D2Menu, module: artifacts.module, entities: artifacts.entities as Record<string, Ns5OntologyAnyEntity>,
       access: artifacts.access, rules: artifacts.rules, journeys: artifacts.journeys,
+      integration: artifacts.integration, catalogs: await externalCatalogTexts(artifacts.entities),
     }),
     identity, inputHash: snapshot.snapshotHash, prompt, approved: await readApprovedD2Bff(identity, pageId),
   };
@@ -263,6 +268,8 @@ export function d2BffContextFrom(input: {
   access: unknown;
   rules: unknown;
   journeys: Record<string, unknown>;
+  integration?: unknown;
+  catalogs?: Record<string, string>;
 }): Omit<D2BffContext, 'identity' | 'inputHash' | 'prompt' | 'approved'> {
   const linked = Object.entries(input.menu.meta?.journeys ?? {}).filter(([, pages]) => pages.includes(input.pageId)).map(([id]) => id).sort();
   const journeys = linked.flatMap(journeyId => {
@@ -282,5 +289,13 @@ export function d2BffContextFrom(input: {
     grants: ((input.access as { grants?: D2Grant[] } | null)?.grants ?? []),
     rules: ((input.rules as { rules?: Record<string, string> } | null)?.rules ?? {}),
     journeys,
+    external: {
+      connections: Array.isArray((input.integration as { connections?: unknown } | null)?.connections)
+        ? (input.integration as { connections: unknown[] }).connections
+        : [],
+      journeys: input.journeys,
+      catalogs: input.catalogs ?? {},
+    },
   };
 }
+

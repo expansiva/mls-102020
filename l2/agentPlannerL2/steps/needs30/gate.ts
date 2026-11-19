@@ -39,7 +39,7 @@ export function validateP2Needs(
   const entityIds = new Set(sources.entities.map(entity => entity.entityId).filter(Boolean));
   const pageIds = collectMenuPageIds(menu);
   const transitionsByEntity = new Map(
-    sources.entities.map(entity => [entity.entityId, new Set(entity.transitions.map(item => item.transitionId))]),
+    sources.entities.filter(entity => entity.kind !== 'external').map(entity => [entity.entityId, new Set(entity.transitions.map(item => item.transitionId))]),
   );
   const journeysById = new Map(sources.journeys.map(journey => [journey.journeyId, journey]));
   const relationships = readRelationships(sources);

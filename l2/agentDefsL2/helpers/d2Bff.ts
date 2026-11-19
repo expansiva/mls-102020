@@ -6,6 +6,8 @@ import mdm from '/_102034_/l4/ontology/mdm.defs.js';
 import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs, D2Page11OrganismNeeds } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
+import { d2ExternalCallAsk, explainD2ExternalCall, type D2ExternalCallGap, type D2ExternalCallSources } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
+import { externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2RequiredRelationTargets, d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
@@ -281,6 +283,8 @@ function parseBindings(value: unknown, fail: (path: string, what: string) => nev
  * entity's leaf as is and prefix the others with their entity. Bindings follow the renamed output keys.
  * Two leaves of one field in a query input keep the names the answer wrote. Two leaves of one field in a type keep the
  * name and the type the answer wrote (`textId: string`) and stay distinct (d2_120). A command input folds them.
+ * A command that writes an external entity keeps every input name the answer wrote: that name is the connection
+ * call's input. The type still comes from the ontology. An entity or mdm command still takes the field key.
  */
 export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = ''): D2BffDesign {
   // The contract interface of the page owns its name: a type that took it is renamed, with its references (d2_76).
@@ -299,13 +303,14 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   const platformTypes = new Set<string>();
   // A field leaf of a type or an input keeps its path in the ontology (d2_79): relative to the root entity, or under the
   // other entity's name when it is a join. An output key stays one name (bindings and states point at it).
-  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountChains: string[][] = [], nameUnderField = false): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
+  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true, keepSameOrigin = false, mountChains: string[][] = [], nameUnderField = false, keepAnswerNames = false): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
     const field = (leaf: D2BffLeaf): string => (leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '');
     // A query input uses two leaves of one field as two roles (from/to). They keep the names the answer wrote.
     // A type with several leaves of one field keeps each answer name and type (d2_120). A command input folds them.
+    // An external command keeps every answer name: the gate matches the connection call's input, not the field key.
     const originCounts = new Map<string, number>();
     if (keepSameOrigin || nameUnderField) for (const path of rows.map(field).filter(Boolean)) originCounts.set(path, (originCounts.get(path) ?? 0) + 1);
-    const keepsName = (leaf: D2BffLeaf): boolean => keepSameOrigin && (originCounts.get(field(leaf)) ?? 0) > 1;
+    const keepsName = (leaf: D2BffLeaf): boolean => keepAnswerNames || (keepSameOrigin && (originCounts.get(field(leaf)) ?? 0) > 1);
     const underField = (leaf: D2BffLeaf): boolean => nameUnderField && (originCounts.get(field(leaf)) ?? 0) > 1;
     // The root: the entity of the `Entity.id` leaf, the written entity of a command input, else the entity most fields
     // come from (a line without its id still belongs to its own entity; the others are joins).
@@ -393,7 +398,9 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   const endpoints = design.endpoints.map(endpoint => {
     const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`, '', false);
     outputs.set(endpoint.id, output.renamed);
-    const input = fix(endpoint.input, `endpoints.${endpoint.id}.input`, endpoint.writes ? entityOf(endpoint.writes) : '', true, endpoint.kind === 'qry', []);
+    const written = endpoint.writes ? entityOf(endpoint.writes) : '';
+    const keepCallNames = endpoint.kind === 'cmd' && (entitiesOf[written] as { kind?: string } | undefined)?.kind === 'external';
+    const input = fix(endpoint.input, `endpoints.${endpoint.id}.input`, written, true, endpoint.kind === 'qry', [], false, keepCallNames);
     return {
       ...endpoint,
       input: input.rows,
@@ -602,6 +609,12 @@ export function d2BffValueLeaves(rows: readonly D2BffLeaf[], design: Pick<D2BffD
 }
 
 const covers = (origin: string, target: string): boolean => target === origin || target.startsWith(`${origin}.`);
+const externalCallGapMessage = (entityId: string, operation: string, gap: D2ExternalCallGap): string => {
+  const write = `${entityId}.${operation}`;
+  if (gap === 'act') return `external write ${write} has no act for this entity and operation.`;
+  if (gap === 'call') return `external write ${write} has no call line whose usedBy names that act.`;
+  return `external write ${write} has no catalog for the connection, or the catalog has no call operation for that line.`;
+};
 const entityOf = (path: string): string => path.split('.')[0];
 const isIdentity = (path: string): boolean => { const [, field, extra] = path.split('.'); return !extra && (field === 'id' || field === 'version'); };
 
@@ -613,6 +626,8 @@ export interface D2BffCheckContext {
   entities: Record<string, Ns5OntologyAnyEntity>;
   grants: readonly D2Grant[];
   rules: Record<string, string>;
+  /** Set when the page can write an `external` entity. `entity` and `mdm` never read it. */
+  external?: D2ExternalCallSources;
 }
 
 /** The submit intents of the page (desktop and mobile) with the write each one's draft binds. */
@@ -629,12 +644,22 @@ export function d2PageSubmits(context: Pick<D2BffCheckContext, 'page11' | 'draft
   return out;
 }
 
-/** What a write asks for, by origin (d2_72): transition payload, the page's edits plus required context ids on create, id/version otherwise. */
-export function d2WriteRequiredInput(write: D2NeedWrite, entities: Record<string, Ns5OntologyAnyEntity>, pageEdits: readonly string[]): string[] {
+/** What a write asks for, by origin (d2_72): transition payload, the page's edits plus required context ids on create, id/version otherwise. An `external` entity asks for the connection call's input names instead of `Entity.id` / `Entity.version`. */
+export function d2WriteRequiredInput(write: D2NeedWrite, entities: Record<string, Ns5OntologyAnyEntity>, pageEdits: readonly string[], external?: D2ExternalCallSources): string[] {
   const entityId = write.entity;
   const entity = entities[entityId];
   const identity = [`${entityId}.id`, `${entityId}.version`];
   const edits = pageEdits.filter(path => entityOf(path) === entityId);
+  if ((entity as { kind?: string } | undefined)?.kind === 'external') {
+    const ask = d2ExternalCallAsk({
+      entityId, operation: write.operation, transitionRef: write.transitionRef, entity,
+      connections: external?.connections ?? [], journeys: external?.journeys ?? {},
+      catalogText: external?.catalogs[externalConnectionId(entity)] ?? '',
+    });
+    if (!ask) return edits;
+    const names = [...ask.names, ...(ask.expectsVersion ? ['expectVersion'] : [])];
+    return [...new Set([...edits, ...names])];
+  }
   if (write.operation === 'transition') return [...new Set([...d2TransitionPayload(entity, entityId, write.transitionRef ?? ''), ...identity])];
   if (write.operation === 'update') return [...new Set([...edits, ...identity])];
   if (write.operation !== 'create') return identity;
@@ -685,10 +710,22 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
     if (!pageWrite) continue; // reported by B.4
     const owned = editsOfSubmit(intentId);
     const edits = owned.some(path => entityOf(path) === pageWrite.entity) ? owned : pageEdits;
-    const carried = d2BffValueLeaves(command.input, design).filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths);
+    const leaves = d2BffValueLeaves(command.input, design);
+    const carried = leaves.filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths);
     const relatedCover = (path: string): boolean => d2RequiredRelationTargets(context.entities[pageWrite.entity], pageWrite.entity).some(rel =>
       rel.via === path && carried.some(origin => entityOf(origin) === rel.to));
-    const missing = d2WriteRequiredInput(pageWrite, context.entities, edits).filter(path => !carried.some(origin => covers(origin, path)) && !relatedCover(path));
+    if ((context.entities[pageWrite.entity] as { kind?: string } | undefined)?.kind === 'external') {
+      const gap = explainD2ExternalCall({
+        entityId: pageWrite.entity, operation: pageWrite.operation, transitionRef: pageWrite.transitionRef,
+        entity: context.entities[pageWrite.entity],
+        connections: context.external?.connections ?? [], journeys: context.external?.journeys ?? {},
+        catalogText: context.external?.catalogs[externalConnectionId(context.entities[pageWrite.entity])] ?? '',
+      }).gap;
+      if (gap) add('D2_EXTERNAL_CALL_UNRESOLVED', `endpoints.${command.id}.writes`, externalCallGapMessage(pageWrite.entity, pageWrite.operation, gap));
+    }
+    const missing = d2WriteRequiredInput(pageWrite, context.entities, edits, context.external).filter(token => token.includes('.')
+      ? !carried.some(origin => covers(origin, token)) && !relatedCover(token)
+      : !leaves.some(item => item.leaf.name === token));
     if (missing.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, `command ${command.id} (${command.writes}) asks for ${missing.join(', ')}; each input leaf that fills a stored value names that Entity.path as a field origin.`);
   }
 

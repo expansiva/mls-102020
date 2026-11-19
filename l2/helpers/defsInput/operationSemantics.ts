@@ -1,6 +1,8 @@
 /// <mls fileReference="_102020_/l2/helpers/defsInput/operationSemantics.ts" enhancement="_blank"/>
 
 import type { D2OperationBinding, D2SourceDigest } from '/_102020_/l2/helpers/defsInput/contracts.js';
+import { extractExportedObject, parseContractSource } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
+import { externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 export interface D2OperationSemanticsSources {
   module: string;
@@ -8,6 +10,21 @@ export interface D2OperationSemanticsSources {
   access: unknown;
   rules: unknown;
   digests: D2SourceDigest[];
+  /** Present when the page writes an `external` entity: the call line, the journeys, the catalog texts keyed by `connectionId`. */
+  external?: D2ExternalCallSources;
+}
+
+/** What the BFF and the operation binding need to read one connection call. Absent for `entity` and `mdm`. */
+export interface D2ExternalCallSources {
+  connections: readonly unknown[];
+  journeys: Record<string, unknown>;
+  catalogs: Record<string, string>;
+}
+
+/** Top-level required names of a connection `call` input, plus whether the call asks for `expectVersion`. */
+export interface D2ExternalCallAsk {
+  names: string[];
+  expectsVersion: boolean;
 }
 
 export class D2OperationSemanticsError extends Error {
@@ -40,7 +57,13 @@ export function resolveD2OperationBindings(
     const entityFile = `l4/${sources.module}/ontology/${entityId}.defs.ts`;
     if (!Object.keys(entity).length) throw new D2OperationSemanticsError('ENTITY_MISSING', entityFile, entityId, 'entity source is missing');
     const isTransition = operation === 'transition' || (operation !== 'create' && operation !== 'update' && operation !== 'list' && operation !== 'get');
-    const transition = rows(entity.transitions).find(item => text(item.transitionId) === usecaseId);
+    const external = text(entity.kind) === 'external';
+    const transition = external ? undefined : rows(entity.transitions).find(item => text(item.transitionId) === usecaseId);
+    const callAsk = external ? d2ExternalCallAsk({
+      entityId, operation, transitionRef: isTransition ? usecaseId : '', entity,
+      connections: sources.external?.connections ?? [], journeys: sources.external?.journeys ?? {},
+      catalogText: sources.external?.catalogs[externalConnectionId(entity)] ?? '',
+    }) : null;
     const actorRef = isTransition ? strings(transition?.by).find(actor => actors.includes(actor)) || actors[0] || '' : actors[0] || '';
     const fields = recordFields(entity);
     const initialState = rows(entity.lifecycleStates)[0];
@@ -63,11 +86,14 @@ export function resolveD2OperationBindings(
     const required = new Set(isTransition
       ? withAncestors(referencedPaths, fields)
       : structuralPaths.filter(path => fieldByPath(entity, path).required === true));
-    const inputFields = structuralPaths.map(path => {
-      if (!fields.has(path)) throw new D2OperationSemanticsError('FIELD_REF_MISSING', entityFile, `${entityId}.${path}`, `operation '${operation}' references an undeclared record field`);
-      return { path: path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`, origin: serverAssigned.has(path) ? 'server' as const : 'actor' as const, required: required.has(path) };
-    });
-    if (isTransition && !transition) throw new D2OperationSemanticsError('TRANSITION_REF_MISSING', entityFile, `transitions.${usecaseId}`, `operation '${usecaseId}' has no matching transition`);
+    const callNames = callAsk ? [...callAsk.names, ...(callAsk.expectsVersion ? ['expectVersion'] : [])] : null;
+    const inputFields = callNames
+      ? callNames.map(name => ({ path: name, origin: 'actor' as const, required: true }))
+      : structuralPaths.map(path => {
+        if (!fields.has(path)) throw new D2OperationSemanticsError('FIELD_REF_MISSING', entityFile, `${entityId}.${path}`, `operation '${operation}' references an undeclared record field`);
+        return { path: path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`, origin: serverAssigned.has(path) ? 'server' as const : 'actor' as const, required: required.has(path) };
+      });
+    if (isTransition && !transition && !external) throw new D2OperationSemanticsError('TRANSITION_REF_MISSING', entityFile, `transitions.${usecaseId}`, `operation '${usecaseId}' has no matching transition`);
     const citedRules = unique(isTransition ? strings(transition?.ruleRefs) : operation === 'create' || operation === 'update' ? strings(entity.rules) : []);
     const ruleRefs = citedRules.flatMap(ruleId => {
       const description = rules.get(ruleId);
@@ -91,7 +117,7 @@ export function resolveD2OperationBindings(
       const applicable = grants.filter(item => text(item.grant.actorRef) === actor);
       const actorPaths = inputFields.filter(field => field.origin === 'actor' && !deniedBy(applicable, actor, entityId, field.path));
       const actorPathSet = new Set(actorPaths.map(field => field.path));
-      const referencedActorPaths = new Set(referencedPaths.map(path => path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`));
+      const referencedActorPaths = new Set((callNames ?? referencedPaths).map(path => callNames || path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`));
       output.push({
         pageId, route, entityId, operation, actorRef: actor,
         grantRefs: applicable.map(item => text(item.grant.grantId)).filter(Boolean),
@@ -104,6 +130,58 @@ export function resolveD2OperationBindings(
     }
   }
   return output;
+}
+
+export interface D2ExternalCallInput {
+  entityId: string;
+  operation: string;
+  transitionRef?: string;
+  entity: unknown;
+  connections: readonly unknown[];
+  journeys: Record<string, unknown>;
+  catalogText: string;
+}
+
+/** Why a write on an `external` entity has no connection call. Absent when the call resolves. */
+export type D2ExternalCallGap = 'act' | 'catalog' | 'call';
+
+/**
+ * The `call` a write on an `external` entity uses: the connection line whose `usedBy` names the act
+ * `<journeyId>.<stepId>`, then the required top-level fields of that operation's `inputType`.
+ * Returns null when the act, the line or the catalog text is absent; `d2ExternalCallGap` says which.
+ */
+export function d2ExternalCallAsk(input: D2ExternalCallInput): D2ExternalCallAsk | null {
+  return explainD2ExternalCall(input).ask;
+}
+
+/** `ask` when the call resolves; `gap` names the first piece that is absent (act, catalog, or call line). */
+export function explainD2ExternalCall(input: D2ExternalCallInput): { ask: D2ExternalCallAsk | null; gap: D2ExternalCallGap | null } {
+  const ref = text(input.transitionRef);
+  const keys: string[] = [];
+  for (const [journeyId, journey] of Object.entries(input.journeys)) {
+    const root = rec(journey);
+    const business = rec(root.business);
+    const steps = rows(business.steps).length ? rows(business.steps) : rows(root.steps);
+    for (const step of steps) {
+      if (text(step.kind) !== 'act' || text(step.entity) !== input.entityId) continue;
+      const stepId = text(step.stepId);
+      const matches = ref
+        ? text(step.transitionRef) === ref || stepId === ref
+        : text(step.effect) === input.operation || stepId === input.operation;
+      if (matches && stepId) keys.push(`${journeyId}.${stepId}`);
+    }
+  }
+  if (!keys.length) return { ask: null, gap: 'act' };
+  if (!input.catalogText) return { ask: null, gap: 'catalog' };
+  const line = rows(input.connections).find(row => text(row.direction) === 'call' && strings(row.usedBy).some(item => keys.includes(item)));
+  if (!line) return { ask: null, gap: 'call' };
+  const catalog = rec(extractExportedObject(input.catalogText));
+  const operationRow = rows(catalog.operations).find(row => text(row.operationId) === text(line.operationId) && text(row.direction) === 'call');
+  if (!operationRow) return { ask: null, gap: 'catalog' };
+  const inputType = text(operationRow.inputType);
+  const node = inputType ? parseContractSource(input.catalogText).types[inputType] : undefined;
+  const names = node?.kind === 'object' ? node.fields.filter(field => !field.optional).map(field => field.name) : [];
+  return { ask: { names, expectsVersion: operationRow.expectsVersion === true }, gap: null };
 }
 
 function ruleMap(value: unknown): Map<string, string> {
