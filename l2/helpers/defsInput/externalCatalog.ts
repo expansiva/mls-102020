@@ -45,9 +45,11 @@ export async function externalCatalogTexts(entities: Record<string, unknown>, sc
     const resolved = resolveConnection(id, systems, platform !== null);
     if (resolved.origin === 'platform' && platform !== null) texts[id] = platform;
     else if (resolved.origin === 'own') {
-      unresolved[id] = {
-        kind: 'ownSystem',
-        message: `Entity ${entityId} uses system ${id} declared by this module. The generator does not yet have the capacity to read a system of its own module on an external entity.`,
+      const text = await scope.read(declarationRef(scope.project, scope.moduleName, id));
+      if (text !== null) texts[id] = text;
+      else unresolved[id] = {
+        kind: 'ownNotGenerated',
+        message: `Entity ${entityId} uses system ${id} declared by this module. Generate this module's declaration for system ${id} before L2 (step l1_d1_222).`,
       };
     } else if (resolved.origin === 'sibling') {
       const text = await scope.read(declarationRef(scope.project, resolved.moduleName, id));

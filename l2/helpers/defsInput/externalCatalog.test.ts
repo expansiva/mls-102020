@@ -42,7 +42,25 @@ void test('a sibling declaration supplies the real github input names', async ()
   assert.deepEqual(explained.ask?.names, ['caminho', 'conteudo', 'mensagemRegistro']);
 });
 
-void test('a system of this module is a distinct refusal that does not ask for a sibling', async () => {
+void test('this module declaration supplies the real github input names', async () => {
+  const github = readFileSync(GITHUB, 'utf8');
+  const read = async (ref: string): Promise<string | null> => {
+    if (ref.endsWith('/l4/organization/registry.defs.ts')) return registry(['conteudo']);
+    if (ref.endsWith('/l4/conteudo/integration.defs.ts')) return integration('github');
+    if (ref.endsWith('/l1/conteudo/layer_1_external/connections/github.ts')) return github;
+    return null;
+  };
+  const loaded = await externalCatalogTexts(entities, { project: 102047, moduleName: 'conteudo', read });
+  assert.equal(loaded.unresolved.github, undefined);
+  assert.equal(loaded.texts.github, github);
+  const explained = explainD2ExternalCall({
+    entityId: 'ContentFile', operation: 'update', entity, connections, journeys, catalogText: loaded.texts.github,
+  });
+  assert.equal(explained.gap, null);
+  assert.deepEqual(explained.ask?.names, ['caminho', 'conteudo', 'mensagemRegistro']);
+});
+
+void test('a system of this module without a generated declaration is a distinct refusal', async () => {
   const read = async (ref: string): Promise<string | null> => {
     if (ref.endsWith('/l4/organization/registry.defs.ts')) return registry(['conteudo']);
     if (ref.endsWith('/l4/conteudo/integration.defs.ts')) return integration('github');
@@ -50,16 +68,18 @@ void test('a system of this module is a distinct refusal that does not ask for a
   };
   const loaded = await externalCatalogTexts(entities, { project: 102047, moduleName: 'conteudo', read });
   const gap = loaded.unresolved.github;
-  assert.equal(gap?.kind, 'ownSystem');
+  assert.equal(gap?.kind, 'ownNotGenerated');
   assert.match(gap?.message ?? '', /ContentFile/);
   assert.match(gap?.message ?? '', /github/);
-  assert.match(gap?.message ?? '', /does not yet have the capacity/);
+  assert.match(gap?.message ?? '', /before L2/);
+  assert.match(gap?.message ?? '', /l1_d1_222/);
+  assert.doesNotMatch(gap?.message ?? '', /capacity/);
   assert.doesNotMatch(gap?.message ?? '', /declare num irmão/);
   const explained = explainD2ExternalCall({
     entityId: 'ContentFile', operation: 'update', entity, connections, journeys, catalogText: '', unresolved: gap,
   });
   assert.equal(explained.ask, null);
-  assert.equal(explained.gap, 'ownSystem');
+  assert.equal(explained.gap, 'ownNotGenerated');
 });
 
 void test('a sibling without a generated declaration is a distinct refusal', async () => {

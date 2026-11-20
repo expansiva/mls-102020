@@ -613,7 +613,7 @@ const externalCallGapMessage = (entityId: string, operation: string, gap: D2Exte
   const write = `${entityId}.${operation}`;
   if (gap === 'act') return `external write ${write} has no act for this entity and operation.`;
   if (gap === 'call') return `external write ${write} has no call line whose usedBy names that act.`;
-  if (gap === 'ownSystem' || gap === 'siblingNotGenerated') return unresolved || `external write ${write} is unresolved (${gap}).`;
+  if (gap === 'ownNotGenerated' || gap === 'siblingNotGenerated') return unresolved || `external write ${write} is unresolved (${gap}).`;
   return `external write ${write} has no catalog for the connection, or the catalog has no call operation for that line.`;
 };
 const entityOf = (path: string): string => path.split('.')[0];

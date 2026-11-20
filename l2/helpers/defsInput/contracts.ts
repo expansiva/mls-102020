@@ -123,9 +123,9 @@ export interface D2InputReport extends D2RunIdentity {
   problems: D2InputProblem[];
 }
 
-/** A connection the L2 will not read yet: this module's own system, or a sibling whose declaration is not generated. */
+/** A connection whose declaration is not generated yet: this module's own system, or a sibling's. */
 export interface D2CatalogGap {
-  kind: 'ownSystem' | 'siblingNotGenerated';
+  kind: 'ownNotGenerated' | 'siblingNotGenerated';
   message: string;
 }
 
