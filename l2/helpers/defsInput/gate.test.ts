@@ -82,6 +82,21 @@ void test('a copied integration v4 passes the entry gate and v3 stays the same',
   assert.deepEqual(v4Problems, v3Problems);
 });
 
+void test('integration v5 from the agents artifact passes the entry gate', async () => {
+  const v5 = artifactsOf(EXPENSE);
+  (v5.integration as { schemaVersion: string }).schemaVersion = '2026-11-20-ns5-integration-v5';
+  const v5Problems = await problems(v5);
+  assert.equal(v5Problems.some(item => item.code === 'UNSUPPORTED_VERSION'), false, JSON.stringify(v5Problems));
+
+  const agents = parseNs4ClassicDefsSource<{ schemaVersion: string }>(
+    readFileSync(path.join(HERE, '../../../../mls-102047/l4/agents/integration.defs.ts'), 'utf8'),
+  );
+  const fromAgents = artifactsOf(EXPENSE);
+  (fromAgents.integration as { schemaVersion: string }).schemaVersion = agents.schemaVersion;
+  const agentsProblems = await problems(fromAgents);
+  assert.equal(agentsProblems.some(item => item.code === 'UNSUPPORTED_VERSION'), false, JSON.stringify(agentsProblems));
+});
+
 void test('a v4 external system does not raise a menu review, and v3 or v4 without systems stay quiet', async () => {
   const reviewCodes = async (artifacts: D2InputArtifacts) => {
     const snapshot = await buildD2InputSnapshot({ project: 102047, module: moduleOf(artifacts) }, withDigests(artifacts));
