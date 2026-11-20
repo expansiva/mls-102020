@@ -1,0 +1,327 @@
+{
+  "types": [
+    {
+      "name": "AgentHeader",
+      "description": "The agent whose activity is listed, by its readable name.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "ExecutionAction",
+      "description": "One action the agent performed during an execution, with its result and a short note.",
+      "fields": [
+        {
+          "name": "toolName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ExecutionSummary.details.actions.toolName"
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "type": "'succeeded' | 'failed' | 'refused'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ExecutionSummary.details.actions.result"
+            ]
+          }
+        },
+        {
+          "name": "resultNote",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ExecutionSummary.details.actions.resultNote"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "ExecutionDetails",
+      "description": "Duration, cost, takeover, conversation link and actions of one finished execution.",
+      "fields": [
+        {
+          "name": "durationMs",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ExecutionSummary.details.durationMs"
+            ]
+          }
+        },
+        {
+          "name": "cost",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ExecutionSummary.details.cost"
+            ]
+          }
+        },
+        {
+          "name": "tookOver",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ExecutionSummary.details.tookOver"
+            ]
+          }
+        },
+        {
+          "name": "conversationLink",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ExecutionSummary.details.conversationLink"
+            ]
+          }
+        },
+        {
+          "name": "actions",
+          "type": "ExecutionAction[]"
+        }
+      ]
+    },
+    {
+      "name": "CallerIdentification",
+      "description": "The readable identification of the person who called the agent.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.identification.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "CallerDetails",
+      "description": "Details of the organization user who called the agent.",
+      "fields": [
+        {
+          "name": "identification",
+          "type": "CallerIdentification"
+        }
+      ]
+    },
+    {
+      "name": "ExecutionCaller",
+      "description": "The organization user who called the agent in an execution.",
+      "fields": [
+        {
+          "name": "details",
+          "type": "CallerDetails"
+        }
+      ]
+    },
+    {
+      "name": "ExecutionEntry",
+      "description": "One finished execution of an agent: when it started, its details with actions and results, and the person who called it when known.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ExecutionSummary.id"
+            ]
+          }
+        },
+        {
+          "name": "startedAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "ExecutionSummary.startedAt"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "ExecutionDetails"
+        },
+        {
+          "name": "organizationUser",
+          "type": "ExecutionCaller",
+          "optional": true
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "getAgentActivity",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "agent",
+          "type": "AgentHeader"
+        },
+        {
+          "name": "executions",
+          "type": "ExecutionEntry[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "activityNewestFirst",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Opens the activity page of the chosen agent: its name and the first page of its executions, newest first, each with its actions and results.",
+        "input": "agentId: the agent chosen in the URL (cm id of the agent). page, pageSize: the page of executions to load.",
+        "processing": "Reads the agent name from the cm. Lists the ExecutionSummary records whose agentId is the chosen agent, ordered by startedAt descending (activityNewestFirst), paged by page and pageSize. For each execution, includes its actions with result and note, and resolves personId to the organization user's name through read.byId of OrganizationUser so no technical id is shown (noTechnicalIdsOnScreen); executionRef is never returned. Visible to every organization member within the organization.",
+        "output": "agent: the agent's @name. executions: { items, page, pageSize, hasMore } of executions newest first, each with start time, duration, cost, whether a person took over, conversation link, the caller's name when known, and its actions with result and note."
+      }
+    },
+    {
+      "id": "listAgentExecutions",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "executions",
+          "type": "ExecutionEntry[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "activityNewestFirst",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Loads a further page of the chosen agent's executions, newest first.",
+        "input": "agentId: the agent chosen in the URL. page, pageSize: the page of executions requested.",
+        "processing": "Same listing as getAgentActivity: ExecutionSummary filtered by agentId, ordered by startedAt descending (activityNewestFirst), paged; actions included; caller resolved to a readable name, never an id (noTechnicalIdsOnScreen); executionRef never returned.",
+        "output": "executions: { items, page, pageSize, hasMore } for the requested page, each execution with its details, actions and caller name."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "executionTimeline",
+        "reads": "getAgentActivity.agent"
+      },
+      {
+        "organism": "executionTimeline",
+        "reads": "getAgentActivity.executions"
+      }
+    ],
+    "commands": [],
+    "selections": [],
+    "journeys": [
+      {
+        "step": "followAgentActivity/browseAgents",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agents"
+      },
+      {
+        "step": "followAgentActivity/readOverview",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_overview"
+      },
+      {
+        "step": "followAgentActivity/readActivity",
+        "organisms": [
+          "executionTimeline"
+        ],
+        "endpoints": [
+          "getAgentActivity",
+          "listAgentExecutions"
+        ]
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "listAgentExecutions",
+        "state": "getAgentActivity.executions",
+        "mode": "append"
+      }
+    ]
+  }
+}

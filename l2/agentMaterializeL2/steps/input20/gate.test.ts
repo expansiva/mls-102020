@@ -65,7 +65,7 @@ test('methods: every submit intent resolves to the request of its id', () => {
 test('a navigate intent is a method of its own id, with the entry params of its target', () => {
   const result = gateM4Input(input());
   assert.equal(result.parsed.inicio.methods.abrirAnaliseDespesas, 'abrirAnaliseDespesas');
-  assert.deepEqual(result.parsed.inicio.navigations, [{ method: 'abrirAnaliseDespesas', organism: 'caixaDespesasPendentes', to: 'despesas_da_equipe', targetParams: ['page', 'despesaId'] }]);
+  assert.deepEqual(result.parsed.inicio.navigations, [{ method: 'abrirAnaliseDespesas', organism: 'caixaDespesasPendentes', to: 'despesas_da_equipe', targetParams: ['page', 'despesaId'], requiredIdParams: [] }]);
   assert.deepEqual(result.parsed.minhas_despesas.navigations, []);
 });
 

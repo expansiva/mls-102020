@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { gateM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
-import { gateM4SharedSource, m4FillStateJsdoc, m4SharedClassName, m4SharedUiMethods, methodBody, type M4SharedTarget } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
+import { gateM4SharedSource, m4FillStateJsdoc, m4SharedClassName, m4SharedNavIdIssues, m4SharedUiMethods, methodBody, type M4SharedTarget } from '/_102020_/l2/agentMaterializeL2/steps/shared40/gate.js';
 
 interface InputFixture {
   project: number; module: string; defsPipelineStatus: string; knownMolecules: string[]; knownTemplates: string[];
@@ -94,7 +94,7 @@ test('header and class name are exact', () => {
 });
 
 test('a navigate intent is a method that calls auraNavigate to its target page', () => {
-  assert.deepEqual(target().navigations, [{ method: 'abrirMovimentacoes', organism: 'detalheProduto', to: 'movimentacoes', targetParams: ['produtoId', 'page'] }]);
+  assert.deepEqual(target().navigations, [{ method: 'abrirMovimentacoes', organism: 'detalheProduto', to: 'movimentacoes', targetParams: ['produtoId', 'page'], requiredIdParams: [] }]);
   const wrongPage = reference.replace('movimentacoes?produtoId=${', 'produtos?produtoId=${');
   assert.deepEqual(codes(wrongPage), ['M4_SHARED_NAVIGATE']);
   // what it carries is the generator's call (the defs no longer declare carries)
@@ -267,4 +267,42 @@ test('a param whose sources are only url is published with replaceState and refu
   const issues = gateM4SharedSource(stored, urlOnly);
   assert.ok(issues.some(item => item.code === 'M4_SHARED_ENTRY_PARAM' && item.message.includes(name) && item.message.includes('localStorage')));
   assert.ok(issues.some(item => item.code === 'M4_SHARED_ENTRY_PARAM' && item.message.includes('replaceState')));
+});
+
+test('navigateWith carries the contract id, not a name argument (calls copied from mls-102047@9e8b640a web/shared/agents.ts)', () => {
+  const contract = {
+    contractsInterface: 'AgentsContracts',
+    projections: [
+      { name: 'AgentCard', body: '', fields: [{ name: 'agentId', type: 'string', optional: false, readonly: false }, { name: 'name', type: 'string', optional: false, readonly: false }] },
+      { name: 'DraftCard', body: '', fields: [{ name: 'draftId', type: 'string', optional: false, readonly: false }, { name: 'name', type: 'string', optional: false, readonly: false }] },
+    ],
+    routes: [],
+  };
+  const source = `
+  public openAgentOverview(name: string | null): void {
+    this.navigateWith('agent_overview', 'agentId', name);
+  }
+  public openDraftReview(name: string | null): void {
+    this.navigateWith('draft_review', 'draftId', name);
+  }
+  public openPlain(page: string): void {
+    this.navigateWith('tool_catalog', 'page', page);
+  }
+  `;
+  const navigations = [
+    { method: 'openAgentOverview', organism: 'agentsList', to: 'agent_overview', targetParams: ['agentId'], requiredIdParams: ['agentId'] },
+    { method: 'openDraftReview', organism: 'draftsInbox', to: 'draft_review', targetParams: ['draftId'], requiredIdParams: ['draftId'] },
+    { method: 'openPlain', organism: 'agentsList', to: 'tool_catalog', targetParams: ['page'], requiredIdParams: [] as string[] },
+  ];
+  const issues = m4SharedNavIdIssues(source, navigations, contract);
+  assert.deepEqual(issues.map(item => item.message), [
+    'openAgentOverview passes name to navigateWith as agentId; carry agentId (the contract field), not name.',
+    'openDraftReview passes name to navigateWith as draftId; carry draftId (the contract field), not name.',
+  ]);
+  const carried = source.replace(/navigateWith\('agent_overview', 'agentId', name\)/u, "navigateWith('agent_overview', 'agentId', agentId)").replace('openAgentOverview(name:', 'openAgentOverview(agentId:');
+  assert.deepEqual(m4SharedNavIdIssues(carried, navigations, contract).map(item => item.message), [
+    'openDraftReview passes name to navigateWith as draftId; carry draftId (the contract field), not name.',
+  ]);
+  const noField = { ...contract, projections: contract.projections.map(item => ({ ...item, fields: item.fields.filter(row => row.name !== 'agentId') })) };
+  assert.ok(!m4SharedNavIdIssues(source, navigations, noField).some(item => item.message.includes('agentId')));
 });

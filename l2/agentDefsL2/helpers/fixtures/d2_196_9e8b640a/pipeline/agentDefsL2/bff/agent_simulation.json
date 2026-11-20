@@ -1,0 +1,652 @@
+{
+  "types": [
+    {
+      "name": "AgentHeader",
+      "description": "The agent being simulated, identified by its @name.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "PersonIdentification",
+      "description": "Identification of an organization user: the readable name.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.identification.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "PersonDetails",
+      "description": "Details of an organization user.",
+      "fields": [
+        {
+          "name": "identification",
+          "type": "PersonIdentification"
+        }
+      ]
+    },
+    {
+      "name": "SimulatedPerson",
+      "description": "An active organization user a simulation can be run for, with a reference and a readable name.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.id"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "PersonDetails"
+        }
+      ]
+    },
+    {
+      "name": "ToolVerdict",
+      "description": "One tool of the catalog judged for the simulated person or role: where it sits in the module / subject / action tree, whether it can be used and why.",
+      "fields": [
+        {
+          "name": "tool",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.tool"
+            ]
+          }
+        },
+        {
+          "name": "moduleName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.moduleName"
+            ]
+          }
+        },
+        {
+          "name": "subjectName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.subjectName"
+            ]
+          }
+        },
+        {
+          "name": "actionName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.actionName"
+            ]
+          }
+        },
+        {
+          "name": "canUse",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.canUse"
+            ]
+          }
+        },
+        {
+          "name": "reason",
+          "type": "'allowed' | 'restrictedForPerson' | 'notPermittedForRole' | 'removedFromRelease'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.reason"
+            ]
+          }
+        },
+        {
+          "name": "reasonText",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.reasonText"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "WhatItCanResult",
+      "description": "The 'what it can' simulation of an agent for one person or role: who it was run for and the verdict for each tool.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.agent"
+            ]
+          }
+        },
+        {
+          "name": "level",
+          "type": "'whatItCan' | 'whatItUnderstands'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.level"
+            ]
+          }
+        },
+        {
+          "name": "subjectKind",
+          "type": "'person' | 'role'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.subjectKind"
+            ]
+          }
+        },
+        {
+          "name": "person",
+          "type": "SimulatedPerson",
+          "optional": true
+        },
+        {
+          "name": "roleName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.roleName"
+            ]
+          }
+        },
+        {
+          "name": "toolVerdicts",
+          "type": "ToolVerdict[]"
+        }
+      ]
+    },
+    {
+      "name": "UnderstoodAction",
+      "description": "One action the agent would take for the sentence, tied to a catalog tool.",
+      "fields": [
+        {
+          "name": "tool",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.actions.tool"
+            ]
+          }
+        },
+        {
+          "name": "actionName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.actions.actionName"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Understanding",
+      "description": "How the agent reads a sentence: whether it asks for an action, the module and subject it leads to, the actions and a short explanation.",
+      "fields": [
+        {
+          "name": "asksForAction",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.asksForAction"
+            ]
+          }
+        },
+        {
+          "name": "moduleName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.moduleName"
+            ]
+          }
+        },
+        {
+          "name": "subjectName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.subjectName"
+            ]
+          }
+        },
+        {
+          "name": "actions",
+          "type": "UnderstoodAction[]"
+        },
+        {
+          "name": "explanation",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.explanation"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "WhatItUnderstandsResult",
+      "description": "The 'what it understands' simulation of an agent for one sentence.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.agent"
+            ]
+          }
+        },
+        {
+          "name": "level",
+          "type": "'whatItCan' | 'whatItUnderstands'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.level"
+            ]
+          }
+        },
+        {
+          "name": "sentence",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.sentence"
+            ]
+          }
+        },
+        {
+          "name": "understanding",
+          "type": "Understanding"
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "getSimulationPage",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "agent",
+          "type": "AgentHeader"
+        },
+        {
+          "name": "whatItCan",
+          "type": "WhatItCanResult"
+        }
+      ],
+      "rules": [
+        "simulationSavesNothing",
+        "memberSimulatesOnlyAsSelf",
+        "onlyToolsOnAreConsidered",
+        "personRestrictionAppliesInRequest",
+        "restrictionAppliesThroughAnyAgent",
+        "removedToolNotSent",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Opens the simulation of an agent: its @name and the 'what it can' simulation run for the logged-in person.",
+        "input": "agentId: the agent chosen in the URL.",
+        "processing": "Reads the agent name from the cm. Runs the 'what it can' level for the logged-in person (memberSimulatesOnlyAsSelf): takes only the tools that are on for the agent (onlyToolsOnAreConsidered), marks removed tools as blocked with reason removedFromRelease (removedToolNotSent), and marks tools the person may not use as restrictedForPerson (personRestrictionAppliesInRequest, restrictionAppliesThroughAnyAgent). Each verdict gets readable module, subject and action names and a one-line reason; no technical id is shown (noTechnicalIdsOnScreen). Nothing is written (simulationSavesNothing).",
+        "output": "The agent header with its @name and the 'what it can' result for the caller: level whatItCan, subjectKind person, the caller's name and the verdict for each tool."
+      }
+    },
+    {
+      "id": "simulateWhatItCan",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "subjectKind",
+          "type": "'person' | 'role'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.subjectKind"
+            ]
+          }
+        },
+        {
+          "name": "person",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.person"
+            ]
+          }
+        },
+        {
+          "name": "roleName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.roleName"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "whatItCan",
+          "type": "WhatItCanResult"
+        }
+      ],
+      "rules": [
+        "simulationSavesNothing",
+        "adminSimulatesByRole",
+        "memberSimulatesOnlyAsSelf",
+        "onlyActiveUsersRestricted",
+        "onlyToolsOnAreConsidered",
+        "personRestrictionAppliesInRequest",
+        "restrictionAppliesThroughAnyAgent",
+        "removedToolNotSent",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Runs the 'what it can' simulation of the agent for the person or role the actor chose.",
+        "input": "agentId: the agent in the URL. subjectKind: whether to simulate for a person or a role. person: the chosen person when subjectKind is person. roleName: the chosen role when subjectKind is role.",
+        "processing": "A company admin may simulate for any active person or any role (adminSimulatesByRole, onlyActiveUsersRestricted); an organization member is always simulated as themselves, whatever is sent (memberSimulatesOnlyAsSelf). Only tools on for the agent are considered (onlyToolsOnAreConsidered); removed tools are blocked with reason removedFromRelease (removedToolNotSent); for a person, tools restricted for that person are blocked as restrictedForPerson (personRestrictionAppliesInRequest, restrictionAppliesThroughAnyAgent); for a role, tools the role is not permitted are blocked as notPermittedForRole. Readable names only (noTechnicalIdsOnScreen). Nothing is saved (simulationSavesNothing).",
+        "output": "The 'what it can' result for the chosen person or role: who it was run for and each tool with module, subject, action, whether it can be used, the reason and its one-line explanation."
+      }
+    },
+    {
+      "id": "findPeopleToSimulate",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "search",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "people",
+          "type": "SimulatedPerson[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "adminSimulatesByRole",
+        "onlyActiveUsersRestricted",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Finds the people a company admin can choose to simulate the agent for.",
+        "input": "search: part of the person's name typed by the admin. page and pageSize: the page of results.",
+        "processing": "Available to the company admin only (adminSimulatesByRole). Lists organization users with a platform login whose name contains the typed text, keeping only active users (onlyActiveUsersRestricted). Only the readable name is shown (noTechnicalIdsOnScreen).",
+        "output": "A page of active people, each with its reference and name."
+      }
+    },
+    {
+      "id": "simulateWhatItUnderstands",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "sentence",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.sentence"
+            ]
+          }
+        },
+        {
+          "name": "subjectKind",
+          "type": "'person' | 'role'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.subjectKind"
+            ]
+          }
+        },
+        {
+          "name": "person",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.person"
+            ]
+          }
+        },
+        {
+          "name": "roleName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.roleName"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "whatItUnderstands",
+          "type": "WhatItUnderstandsResult"
+        }
+      ],
+      "rules": [
+        "simulationSavesNothing",
+        "memberSimulatesOnlyAsSelf",
+        "adminSimulatesByRole",
+        "onlyToolsOnAreConsidered",
+        "personRestrictionAppliesInRequest",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Asks the cm how the agent reads a sample sentence.",
+        "input": "agentId: the agent in the URL. sentence: the sample request typed. subjectKind, person, roleName: optional person or role the admin is simulating for; when absent, or for a member, the logged-in person.",
+        "processing": "Sends the sentence to the cm simulation at level whatItUnderstands. Members are always simulated as themselves (memberSimulatesOnlyAsSelf); admins may pass a person or role (adminSimulatesByRole). Only tools on for the agent are considered (onlyToolsOnAreConsidered) and tools the person may not use are left out of the actions (personRestrictionAppliesInRequest). Readable names only (noTechnicalIdsOnScreen). Nothing is saved (simulationSavesNothing).",
+        "output": "The sentence with its understanding: whether it asks for an action, the module and subject it leads to, the actions it would take and a short explanation."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "whatItCan",
+        "reads": "getSimulationPage.agent"
+      },
+      {
+        "organism": "whatItCan",
+        "reads": "getSimulationPage.whatItCan"
+      },
+      {
+        "organism": "whatItCan",
+        "reads": "findPeopleToSimulate.people"
+      },
+      {
+        "organism": "whatItUnderstands",
+        "reads": "getSimulationPage.agent"
+      },
+      {
+        "organism": "whatItUnderstands",
+        "reads": "simulateWhatItUnderstands.whatItUnderstands"
+      }
+    ],
+    "commands": [],
+    "selections": [],
+    "journeys": [
+      {
+        "step": "simulateAgentByRole/findAgentToSimulate",
+        "organisms": [],
+        "endpoints": [
+          "getSimulationPage"
+        ],
+        "continuesIn": "agents"
+      },
+      {
+        "step": "simulateAgentByRole/simulateWhatItCan",
+        "organisms": [
+          "whatItCan"
+        ],
+        "endpoints": [
+          "getSimulationPage",
+          "findPeopleToSimulate",
+          "simulateWhatItCan"
+        ]
+      },
+      {
+        "step": "simulateAgentByRole/simulateWhatItUnderstands",
+        "organisms": [
+          "whatItUnderstands"
+        ],
+        "endpoints": [
+          "simulateWhatItUnderstands"
+        ]
+      },
+      {
+        "step": "simulateAsMyself/findAgentForMe",
+        "organisms": [],
+        "endpoints": [
+          "getSimulationPage"
+        ],
+        "continuesIn": "agents"
+      },
+      {
+        "step": "simulateAsMyself/seeWhatItCanForMe",
+        "organisms": [
+          "whatItCan"
+        ],
+        "endpoints": [
+          "getSimulationPage"
+        ]
+      },
+      {
+        "step": "simulateAsMyself/seeWhatItUnderstandsForMe",
+        "organisms": [
+          "whatItUnderstands"
+        ],
+        "endpoints": [
+          "simulateWhatItUnderstands"
+        ]
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "simulateWhatItCan",
+        "state": "getSimulationPage.whatItCan",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "findPeopleToSimulate",
+        "state": "findPeopleToSimulate.people",
+        "mode": "append"
+      }
+    ]
+  }
+}

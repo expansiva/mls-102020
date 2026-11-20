@@ -5,10 +5,12 @@
 // given (and only those), calls every intent, makes no backend call, keeps every visible word in the
 // i18n catalogue and colors only through design tokens. Compilation in the Studio comes after, in run.ts.
 
+import type { L2ContractDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
 import type { L2Page11Definition, L2Page11Device } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { L2_PRIMARY_GENOME, moleculeGroupFolder } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import type { L2SharedDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import { m4LocaleConst } from '/_102020_/l2/agentMaterializeL2/helpers/locale.js';
+import type { M4Navigation } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
 import type { DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
 /** A molecule tag as page11 writes one (`groupentertext--ml-enter-text`); a history swap must name one too. */
@@ -40,6 +42,10 @@ export interface M4PageTarget {
   sharedSource?: string;
   /** The Studio edits to redo (m4PageHistory `kept`); absent = none. Its molecule swaps widen the allowed tags. */
   history?: DefsHistoryEntry[];
+  /** Navigate intents (input20). Absent skips the navigation-id check. */
+  navigations?: M4Navigation[];
+  /** Page contract. The navigation-id check runs only for a param that is a required field of some projection. */
+  contract?: L2ContractDefinition;
 }
 
 export interface M4PageOnlyRequest { fn: string; steps: string[] }
@@ -597,6 +603,8 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
     }
   }
 
+  for (const issue of m4PageNavIdIssues(code, target.navigations ?? [], target.contract)) issues.push(issue);
+
   // Intents.
   for (const [organism, row] of Object.entries(target.page11.organisms)) {
     for (const intent of row.intents) {
@@ -609,6 +617,8 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   const start = text.indexOf('/// **collab_i18n_start**');
   const end = text.indexOf('/// **collab_i18n_end**');
   if (start < 0 || end < start) push('M4_PAGE_I18N', 'The catalogue must sit between /// **collab_i18n_start** and /// **collab_i18n_end**.');
+  const classAt = /^(?:@customElement|export class)/mu.exec(text)?.index ?? -1;
+  if (start >= 0 && classAt >= 0 && start > classAt) push('M4_PAGE_I18N', 'the catalogue block must come before the page class (@customElement)');
   // One catalogue per locale key, the whole code (14/10/2026: 'pt-br' → const pageMessage_pt_br, map key 'pt-br'),
   // as agentAddLanguage writes it; two letters made pt-BR and pt-PT the same catalogue.
   const suffixes = target.locales.map(m4LocaleConst);
@@ -617,8 +627,6 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
     if (!new RegExp(`\\bconst\\s+pageMessage_${suffix}\\b`, 'u').test(code)) push('M4_PAGE_I18N', `Locale ${locale} needs const pageMessage_${suffix}, keyed '${locale}' in pageMessages.`);
     else if (!new RegExp(`['"]?${[...locale].map(ch => (/[a-z0-9]/u.test(ch) ? ch : `\\x${ch.charCodeAt(0).toString(16).padStart(2, '0')}`)).join('')}['"]?\\s*:\\s*pageMessage_${suffix}\\b`, 'u').test(code)) push('M4_PAGE_I18N', `pageMessages must key pageMessage_${suffix} as '${locale}' (the code agentAddLanguage and the runtime look up).`);
   }
-  const classAt = /^(?:@customElement|export class)/mu.exec(text)?.index ?? -1;
-  if (start >= 0 && classAt >= 0 && start > classAt) push('M4_PAGE_I18N', 'the catalogue block must come before the page class (@customElement)');
   const extra = [...code.matchAll(/\bconst\s+pageMessage_([a-z0-9_]+)\b/gu)].map(match => match[1]).filter(suffix => !suffixes.includes(suffix));
   if (extra.length) push('M4_PAGE_I18N', `Catalogues [${extra.map(suffix => `pageMessage_${suffix}`).join(', ')}] are not product languages; declare only ${suffixes.map(suffix => `pageMessage_${suffix}`).join(', ')}.`);
   // The NAMES are the contract (@@addLanguage and the Studio text editor look for them); the compiler checks
@@ -660,6 +668,63 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
     if (match[2] !== undefined && !FALLBACKS.has(match[2].trim())) push('M4_PAGE_TOKEN', `Fallback "${match[2].trim()}" of --${match[1]} assumes a theme; use transparent for -bg and currentColor for text and borders.`);
   }
   return dedupe(issues);
+}
+
+const PAGE_DISPLAY_ARG = /^(?:[A-Za-z_$][\w$]*\.)?(name|title|label|displayName)$/u;
+
+/** A projection of the page contract declares `name` as a required field. Absent contract: the check does not apply. */
+export function contractRequiresField(contract: L2ContractDefinition | undefined, name: string): boolean {
+  return Boolean(contract?.projections.some(projection => projection.fields.some(field => field.name === name && !field.optional)));
+}
+
+/**
+ * A navigation whose destination requires an id from the url must be called with that field.
+ * Refuses only `this.method(<expr>.name|title|label|displayName)` and a variable of those names.
+ * `<expr>.<param>` and every other argument shape are accepted.
+ * Skips the param when the contract has no required field of that name.
+ */
+export function m4PageNavIdIssues(code: string, navigations: readonly M4Navigation[], contract: L2ContractDefinition | undefined): M4PageIssue[] {
+  const issues: M4PageIssue[] = [];
+  for (const nav of navigations) {
+    const params = (nav.requiredIdParams ?? []).filter(name => contractRequiresField(contract, name));
+    if (!params.length) continue;
+    for (const arg of callArgs(code, nav.method)) {
+      if (params.some(name => arg.endsWith(`.${name}`))) continue;
+      const display = PAGE_DISPLAY_ARG.exec(arg);
+      if (!display) continue;
+      const param = params[0];
+      issues.push({
+        code: 'M4_PAGE_NAV_ID',
+        severity: 'error',
+        always: true,
+        message: `${nav.method} is called with ${arg}; carry ${param} (the contract field), not ${display[1]}.`,
+      });
+    }
+  }
+  return issues;
+}
+
+/** First argument of each `this.<method>(…)` call, or '' when the call has none. Nested calls stay inside the argument. */
+function callArgs(code: string, method: string): string[] {
+  const found: string[] = [];
+  const re = new RegExp(`\\bthis\\.${method}\\s*\\(`, 'gu');
+  for (const match of code.matchAll(re)) {
+    let i = (match.index ?? 0) + match[0].length;
+    let depth = 0;
+    let arg = '';
+    while (i < code.length) {
+      const ch = code[i];
+      if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+      else if (ch === ')' || ch === ']' || ch === '}') {
+        if (depth === 0) break;
+        depth -= 1;
+      } else if (ch === ',' && depth === 0) break;
+      arg += ch;
+      i += 1;
+    }
+    found.push(arg.trim());
+  }
+  return found;
 }
 
 /** Contents of the html`…` templates of comment-free code (nested templates are separate entries). */

@@ -12,7 +12,11 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2BffDesign } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
-import { renderD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/helpers/sharedV2/format.js';
+import type { D2NavDestination } from '/_102020_/l2/agentDefsL2/helpers/d2NavigationIds.js';
+import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { buildD2ContractFromBff } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
+import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
+import { parseD2SharedV2, renderD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/helpers/sharedV2/format.js';
 import { D2_SHARED_VERSION, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 import { beforePromptStep } from '/_102020_/l2/agentDefsL2/steps/contracts70/agentD2Contracts70.js';
 import { approveD2Contracts70, contractSourceFor, renderEmptyD2Contract, type D2Contracts70Existing, type D2Contracts70Page, type D2Contracts70Writer } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
@@ -107,6 +111,109 @@ void test('the contracts step completes without a prompt', async () => {
   assert.equal(intents.some(item => item.type === 'update-status' && item.status === 'completed'), true);
   assert.equal(typeof sink.writes.get(`${identity.module}/web/contracts/${page.pageId}.defs.ts`), 'string');
 });
+
+/** Recorded agents defs, mls-102047 @ 9e8b640a. The live tree is not read. */
+const recordedRoot = join(here, '../../helpers/fixtures/d2_196_9e8b640a');
+
+function recordedDesign(pageId: string): D2BffDesign {
+  return JSON.parse(readFileSync(join(recordedRoot, 'pipeline/agentDefsL2/bff', `${pageId}.json`), 'utf8')) as D2BffDesign;
+}
+
+function recordedPage11(pageId: string): Record<D2Page11Device, D2Page11Definition> {
+  const read = (device: D2Page11Device) => parseD2Page11Definition(readFileSync(join(recordedRoot, 'web', device, 'page11', `${pageId}.defs.ts`), 'utf8')).definition;
+  return { desktop: read('desktop'), mobile: read('mobile') };
+}
+
+function recordedDestinations(page11: Record<D2Page11Device, D2Page11Definition>): Record<string, D2NavDestination> {
+  const destinations: Record<string, D2NavDestination> = {};
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const organism of Object.values(page11[device].organisms)) {
+      for (const intent of organism.intents) {
+        if (intent.kind !== 'navigate' || !intent.to || intent.id.startsWith('backTo') || destinations[intent.to]) continue;
+        destinations[intent.to] = {
+          shared: parseD2SharedV2(readFileSync(join(recordedRoot, 'web/shared', `${intent.to}.defs.ts`), 'utf8')).definition,
+          design: recordedDesign(intent.to),
+        };
+      }
+    }
+  }
+  return destinations;
+}
+
+async function recordedPage(pageId: string): Promise<D2Contracts70Page> {
+  const design = recordedDesign(pageId);
+  const page11 = recordedPage11(pageId);
+  const sharedSource = readFileSync(join(recordedRoot, 'web/shared', `${pageId}.defs.ts`), 'utf8');
+  const sharedReceipt = {
+    schemaVersion: D2_SHARED_VERSION, project: 102047, module: 'agents', pageId,
+    sourceHash: await sha256Text(sharedSource), designHash: await sha256Text(JSON.stringify(design)),
+  } as D2SharedReceipt;
+  return {
+    identity: { project: 102047, module: 'agents' }, pageId, userLanguage: 'en', design,
+    access: { actors: ['clerk'], grants: ['manage'], scope: 'organization' }, entities: {},
+    sharedSource, sharedReceipt, page11, destinations: recordedDestinations(page11),
+  };
+}
+
+function projectionBody(source: string, name: string): string {
+  const body = parseD2ContractV2(source).projections.find(item => item.name === name)?.body;
+  assert.equal(typeof body, 'string', name);
+  return body!;
+}
+
+void test('d2_196: a navigate to a missing destination still renders the contract, without the id leaf', async () => {
+  const page = await pageOf(design);
+  const list: D2Page11Definition = {
+    template: { category: 'list', experience: 'list' }, intent: 'Open the list.',
+    sections: [{ id: 'main', priority: 'main', purpose: 'The list.', organisms: ['rowList'] }],
+    organisms: { rowList: { kind: 'list', text: 'Rows.', intents: [{ id: 'openItem', kind: 'navigate', to: 'gone' }] } },
+    molecules: {},
+  };
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (message?: unknown) => { warnings.push(String(message)); };
+  try {
+    const source = await contractSourceFor({ ...page, page11: { desktop: list, mobile: list }, destinations: {} });
+    assert.equal(source, await contractSourceFor(page));
+    assert.doesNotMatch(source, /\bitemId:/u);
+  } finally {
+    console.warn = original;
+  }
+  assert.deepEqual(warnings, ['D2_NAV_ID_DESTINATION_MISSING: rows rowList → gone']);
+});
+
+void test('d2_196: recorded agents lists carry the destination id, and a list without that navigation does not change', async () => {
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (message?: unknown) => { warnings.push(String(message)); };
+  try {
+    const agents = await contractSourceFor(await recordedPage('agents'));
+    assert.match(projectionBody(agents, 'AgentCard'), /agentId: string;/u);
+    for (const name of ['DraftCard', 'DraftInboxItem', 'RequestEvent']) assert.match(projectionBody(agents, name), /draftId: string;/u);
+    const conduct = await recordedPage('my_conduct');
+    const conductSource = await contractSourceFor(conduct);
+    const plain = buildD2ContractFromBff({ module: 'agents', pageId: 'my_conduct', design: conduct.design, access: conduct.access, entities: {}, userLanguage: 'en' });
+    assert.equal(projectionBody(conductSource, 'ConductHistoryEntry'), plain.projections.find(item => item.name === 'ConductHistoryEntry')?.body);
+    const overview = await recordedPage('agent_overview');
+    const overviewSource = await contractSourceFor(overview);
+    const overviewPlain = buildD2ContractFromBff({ module: 'agents', pageId: 'agent_overview', design: overview.design, access: overview.access, entities: {}, userLanguage: 'en' });
+    assert.equal(parseD2ContractV2(overviewSource).projections.map(item => item.body).join('\n'), overviewPlain.projections.map(item => item.body).join('\n'));
+    const catalog = await recordedPage('tool_catalog');
+    const catalogSource = await contractSourceFor(catalog);
+    const catalogPlain = await renderD2ContractSource(catalog);
+    assert.equal(catalogSource, catalogPlain);
+  } finally {
+    console.warn = original;
+  }
+  assert.ok(warnings.some(line => line.startsWith('D2_NAV_ID_NO_TYPE: page my_conduct ')));
+  assert.equal(warnings.filter(line => line.includes('page agents ')).length, 0);
+});
+
+/** The contract of the same page with navigation ids left out, for a byte comparison. */
+async function renderD2ContractSource(page: D2Contracts70Page): Promise<string> {
+  const { page11: _page11, destinations: _destinations, ...rest } = page;
+  return contractSourceFor(rest);
+}
 
 void test('hard-code guard keeps fixture names out of the d2_73/d2_75 sources', () => {
   const root = join(here, '../..');

@@ -90,6 +90,8 @@ export interface M4Navigation {
   to: string;
   /** The entry params of the target page: the only values a navigation can carry. */
   targetParams: string[];
+  /** Params the destination requires from the url whose name ends in `Id` (`draftId`). A filter id (`produtoId`, `required: false`) is not one. */
+  requiredIdParams: string[];
 }
 
 /**
@@ -309,7 +311,11 @@ function checkPage(page: M4ParsedPage, all: Record<string, M4ParsedPage>, knownP
           // Served by a shared method of the intent id that calls auraNavigate (no functions since 13/10/2026).
           page.methods[intent.id] = intent.id;
           const to = intent.to ?? '';
-          if (!page.navigations.some(item => item.method === intent.id)) page.navigations.push({ method: intent.id, organism, to, targetParams: Object.keys(all[to]?.shared.entry.params ?? {}) });
+          if (!page.navigations.some(item => item.method === intent.id)) {
+            const params = all[to]?.shared.entry.params ?? {};
+            const requiredIdParams = Object.entries(params).filter(([name, row]) => row.required === true && name.endsWith('Id') && row.sources.includes('url')).map(([name]) => name);
+            page.navigations.push({ method: intent.id, organism, to, targetParams: Object.keys(params), requiredIdParams });
+          }
           continue;
         }
         resolve(intent.id, `${device}:organisms.${organism}.intents.${intent.id}`, 'Intent');

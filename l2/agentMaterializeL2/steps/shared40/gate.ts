@@ -192,6 +192,7 @@ export function gateM4SharedSource(source: string, target: M4SharedTarget): M4Sh
     // (a path segment, a literal argument). What it carries is the generator's call, among the target's params.
     if (!new RegExp(`(?<![\\w$])${nav.to}(?![\\w$])`, 'u').test(body)) push('M4_SHARED_NAVIGATE', `${nav.method} must navigate to /${target.module}/${nav.to}.`);
   }
+  for (const issue of m4SharedNavIdIssues(code, target.navigations ?? [], target.contract)) push(issue.code, issue.message);
 
   for (const literal of stringLiterals(code)) {
     if (/\s/u.test(literal)) push('M4_SHARED_TEXT', `String literal ${JSON.stringify(literal)} looks like user-facing text; the shared holds codes only.`);
@@ -272,6 +273,64 @@ export function reachableBody(code: string, name: string): string {
     for (const call of body.matchAll(/(?:\bthis\.|(?<![.\w]))([A-Za-z_$][\w$]*)\s*(?:<[^>\n]*>)?\s*\(/gu)) queue.push(call[1]);
   }
   return parts.join('\n');
+}
+
+const SHARED_DISPLAY_ARG = new Set(['name', 'title', 'label']);
+
+/**
+ * A method that calls navigateWith(to, 'param', value) must not pass a parameter named name, title or label
+ * as an id the destination requires. Applies only when requiredIdParams lists that param and the contract
+ * has it as a required field. Any other value is accepted.
+ */
+export function m4SharedNavIdIssues(code: string, navigations: readonly M4Navigation[], contract: L2ContractDefinition): M4SharedIssue[] {
+  const issues: M4SharedIssue[] = [];
+  for (const nav of navigations) {
+    const params = new Set((nav.requiredIdParams ?? []).filter(name => contract.projections.some(projection => projection.fields.some(field => field.name === name && !field.optional))));
+    if (!params.size) continue;
+    const body = methodBody(code, nav.method);
+    if (!body) continue;
+    const declared = new Set(methodParamNames(code, nav.method));
+    for (const call of body.matchAll(/\bnavigateWith\s*\(\s*['"][^'"]*['"]\s*,\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*,\s*([A-Za-z_$][\w$]*)\s*\)/gu)) {
+      const param = call[1];
+      const value = call[2];
+      if (!params.has(param) || !declared.has(value) || !SHARED_DISPLAY_ARG.has(value)) continue;
+      issues.push({ code: 'M4_SHARED_NAV_ID', message: `${nav.method} passes ${value} to navigateWith as ${param}; carry ${param} (the contract field), not ${value}.` });
+    }
+  }
+  return issues;
+}
+
+/** Parameter names of a method, before a type or a default. */
+function methodParamNames(code: string, name: string): string[] {
+  const head = new RegExp(`^[ \\t]*(?:export\\s+)?(?:public\\s+|private\\s+|protected\\s+)?(?:static\\s+)?(?:async\\s+)?(?:function\\s+)?${name}\\s*(?:<[^>\\n]*>)?\\s*\\(`, 'mu').exec(code);
+  if (!head || head.index === undefined) return [];
+  let i = head.index + head[0].length;
+  let depth = 1;
+  let text = '';
+  while (i < code.length && depth > 0) {
+    const ch = code[i];
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    if (depth > 0) text += ch;
+    i += 1;
+  }
+  const names: string[] = [];
+  let current = '';
+  depth = 0;
+  for (const ch of text) {
+    if (ch === '(' || ch === '[' || ch === '{' || ch === '<') depth += 1;
+    else if (ch === ')' || ch === ']' || ch === '}' || ch === '>') depth -= 1;
+    else if (ch === ',' && depth === 0) { names.push(paramName(current)); current = ''; continue; }
+    if (depth === 0 && ch === ',') continue;
+    current += ch;
+  }
+  names.push(paramName(current));
+  return names.filter(Boolean);
+}
+
+function paramName(part: string): string {
+  const found = /^(?:public\s+|private\s+|protected\s+|readonly\s+)?([A-Za-z_$][\w$]*)\b/u.exec(part.trim());
+  return found?.[1] ?? '';
 }
 
 /** The body of a class method or module function `name(…) {…}`, or null when there is none. */

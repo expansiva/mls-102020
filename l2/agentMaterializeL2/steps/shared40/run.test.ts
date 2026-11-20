@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { parseL2Contract } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
+import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import {
   M4_SHARED_RUNTIME_REFS, approveM4Shared, m4SharedRules, buildM4SharedContext, buildM4SharedPrompt, buildM4SharedRepairPrompt, m4AddedMemberFindings, m4SharedEnvironmentFailure, m4SharedReuseBlocker, mergeM4Findings, m4SharedToolFindings, m4SharedToolSchema, m4SharedToolSource, recordM4SharedAttempt, reusableM4Shared, studioSharedPort, type M4SharedPort,
@@ -108,6 +111,39 @@ test('the prompt carries target, contract, shared, organisms, the methods the pa
     'export declare abstract class StateLitElement',
   ]) assert.ok(humanPrompt.includes(needle), needle);
   assert.deepEqual(port.declared[0], M4_SHARED_RUNTIME_REFS);
+});
+
+test('an Id param is carried from the item; a navigation without one stays the plain line', async () => {
+  const root = new URL('../finalize70/fixtures/agents/l2/agents/web/', import.meta.url);
+  const pageId = 'agents';
+  const desktop = readFileSync(new URL(`desktop/page11/${pageId}.defs.ts`, root), 'utf8');
+  const shared = readFileSync(new URL(`shared/${pageId}.defs.ts`, root), 'utf8');
+  const contract = `/// <mls fileReference="_102047_/l2/agents/web/contracts/${pageId}.defs.ts" enhancement="_blank"/>\n\nexport {};\n`;
+  const page = parseL2Page11(desktop).definition;
+  const paramsOf = (to: string) => parseL2Shared(readFileSync(new URL(`shared/${to}.defs.ts`, root), 'utf8')).definition.entry.params;
+  const requiredIdParams = (params: ReturnType<typeof paramsOf>) => Object.entries(params).filter(([name, row]) => row.required === true && name.endsWith('Id') && row.sources.includes('url')).map(([name]) => name);
+  const navigations = Object.entries(page.organisms).flatMap(([organism, row]) => row.intents.flatMap(intent => intent.kind === 'navigate' && intent.to ? [{ method: intent.id, organism, to: intent.to, targetParams: Object.keys(paramsOf(intent.to)), requiredIdParams: requiredIdParams(paramsOf(intent.to)) }] : []));
+  navigations.push({ method: 'openPlain', organism: 'agentsList', to: 'tool_catalog', targetParams: ['page'], requiredIdParams: [] });
+  const identityAgents = { project: 102047, module: 'agents' };
+  const context = {
+    identity: identityAgents, pageId, unitInputHash: 'fixture', prompt: promptText, l4: '',
+    sources: { contract, shared, desktop },
+    target: {
+      ...identityAgents, pageId, className: 'AgentsAgentsShared', rules: [],
+      shared: parseL2Shared(shared).definition, contract: parseL2Contract(contract).definition, navigations,
+    },
+  };
+  const declarations = async () => [];
+  const read = async () => repairText;
+  const generated = await buildM4SharedPrompt(context, { declarations });
+  const repaired = await buildM4SharedRepairPrompt(context, { diagnostic: 'none', previous: 'export class AgentsAgentsShared {}' }, { declarations, read });
+  for (const humanPrompt of [generated.humanPrompt, repaired.humanPrompt]) {
+    assert.ok(humanPrompt.includes('- openAgentOverview (organism agentsList) → /agents/agent_overview; entry params of agent_overview: agentId; carry the item\'s agentId field (see the contract) as agentId, never its display name or label'), 'openAgentOverview');
+    assert.ok(humanPrompt.includes('- openDraftReview (organism draftsInbox) → /agents/draft_review; entry params of draft_review: draftId, agentDraftId; carry the item\'s draftId field (see the contract) as draftId, never its display name or label'), 'openDraftReview');
+    assert.equal(humanPrompt.includes('agentDraftId field'), false);
+    assert.ok(humanPrompt.includes('- openPlain (organism agentsList) → /agents/tool_catalog; entry params of tool_catalog: page\n'), 'no Id param');
+    assert.equal(humanPrompt.includes('carry the item\'s page field'), false);
+  }
 });
 
 test('a repair is a focused fix (agentFix style): errors, refused file, its import declarations, ids to keep', async () => {

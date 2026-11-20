@@ -8,6 +8,8 @@ import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_10
 import { parseD2ContractV2, renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { d2BffAccess, type D2BffDesign, type D2Grant, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2ContractFromBff } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
+import { applyD2NavigationIds, type D2NavDestination } from '/_102020_/l2/agentDefsL2/helpers/d2NavigationIds.js';
+import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { parseD2SharedV2 } from '/_102020_/l2/helpers/sharedV2/format.js';
 import { readApprovedD2Bff, readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { readD2SharedReceipt, readD2SharedRefusal, sharedInfo, D2_SHARED_VERSION, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
@@ -34,6 +36,10 @@ export interface D2Contracts70Page {
   entities: Record<string, Ns5OntologyAnyEntity>;
   sharedSource: string;
   sharedReceipt: D2SharedReceipt | null;
+  /** Page11 of this page. Absent only in a test that does not exercise navigation ids. */
+  page11?: Record<D2Page11Device, D2Page11Definition>;
+  /** Shared and approved design of each navigate target that is not `backTo*`. A target with no shared or no approved design is left out. */
+  destinations?: Record<string, D2NavDestination>;
 }
 
 export interface D2Contracts70Existing {
@@ -78,7 +84,10 @@ export async function contractSourceFor(page: D2Contracts70Page): Promise<string
   if (requestIds.join('\n') !== endpointIds.join('\n')) throw new Error('D2_CONTRACTS_SHARED_REQUESTS: the shared requests are not the endpoints of the approved BFF.');
   if (!endpointIds.length) return renderEmptyD2Contract(page.identity, page.pageId);
   const location = { project: page.identity.project, module: page.identity.module, pageId: page.pageId };
-  const definition = buildD2ContractFromBff({ module: page.identity.module, pageId: page.pageId, design: page.design, access: page.access, entities: page.entities, userLanguage: page.userLanguage });
+  const design = page.page11 && page.destinations
+    ? applyD2NavigationIds({ pageId: page.pageId, design: page.design, page11: page.page11, destinations: page.destinations }).design
+    : page.design;
+  const definition = buildD2ContractFromBff({ module: page.identity.module, pageId: page.pageId, design, access: page.access, entities: page.entities, userLanguage: page.userLanguage });
   const source = renderD2ContractV2(location, definition);
   // The JSDoc must not change what the parser reads. access is left out: its actors regex is greedy on any contract.
   const readable = (routes: typeof definition.routes) => JSON.stringify(routes.map(({ access: _access, ...route }) => route));
@@ -149,13 +158,41 @@ export async function loadD2ContractsPage(identity: D2RunIdentity, pageId: strin
   const sharedSource = await readSourceText(sharedInfo(identity, pageId));
   if (!sharedSource) throw new Error('D2_CONTRACTS_SHARED_RECEIPT_MISSING');
   const menu = bundle.artifacts.menu as D2Menu;
+  const devices: D2Page11Device[] = ['desktop', 'mobile'];
+  const page11 = {} as Record<D2Page11Device, D2Page11Definition>;
+  for (const device of devices) {
+    const text = await readSourceText(page11Info(identity, pageId, device));
+    if (!text) throw new Error(`D2_CONTRACTS_PAGE11_MISSING: ${pageId} ${device}`);
+    const parsed = parseD2Page11Definition(text);
+    if (parsed.location.pageId !== pageId || parsed.location.device !== device) throw new Error(`D2_CONTRACTS_PAGE11: ${pageId} ${device}`);
+    page11[device] = parsed.definition;
+  }
+  const destinations: Record<string, D2NavDestination> = {};
+  for (const device of devices) {
+    for (const organism of Object.values(page11[device].organisms)) {
+      for (const intent of organism.intents) {
+        if (intent.kind !== 'navigate' || !intent.to || intent.id.startsWith('backTo') || destinations[intent.to]) continue;
+        const targetShared = await readSourceText(sharedInfo(identity, intent.to));
+        const targetDesign = targetShared ? await readApprovedD2Bff(identity, intent.to) : null;
+        if (!targetShared || !targetDesign) continue;
+        const parsed = parseD2SharedV2(targetShared);
+        if (parsed.location.pageId !== intent.to) throw new Error(`D2_NAV_ID_SHARED: ${intent.to}`);
+        destinations[intent.to] = { shared: parsed.definition, design: targetDesign };
+      }
+    }
+  }
   return {
     identity, pageId, design,
     userLanguage: menu.userLanguage || (bundle.artifacts.module as { userLanguage?: string } | null)?.userLanguage || 'en',
     access: d2BffAccess(design, need, (bundle.artifacts.access as { grants?: D2Grant[] } | null)?.grants ?? []),
     entities: bundle.artifacts.entities as Record<string, Ns5OntologyAnyEntity>,
     sharedSource, sharedReceipt: await readD2SharedReceipt(identity, pageId),
+    page11, destinations,
   };
+}
+
+function page11Info(identity: D2RunIdentity, pageId: string, device: D2Page11Device): Ns5FileInfo {
+  return { project: identity.project, level: 2, folder: `${identity.module}/web/${device}/page11`, shortName: pageId, extension: '.defs.ts' };
 }
 
 export async function productionContractsPort(identity: D2RunIdentity): Promise<D2Contracts70Port> {

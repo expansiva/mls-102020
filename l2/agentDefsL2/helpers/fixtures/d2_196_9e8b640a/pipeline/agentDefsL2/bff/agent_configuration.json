@@ -1,0 +1,343 @@
+{
+  "types": [
+    {
+      "name": "ResponsiblePerson",
+      "description": "An organization user who can be, or is, the person responsible for an agent: the reference saved on the agent plus the readable name, status and login e-mail.",
+      "fields": [
+        {
+          "name": "agent.responsible",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.responsible"
+            ]
+          }
+        },
+        {
+          "name": "details.identification.name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.identification.name"
+            ]
+          }
+        },
+        {
+          "name": "details.identification.status",
+          "type": "'Active' | 'Inactive' | 'Merged' | 'Blocked'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.identification.status"
+            ]
+          }
+        },
+        {
+          "name": "details.agents.loginEmail",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.agents.loginEmail"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AgentConfiguration",
+      "description": "The editable configuration of one agent as the cm keeps it: its @name, whether it is on, its responsible person and the version of the record used for concurrency.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.name"
+            ]
+          }
+        },
+        {
+          "name": "isOn",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.isOn"
+            ]
+          }
+        },
+        {
+          "name": "responsible",
+          "type": "ResponsiblePerson",
+          "optional": true
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "AgentLimit",
+      "description": "One limit the cm applies to an agent: its readable name and its current value.",
+      "fields": [
+        {
+          "name": "label",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.limits.label"
+            ]
+          }
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.limits.value"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "getAgentConfiguration",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "configuration",
+          "type": "AgentConfiguration"
+        },
+        {
+          "name": "limits",
+          "type": "AgentLimit[]"
+        }
+      ],
+      "rules": [
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Loads in one call the chosen agent's configuration and the limits the cm lists for it.",
+        "input": "agentId: the cm reference of the agent chosen in the URL.",
+        "processing": "Reads the agent from the cm (organization scope of the company admin). Resolves the responsible person reference to the organization user's name, status and login e-mail (login e-mail and status are derived, read from the platform, never stored here). Returns the record version for the next save and the cm limits as listed, in cm order. Only readable names are returned for display (noTechnicalIdsOnScreen); the responsible reference and version are kept only as values to save.",
+        "output": "configuration: the agent's @name, on/off state, responsible person (absent when none is set) and version; limits: every limit with its label and current value."
+      }
+    },
+    {
+      "id": "searchResponsibleCandidates",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "search",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "users",
+          "type": "ResponsiblePerson[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Finds organization users with a platform login to choose as the agent's responsible person.",
+        "input": "search: part of the person's name typed by the admin; page and pageSize: the page of results requested.",
+        "processing": "Uses the locate.users capability of OrganizationUser filtered by name, within the admin's organization, ordered by name. Returns only the fields the adminChoosePeople grant allows (name, status, login e-mail) plus the reference to save in Agent.responsible; no technical id is meant for display (noTechnicalIdsOnScreen).",
+        "output": "users: one page of candidate people with their reference, name, status and login e-mail, as { items, page, pageSize, hasMore }."
+      }
+    },
+    {
+      "id": "saveAgentConfiguration",
+      "kind": "cmd",
+      "when": "saveConfiguration",
+      "writes": "Agent.update",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "expectVersion",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.name"
+            ]
+          }
+        },
+        {
+          "name": "isOn",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.isOn"
+            ]
+          }
+        },
+        {
+          "name": "responsible",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.responsible"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "configuration",
+          "type": "AgentConfiguration"
+        },
+        {
+          "name": "limits",
+          "type": "AgentLimit[]"
+        }
+      ],
+      "rules": [
+        "agentNameUniqueAmongActive"
+      ],
+      "jsdoc": {
+        "purpose": "Saves the agent's @name, on/off state and responsible person in the cm.",
+        "input": "agentId: the cm reference of the agent from the URL; expectVersion: the version of the agent configuration the admin loaded, refused if the record changed meanwhile; name: the new @name; isOn: whether the agent is on; responsible: the reference of the organization user chosen as responsible.",
+        "processing": "Checks expectVersion against the current version and sends the update to the cm. agentNameUniqueAmongActive: when another active agent already uses the @name, the cm refuses it; the endpoint changes nothing and returns a clear 'name already taken' error. On success, reads the agent back from the cm and resolves the responsible person's name, status and login e-mail.",
+        "output": "configuration: the agent in its new saved state (@name, on/off, responsible person, new version); limits: the agent's limits as the cm lists them after the save."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "agentConfigurationForm",
+        "reads": "getAgentConfiguration.configuration"
+      },
+      {
+        "organism": "agentConfigurationForm",
+        "reads": "searchResponsibleCandidates.users"
+      },
+      {
+        "organism": "agentLimits",
+        "reads": "getAgentConfiguration.limits"
+      }
+    ],
+    "commands": [
+      {
+        "endpoint": "saveAgentConfiguration",
+        "refreshes": []
+      }
+    ],
+    "selections": [],
+    "journeys": [
+      {
+        "step": "configureAgent/findAgentForConfig",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agents"
+      },
+      {
+        "step": "configureAgent/readConfiguration",
+        "organisms": [
+          "agentConfigurationForm",
+          "agentLimits"
+        ],
+        "endpoints": [
+          "getAgentConfiguration"
+        ]
+      },
+      {
+        "step": "configureAgent/saveConfiguration",
+        "organisms": [
+          "agentConfigurationForm"
+        ],
+        "endpoints": [
+          "searchResponsibleCandidates",
+          "saveAgentConfiguration"
+        ]
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "saveAgentConfiguration",
+        "state": "getAgentConfiguration.configuration",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "saveAgentConfiguration",
+        "state": "getAgentConfiguration.limits",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "searchResponsibleCandidates",
+        "state": "searchResponsibleCandidates.users",
+        "mode": "replace"
+      }
+    ]
+  }
+}

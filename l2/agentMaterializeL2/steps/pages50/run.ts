@@ -296,6 +296,8 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     moleculeEvents: await m4PageMoleculeEvents(tags, port),
     pageOnlyRequests,
     sharedSource: sharedText,
+    navigations: page.navigations ?? [],
+    contract: parseL2Contract(contractSource).definition,
     ...(history.kept.length ? { history: history.kept } : {}),
   };
   const prompt = await port.read(pagePromptInfo);
@@ -486,8 +488,6 @@ export async function normalizeSuffixedMoleculeTags(source: string, port: M4Page
   return { text, lines };
 }
 
-export async function approveM4Page(context: M4PageContext, source: unknown, attempt: number, port: M4PagePort = studioPagePort, design: unknown = null): Promise<M4PageReceipt> {
-  if (typeof source !== 'string' || !source.trim()) throw new Error('M4_PAGE_EMPTY: submitPageTs.source must be the whole file.');
 const I18N_START = '/// **collab_i18n_start**';
 const I18N_END = '/// **collab_i18n_end**';
 
@@ -536,6 +536,8 @@ export function m4MoveI18nBeforeClass(text: string): string {
   return `${prefix}${body}\n${suffix}`;
 }
 
+export async function approveM4Page(context: M4PageContext, source: unknown, attempt: number, port: M4PagePort = studioPagePort, design: unknown = null): Promise<M4PageReceipt> {
+  if (typeof source !== 'string' || !source.trim()) throw new Error('M4_PAGE_EMPTY: submitPageTs.source must be the whole file.');
   const raw = source.replace(/\r\n/gu, '\n').replace(/\n*$/u, '\n');
   const normalized = await normalizeSuffixedMoleculeTags(raw, port);
   const text = m4MoveI18nBeforeClass(normalized.text);
@@ -563,9 +565,9 @@ export function m4MoveI18nBeforeClass(text: string): string {
     design: m4PageDesign(design),
     advisories: [
       ...normalized.lines.map(message => ({ code: 'M4_PAGE_MOLECULE_SUFFIX', message })),
+      ...(i18nMoved ? [{ code: 'M4_PAGE_I18N_MOVED', message: 'the catalogue block moved before the page class' }] : []),
       ...issues.filter(item => !M4_PAGE_GATE_ENFORCED || item.severity === 'advisory').map(item => ({ code: item.code, message: `${item.severity === 'error' ? '[contract] ' : ''}${item.message}` })),
     ],
-      ...(i18nMoved ? [{ code: 'M4_PAGE_I18N_MOVED', message: 'the catalogue block moved before the page class' }] : []),
     ...(context.history ? { history: context.history } : {}),
   };
   await port.writeJson(pageReceiptInfo(context.identity, context.pageId, context.device, context.genome), receipt);

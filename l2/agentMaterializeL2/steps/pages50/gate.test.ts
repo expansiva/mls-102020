@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
-import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4MoleculeEvents, m4MoleculeImport, m4MoleculeDetailEvents, m4MoleculeProperties, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PageHistory, m4PageMoleculeTags, m4PagePath, m4PageTag, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4MoleculeEvents, m4MoleculeImport, m4MoleculeDetailEvents, m4MoleculeProperties, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PageHistory, m4PageMoleculeTags, m4PagePath, m4PageTag, m4PageNavIdIssues, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import type { L2ContractDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
+import type { M4Navigation } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
 import { M4_DOM_PROPERTIES } from '/_102020_/l2/agentMaterializeL2/steps/pages50/domProperties.js';
 import type { DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
@@ -494,4 +496,32 @@ test('i18n: a catalogue after the class is refused; one already before it, or a 
   assert.notEqual(bare, reference);
   assert.match(gateM4PageSource(bare, target()).find(item => item.code === 'M4_PAGE_I18N')!.message, /The catalogue must sit between \/\/\/ \*\*collab_i18n_start\*\*/u);
   assert.equal(position(bare), false);
+});
+
+const field = (name: string) => ({ name, type: 'string', optional: false, readonly: false });
+const withFields = (names: string[]): L2ContractDefinition => ({
+  contractsInterface: 'AgentsContracts',
+  projections: [{ name: 'Item', body: '', fields: names.map(field) }],
+  routes: [],
+});
+const nav = (method: string, param: string): M4Navigation => ({ method, organism: 'list', to: 'record', targetParams: [param], requiredIdParams: [param] });
+
+test('a list navigation passes the contract id, not the display name (calls copied from mls-102047@9e8b640a agents.ts)', () => {
+  const contract = withFields(['agentId', 'draftId', 'name']);
+  const recorded = [
+    'this.openDraftReview(item.name)',
+    'this.openAgentOverview(agent.name)',
+    'this.openAgentActivity(agent.name)',
+    'this.openDraftFromHistory(request.name)',
+    'this.openMyConduct(agent.name)',
+  ].join('\n');
+  const navigations = ['openDraftReview', 'openAgentOverview', 'openAgentActivity', 'openDraftFromHistory', 'openMyConduct'].map(method => nav(method, method.startsWith('openDraft') || method === 'openDraftFromHistory' ? 'draftId' : 'agentId'));
+  const issues = m4PageNavIdIssues(recorded, navigations, contract);
+  assert.equal(issues.length, 5);
+  assert.match(issues.find(item => item.message.startsWith('openAgentOverview'))!.message, /openAgentOverview is called with agent\.name; carry agentId \(the contract field\), not name/);
+  assert.match(issues.find(item => item.message.startsWith('openDraftReview'))!.message, /carry draftId \(the contract field\), not name/);
+  assert.deepEqual(m4PageNavIdIssues('this.openAgentOverview(agent.agentId)\nthis.openDraftReview(item.draftId)', navigations, contract), []);
+  assert.deepEqual(m4PageNavIdIssues('this.openAgentOverview(agent.name)', [nav('openAgentOverview', 'agentId')], withFields(['name'])), [], 'no id field on the contract: the call is not refused');
+  assert.deepEqual(m4PageNavIdIssues('this.openAgentOverview()\nthis.openAgentOverview(String(agent.name))\nthis.openAgentOverview(selected)', [nav('openAgentOverview', 'agentId')], contract), []);
+  assert.equal(m4PageNavIdIssues('this.openAgentOverview(title)', [nav('openAgentOverview', 'agentId')], contract)[0].message.includes('title'), true);
 });

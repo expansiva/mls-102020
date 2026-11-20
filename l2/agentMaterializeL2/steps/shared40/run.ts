@@ -255,7 +255,12 @@ function methodLines(target: M4SharedTarget): string[] {
 
 /** The navigate intents of page11: the method, the organism it lives in, the target page and what that page reads. */
 function navigationLines(target: M4SharedTarget): string[] {
-  const rows = (target.navigations ?? []).map(nav => `- ${nav.method} (organism ${nav.organism}) → /${target.module}/${nav.to}; entry params of ${nav.to}: ${nav.targetParams.length ? nav.targetParams.join(', ') : 'none'}`);
+  const rows = (target.navigations ?? []).map(nav => {
+    const params = nav.targetParams ?? [];
+    const listed = params.length ? params.join(', ') : 'none';
+    const carry = (nav.requiredIdParams ?? []).map(name => `; carry the item's ${name} field (see the contract) as ${name}, never its display name or label`).join('');
+    return `- ${nav.method} (organism ${nav.organism}) → /${target.module}/${nav.to}; entry params of ${nav.to}: ${listed}${carry}`;
+  });
   return rows.length ? rows : ['- none'];
 }
 

@@ -1,0 +1,345 @@
+{
+  "types": [
+    {
+      "name": "BehaviorAgent",
+      "description": "The agent a behavior belongs to, identified as the cm knows it, with its @name.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.agent"
+            ]
+          }
+        },
+        {
+          "name": "agent.name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AgentBehaviorDetail",
+      "description": "An agent's current behavior in plain language as the cm keeps it, with its one-line summary.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": "BehaviorAgent"
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.summary"
+            ]
+          }
+        },
+        {
+          "name": "currentBehavior",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.currentBehavior"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "BehaviorChange",
+      "description": "One past change of an agent's behavior: the cm reference, who made it, when, a one-line summary and whether it was undone.",
+      "fields": [
+        {
+          "name": "changeRef",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.changes.changeRef"
+            ]
+          }
+        },
+        {
+          "name": "changedBy",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.changes.changedBy"
+            ]
+          }
+        },
+        {
+          "name": "changedAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.changes.changedAt"
+            ]
+          }
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.changes.summary"
+            ]
+          }
+        },
+        {
+          "name": "undone",
+          "type": "boolean",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.changes.undone"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "getAgentBehavior",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "behavior",
+          "type": "AgentBehaviorDetail"
+        }
+      ],
+      "rules": [
+        "agentBehaviorChangedOnlyThroughCm"
+      ],
+      "jsdoc": {
+        "purpose": "Loads how the chosen agent behaves today, with its @name and one-line summary.",
+        "input": "agentId: the cm id of the agent chosen in the URL.",
+        "processing": "Reads the agent's behavior from the cm (agentBehaviorChangedOnlyThroughCm: nothing is stored in this module) and the agent's @name; organization scope of the admin.",
+        "output": "The agent (id and @name), the one-line summary and the full current behavior text."
+      }
+    },
+    {
+      "id": "listBehaviorChanges",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "changes",
+          "type": "BehaviorChange[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "agentBehaviorChangedOnlyThroughCm",
+        "undoRestoresPreviousBehavior"
+      ],
+      "jsdoc": {
+        "purpose": "Lists the history of behavior changes of the chosen agent, newest first, one page at a time.",
+        "input": "agentId: the cm id of the agent; page and pageSize: the page of history wanted.",
+        "processing": "Reads the change history from the cm (agentBehaviorChangedOnlyThroughCm), ordered by changedAt newest first; resolves the author to a readable name; each change keeps its undone mark (undoRestoresPreviousBehavior).",
+        "output": "A page of changes with cm reference, author name, date, one-line summary and undone mark, as { items, page, pageSize, hasMore }."
+      }
+    },
+    {
+      "id": "requestBehaviorChange",
+      "kind": "cmd",
+      "when": "requestBehaviorChange",
+      "writes": "AgentBehavior.update",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.agent"
+            ]
+          }
+        },
+        {
+          "name": "expectVersion",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "changeRequest",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.changeRequest"
+            ]
+          }
+        },
+        {
+          "name": "undoChangeRef",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentBehavior.changes.changeRef"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "behavior",
+          "type": "AgentBehaviorDetail"
+        }
+      ],
+      "rules": [
+        "agentBehaviorChangedOnlyThroughCm",
+        "behaviorChangeByAdminOnly",
+        "undoRestoresPreviousBehavior"
+      ],
+      "jsdoc": {
+        "purpose": "Sends to the cm either a plain-language request to change the agent's behavior or the undo of a change picked from the history.",
+        "input": "agentId: the cm id of the agent; expectVersion: the version of the behavior the admin was looking at, so a change made meanwhile is refused instead of overwritten; changeRequest: what the admin wrote in the box; undoChangeRef: the cm reference of the change to undo. Exactly one of changeRequest or undoChangeRef is given.",
+        "processing": "Refuses when the caller is not a company admin (behaviorChangeByAdminOnly). Refuses when expectVersion no longer matches the current behavior. Calls the cm to update the behavior from the request, or to undo the referenced change, which restores the behavior from before that change and marks it undone (undoRestoresPreviousBehavior). Nothing is stored in this module (agentBehaviorChangedOnlyThroughCm).",
+        "output": "The agent's behavior in its new state: agent, new one-line summary and new full behavior text."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "currentBehavior",
+        "reads": "getAgentBehavior.behavior"
+      },
+      {
+        "organism": "behaviorChangeRequest",
+        "reads": "getAgentBehavior.behavior"
+      },
+      {
+        "organism": "behaviorHistory",
+        "reads": "listBehaviorChanges.changes"
+      }
+    ],
+    "commands": [
+      {
+        "endpoint": "requestBehaviorChange",
+        "refreshes": [
+          "listBehaviorChanges"
+        ]
+      }
+    ],
+    "selections": [
+      {
+        "organism": "behaviorHistory",
+        "via": {
+          "list": "listBehaviorChanges.changes"
+        }
+      }
+    ],
+    "journeys": [
+      {
+        "step": "changeAgentBehavior/findAgentForBehavior",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agents"
+      },
+      {
+        "step": "changeAgentBehavior/readBehavior",
+        "organisms": [
+          "currentBehavior",
+          "behaviorHistory"
+        ],
+        "endpoints": [
+          "getAgentBehavior",
+          "listBehaviorChanges"
+        ]
+      },
+      {
+        "step": "changeAgentBehavior/requestBehaviorChange",
+        "organisms": [
+          "behaviorChangeRequest"
+        ],
+        "endpoints": [
+          "requestBehaviorChange"
+        ]
+      },
+      {
+        "step": "changeAgentBehavior/undoBehaviorChange",
+        "organisms": [
+          "behaviorHistory",
+          "behaviorChangeRequest"
+        ],
+        "endpoints": [
+          "listBehaviorChanges",
+          "requestBehaviorChange"
+        ]
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "requestBehaviorChange",
+        "state": "getAgentBehavior.behavior",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "listBehaviorChanges",
+        "state": "listBehaviorChanges.changes",
+        "mode": "append"
+      }
+    ]
+  }
+}

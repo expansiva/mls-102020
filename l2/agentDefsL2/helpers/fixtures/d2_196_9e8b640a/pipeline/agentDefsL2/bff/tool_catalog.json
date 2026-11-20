@@ -1,0 +1,313 @@
+{
+  "types": [
+    {
+      "name": "CatalogTool",
+      "description": "One action of the tool catalog with its readable name, plain-language description and situation in the current release.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.name"
+            ]
+          }
+        },
+        {
+          "name": "details.description",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.description"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'available' | 'removed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.status"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "CatalogSubject",
+      "description": "A subject inside a module of the tool catalog, with the actions it groups.",
+      "fields": [
+        {
+          "name": "subject",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.subject"
+            ]
+          }
+        },
+        {
+          "name": "details.subjectTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.subjectTitle"
+            ]
+          }
+        },
+        {
+          "name": "tools",
+          "type": "CatalogTool[]"
+        }
+      ]
+    },
+    {
+      "name": "CatalogModule",
+      "description": "A module of the tool catalog (an app module or the cm itself), with its subjects and their actions.",
+      "fields": [
+        {
+          "name": "moduleName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.moduleName"
+            ]
+          }
+        },
+        {
+          "name": "details.moduleTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.moduleTitle"
+            ]
+          }
+        },
+        {
+          "name": "subjects",
+          "type": "CatalogSubject[]"
+        }
+      ]
+    },
+    {
+      "name": "ToolUsage",
+      "description": "A tool of the catalog with the number of agents that have it turned on.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.name"
+            ]
+          }
+        },
+        {
+          "name": "details.moduleTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.moduleTitle"
+            ]
+          }
+        },
+        {
+          "name": "details.subjectTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.subjectTitle"
+            ]
+          }
+        },
+        {
+          "name": "usedByAgents",
+          "type": "number",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Tool.details.usedByAgents",
+              "AgentTool.enabled",
+              "AgentTool.agentId",
+              "AgentTool.toolId"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "CatalogUpdate",
+      "description": "A tool as a catalog change: when it entered the catalog and, if it left the release, when it was marked removed.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.name"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'available' | 'removed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.status"
+            ]
+          }
+        },
+        {
+          "name": "details.moduleTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.moduleTitle"
+            ]
+          }
+        },
+        {
+          "name": "details.subjectTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.subjectTitle"
+            ]
+          }
+        },
+        {
+          "name": "details.addedAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.addedAt"
+            ]
+          }
+        },
+        {
+          "name": "details.removedAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.removedAt"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "getToolCatalog",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [],
+      "output": [
+        {
+          "name": "modules",
+          "type": "CatalogModule[]"
+        },
+        {
+          "name": "toolUsage",
+          "type": "ToolUsage[]",
+          "optional": true
+        }
+      ],
+      "rules": [
+        "noTechnicalIdsOnScreen",
+        "toolNeverDeleted"
+      ],
+      "jsdoc": {
+        "purpose": "Loads the whole tool catalog of the organization as a module / subject / action tree, together with how many agents use each tool.",
+        "input": "None. The organization comes from the logged-in person.",
+        "processing": "Reads every Tool of the catalog, including removed ones (toolNeverDeleted: a tool that left the release is kept and returned with status removed), and groups them by moduleName then subject, ordered by moduleTitle, subjectTitle and name. Returns readable names only, never ids, toolKey or catalogItem (noTechnicalIdsOnScreen). toolUsage is computed only for callers whose grant allows Tool.details.usedByAgents (companyAdmin): usedByAgents is derived per tool by counting the distinct agents with an AgentTool for that tool whose enabled is true, in one grouped query; it is computed, never stored. The list is ordered by usedByAgents descending, then name. For organizationMember toolUsage is omitted.",
+        "output": "modules: every module with its subjects and their actions (name, description, status). toolUsage: every tool with its module and subject titles and the number of agents that have it on, most used first; absent when the caller may not see it."
+      }
+    },
+    {
+      "id": "listCatalogUpdates",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "updates",
+          "type": "CatalogUpdate[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "catalogRebuiltOnRelease",
+        "toolNeverDeleted",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Lists the changes of the tool catalog made by the rebuilds after a new module or release: tools added and tools marked removed, newest first, page by page.",
+        "input": "page and pageSize: the page of changes requested and its size.",
+        "processing": "Reads the Tools of the organization's catalog, which the rebuild creates, updates and marks removed (catalogRebuiltOnRelease; removed tools are kept, toolNeverDeleted). Orders them by the latest of removedAt and addedAt, newest first, and pages the result. addedAt and removedAt are returned only to callers whose grant allows them (companyAdmin). No ids are returned (noTechnicalIdsOnScreen).",
+        "output": "updates: a page { items, page, pageSize, hasMore } of tools with name, status, module and subject titles, the date they were added and, when removed, the date they were marked removed."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "toolCatalogTree",
+        "reads": "getToolCatalog.modules"
+      },
+      {
+        "organism": "toolUsageHighlights",
+        "reads": "getToolCatalog.toolUsage"
+      },
+      {
+        "organism": "catalogUpdatesTimeline",
+        "reads": "listCatalogUpdates.updates"
+      }
+    ],
+    "commands": [],
+    "selections": [],
+    "journeys": [],
+    "updates": [
+      {
+        "endpoint": "listCatalogUpdates",
+        "state": "listCatalogUpdates.updates",
+        "mode": "append"
+      }
+    ]
+  }
+}
