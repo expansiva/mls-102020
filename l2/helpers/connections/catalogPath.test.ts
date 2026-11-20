@@ -5,8 +5,8 @@ import test from 'node:test';
 import { catalogFilePath, catalogImportPath, externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 test('a valid connectionId is the catalog file and the import specifier', () => {
-  assert.equal(catalogFilePath('cm'), '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts');
-  assert.equal(catalogImportPath('cm'), '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.js');
+  assert.equal(catalogFilePath('cm'), '/_102034_/l2/shared/contracts/connections/cm.ts');
+  assert.equal(catalogImportPath('cm'), '/_102034_/l2/shared/contracts/connections/cm.js');
 });
 
 test('an external entity is read by connectionId alone', () => {

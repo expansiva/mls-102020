@@ -7,8 +7,8 @@ import { fileInfoFromRef } from '/_102020_/l2/helpers/defsInput/io.js';
 
 void test('fileInfoFromRef keeps .defs.ts as the extension', () => {
   assert.deepEqual(
-    fileInfoFromRef('/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts'),
-    { project: 102034, level: 1, folder: 'server/layer_1_external/connections/catalogs', shortName: 'cm', extension: '.ts' },
+    fileInfoFromRef('/_102034_/l2/shared/contracts/connections/cm.ts'),
+    { project: 102034, level: 2, folder: 'shared/contracts/connections', shortName: 'cm', extension: '.ts' },
   );
   assert.deepEqual(
     fileInfoFromRef('_102047_/l4/repoHost/integration.defs.ts'),

@@ -110,8 +110,8 @@ export function siblingDeclarationMissing(connectionId: string, moduleName: stri
 }
 
 /** The type file of the runtime (the declaration type and its validator): an input of every declaration. No import here, on purpose. */
-export const DECLARATION_TYPES_REF = '_102034_/l1/server/layer_1_external/connections/external/types.ts';
-export const DECLARATION_TYPES_IMPORT = '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+export const DECLARATION_TYPES_REF = '_102034_/l2/shared/contracts/connections/externalSystem.ts';
+export const DECLARATION_TYPES_IMPORT = '/_102034_/l2/shared/contracts/connections/externalSystem.js';
 
 /** The object of an L4 integration artifact (`export const x = { ... } as const ...;`, JSON keys), read without evaluating it. Null when it is not one. */
 export function integrationOf(source: string | null): unknown {

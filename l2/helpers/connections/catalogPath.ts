@@ -3,7 +3,7 @@
 /** One connection name: the same shape the runtime catalog reader accepts. Anything else is not a catalog. */
 const CONNECTION_ID = /^[a-z][A-Za-z0-9]*$/;
 
-const CATALOG_DIR = '/_102034_/l1/server/layer_1_external/connections/catalogs';
+const CATALOG_DIR = '/_102034_/l2/shared/contracts/connections';
 
 /** The `connectionId` of an entity. Reads that field and nothing else; a missing or invalid id is empty. */
 export function externalConnectionId(entity: unknown): string {
