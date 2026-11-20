@@ -42,7 +42,6 @@ Types and origins:
 
 rules lists, for each endpoint, the rules whose text binds what this endpoint does: what a command must refuse or
 record, what a query computes. Read the rule text, not the entity: a rule about cancelling does not apply to adding.
-A rule about what a screen shows (for example "never show technical ids") never removes a field from the payload nor says the route omits ids: every field the contract needs is returned, and the screen decides what to show.
 
 jsdoc is written for the person and the model that implement the endpoint, in userLanguage:
 - purpose: what the function does for the page, not the organism text;

@@ -105,11 +105,6 @@ function schemaMiss(schema: Record<string, unknown>, value: unknown, path: strin
   return `${path} has no supported schema`;
 }
 
-void test('d2_203: a screen rule never removes a payload field', () => {
-  const prompt = readFileSync(new URL('./prompt.md', import.meta.url), 'utf8');
-  assert.match(prompt, /A rule about what a screen shows \(for example "never show technical ids"\) never removes a field from the payload nor says the route omits ids: every field the contract needs is returned, and the screen decides what to show\./u);
-});
-
 void test('d2_155: inicio with origin null passes the schema and the parser; a missing origin does not', () => {
   const prompt = readFileSync(new URL('./prompt.md', import.meta.url), 'utf8');
   assert.match(prompt, /A leaf that names another type carries origin: null\. A value leaf never carries null\./u);
