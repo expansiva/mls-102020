@@ -49,7 +49,7 @@ export async function externalCatalogTexts(entities: Record<string, unknown>, sc
       if (text !== null) texts[id] = text;
       else unresolved[id] = {
         kind: 'ownNotGenerated',
-        message: `Entity ${entityId} uses system ${id} declared by this module. Generate this module's declaration for system ${id} before L2 (step l1_d1_222).`,
+        message: `Entity ${entityId} uses system ${id}, which this module declares, and its declaration is not generated. Run @@agentDefsL1 ${scope.moduleName} /declarations, then @@agentMaterializeL1 {"target":"_${scope.project}_/l1/${scope.moduleName}/layer_1_external/connections/${id}.defs.ts"}, before L2.`,
       };
     } else if (resolved.origin === 'sibling') {
       const text = await scope.read(declarationRef(scope.project, resolved.moduleName, id));

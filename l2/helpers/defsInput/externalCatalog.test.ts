@@ -71,8 +71,10 @@ void test('a system of this module without a generated declaration is a distinct
   assert.equal(gap?.kind, 'ownNotGenerated');
   assert.match(gap?.message ?? '', /ContentFile/);
   assert.match(gap?.message ?? '', /github/);
-  assert.match(gap?.message ?? '', /before L2/);
-  assert.match(gap?.message ?? '', /l1_d1_222/);
+  assert.match(gap?.message ?? '', /@@agentDefsL1 conteudo \/declarations/);
+  assert.match(gap?.message ?? '', /@@agentMaterializeL1/);
+  assert.match(gap?.message ?? '', /l1\/conteudo\/layer_1_external\/connections\/github\.defs\.ts/);
+  assert.doesNotMatch(gap?.message ?? '', /l1_d1_/);
   assert.doesNotMatch(gap?.message ?? '', /capacity/);
   assert.doesNotMatch(gap?.message ?? '', /declare num irmão/);
   const explained = explainD2ExternalCall({
