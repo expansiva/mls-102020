@@ -3,7 +3,7 @@
 import { displayPath, readJson, readSourceText, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
-import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
+import type { D2CatalogGap, D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
 import { d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2Page11Base, parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
@@ -12,7 +12,6 @@ import {
   buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN, D2_BFF_UPDATE_MODES,
   type D2BffDesign, type D2BffIssue, type D2Grant, type D2Menu, type D2NeedPage,
 } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
-import { externalCatalogTexts } from '/_102020_/l2/helpers/defsInput/externalCatalog.js';
 import type { D2ExternalCallSources } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import type { D2PageRefusal } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
 import { d2SharedDeriveIssues, deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
@@ -250,7 +249,7 @@ export async function loadD2BffContext(identity: D2RunIdentity, pageId: string):
       pageId, page11Text: { desktop: texts[0], mobile: texts[1] }, drafts: { desktop: drafts[0], mobile: drafts[1] },
       need, menu: artifacts.menu as D2Menu, module: artifacts.module, entities: artifacts.entities as Record<string, Ns5OntologyAnyEntity>,
       access: artifacts.access, rules: artifacts.rules, journeys: artifacts.journeys,
-      integration: artifacts.integration, catalogs: await externalCatalogTexts(artifacts.entities),
+      integration: artifacts.integration, catalogs: artifacts.catalogs, catalogGaps: artifacts.catalogGaps,
     }),
     identity, inputHash: snapshot.snapshotHash, prompt, approved: await readApprovedD2Bff(identity, pageId),
   };
@@ -270,6 +269,7 @@ export function d2BffContextFrom(input: {
   journeys: Record<string, unknown>;
   integration?: unknown;
   catalogs?: Record<string, string>;
+  catalogGaps?: Record<string, D2CatalogGap>;
 }): Omit<D2BffContext, 'identity' | 'inputHash' | 'prompt' | 'approved'> {
   const linked = Object.entries(input.menu.meta?.journeys ?? {}).filter(([, pages]) => pages.includes(input.pageId)).map(([id]) => id).sort();
   const journeys = linked.flatMap(journeyId => {
@@ -295,6 +295,7 @@ export function d2BffContextFrom(input: {
         : [],
       journeys: input.journeys,
       catalogs: input.catalogs ?? {},
+      catalogGaps: input.catalogGaps ?? {},
     },
   };
 }

@@ -609,10 +609,11 @@ export function d2BffValueLeaves(rows: readonly D2BffLeaf[], design: Pick<D2BffD
 }
 
 const covers = (origin: string, target: string): boolean => target === origin || target.startsWith(`${origin}.`);
-const externalCallGapMessage = (entityId: string, operation: string, gap: D2ExternalCallGap): string => {
+const externalCallGapMessage = (entityId: string, operation: string, gap: D2ExternalCallGap, unresolved?: string): string => {
   const write = `${entityId}.${operation}`;
   if (gap === 'act') return `external write ${write} has no act for this entity and operation.`;
   if (gap === 'call') return `external write ${write} has no call line whose usedBy names that act.`;
+  if (gap === 'ownSystem' || gap === 'siblingNotGenerated') return unresolved || `external write ${write} is unresolved (${gap}).`;
   return `external write ${write} has no catalog for the connection, or the catalog has no call operation for that line.`;
 };
 const entityOf = (path: string): string => path.split('.')[0];
@@ -651,10 +652,12 @@ export function d2WriteRequiredInput(write: D2NeedWrite, entities: Record<string
   const identity = [`${entityId}.id`, `${entityId}.version`];
   const edits = pageEdits.filter(path => entityOf(path) === entityId);
   if ((entity as { kind?: string } | undefined)?.kind === 'external') {
+    const connectionId = externalConnectionId(entity);
     const ask = d2ExternalCallAsk({
       entityId, operation: write.operation, transitionRef: write.transitionRef, entity,
       connections: external?.connections ?? [], journeys: external?.journeys ?? {},
-      catalogText: external?.catalogs[externalConnectionId(entity)] ?? '',
+      catalogText: external?.catalogs[connectionId] ?? '',
+      unresolved: external?.catalogGaps?.[connectionId],
     });
     if (!ask) return edits;
     const names = [...ask.names, ...(ask.expectsVersion ? ['expectVersion'] : [])];
@@ -715,13 +718,16 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
     const relatedCover = (path: string): boolean => d2RequiredRelationTargets(context.entities[pageWrite.entity], pageWrite.entity).some(rel =>
       rel.via === path && carried.some(origin => entityOf(origin) === rel.to));
     if ((context.entities[pageWrite.entity] as { kind?: string } | undefined)?.kind === 'external') {
+      const connectionId = externalConnectionId(context.entities[pageWrite.entity]);
+      const unresolved = context.external?.catalogGaps?.[connectionId];
       const gap = explainD2ExternalCall({
         entityId: pageWrite.entity, operation: pageWrite.operation, transitionRef: pageWrite.transitionRef,
         entity: context.entities[pageWrite.entity],
         connections: context.external?.connections ?? [], journeys: context.external?.journeys ?? {},
-        catalogText: context.external?.catalogs[externalConnectionId(context.entities[pageWrite.entity])] ?? '',
+        catalogText: context.external?.catalogs[connectionId] ?? '',
+        unresolved,
       }).gap;
-      if (gap) add('D2_EXTERNAL_CALL_UNRESOLVED', `endpoints.${command.id}.writes`, externalCallGapMessage(pageWrite.entity, pageWrite.operation, gap));
+      if (gap) add('D2_EXTERNAL_CALL_UNRESOLVED', `endpoints.${command.id}.writes`, externalCallGapMessage(pageWrite.entity, pageWrite.operation, gap, unresolved?.message));
     }
     const missing = d2WriteRequiredInput(pageWrite, context.entities, edits, context.external).filter(token => token.includes('.')
       ? !carried.some(origin => covers(origin, token)) && !relatedCover(token)

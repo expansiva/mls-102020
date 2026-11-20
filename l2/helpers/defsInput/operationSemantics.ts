@@ -1,8 +1,9 @@
 /// <mls fileReference="_102020_/l2/helpers/defsInput/operationSemantics.ts" enhancement="_blank"/>
 
-import type { D2OperationBinding, D2SourceDigest } from '/_102020_/l2/helpers/defsInput/contracts.js';
-import { extractExportedObject, parseContractSource } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
+import type { D2CatalogGap, D2OperationBinding, D2SourceDigest } from '/_102020_/l2/helpers/defsInput/contracts.js';
+import { parseContractSource } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
 import { externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
+import { declarationObjectOf } from '/_102020_/l2/helpers/connections/declarationObject.js';
 
 export interface D2OperationSemanticsSources {
   module: string;
@@ -19,6 +20,8 @@ export interface D2ExternalCallSources {
   connections: readonly unknown[];
   journeys: Record<string, unknown>;
   catalogs: Record<string, string>;
+  /** Set when the connection is this module's system, or a sibling declaration that is not generated yet. */
+  catalogGaps?: Record<string, D2CatalogGap>;
 }
 
 /** Top-level required names of a connection `call` input, plus whether the call asks for `expectVersion`. */
@@ -63,6 +66,7 @@ export function resolveD2OperationBindings(
       entityId, operation, transitionRef: isTransition ? usecaseId : '', entity,
       connections: sources.external?.connections ?? [], journeys: sources.external?.journeys ?? {},
       catalogText: sources.external?.catalogs[externalConnectionId(entity)] ?? '',
+      unresolved: sources.external?.catalogGaps?.[externalConnectionId(entity)],
     }) : null;
     const actorRef = isTransition ? strings(transition?.by).find(actor => actors.includes(actor)) || actors[0] || '' : actors[0] || '';
     const fields = recordFields(entity);
@@ -140,10 +144,12 @@ export interface D2ExternalCallInput {
   connections: readonly unknown[];
   journeys: Record<string, unknown>;
   catalogText: string;
+  /** When set, the call is refused with this kind instead of the generic missing catalog. */
+  unresolved?: D2CatalogGap;
 }
 
 /** Why a write on an `external` entity has no connection call. Absent when the call resolves. */
-export type D2ExternalCallGap = 'act' | 'catalog' | 'call';
+export type D2ExternalCallGap = 'act' | 'catalog' | 'call' | D2CatalogGap['kind'];
 
 /**
  * The `call` a write on an `external` entity uses: the connection line whose `usedBy` names the act
@@ -156,6 +162,7 @@ export function d2ExternalCallAsk(input: D2ExternalCallInput): D2ExternalCallAsk
 
 /** `ask` when the call resolves; `gap` names the first piece that is absent (act, catalog, or call line). */
 export function explainD2ExternalCall(input: D2ExternalCallInput): { ask: D2ExternalCallAsk | null; gap: D2ExternalCallGap | null } {
+  if (input.unresolved) return { ask: null, gap: input.unresolved.kind };
   const ref = text(input.transitionRef);
   const keys: string[] = [];
   for (const [journeyId, journey] of Object.entries(input.journeys)) {
@@ -175,7 +182,7 @@ export function explainD2ExternalCall(input: D2ExternalCallInput): { ask: D2Exte
   if (!input.catalogText) return { ask: null, gap: 'catalog' };
   const line = rows(input.connections).find(row => text(row.direction) === 'call' && strings(row.usedBy).some(item => keys.includes(item)));
   if (!line) return { ask: null, gap: 'call' };
-  const catalog = rec(extractExportedObject(input.catalogText));
+  const catalog = rec(declarationObjectOf(input.catalogText));
   const operationRow = rows(catalog.operations).find(row => text(row.operationId) === text(line.operationId) && text(row.direction) === 'call');
   if (!operationRow) return { ask: null, gap: 'catalog' };
   const inputType = text(operationRow.inputType);

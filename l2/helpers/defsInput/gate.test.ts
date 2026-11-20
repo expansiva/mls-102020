@@ -155,6 +155,7 @@ void test('the gate reads an external call for input fields and leaves an entity
   }
   effort.totals.endpoints.toCreate += 2;
   effort.totals.usecases.toCreate += 2;
+  artifacts.catalogs = { cm: readFileSync(path.join(HERE, '../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8') };
   const digest = (rel: string) => ({ path: `l4/${module}/${rel}`, sha256: 'a', bytes: 1, schemaVersion: '' });
   artifacts.sources = [
     digest('module.defs.ts'), digest('journeys/index.defs.ts'), digest('ontology/index.defs.ts'),

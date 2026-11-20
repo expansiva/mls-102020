@@ -9,6 +9,7 @@ import {
   writeJson,
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
+import { externalCatalogTexts } from '/_102020_/l2/helpers/defsInput/externalCatalog.js';
 import {
   D2_INPUT_REPORT_VERSION,
   type D2InputArtifacts,
@@ -115,7 +116,49 @@ export async function readD2InputBundle(identity: D2RunIdentity): Promise<D2Read
     backend: get(`l4/${identity.module}/pool/l2/web/backend.json`),
     effort: get(`l4/${identity.module}/pool/l2/web/effort.json`),
   };
+  if (Object.values(entities).some(entity => record(entity).kind === 'external')) {
+    const loaded = await externalCatalogTexts(entities, {
+      project: identity.project,
+      moduleName: identity.module,
+      read: readRef,
+    });
+    artifacts.catalogs = loaded.texts;
+    artifacts.catalogGaps = loaded.unresolved;
+  }
   return { artifacts, files: all.map(source => ({ info: source.info, digest: source.digest })) };
+}
+
+/** `_<project>_/lN/folder/name.ext` as the Studio file the bff already reads. Null only when that file is absent. */
+async function readRef(ref: string): Promise<string | null> {
+  const info = fileInfoFromRef(ref);
+  if (!info) return null;
+  try { return await readSourceText(info); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('file not found')) return null;
+    throw error;
+  }
+}
+
+const REF_EXTENSIONS = ['.defs.ts', '.json', '.ts'] as const;
+
+/** Studio file for `_<project>_/lN/folder/name.ext`. `.defs.ts` is matched before `.ts`. */
+export function fileInfoFromRef(ref: string): Ns5FileInfo | null {
+  const head = /^\/?_(\d+)_\/l([124])\/(.+)$/u.exec(ref);
+  if (!head) return null;
+  const rest = head[3];
+  const extension = REF_EXTENSIONS.find(ext => rest.endsWith(ext));
+  if (!extension) return null;
+  const body = rest.slice(0, -extension.length);
+  if (!body || body.endsWith('/')) return null;
+  const slash = body.lastIndexOf('/');
+  return {
+    project: Number(head[1]),
+    level: Number(head[2]) as 1 | 2 | 4,
+    folder: slash < 0 ? '' : body.slice(0, slash),
+    shortName: slash < 0 ? body : body.slice(slash + 1),
+    extension,
+  };
 }
 
 export async function assertD2InputSourcesStable(bundle: D2ReadBundle): Promise<void> {

@@ -123,6 +123,12 @@ export interface D2InputReport extends D2RunIdentity {
   problems: D2InputProblem[];
 }
 
+/** A connection the L2 will not read yet: this module's own system, or a sibling whose declaration is not generated. */
+export interface D2CatalogGap {
+  kind: 'ownSystem' | 'siblingNotGenerated';
+  message: string;
+}
+
 export interface D2InputArtifacts {
   sources: D2SourceDigest[];
   module: unknown;
@@ -138,6 +144,10 @@ export interface D2InputArtifacts {
   needs: unknown;
   backend: unknown;
   effort: unknown;
+  /** Catalog source by `connectionId`. Set only when the module has an `external` entity. */
+  catalogs?: Record<string, string>;
+  /** Distinct refusals by `connectionId`. Set only when the module has an `external` entity. */
+  catalogGaps?: Record<string, D2CatalogGap>;
 }
 
 export class D2InputValidationError extends Error {

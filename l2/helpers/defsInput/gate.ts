@@ -1,6 +1,5 @@
 /// <mls fileReference="_102020_/l2/helpers/defsInput/gate.ts" enhancement="_blank"/>
 
-import { externalCatalogTexts } from '/_102020_/l2/helpers/defsInput/externalCatalog.js';
 import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import {
   D2_INPUT_VERSION,
@@ -145,8 +144,6 @@ export async function buildD2InputSnapshot(
 
   const pages: D2SelectedPage[] = [];
   const semanticErrors: Error[] = [];
-  let externalCatalogs: Record<string, string> | undefined;
-  const catalogsForExternal = async () => (externalCatalogs ??= await externalCatalogTexts(artifacts.entities));
   for (const page of menuScan.pages.values()) {
     const pageId = page.pageId;
     const need = needRows.get(pageId) || {};
@@ -163,7 +160,7 @@ export async function buildD2InputSnapshot(
     try {
       operationBindings = resolveD2OperationBindings({
         module: identity.module, entities: artifacts.entities, access, rules, digests: artifacts.sources,
-        ...(pageHasExternal ? { external: { connections: rows(integration.connections), journeys: artifacts.journeys, catalogs: await catalogsForExternal() } } : {}),
+        ...(pageHasExternal ? { external: { connections: rows(integration.connections), journeys: artifacts.journeys, catalogs: artifacts.catalogs ?? {}, catalogGaps: artifacts.catalogGaps ?? {} } } : {}),
       }, pageId, endpointRows, usecaseRows,
       unique([...strings(need.actors), ...(authority.actorsByPage.get(pageId) || [])]));
     } catch (error) { semanticErrors.push(error instanceof Error ? error : new Error(String(error))); }
