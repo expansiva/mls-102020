@@ -37,6 +37,7 @@ const DEVICES: D2Page11Device[] = ['desktop', 'mobile'];
  * A detail already carries the id on entry, so its source is left alone.
  * Zero matching item types, or more than one, adds nothing and warns.
  * A navigate whose destination was left out (no shared, or no approved design) is skipped and warned.
+ * A route whose output reaches an item that carries the id says so once, after the model's processing text.
  */
 export function applyD2NavigationIds(input: D2NavIdInput): { design: D2BffDesign; warnings: D2NavIdWarning[] } {
   const design = structuredClone(input.design);
@@ -70,7 +71,10 @@ export function applyD2NavigationIds(input: D2NavIdInput): { design: D2BffDesign
             continue;
           }
           const type = design.types.find(item => item.name === matched[0].name);
-          if (type) ensureIdLeaf(type, param);
+          if (type) {
+            ensureIdLeaf(type, param);
+            noteNavigationId(design, type.name, param);
+          }
         }
       }
     }
@@ -124,6 +128,28 @@ function matches(entity: string, param: string): boolean {
   const stem = param.slice(0, -2);
   const pascal = stem ? stem[0].toUpperCase() + stem.slice(1) : '';
   return `${entity[0].toLowerCase()}${entity.slice(1)}Id` === param || Boolean(pascal && entity.endsWith(pascal));
+}
+
+/** Same reach as `references` in d2ContractV2: an output leaf, or a type it names, names `name`. */
+function outputReaches(design: D2BffDesign, endpointOutput: readonly D2BffLeaf[], name: string): boolean {
+  const references = (leaf: D2BffLeaf, seen: Set<string>): boolean => {
+    const ref = parseD2BffType(leaf.type);
+    if (ref?.base !== 'ref' || seen.has(ref.ref)) return false;
+    if (ref.ref === name) return true;
+    const type = design.types.find(item => item.name === ref.ref);
+    return Boolean(type?.fields.some(child => references(child, new Set([...seen, ref.ref]))));
+  };
+  return endpointOutput.some(leaf => references(leaf, new Set()));
+}
+
+function noteNavigationId(design: D2BffDesign, typeName: string, param: string): void {
+  const sentence = `Each ${typeName} carries ${param} to open its page; the screen does not show it.`;
+  for (const endpoint of design.endpoints) {
+    if (!outputReaches(design, endpoint.output, typeName)) continue;
+    if (endpoint.jsdoc.processing.includes(sentence)) continue;
+    const text = endpoint.jsdoc.processing;
+    endpoint.jsdoc.processing = text.length === 0 || /\s$/u.test(text) ? `${text}${sentence}` : `${text} ${sentence}`;
+  }
 }
 
 function ensureIdLeaf(type: D2BffType, name: string): void {
