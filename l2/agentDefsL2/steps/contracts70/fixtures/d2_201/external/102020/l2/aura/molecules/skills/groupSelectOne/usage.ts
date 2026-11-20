@@ -1,0 +1,199 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/skills/groupSelectOne/usage.ts" enhancement="_blank"/>
+
+export const skill = `
+# select + one — Usage
+
+> Quick reference for using molecules in the **select + one** group.
+> Use this when you need the user to **choose exactly one option** from a list.
+
+---
+
+## Slot Tags
+
+| Tag | Used by variant | Description |
+|-----|-----------------|-------------|
+| \`Label\` | all | Label displayed above or beside the field |
+| \`Helper\` | all | Descriptive text shown below the field when there is no error |
+| \`Trigger\` | \`dropdown\` only | Custom content for the trigger button. When no item is selected, this content acts as the placeholder |
+| \`Item\` | all | One selectable option (one **row** in \`table\`). Attributes: \`value\` (required), \`disabled\`, \`data-class\` (optional, classes for that option; for its row in \`table\`) |
+| \`Cell\` | \`table\` only | A data cell inside an \`Item\`, one per column, in column order. May contain text or web components |
+| \`Column\` | \`table\` only | A single column header, as a direct child of the component (no wrapper), in column order |
+| \`Group\` | \`dropdown\`, \`radio\`, \`list\` | Groups items under a named heading. Attributes: \`label\`, \`data-class\` (optional, classes for the group heading) |
+| \`Empty\` | all | Content shown when no items are available |
+
+---
+
+## Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| \`value\` | \`string \| null\` | \`null\` | Value of the selected item. \`null\` = nothing selected |
+| \`error\` | \`string\` | \`''\` | Error message. Empty string means no error |
+| \`name\` | \`string\` | \`''\` | Field name for form identification |
+| \`variant\` | \`string\` | \`'dropdown'\` | Layout: \`dropdown\` (combobox), \`radio\`, \`segmented\`, \`list\`, or \`table\`. The selected value is the same in every variant |
+| \`placeholder\` | \`string\` | \`''\` | Text shown when no item is selected (\`dropdown\`; in \`table\` view mode it is the empty fallback) |
+| \`searchable\` | \`boolean\` | \`false\` | Show a search input to filter items (\`dropdown\`, \`list\`, \`table\`) |
+| \`isEditing\` | \`boolean\` | \`true\` | \`true\` = interactive selector, \`false\` = read-only label |
+| \`disabled\` | \`boolean\` | \`false\` | Disables the field entirely |
+| \`readonly\` | \`boolean\` | \`false\` | Prevents selection but keeps the field focusable |
+| \`required\` | \`boolean\` | \`false\` | Marks a selection as required |
+| \`loading\` | \`boolean\` | \`false\` | Shows a loading indicator (in \`dropdown\`, the panel does not open) |
+
+
+---
+
+## Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`change\` | \`{ value: string \| null }\` | Fired when an item is selected |
+| \`blur\` | \`{}\` | Fired when the field loses focus |
+| \`focus\` | \`{}\` | Fired when the field receives focus |
+
+---
+
+## Value Format
+
+- Value is a plain **string** matching the \`value\` attribute of the selected \`<Item>\`
+- \`null\` when nothing is selected
+- The displayed label comes from the \`<Item>\` inner content (its \`<Cell>\`s in the \`table\` variant) — not stored in \`value\`
+- The same contract holds for every variant — switching layout never changes the stored value
+
+---
+
+## Examples
+
+> **Tag names:** every molecule in this group is \`groupselectone--ml-<name>\` (e.g. \`groupselectone--ml-select\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
+### Simple dropdown
+
+\`\`\`html
+<groupselectone--ml-select
+  value="{{ui.form.country}}"
+  error="{{ui.form.countryError}}"
+  required>
+  <Label>Country</Label>
+  <Trigger>Select a country...</Trigger>
+  <Item value="br">Brazil</Item>
+  <Item value="us">United States</Item>
+  <Item value="de">Germany</Item>
+</groupselectone--ml-select>
+\`\`\`
+
+### Grouped options
+
+\`\`\`html
+<groupselectone--ml-select
+  value="{{ui.form.category}}"
+  error="{{ui.form.categoryError}}">
+  <Label>Category</Label>
+  <Trigger>Select a category...</Trigger>
+  <Group label="Electronics">
+    <Item value="phones">Phones</Item>
+    <Item value="laptops">Laptops</Item>
+  </Group>
+  <Group label="Clothing">
+    <Item value="shirts">Shirts</Item>
+    <Item value="shoes">Shoes</Item>
+  </Group>
+  <Empty>No categories available</Empty>
+</groupselectone--ml-select>
+\`\`\`
+
+### Table variant (compare options across columns)
+
+> Use \`variant="table"\` when each option has several comparable attributes. Declare the
+> column headers as flat \`<Column>\` children (in order), then one \`<Item value="...">\` per
+> row with one \`<Cell>\` per column. Selecting a row stores that \`Item\`'s \`value\`.
+
+\`\`\`html
+<groupselectone--ml-table-single-select
+  value="{{ui.form.plan}}"
+  error="{{ui.form.planError}}"
+  name="plan"
+  required>
+  <Label>Choose a plan</Label>
+  <Column>Plan</Column>
+  <Column>Price</Column>
+  <Column>Seats</Column>
+  <Item value="basic">
+    <Cell>Basic</Cell>
+    <Cell>$10/mo</Cell>
+    <Cell>3</Cell>
+  </Item>
+  <Item value="pro">
+    <Cell>Pro</Cell>
+    <Cell>$25/mo</Cell>
+    <Cell>10</Cell>
+  </Item>
+  <Item value="enterprise" disabled>
+    <Cell>Enterprise</Cell>
+    <Cell>Contact us</Cell>
+    <Cell>Unlimited</Cell>
+  </Item>
+  <Empty>No plans available</Empty>
+  <Helper>You can change your plan later.</Helper>
+</groupselectone--ml-table-single-select>
+\`\`\`
+
+---
+
+## Customization via data-class
+
+### On the component host
+
+Pass extra CSS classes via \`data-class\`:
+
+\`\`\`html
+<component data-class="w-full mt-4">
+  <Label>Text</Label>
+</component>
+\`\`\`
+
+### On slot tags
+
+Pass CSS classes on slot tags via \`data-class\`. Each \`Item\`, \`Group\`, \`Column\` and \`Cell\` takes its own classes: an \`Item\`'s go on that option (on its row in \`table\`), a \`Group\`'s on its heading, a \`Column\`'s on its header cell and a \`Cell\`'s on its table cell:
+
+\`\`\`html
+<component>
+  <Label data-class="uppercase tracking-wide">Text</Label>
+  <Helper data-class="italic">Help text</Helper>
+  <Group label="Fruits" data-class="text-green-700">
+    <Item value="apple" data-class="font-bold">Apple</Item>
+    <Item value="pear">Pear</Item>
+  </Group>
+</component>
+\`\`\`
+
+---
+
+## Design Tokens
+
+The component's visual styling can be customized by overriding \`--ml-*\` CSS custom
+properties on a parent element. The values below are this group's current defaults —
+copy the block and change them:
+
+\`\`\`css
+.my-container {
+  --ml-surface: #ffffff;
+  --ml-on-surface-faint: #79747e;
+  --ml-error: #ef4444;
+}
+\`\`\`
+
+### Available tokens
+
+| Token | Default | Purpose |
+|-------|---------|---------|
+| \`--ml-border-style\` | \`solid\` | Border style |
+| \`--ml-border-width\` | \`1px\` | Border width |
+| \`--ml-disabled-opacity\` | \`0.5\` | Opacity of disabled elements |
+| \`--ml-error\` | \`#ef4444\` | Error color |
+| \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
+| \`--ml-on-surface-faint\` | \`#79747e\` | Placeholder / tertiary text |
+| \`--ml-outline-error\` | \`#ef4444\` | Error border |
+| \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
+| \`--ml-primary\` | \`#3b82f6\` | Primary action color |
+| \`--ml-surface\` | \`#ffffff\` | Component background |
+
+`

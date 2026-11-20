@@ -1,0 +1,132 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/skills/groupNotifyUser/usage.ts" enhancement="_blank"/>
+
+export const skill = `
+# notify + user — Usage
+
+> Quick reference for using molecules in the **notify + user** group.
+> Use this when the system needs to **inform the user** about an event, status, or result.
+> Controlled via the \`visible\` property — page sets it to show/hide.
+
+---
+
+## Slot Tags
+
+| Tag | Description |
+|-----|-------------|
+| \`Title\` | Notification title/heading |
+| \`Message\` | Notification body content |
+| \`Action\` | Actionable element (button, link) inside the notification |
+| \`Icon\` | Custom icon content |
+
+---
+
+## Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| \`type\` | \`string\` | \`'info'\` | Notification type: \`'info'\`, \`'success'\`, \`'warning'\`, \`'error'\` |
+| \`visible\` | \`boolean\` | \`false\` | Show or hide the notification |
+| \`dismissible\` | \`boolean\` | \`true\` | Show a close/dismiss button |
+| \`duration\` | \`number\` | \`0\` | Auto-dismiss after N ms (0 = manual dismiss only) |
+| \`position\` | \`string\` | \`''\` | Position hint: \`'top'\`, \`'bottom'\`, \`'top-right'\`, etc. Empty = inline |
+
+### Choosing inline or floating
+
+\`position\` is not cosmetic — it changes the box model:
+
+- **Omit it** (the default) and the banner is \`relative\`: it takes space in the document, right where
+  you placed it. This is what a **persistent** message wants — a system error that stays until
+  dismissed, reported at the top of the page content.
+- **Set it** and the banner becomes \`fixed\` against the **viewport**, floating over everything at
+  \`z-50\`. This suits a **transient** message. Beware: it overlaps whatever chrome sits at that edge
+  (app header, toolbar), and it leaves empty the space you reserved for it in the layout.
+
+A page-design document asking for a "top banner" usually means *top of the page content*, in flow —
+not \`position="top"\`, which means *floating at the top of the screen*. Read which one is intended.
+
+---
+
+## Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`dismiss\` | \`{}\` | Fired when the notification is dismissed |
+| \`action\` | \`{}\` | Fired when the Action slot is clicked |
+
+---
+
+## Examples
+
+> **Tag names:** every molecule in this group is \`groupnotifyuser--ml-<name>\` (e.g. \`groupnotifyuser--ml-notify-banner\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
+### Warning banner with action
+
+\`\`\`html
+<groupnotifyuser--ml-notify-banner
+  type="warning"
+  visible="{{ui.system.showUpdateBanner}}"
+  position="top"
+  dismissible="true">
+  <Icon>⚠️</Icon>
+  <Message>A new version is available.</Message>
+  <Action>
+    <button>Update Now</button>
+  </Action>
+</groupnotifyuser--ml-notify-banner>
+\`\`\`
+
+---
+
+## Customization via data-class
+
+### On the component host
+
+Pass extra CSS classes via \`data-class\`:
+
+\`\`\`html
+<component data-class="w-full mt-4">
+  <Message>Text</Message>
+</component>
+\`\`\`
+
+### On slot tags
+
+Pass CSS classes on slot tags via \`data-class\`:
+
+\`\`\`html
+<component>
+  <Title data-class="uppercase tracking-wide">Title</Title>
+  <Message data-class="italic">Message text</Message>
+</component>
+\`\`\`
+
+---
+
+## Design Tokens
+
+The component's visual styling can be customized by overriding \`--ml-*\` CSS custom
+properties on a parent element. The values below are this group's current defaults —
+copy the block and change them:
+
+\`\`\`css
+.my-container {
+  --ml-info-border: #bae6fd;
+  --ml-warning-border: #fde68a;
+  --ml-success-border: #a7f3d0;
+}
+\`\`\`
+
+### Available tokens
+
+| Token | Default | Purpose |
+|-------|---------|---------|
+| \`--ml-disabled-opacity\` | \`0.5\` | Opacity of disabled elements |
+| \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
+| \`--ml-info-border\` | \`#bae6fd\` | Info border |
+| \`--ml-outline-error\` | \`#ef4444\` | Error border |
+| \`--ml-success-border\` | \`#a7f3d0\` | Success border |
+| \`--ml-warning-border\` | \`#fde68a\` | Warning border |
+
+---
+
+`;

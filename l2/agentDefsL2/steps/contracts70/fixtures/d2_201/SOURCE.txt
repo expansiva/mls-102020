@@ -1,0 +1,62 @@
+d2_201 fixture sources
+tree already in this folder (l2/agents, l4/agents and the rest, except the files below) = mls-102047 @ 9e8b640a
+a path listed ABSENT is not in that commit; the test returns null and does not call git
+
+mls-102034 0fdb175 l2/shared/contracts/connections/cm.ts -> external/102034/l2/shared/contracts/connections/cm.ts
+ABSENT mls-102047 9e8b640a l2/molecules/skill.ts
+mls-102047 9e8b640a l4/organization/registry.defs.ts -> l4/organization/registry.defs.ts
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupEnterBoolean/usage.ts -> external/102020/l2/aura/molecules/skills/groupEnterBoolean/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupEnterText/usage.ts -> external/102020/l2/aura/molecules/skills/groupEnterText/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupExpandContent/usage.ts -> external/102020/l2/aura/molecules/skills/groupExpandContent/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupNavigateSection/usage.ts -> external/102020/l2/aura/molecules/skills/groupNavigateSection/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupNotifyUser/usage.ts -> external/102020/l2/aura/molecules/skills/groupNotifyUser/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupSearchContent/usage.ts -> external/102020/l2/aura/molecules/skills/groupSearchContent/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupSelectMany/usage.ts -> external/102020/l2/aura/molecules/skills/groupSelectMany/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupSelectOne/usage.ts -> external/102020/l2/aura/molecules/skills/groupSelectOne/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupShowProgress/usage.ts -> external/102020/l2/aura/molecules/skills/groupShowProgress/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupTriggerAction/usage.ts -> external/102020/l2/aura/molecules/skills/groupTriggerAction/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupViewCard/usage.ts -> external/102020/l2/aura/molecules/skills/groupViewCard/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupViewData/usage.ts -> external/102020/l2/aura/molecules/skills/groupViewData/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupViewHierarchy/usage.ts -> external/102020/l2/aura/molecules/skills/groupViewHierarchy/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupViewMetric/usage.ts -> external/102020/l2/aura/molecules/skills/groupViewMetric/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l2/aura/molecules/skills/groupViewTable/usage.ts -> external/102020/l2/aura/molecules/skills/groupViewTable/usage.ts (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l4/collabux/templates/aiAssistedAuthoring/page21.md -> external/102020/l4/collabux/templates/aiAssistedAuthoring/page21.md (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l4/collabux/templates/auditTrail/page21.md -> external/102020/l4/collabux/templates/auditTrail/page21.md (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l4/collabux/templates/categoryList.json -> external/102020/l4/collabux/templates/categoryList.json (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l4/collabux/templates/experienceIndex.json -> external/102020/l4/collabux/templates/experienceIndex.json (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l4/collabux/templates/hierarchyTreeView/page21.md -> external/102020/l4/collabux/templates/hierarchyTreeView/page21.md (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l4/collabux/templates/readOnlyDetailPortal/page21.md -> external/102020/l4/collabux/templates/readOnlyDetailPortal/page21.md (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l4/collabux/templates/settingsConsole/page21.md -> external/102020/l4/collabux/templates/settingsConsole/page21.md (matches HEAD)
+mls-102020 4b92dcb62bc7ac40a3c51cd12167d21ba7f5f589 l4/collabux/templates/userAccessManagement/page21.md -> external/102020/l4/collabux/templates/userAccessManagement/page21.md (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupenterboolean/index.defs.ts -> external/102040/l2/molecules/groupenterboolean/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupentertext/index.defs.ts -> external/102040/l2/molecules/groupentertext/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupexpandcontent/index.defs.ts -> external/102040/l2/molecules/groupexpandcontent/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupnavigatesection/index.defs.ts -> external/102040/l2/molecules/groupnavigatesection/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupnotifyuser/index.defs.ts -> external/102040/l2/molecules/groupnotifyuser/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupsearchcontent/index.defs.ts -> external/102040/l2/molecules/groupsearchcontent/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupselectmany/index.defs.ts -> external/102040/l2/molecules/groupselectmany/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupselectone/index.defs.ts -> external/102040/l2/molecules/groupselectone/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupshowprogress/index.defs.ts -> external/102040/l2/molecules/groupshowprogress/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/grouptriggeraction/index.defs.ts -> external/102040/l2/molecules/grouptriggeraction/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupviewcard/index.defs.ts -> external/102040/l2/molecules/groupviewcard/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupviewdata/index.defs.ts -> external/102040/l2/molecules/groupviewdata/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupviewhierarchy/index.defs.ts -> external/102040/l2/molecules/groupviewhierarchy/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupviewmetric/index.defs.ts -> external/102040/l2/molecules/groupviewmetric/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/groupviewtable/index.defs.ts -> external/102040/l2/molecules/groupviewtable/index.defs.ts (matches HEAD)
+mls-102040 878ece1690e35d739516630df6cfc2f67707470c l2/molecules/skill.ts -> external/102040/l2/molecules/skill.ts (matches HEAD)
+
+mls-102047 9e8b640a l4/agendaClinica/integration.defs.ts -> l4/agendaClinica/integration.defs.ts
+mls-102047 9e8b640a l4/comandaRestaurante/integration.defs.ts -> l4/comandaRestaurante/integration.defs.ts
+mls-102047 9e8b640a l4/compras/integration.defs.ts -> l4/compras/integration.defs.ts
+mls-102047 9e8b640a l4/conteudo/integration.defs.ts -> l4/conteudo/integration.defs.ts
+mls-102047 9e8b640a l4/controleEstoque/integration.defs.ts -> l4/controleEstoque/integration.defs.ts
+mls-102047 9e8b640a l4/financeiro/integration.defs.ts -> l4/financeiro/integration.defs.ts
+mls-102047 9e8b640a l4/hiringPipeline/integration.defs.ts -> l4/hiringPipeline/integration.defs.ts
+mls-102047 9e8b640a l4/inscricaoEvento/integration.defs.ts -> l4/inscricaoEvento/integration.defs.ts
+mls-102047 9e8b640a l4/locacaoEquipamentos/integration.defs.ts -> l4/locacaoEquipamentos/integration.defs.ts
+mls-102047 9e8b640a l4/manutencaoFrota/integration.defs.ts -> l4/manutencaoFrota/integration.defs.ts
+mls-102047 9e8b640a l4/mensalidadesAcademia/integration.defs.ts -> l4/mensalidadesAcademia/integration.defs.ts
+mls-102047 9e8b640a l4/ordenServicio/integration.defs.ts -> l4/ordenServicio/integration.defs.ts
+mls-102047 9e8b640a l4/reembolsoDespesas/integration.defs.ts -> l4/reembolsoDespesas/integration.defs.ts
+mls-102047 9e8b640a l4/repoHost/integration.defs.ts -> l4/repoHost/integration.defs.ts
+mls-102047 9e8b640a l4/tarefas/integration.defs.ts -> l4/tarefas/integration.defs.ts

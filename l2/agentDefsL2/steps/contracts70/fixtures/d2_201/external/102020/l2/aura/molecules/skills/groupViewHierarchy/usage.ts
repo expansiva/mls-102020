@@ -1,0 +1,126 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/skills/groupViewHierarchy/usage.ts" enhancement="_blank"/>
+
+export const skill = `
+# view + hierarchy — Usage
+
+> Quick reference for using molecules in the **view + hierarchy** group.
+> Use this when the user needs to **visualize hierarchical data structures**.
+> All implementations share the same slot tag contract.
+
+---
+
+## Slot Tags
+
+| Tag | Description |
+|-----|-------------|
+| \`Label\` | Title displayed above the hierarchy |
+| \`Node\` | A hierarchy node. Free content (text, icons, HTML). Nest \`<Node>\` inside \`<Node>\` for children. Attributes: \`expanded\` (presence), \`disabled\` (presence) |
+| \`Empty\` | Content shown when no nodes exist |
+
+---
+
+## Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| \`multiple\` | \`boolean\` | \`true\` | Allow multiple nodes open at once. \`false\` = one per level |
+| \`expand-all\` | \`boolean\` | \`false\` | Start with all nodes expanded |
+| \`disabled\` | \`boolean\` | \`false\` | Disables all interaction |
+| \`loading\` | \`boolean\` | \`false\` | Shows loading placeholder |
+
+---
+
+## Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`toggle\` | \`{ expanded: boolean }\` | Fired when a node is expanded or collapsed |
+| \`nodeClick\` | \`{ value: string \| null }\` | Fired when a node is clicked |
+---
+
+## Examples
+
+> **Tag names:** every molecule in this group is \`groupviewhierarchy--ml-<name>\` (e.g. \`groupviewhierarchy--ml-hierarchy-tree\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
+### Folder structure (tree view)
+
+\`\`\`html
+<groupviewhierarchy--ml-hierarchy-tree>
+  <Label>Project Files</Label>
+  <Node>
+    📁 src
+    <Node>
+      📁 components
+      <Node>📄 Header.tsx</Node>
+      <Node>📄 Footer.tsx</Node>
+    </Node>
+    <Node>
+      📁 pages
+      <Node>📄 Home.tsx</Node>
+      <Node>📄 About.tsx</Node>
+    </Node>
+  </Node>
+  <Node>
+    📁 public
+    <Node>📄 index.html</Node>
+  </Node>
+  <Node>📄 package.json</Node>
+</groupviewhierarchy--ml-hierarchy-tree>
+\`\`\`
+
+---
+
+## Customization via data-class
+
+### On the component host
+
+Pass extra CSS classes via \`data-class\`:
+
+\`\`\`html
+<component data-class="w-full mt-4">
+  <Label>Text</Label>
+</component>
+\`\`\`
+
+### On slot tags
+
+Each slot tag's \`data-class\` lands on the element it becomes: \`Label\` on the title, \`Empty\` on the empty message,
+and each \`Node\` on that node's own element (the row with its label), never on its children:
+
+\`\`\`html
+<component>
+  <Label data-class="uppercase tracking-wide">Project Files</Label>
+  <Node data-class="font-semibold">
+    📁 src
+    <Node data-class="italic">📄 index.ts</Node>
+  </Node>
+</component>
+\`\`\`
+
+---
+
+## Design Tokens
+
+The component's visual styling can be customized by overriding \`--ml-*\` CSS custom
+properties on a parent element. The values below are this group's current defaults —
+copy the block and change them:
+
+\`\`\`css
+.my-container {
+  --ml-primary: #3b82f6;
+  --ml-outline-focus: #3b82f6;
+  --ml-outline-error: #ef4444;
+}
+\`\`\`
+
+### Available tokens
+
+| Token | Default | Purpose |
+|-------|---------|---------|
+| \`--ml-disabled-opacity\` | \`0.5\` | Opacity of disabled elements |
+| \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
+| \`--ml-outline-error\` | \`#ef4444\` | Error border |
+| \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
+| \`--ml-primary\` | \`#3b82f6\` | Primary action color |
+
+`;

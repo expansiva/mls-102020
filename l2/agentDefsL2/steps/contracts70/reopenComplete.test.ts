@@ -6,7 +6,6 @@
  */
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -34,10 +33,7 @@ import { contractInfo, contractReceiptInfo, executeD2Contracts70, type D2Contrac
 import { finalizeD2Pages } from '/_102020_/l2/agentDefsL2/steps/finalize80/run.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, 'fixtures/d2_201');
-const repo102047 = join(here, '../../../../../../mls-102047');
-const repo102034 = join(here, '../../../../../../mls-102034');
 const identity: D2RunIdentity = { project: 102047, module: 'agents' };
-const COMMIT = '9e8b640a';
 
 const files = new Map<string, string>();
 function remember(rel: string, text: string): void { files.set(rel, text); }
@@ -52,27 +48,23 @@ function textAt(rel: string): string {
 }
 function jsonAt<T>(rel: string): T { return JSON.parse(textAt(rel)) as T; }
 
-function gitAt(rel: string): string | null {
-  const shown = spawnSync('git', ['-C', repo102047, 'show', `${COMMIT}:${rel}`], { encoding: 'utf8' });
-  if (shown.status !== 0) return null;
-  files.set(rel, shown.stdout);
-  return shown.stdout;
+const absent = new Set(
+  textAt('ABSENT.txt').split('\n').map(line => line.trim()).filter(line => line.length > 0 && !line.startsWith('#')),
+);
+
+function fixtureKey(project: number, rel: string): string {
+  return project === identity.project ? rel : `external/${project}/${rel}`;
+}
+
+function readProject(project: number, rel: string): string | null {
+  if (absent.has(`${project} ${rel}`)) return null;
+  return textAt(fixtureKey(project, rel));
 }
 
 function readRef(ref: string): Promise<string | null> {
   const info = fileInfoFromRef(ref);
   if (!info) return Promise.resolve(null);
-  const rel = displayPath(info);
-  if (info.project === 102047) {
-    if (files.has(rel) || existsSync(join(root, rel))) return Promise.resolve(textAt(rel));
-    return Promise.resolve(gitAt(rel));
-  }
-  if (info.project === 102034) {
-    const disk = join(repo102034, rel);
-    if (!existsSync(disk)) return Promise.resolve(null);
-    return Promise.resolve(readFileSync(disk, 'utf8'));
-  }
-  return Promise.resolve(null);
+  return Promise.resolve(readProject(info.project, displayPath(info)));
 }
 
 function parseDefs(source: string, path: string): unknown {
@@ -149,13 +141,7 @@ function agentStep(planId: string, prompt: string): mls.msg.AIAgentStep {
 
 function diskText(info: { project: number; level: number; folder: string; shortName: string; extension: string }): string | null {
   const rel = `l${info.level}/${info.folder}/${info.shortName}${info.extension}`;
-  if (info.project === 102047) {
-    if (files.has(rel) || existsSync(join(root, rel))) return textAt(rel);
-    return gitAt(rel);
-  }
-  const path = join('/Volumes/WagnerSSD1/collab/mls-base', `mls-${info.project}`, rel);
-  if (!existsSync(path)) return null;
-  return readFileSync(path, 'utf8');
+  return readProject(info.project, rel);
 }
 
 void test('d2_201: a complete pipeline reruns contracts70 without calling the model', async () => {

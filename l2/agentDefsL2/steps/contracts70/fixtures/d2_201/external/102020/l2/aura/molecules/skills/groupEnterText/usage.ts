@@ -1,0 +1,168 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts" enhancement="_blank"/>
+
+export const skill = `
+
+# enter + text — Usage
+
+> Quick reference for using molecules in the **enter + text** group.
+> Use this when you need the user to provide **free-form text**.
+
+---
+
+## Slot Tags
+
+| Tag | Description |
+|-----|-------------|
+| \`Label\` | Label displayed above or beside the field |
+| \`Helper\` | Descriptive text shown below the field when there is no error |
+| \`Prefix\` | Content rendered before the input (e.g. icon, static text) |
+| \`Suffix\` | Content rendered after the input (e.g. icon, action button) |
+
+---
+
+## Properties — ml-enter-text
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| \`value\` | \`string\` | \`''\` | Current text value |
+| \`error\` | \`string\` | \`''\` | Error message. Empty string means no error |
+| \`name\` | \`string\` | \`''\` | Field name for form identification |
+| \`placeholder\` | \`string\` | \`''\` | Placeholder text when value is empty |
+| \`maxLength\` | \`number \| null\` | \`null\` | Maximum number of characters (null = no limit) |
+| \`minLength\` | \`number \| null\` | \`null\` | Minimum number of characters (null = no minimum) |
+| \`rows\` | \`number\` | \`1\` | Number of visible rows. \`1\` = input, \`>1\` = textarea |
+| \`autocomplete\` | \`string\` | \`''\` | HTML autocomplete value (e.g. \`'email'\`, \`'name'\`, \`'off'\`) |
+| \`inputType\` | \`string\` | \`'text'\` | Input type: \`'text'\`, \`'email'\`, \`'password'\`, \`'search'\`, \`'url'\`, \`'tel'\` |
+| \`mask\` | \`string\` | \`''\` | Mask pattern. \`#\` = digit, \`A\` = letter, \`*\` = any. Literals inserted automatically |
+| \`isEditing\` | \`boolean\` | \`true\` | \`true\` = input mode, \`false\` = read-only text |
+| \`disabled\` | \`boolean\` | \`false\` | Disables the field entirely |
+| \`readonly\` | \`boolean\` | \`false\` | Prevents editing but keeps the field focusable |
+| \`required\` | \`boolean\` | \`false\` | Marks the value as required |
+| \`loading\` | \`boolean\` | \`false\` | Shows a loading indicator inside the field |
+
+---
+
+## Events — ml-enter-text
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`change\` | \`{ value: string }\` | Fired when value is confirmed on blur |
+| \`input\` | \`{ value: string }\` | Fired on each keystroke |
+| \`blur\` | \`{}\` | Fired when the field loses focus |
+| \`focus\` | \`{}\` | Fired when the field receives focus |
+
+---
+
+## Value Format — ml-enter-text
+
+- Value is always a plain **string**
+- Empty string \`''\` when not yet provided
+- When \`mask\` is set, \`value\` contains the **raw unmasked string** — the formatted display is handled internally
+- When \`inputType='password'\`, view mode renders \`"••••••••"\` regardless of value
+
+---
+
+## ml-address-field contract
+
+The tables above describe \`ml-enter-text\`, not every molecule in the group.
+\`groupentertext--ml-address-field\` has **no \`value\` property**. Bind each address property separately:
+
+| Property | HTML attribute | Type | Default |
+|----------|----------------|------|---------|
+| \`postalCode\` | \`postal-code\` | \`string\` | \`''\` |
+| \`street\` | \`street\` | \`string\` | \`''\` |
+| \`number\` | \`number\` | \`string\` | \`''\` |
+| \`complement\` | \`complement\` | \`string\` | \`''\` |
+| \`neighborhood\` | \`neighborhood\` | \`string\` | \`''\` |
+| \`city\` | \`city\` | \`string\` | \`''\` |
+| \`stateCode\` | \`state-code\` | \`string\` | \`''\` |
+
+For field events, \`field\` is one of \`postalCode\`, \`street\`, \`number\`, \`complement\`, \`neighborhood\`, \`city\`, or \`stateCode\`.
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`input\` | \`{ field, value: string }\` | One edited field; postal code value contains digits only |
+| \`change\` | \`{ field, value: string }\` | One field confirmed on blur; not the full address |
+| \`blur\` | \`{ field, value: string }\` | One field loses focus |
+| \`focus\` | \`{ field }\` | One field receives focus |
+| \`address-lookup\` | \`{ postalCode: string }\` | Postal code reaches \`postalCodeLength\` |
+| \`address-confirmed\` | \`{ address: { postalCode, street, number, complement, neighborhood, city, state } }\` | Full address; every value is a string |
+
+Only \`address-confirmed.detail.address\` uses \`state\` (copied from \`stateCode\`). Field events use \`stateCode\`; do not treat the two keys as interchangeable.
+
+---
+
+## Examples
+
+> **Tag names:** every molecule in this group is \`groupentertext--ml-<name>\` (e.g. \`groupentertext--ml-enter-text\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
+### Simple text field
+
+\`\`\`html
+<groupentertext--ml-enter-text
+  value="{{ui.form.firstName}}"
+  error="{{ui.form.firstNameError}}"
+  placeholder="John"
+  maxLength="200"
+  required>
+  <Label>First Name</Label>
+</groupentertext--ml-enter-text>
+\`\`\`
+
+---
+
+## Customization via data-class
+
+### On the component host
+
+Pass extra CSS classes via \`data-class\`:
+
+\`\`\`html
+<component data-class="w-full mt-4">
+  <Label>Text</Label>
+</component>
+\`\`\`
+
+### On slot tags
+
+Pass CSS classes on slot tags via \`data-class\`:
+
+\`\`\`html
+<component>
+  <Label data-class="uppercase tracking-wide">Text</Label>
+  <Helper data-class="italic">Help text</Helper>
+</component>
+\`\`\`
+
+---
+
+## Design Tokens
+
+The component's visual styling can be customized by overriding \`--ml-*\` CSS custom
+properties on a parent element. The values below are this group's current defaults —
+copy the block and change them:
+
+\`\`\`css
+.my-container {
+  --ml-on-surface-muted: #49454f;
+  --ml-surface-dim: #f1f5f9;
+  --ml-success: #22c55e;
+}
+\`\`\`
+
+### Available tokens
+
+| Token | Default | Purpose |
+|-------|---------|---------|
+| \`--ml-border-style\` | \`solid\` | Border style |
+| \`--ml-border-width\` | \`1px\` | Border width |
+| \`--ml-disabled-opacity\` | \`0.5\` | Opacity of disabled elements |
+| \`--ml-error\` | \`#ef4444\` | Error color |
+| \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
+| \`--ml-on-surface-muted\` | \`#49454f\` | Secondary text |
+| \`--ml-outline-error\` | \`#ef4444\` | Error border |
+| \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
+| \`--ml-success\` | \`#22c55e\` | Success color |
+| \`--ml-surface-dim\` | \`#f1f5f9\` | Hover / secondary background |
+
+`;

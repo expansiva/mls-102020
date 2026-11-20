@@ -1,0 +1,2199 @@
+{
+  "description": "User-facing details of every UX template (experience), grouped by category, for choosing a page variation. Not sent to the LLM; categoryList.json is the LLM catalog.",
+  "categories": {
+    "activityNotificationHub": [
+      {
+        "experience": "inboxSplit",
+        "file": "activityNotificationHub/page21.md",
+        "label": {
+          "pt": "Caixa com painel",
+          "en": "Inbox with panel"
+        },
+        "description": {
+          "pt": "Lista de notificações de um lado, com as não lidas em destaque; ao escolher uma, o painel ao lado mostra o contexto completo e a ação. Resolve-se uma de cada vez, sem sair da página.",
+          "en": "A notification list on one side where unread items stand out; picking one shows its full context and action in the panel beside it. You handle one at a time without leaving the page."
+        },
+        "bestFor": {
+          "pt": "quem trata cada aviso com atenção",
+          "en": "people who handle each notice carefully"
+        }
+      },
+      {
+        "experience": "feedTimeline",
+        "file": "activityNotificationHub/page31.md",
+        "label": {
+          "pt": "Linha do tempo",
+          "en": "Activity feed"
+        },
+        "description": {
+          "pt": "Um único feed, do mais novo para o mais antigo, separado por dia. Cada item já se explica sozinho e traz a ação na própria linha; nada precisa ser aberto.",
+          "en": "One feed, newest first, split by day. Each item explains itself and carries its action on the row; nothing needs to be opened."
+        },
+        "bestFor": {
+          "pt": "pôr em dia o que aconteceu, rolando",
+          "en": "catching up on what happened by scrolling"
+        }
+      },
+      {
+        "experience": "actionRequiredFirst",
+        "file": "activityNotificationHub/actionRequiredFirst.md",
+        "label": {
+          "pt": "Pendências primeiro",
+          "en": "Action items first"
+        },
+        "description": {
+          "pt": "Em cima, só o que pede uma ação sua (aprovar, responder, corrigir), como uma lista de tarefas que diminui; embaixo, os avisos apenas informativos.",
+          "en": "On top, only what needs an action from you (approve, reply, fix), as a to-do list that shrinks; below, the notices that only inform."
+        },
+        "bestFor": {
+          "pt": "não deixar nada travado esperando você",
+          "en": "never leaving anything blocked on you"
+        }
+      },
+      {
+        "experience": "groupedDigest",
+        "file": "activityNotificationHub/groupedDigest.md",
+        "label": {
+          "pt": "Resumo por tipo",
+          "en": "Grouped summary"
+        },
+        "description": {
+          "pt": "As notificações viram poucas linhas de resumo, como \"12 pedidos aprovados\" ou \"3 menções\". Cada linha abre ali mesmo para ver e tratar os itens, ou ser resolvida inteira.",
+          "en": "Notifications fold into a few summary lines, like \"12 orders approved\" or \"3 mentions\". Each line expands in place to see and handle its items, or settle the whole group."
+        },
+        "bestFor": {
+          "pt": "grande volume de avisos parecidos",
+          "en": "a high volume of similar notices"
+        }
+      }
+    ],
+    "aiAssistedAuthoring": [
+      {
+        "experience": "generateReviewShare",
+        "file": "aiAssistedAuthoring/page21.md",
+        "label": {
+          "pt": "Gerar, revisar e publicar",
+          "en": "Generate, review, publish"
+        },
+        "description": {
+          "pt": "Você configura (período, destino, opções), a IA gera um rascunho, você revisa a prévia e só então publica. Etapas em ordem, com uma geração por vez.",
+          "en": "You set it up (period, target, options), the AI generates a draft, you review the preview and only then publish. Steps in order, one generation at a time."
+        },
+        "bestFor": {
+          "pt": "relatórios gerados a partir de parâmetros",
+          "en": "reports generated from parameters"
+        }
+      },
+      {
+        "experience": "draftCanvas",
+        "file": "aiAssistedAuthoring/page31.md",
+        "label": {
+          "pt": "Editor com sugestões",
+          "en": "Editor with suggestions"
+        },
+        "description": {
+          "pt": "O documento ocupa a página e você mesmo escreve; ao lado, a IA oferece sugestões que você aceita ou descarta uma a uma. Nada muda no texto sem o seu aceite.",
+          "en": "The document fills the page and you write it yourself; beside it, the AI offers suggestions you accept or dismiss one by one. Nothing changes in the text without your accept."
+        },
+        "bestFor": {
+          "pt": "quem quer escrever com ajuda, não delegar",
+          "en": "people who want help writing, not to delegate"
+        }
+      },
+      {
+        "experience": "conversationalRefine",
+        "file": "aiAssistedAuthoring/conversationalRefine.md",
+        "label": {
+          "pt": "Ajustar conversando",
+          "en": "Refine by chat"
+        },
+        "description": {
+          "pt": "De um lado, uma conversa onde você pede mudanças (\"mais curto\", \"mais formal\"); do outro, a prévia atualizada a cada pedido. Cada pedido gera uma versão, e dá para voltar a qualquer uma.",
+          "en": "On one side a chat where you ask for changes (\"shorter\", \"more formal\"); on the other, the preview updated after each request. Each request makes a version, and any version can be restored."
+        },
+        "bestFor": {
+          "pt": "lapidar um texto sem editá-lo à mão",
+          "en": "polishing a text without editing it by hand"
+        }
+      },
+      {
+        "experience": "optionsGallery",
+        "file": "aiAssistedAuthoring/optionsGallery.md",
+        "label": {
+          "pt": "Escolher entre opções",
+          "en": "Pick from options"
+        },
+        "description": {
+          "pt": "A IA gera várias versões lado a lado em cartões; você compara, escolhe uma, ajusta a escolhida e publica.",
+          "en": "The AI generates several versions side by side as cards; you compare them, pick one, refine it and publish."
+        },
+        "bestFor": {
+          "pt": "textos em que o tom importa, como mensagens a clientes",
+          "en": "texts where tone matters, like client messages"
+        }
+      }
+    ],
+    "analyticalList": [
+      {
+        "experience": "kpiFilterTable",
+        "file": "analyticalList/page21.md",
+        "label": {
+          "pt": "Indicadores e tabela",
+          "en": "KPIs and table"
+        },
+        "description": {
+          "pt": "Uma faixa de indicadores no topo e uma tabela embaixo, ambos controlados pelos mesmos filtros. Mudou o filtro, números e linhas mudam juntos, e você age sobre as linhas.",
+          "en": "A row of KPIs on top and a table below, both driven by the same filters. Change a filter and numbers and rows move together, and you act on the rows."
+        },
+        "bestFor": {
+          "pt": "acompanhamento com filtros conhecidos",
+          "en": "monitoring with known filters"
+        }
+      },
+      {
+        "experience": "chartLedTable",
+        "file": "analyticalList/page31.md",
+        "label": {
+          "pt": "Gráfico que filtra",
+          "en": "Chart-driven table"
+        },
+        "description": {
+          "pt": "Um gráfico em destaque serve de filtro: você clica na barra ou fatia que chamou atenção e a tabela embaixo mostra só aquelas linhas, prontas para agir.",
+          "en": "A prominent chart works as the filter: you click the bar or slice that stands out and the table below shows only those rows, ready to act on."
+        },
+        "bestFor": {
+          "pt": "descobrir padrões quando não se sabe o que procurar",
+          "en": "finding patterns when you don't know what to look for"
+        }
+      },
+      {
+        "experience": "periodComparison",
+        "file": "analyticalList/periodComparison.md",
+        "label": {
+          "pt": "Comparar períodos",
+          "en": "Period comparison"
+        },
+        "description": {
+          "pt": "Cada valor aparece ao lado do período anterior, com a diferença calculada. A tabela vem ordenada pelo que mais mudou, para você agir sobre essas linhas.",
+          "en": "Each value sits next to the previous period, with the difference worked out. The table is sorted by what changed most, so you act on those rows."
+        },
+        "bestFor": {
+          "pt": "reuniões mensais ou semanais de resultado",
+          "en": "monthly or weekly results reviews"
+        }
+      },
+      {
+        "experience": "pivotSummary",
+        "file": "analyticalList/pivotSummary.md",
+        "label": {
+          "pt": "Resumo por grupo",
+          "en": "Grouped summary"
+        },
+        "description": {
+          "pt": "A tabela já vem agrupada (por fornecedor, região, status...), com contagem e subtotais por grupo. Cada grupo abre ali mesmo, mostrando os itens para agir.",
+          "en": "The table comes grouped (by supplier, region, status...), with a count and subtotals per group. Each group opens in place, showing its items to act on."
+        },
+        "bestFor": {
+          "pt": "quem pensa por categoria e age em uma por vez",
+          "en": "people who think in categories and act on one at a time"
+        }
+      }
+    ],
+    "approvalWorkflow": [
+      {
+        "experience": "readAndDecide",
+        "file": "approvalWorkflow/page21.md",
+        "label": {
+          "pt": "Ler e decidir",
+          "en": "Read, then decide"
+        },
+        "description": {
+          "pt": "Uma solicitação por vez, lida como um documento: quem pede, os dados decisivos, a justificativa e o histórico. Os botões de aprovar e rejeitar ficam no fim da leitura.",
+          "en": "One request at a time, read like a memo: who asks, the key facts, the justification and the history. Approve and reject sit at the end of the reading."
+        },
+        "bestFor": {
+          "pt": "aprovações importantes que pedem análise",
+          "en": "important approvals that need analysis"
+        }
+      },
+      {
+        "experience": "decisionQueue",
+        "file": "approvalWorkflow/page31.md",
+        "label": {
+          "pt": "Fila de aprovações",
+          "en": "Approval queue"
+        },
+        "description": {
+          "pt": "Cada pendência é um cartão com os dados essenciais e os botões de aprovar e rejeitar. O cartão decidido sai da fila e o próximo sobe, até zerar.",
+          "en": "Each pending request is a card with the essential facts and approve/reject buttons. A decided card leaves the queue and the next moves up, until it is empty."
+        },
+        "bestFor": {
+          "pt": "muitas aprovações rotineiras do dia a dia",
+          "en": "many routine day-to-day approvals"
+        }
+      },
+      {
+        "experience": "batchSignOff",
+        "file": "approvalWorkflow/batchSignOff.md",
+        "label": {
+          "pt": "Aprovar em lote",
+          "en": "Batch sign-off"
+        },
+        "description": {
+          "pt": "Você vê um conjunto de solicitações parecidas e o total delas, separa as exceções e aprova o resto de uma vez, num ato que mostra quantidade e total (\"14 apontamentos, 112 h\").",
+          "en": "You see a set of similar requests and their total, set aside the exceptions and approve the rest at once, in one act that states count and total (\"14 timesheets, 112 h\")."
+        },
+        "bestFor": {
+          "pt": "apontamentos de horas, despesas ou faturas em série",
+          "en": "runs of timesheets, expenses or invoices"
+        }
+      },
+      {
+        "experience": "decisionFirst",
+        "file": "approvalWorkflow/decisionFirst.md",
+        "label": {
+          "pt": "Decisão no topo",
+          "en": "Decision on top"
+        },
+        "description": {
+          "pt": "Uma solicitação por vez, já abrindo com o essencial e os botões de decisão na primeira tela. Detalhes, justificativa e histórico ficam abaixo, para consultar só se precisar.",
+          "en": "One request at a time, opening with the essentials and the decision buttons on the first screen. Details, justification and history sit below, to check only if needed."
+        },
+        "bestFor": {
+          "pt": "gestor que reconhece o pedido de relance",
+          "en": "managers who recognize the request at a glance"
+        }
+      }
+    ],
+    "assetManagement": [
+      {
+        "experience": "assetRegistry",
+        "file": "assetManagement/page21.md",
+        "label": {
+          "pt": "Cadastro de ativos",
+          "en": "Asset registry"
+        },
+        "description": {
+          "pt": "Lista pesquisável de todos os ativos de um lado e, do outro, a ficha completa do selecionado: identificação, local, responsável e situação no ciclo de vida.",
+          "en": "A searchable list of all assets on one side and, on the other, the full record of the selected one: identity, location, owner and life-cycle status."
+        },
+        "bestFor": {
+          "pt": "consultar e manter dados de qualquer ativo",
+          "en": "looking up and maintaining any asset's data"
+        }
+      },
+      {
+        "experience": "maintenanceBoard",
+        "file": "assetManagement/page31.md",
+        "label": {
+          "pt": "Quadro de manutenção",
+          "en": "Maintenance board"
+        },
+        "description": {
+          "pt": "Só os ativos que precisam de atenção aparecem, em cartões grandes agrupados por urgência: vencidos, a vencer, parados. Cada cartão tem a ação para resolver.",
+          "en": "Only assets needing attention appear, as large cards grouped by urgency: overdue, due soon, down. Each card has the action to resolve it."
+        },
+        "bestFor": {
+          "pt": "equipe de manutenção no dia a dia",
+          "en": "maintenance teams day to day"
+        }
+      },
+      {
+        "experience": "checkoutDesk",
+        "file": "assetManagement/checkoutDesk.md",
+        "label": {
+          "pt": "Empréstimo e devolução",
+          "en": "Checkout desk"
+        },
+        "description": {
+          "pt": "Abre nos equipamentos que estão emprestados, cada um com quem está e desde quando. Emprestar e devolver são feitos ali mesmo, em segundos.",
+          "en": "Opens on the equipment that is out, each with who holds it and since when. Checking out and checking in happen right there, in seconds."
+        },
+        "bestFor": {
+          "pt": "controlar quem está com notebooks, ferramentas ou veículos",
+          "en": "tracking who has laptops, tools or vehicles"
+        }
+      },
+      {
+        "experience": "locationBrowser",
+        "file": "assetManagement/locationBrowser.md",
+        "label": {
+          "pt": "Ativos por local",
+          "en": "Assets by location"
+        },
+        "description": {
+          "pt": "Você navega pelos locais (unidade, prédio, andar, sala) e cada um mostra o que está nele, com a contagem. Dá para mover um ativo para outro local a partir dali.",
+          "en": "You browse places (site, building, floor, room) and each shows what sits in it, with a count. You can move an asset to another place from there."
+        },
+        "bestFor": {
+          "pt": "inventário físico e localizar equipamentos",
+          "en": "physical inventory and finding equipment"
+        }
+      }
+    ],
+    "auditTrail": [
+      {
+        "experience": "chronologicalLog",
+        "file": "auditTrail/page21.md",
+        "label": {
+          "pt": "Log de eventos",
+          "en": "Event log"
+        },
+        "description": {
+          "pt": "Todos os eventos do módulo em ordem, do mais recente, filtrados por período, pessoa ou tipo de ação. Ao escolher um, o painel ao lado mostra tudo sobre ele.",
+          "en": "All of the module's events in order, newest first, filtered by period, person or kind of action. Picking one shows everything about it in the panel beside it."
+        },
+        "bestFor": {
+          "pt": "investigar o que aconteceu num período",
+          "en": "investigating what happened in a period"
+        }
+      },
+      {
+        "experience": "entityHistoryLens",
+        "file": "auditTrail/page31.md",
+        "label": {
+          "pt": "Histórico de um registro",
+          "en": "Record history"
+        },
+        "description": {
+          "pt": "Você escolhe um registro e vê só a história dele: uma linha do tempo das alterações, cada uma mostrando o antes e o depois.",
+          "en": "You pick one record and see only its story: a timeline of its changes, each showing before and after."
+        },
+        "bestFor": {
+          "pt": "entender o que aconteceu com um pedido ou cadastro",
+          "en": "understanding what happened to an order or record"
+        }
+      },
+      {
+        "experience": "activityDigest",
+        "file": "auditTrail/activityDigest.md",
+        "label": {
+          "pt": "Resumo de atividade",
+          "en": "Activity summary"
+        },
+        "description": {
+          "pt": "Abre com contagens do período por dia, por pessoa e por tipo de ação, para o fora do comum saltar aos olhos. Um clique numa fatia mostra os eventos por trás.",
+          "en": "Opens with the period's counts by day, by person and by kind of action, so the unusual stands out. One click on a slice shows the events behind it."
+        },
+        "bestFor": {
+          "pt": "auditoria periódica e achar picos",
+          "en": "periodic audits and spotting spikes"
+        }
+      },
+      {
+        "experience": "actorActivityLens",
+        "file": "auditTrail/actorActivityLens.md",
+        "label": {
+          "pt": "Ações de uma pessoa",
+          "en": "One person's actions"
+        },
+        "description": {
+          "pt": "Você escolhe uma pessoa e vê o que ela fez, dia a dia, como um diário: cada linha diz a ação e em qual registro. Qualquer ação abre para ver o detalhe.",
+          "en": "You pick a person and see what they did, day by day, like a diary: each line says the action and on which record. Any action opens for full detail."
+        },
+        "bestFor": {
+          "pt": "revisar o trabalho de um usuário",
+          "en": "reviewing one user's work"
+        }
+      }
+    ],
+    "calendarScheduling": [
+      {
+        "experience": "calendarGrid",
+        "file": "calendarScheduling/page21.md",
+        "label": {
+          "pt": "Calendário",
+          "en": "Calendar grid"
+        },
+        "description": {
+          "pt": "Uma grade de semana ou mês ocupa a página; os horários livres aparecem livres. Você cria e move compromissos direto na grade, e o detalhe abre num painel por cima.",
+          "en": "A week or month grid fills the page; free time looks free. You create and move appointments right on the grid, and details open in a panel on top."
+        },
+        "bestFor": {
+          "pt": "quem organiza a agenda vendo os espaços livres",
+          "en": "people who plan by seeing free space"
+        }
+      },
+      {
+        "experience": "agendaTimeline",
+        "file": "calendarScheduling/page31.md",
+        "label": {
+          "pt": "Agenda em lista",
+          "en": "Agenda list"
+        },
+        "description": {
+          "pt": "Os compromissos em lista, dia a dia, começando por hoje. Cada item traz as ações na própria linha: confirmar, remarcar, cancelar.",
+          "en": "Appointments as a list, day by day, starting today. Each item carries its actions on the row: confirm, reschedule, cancel."
+        },
+        "bestFor": {
+          "pt": "acompanhar o que vem a seguir, no celular",
+          "en": "keeping up with what's next, on the phone"
+        }
+      },
+      {
+        "experience": "resourceTimeline",
+        "file": "calendarScheduling/resourceTimeline.md",
+        "label": {
+          "pt": "Agenda por recurso",
+          "en": "Resource schedule"
+        },
+        "description": {
+          "pt": "Uma linha por recurso (sala, pessoa, veículo) com o tempo correndo da esquerda para a direita; cada reserva é um bloco. Lendo na vertical, você vê quem está livre naquele horário.",
+          "en": "One row per resource (room, person, vehicle) with time running left to right; each booking is a block. Reading down a column shows who is free at that time."
+        },
+        "bestFor": {
+          "pt": "recepção ou despacho distribuindo salas, pessoas ou veículos",
+          "en": "front desks or dispatchers allocating rooms, people or vehicles"
+        }
+      },
+      {
+        "experience": "slotPicker",
+        "file": "calendarScheduling/slotPicker.md",
+        "label": {
+          "pt": "Autoagendamento",
+          "en": "Self-booking"
+        },
+        "description": {
+          "pt": "Passos curtos para quem vai agendar: escolher o serviço, o dia, um horário livre e confirmar. Só aparecem os horários disponíveis, nunca os compromissos dos outros.",
+          "en": "Short steps for the person booking: choose the service, the day, a free time, and confirm. Only open times appear, never other people's appointments."
+        },
+        "bestFor": {
+          "pt": "clientes, pacientes ou funcionários marcando para si",
+          "en": "customers, patients or employees booking for themselves"
+        }
+      }
+    ],
+    "caseManagement": [
+      {
+        "experience": "caseWorkbench",
+        "file": "caseManagement/page21.md",
+        "label": {
+          "pt": "Fila com atendimento",
+          "en": "Queue and workspace"
+        },
+        "description": {
+          "pt": "A fila de chamados de um lado e, do outro, o chamado selecionado com dados, conversa e ações de status lado a lado. Resolve um e passa ao próximo sem perder a fila.",
+          "en": "The case queue on one side and, on the other, the selected case with its data, thread and status actions side by side. Resolve one and move to the next without losing the queue."
+        },
+        "bestFor": {
+          "pt": "atendente que trabalha uma fila o dia todo",
+          "en": "agents working a queue all day"
+        }
+      },
+      {
+        "experience": "conversationFirst",
+        "file": "caseManagement/page31.md",
+        "label": {
+          "pt": "Conversa do chamado",
+          "en": "Case conversation"
+        },
+        "description": {
+          "pt": "Um chamado só, com a conversa e os eventos ocupando o centro da página, de cima para baixo. Dados e ações ficam numa coluna lateral, como apoio.",
+          "en": "A single case, with its thread and events taking the center of the page, top to bottom. Data and actions sit in a side column, as reference."
+        },
+        "bestFor": {
+          "pt": "casos complexos e passagem de caso entre pessoas",
+          "en": "complex cases and handovers"
+        }
+      },
+      {
+        "experience": "intakeTriage",
+        "file": "caseManagement/intakeTriage.md",
+        "label": {
+          "pt": "Triagem de entrada",
+          "en": "Intake triage"
+        },
+        "description": {
+          "pt": "Lista dos chamados novos, cada linha com prioridade, responsável e categoria para definir ali mesmo. Classificado e encaminhado, o chamado sai da lista; nada é resolvido aqui.",
+          "en": "A list of new cases, each row with priority, owner and category to set right there. Once classified and routed, the case leaves the list; nothing is resolved here."
+        },
+        "bestFor": {
+          "pt": "quem distribui os chamados que chegam",
+          "en": "dispatchers routing incoming cases"
+        }
+      },
+      {
+        "experience": "requesterPortal",
+        "file": "caseManagement/requesterPortal.md",
+        "label": {
+          "pt": "Minhas solicitações",
+          "en": "My requests"
+        },
+        "description": {
+          "pt": "A visão de quem abriu o pedido: lista das minhas solicitações em linguagem simples, com as que esperam minha resposta no topo. Dá para responder ou complementar sem ver o fluxo interno.",
+          "en": "The view of the person who asked: a list of my requests in plain words, with the ones waiting on my reply on top. I can reply or add information without seeing the internal workflow."
+        },
+        "bestFor": {
+          "pt": "clientes, funcionários ou fornecedores acompanhando pedidos",
+          "en": "customers, employees or suppliers following their requests"
+        }
+      }
+    ],
+    "comparisonView": [
+      {
+        "experience": "sideBySideColumns",
+        "file": "comparisonView/page21.md",
+        "label": {
+          "pt": "Colunas lado a lado",
+          "en": "Side-by-side columns"
+        },
+        "description": {
+          "pt": "Cada item é uma coluna e cada atributo uma linha alinhada, para comparar na horizontal. Você adiciona ou tira itens, recolhe o que é igual e escolhe no topo da coluna vencedora.",
+          "en": "Each item is a column and each attribute an aligned row, to compare across. You add or remove items, collapse what is identical and choose at the top of the winning column."
+        },
+        "bestFor": {
+          "pt": "comparar poucos itens vendo tudo de uma vez",
+          "en": "comparing a few items seeing everything at once"
+        }
+      },
+      {
+        "experience": "championChallenger",
+        "file": "comparisonView/page31.md",
+        "label": {
+          "pt": "Atual contra candidato",
+          "en": "Current vs challenger"
+        },
+        "description": {
+          "pt": "Um item fica fixo como referência e um candidato por vez é comparado com ele, mostrando só o que difere. Se o candidato perde, entra o próximo.",
+          "en": "One item stays fixed as the reference and one challenger at a time is compared to it, showing only what differs. If the challenger loses, the next one steps in."
+        },
+        "bestFor": {
+          "pt": "decidir manter ou trocar, como renovação de contrato",
+          "en": "keep-or-replace decisions, like contract renewals"
+        }
+      },
+      {
+        "experience": "differencesList",
+        "file": "comparisonView/differencesList.md",
+        "label": {
+          "pt": "Só as diferenças",
+          "en": "Differences only"
+        },
+        "description": {
+          "pt": "Uma lista apenas dos atributos que diferem, cada linha com o valor de cada item. Funciona com qualquer número de itens; o que é igual fica recolhido.",
+          "en": "A list of only the attributes that differ, each row showing every item's value. Works for any number of items; what is identical stays folded away."
+        },
+        "bestFor": {
+          "pt": "revisar versões, variantes ou orçamentos",
+          "en": "reviewing versions, variants or quotes"
+        }
+      },
+      {
+        "experience": "weightedScoring",
+        "file": "comparisonView/weightedScoring.md",
+        "label": {
+          "pt": "Pontuação por critérios",
+          "en": "Weighted scoring"
+        },
+        "description": {
+          "pt": "Você dá peso aos critérios que importam e os itens aparecem em ranking pela nota ponderada. Mudando os pesos, o ranking se reordena na hora, antes de você escolher.",
+          "en": "You weight the criteria that matter and items are ranked by their weighted score. Change the weights and the ranking reorders instantly, before you choose."
+        },
+        "bestFor": {
+          "pt": "escolher fornecedor e justificar por critérios",
+          "en": "choosing a supplier and justifying it by criteria"
+        }
+      }
+    ],
+    "contentLanding": [
+      {
+        "experience": "campaignPage",
+        "file": "contentLanding/page11.md",
+        "label": {
+          "pt": "Página de campanha",
+          "en": "Campaign page"
+        },
+        "description": {
+          "pt": "Um destaque forte no topo, textos e imagens que apresentam a oferta e um único botão que leva ao formulário na própria página.",
+          "en": "A strong headline banner on top, text and images that present the offer, and a single button that leads to the form on the same page."
+        },
+        "bestFor": {
+          "pt": "divulgar uma oferta ou programa",
+          "en": "promoting an offer or program"
+        }
+      },
+      {
+        "experience": "editorialLongRead",
+        "file": "contentLanding/page21.md",
+        "label": {
+          "pt": "Artigo explicativo",
+          "en": "Explanatory article"
+        },
+        "description": {
+          "pt": "Lida como um artigo: título discreto, blocos de texto em sequência com imagens no meio, e o convite para se inscrever só no final.",
+          "en": "Reads like an article: a modest headline, text blocks in sequence with images in between, and the sign-up call only at the end."
+        },
+        "bestFor": {
+          "pt": "convencer com explicação detalhada",
+          "en": "persuading with a detailed explanation"
+        }
+      },
+      {
+        "experience": "offerPoster",
+        "file": "contentLanding/page31.md",
+        "label": {
+          "pt": "Cartaz de oferta",
+          "en": "Offer poster"
+        },
+        "description": {
+          "pt": "Uma tela só: uma frase grande, um número de destaque e um botão impossível de perder. O resto fica abaixo.",
+          "en": "One screen: one big claim, one highlighted number and a button you cannot miss. Everything else sits below."
+        },
+        "bestFor": {
+          "pt": "uma mensagem curta e direta",
+          "en": "a short, direct message"
+        }
+      },
+      {
+        "experience": "eventInvitation",
+        "file": "contentLanding/eventInvitation.md",
+        "label": {
+          "pt": "Convite para evento",
+          "en": "Event invitation"
+        },
+        "description": {
+          "pt": "Data e local aparecem primeiro, ao lado do botão de inscrição; depois vem a programação em ordem de horário e o formulário de inscrição.",
+          "en": "Date and place come first, next to the registration button; then the agenda in time order and the registration form."
+        },
+        "bestFor": {
+          "pt": "reuniões, workshops e lançamentos",
+          "en": "meetings, workshops and launches"
+        }
+      },
+      {
+        "experience": "faqSupport",
+        "file": "contentLanding/faqSupport.md",
+        "label": {
+          "pt": "Perguntas frequentes",
+          "en": "Frequently asked questions"
+        },
+        "description": {
+          "pt": "Uma lista de perguntas em que cada uma abre a resposta ali mesmo; depois da última, o botão que leva ao formulário.",
+          "en": "A list of questions, each opening its answer in place; after the last one, the button that leads to the form."
+        },
+        "bestFor": {
+          "pt": "tirar dúvidas antes da inscrição",
+          "en": "clearing doubts before sign-up"
+        }
+      }
+    ],
+    "customerManagement": [
+      {
+        "experience": "directoryProfile",
+        "file": "customerManagement/page21.md",
+        "label": {
+          "pt": "Lista com ficha",
+          "en": "List with profile"
+        },
+        "description": {
+          "pt": "Busca e lista de clientes de um lado, ficha do cliente escolhido do outro, com dados, contatos e histórico em blocos.",
+          "en": "Search and customer list on one side, the chosen customer's profile on the other, with data, contacts and history in blocks."
+        },
+        "bestFor": {
+          "pt": "achar um cliente e consultar os dados",
+          "en": "finding a customer and checking their data"
+        }
+      },
+      {
+        "experience": "relationshipHub",
+        "file": "customerManagement/page31.md",
+        "label": {
+          "pt": "Visão do cliente",
+          "en": "Customer overview"
+        },
+        "description": {
+          "pt": "Um cliente ocupa a página toda: uma faixa no topo com quem é e como está, e abaixo contatos, atividades e negócios. Trocar de cliente é discreto.",
+          "en": "One customer fills the page: a band on top with who they are and where they stand, then contacts, activities and deals below. Switching customer is low-key."
+        },
+        "bestFor": {
+          "pt": "preparar uma reunião com o cliente",
+          "en": "preparing for a customer meeting"
+        }
+      },
+      {
+        "experience": "quickLookupCard",
+        "file": "customerManagement/quickLookupCard.md",
+        "label": {
+          "pt": "Consulta rápida",
+          "en": "Quick lookup"
+        },
+        "description": {
+          "pt": "A página abre só com um campo de busca; o resultado vira um cartão curto com identificação e contatos clicáveis. Não há lista para navegar.",
+          "en": "The page opens with just a search field; the match becomes a short card with identity and clickable contacts. There is no list to browse."
+        },
+        "bestFor": {
+          "pt": "atendimento com cliente na linha",
+          "en": "service with a customer on the line"
+        }
+      },
+      {
+        "experience": "segmentedPortfolio",
+        "file": "customerManagement/segmentedPortfolio.md",
+        "label": {
+          "pt": "Carteira por grupos",
+          "en": "Portfolio by group"
+        },
+        "description": {
+          "pt": "Clientes separados em grupos (segmento, situação, região) com a contagem de cada um; abra um grupo e aja sobre vários clientes de uma vez.",
+          "en": "Customers split into groups (segment, status, region) with each group's count; open a group and act on several customers at once."
+        },
+        "bestFor": {
+          "pt": "gerir a carteira por segmento",
+          "en": "managing the customer base by segment"
+        }
+      }
+    ],
+    "dashboardCommandCenter": [
+      {
+        "experience": "exceptionTriage",
+        "file": "dashboardCommandCenter/page21.md",
+        "label": {
+          "pt": "Painel de pendências",
+          "en": "Issues dashboard"
+        },
+        "description": {
+          "pt": "O topo mostra o que está errado ou atrasado, do pior para o menor, pronto para agir; os indicadores gerais ficam numa faixa discreta.",
+          "en": "The top shows what is wrong or late, worst first, ready to act on; overall indicators sit in a quiet strip."
+        },
+        "bestFor": {
+          "pt": "decidir o que resolver primeiro",
+          "en": "deciding what to fix first"
+        }
+      },
+      {
+        "experience": "overviewBoard",
+        "file": "dashboardCommandCenter/page31.md",
+        "label": {
+          "pt": "Painel geral",
+          "en": "Overview board"
+        },
+        "description": {
+          "pt": "Uma linha de números principais no topo e uma seção por assunto, sempre no mesmo lugar; cada seção tem um \"ver tudo\".",
+          "en": "A row of key numbers on top and one section per subject, always in the same place; each section has a \"see all\"."
+        },
+        "bestFor": {
+          "pt": "acompanhar a operação como um todo",
+          "en": "following the whole operation"
+        }
+      },
+      {
+        "experience": "personalBriefing",
+        "file": "dashboardCommandCenter/personalBriefing.md",
+        "label": {
+          "pt": "Resumo do dia",
+          "en": "Daily briefing"
+        },
+        "description": {
+          "pt": "Um texto curto, com os números dentro das frases: o que é seu, o que mudou e o que vem a seguir. Lê-se antes de clicar.",
+          "en": "A short text with the numbers inside the sentences: what is yours, what changed and what comes next. You read it before clicking."
+        },
+        "bestFor": {
+          "pt": "se situar no começo do dia",
+          "en": "getting oriented at the start of the day"
+        }
+      },
+      {
+        "experience": "trendWall",
+        "file": "dashboardCommandCenter/trendWall.md",
+        "label": {
+          "pt": "Painel de tendências",
+          "en": "Trend board"
+        },
+        "description": {
+          "pt": "Cada indicador aparece como um pequeno gráfico de linha, com o valor atual e se está subindo ou caindo; compara-se a direção de todos.",
+          "en": "Each indicator shows as a small line chart with its current value and whether it is rising or falling; you compare the direction of all."
+        },
+        "bestFor": {
+          "pt": "revisão semanal ou mensal",
+          "en": "weekly or monthly review"
+        }
+      }
+    ],
+    "documentManagement": [
+      {
+        "experience": "libraryList",
+        "file": "documentManagement/page21.md",
+        "label": {
+          "pt": "Lista com painel",
+          "en": "List with panel"
+        },
+        "description": {
+          "pt": "Uma lista única de documentos com versão, situação e responsável; o documento escolhido abre num painel ao lado para conferir, aprovar ou arquivar.",
+          "en": "A single list of documents with version, status and owner; the chosen document opens in a side panel to check, approve or archive."
+        },
+        "bestFor": {
+          "pt": "achar documentos pelos seus dados",
+          "en": "finding documents by their details"
+        }
+      },
+      {
+        "experience": "folderExplorer",
+        "file": "documentManagement/page31.md",
+        "label": {
+          "pt": "Navegador de pastas",
+          "en": "Folder browser"
+        },
+        "description": {
+          "pt": "Você navega por pastas ou categorias com o caminho sempre visível; a tela mostra as subpastas e os documentos do lugar onde você está.",
+          "en": "You browse folders or categories with the path always visible; the screen shows the subfolders and documents of where you are."
+        },
+        "bestFor": {
+          "pt": "documentos organizados em pastas",
+          "en": "documents organized in folders"
+        }
+      },
+      {
+        "experience": "pendingReviewInbox",
+        "file": "documentManagement/pendingReviewInbox.md",
+        "label": {
+          "pt": "Fila de aprovação",
+          "en": "Approval queue"
+        },
+        "description": {
+          "pt": "Só os documentos que esperam você aprovar, rejeitar ou assinar, um por vez; decidido, ele sai da fila e a contagem diminui.",
+          "en": "Only the documents waiting for you to approve, reject or sign, one at a time; once decided it leaves the queue and the count drops."
+        },
+        "bestFor": {
+          "pt": "quem aprova ou assina documentos",
+          "en": "people who approve or sign documents"
+        }
+      },
+      {
+        "experience": "thumbnailGallery",
+        "file": "documentManagement/thumbnailGallery.md",
+        "label": {
+          "pt": "Galeria de miniaturas",
+          "en": "Thumbnail gallery"
+        },
+        "description": {
+          "pt": "Os documentos aparecem como miniaturas em grade, com o nome embaixo; clique para ver em tamanho grande antes de agir ou baixar.",
+          "en": "Documents show as a grid of thumbnails with the name below; click to see one large before acting or downloading."
+        },
+        "bestFor": {
+          "pt": "achar o documento pela imagem",
+          "en": "finding a document by how it looks"
+        }
+      }
+    ],
+    "entityRecordManagement": [
+      {
+        "experience": "focusedRecordForm",
+        "file": "entityRecordManagement/page21.md",
+        "label": {
+          "pt": "Formulário único",
+          "en": "Single form"
+        },
+        "description": {
+          "pt": "O registro todo numa coluna, com os campos agrupados por assunto e um único botão de salvar no fim. Criar e editar usam a mesma tela.",
+          "en": "The whole record in one column, fields grouped by subject and a single save button at the end. Create and edit use the same screen."
+        },
+        "bestFor": {
+          "pt": "registros simples, preenchidos de uma vez",
+          "en": "simple records filled in one go"
+        }
+      },
+      {
+        "experience": "recordPageTabs",
+        "file": "entityRecordManagement/page31.md",
+        "label": {
+          "pt": "Registro com abas",
+          "en": "Record with tabs"
+        },
+        "description": {
+          "pt": "Um cabeçalho fixo com nome e situação do registro e uma aba por assunto, cada uma com seu próprio botão de salvar.",
+          "en": "A fixed header with the record's name and status, and one tab per subject, each with its own save button."
+        },
+        "bestFor": {
+          "pt": "registros grandes, mantidos por meses",
+          "en": "large records kept up for months"
+        }
+      },
+      {
+        "experience": "completenessChecklist",
+        "file": "entityRecordManagement/completenessChecklist.md",
+        "label": {
+          "pt": "Checklist de pendências",
+          "en": "Completion checklist"
+        },
+        "description": {
+          "pt": "O registro vira uma lista de itens completos e incompletos, com barra de progresso; você preenche o que falta e o próximo passo libera quando tudo obrigatório estiver pronto.",
+          "en": "The record becomes a list of complete and incomplete items with a progress bar; you fill what is missing, and the next step unlocks once everything required is done."
+        },
+        "bestFor": {
+          "pt": "registros montados aos poucos",
+          "en": "records assembled over time"
+        }
+      },
+      {
+        "experience": "inlineBlockEdit",
+        "file": "entityRecordManagement/inlineBlockEdit.md",
+        "label": {
+          "pt": "Edição por bloco",
+          "en": "Read view, edit by block"
+        },
+        "description": {
+          "pt": "O registro aparece como um resumo só de leitura, em blocos; o \"Editar\" de um bloco abre um pequeno formulário ali mesmo, com salvar e cancelar próprios.",
+          "en": "The record shows as a read-only summary in blocks; a block's \"Edit\" opens a small form right there, with its own save and cancel."
+        },
+        "bestFor": {
+          "pt": "registros mais consultados que alterados",
+          "en": "records read more often than changed"
+        }
+      }
+    ],
+    "fieldDataCapture": [
+      {
+        "experience": "rapidEntryWorkbench",
+        "file": "fieldDataCapture/page21.md",
+        "label": {
+          "pt": "Bancada de lançamentos",
+          "en": "Entry workbench"
+        },
+        "description": {
+          "pt": "Todos os formulários de registro ficam na tela ao mesmo tempo, junto com a lista do que já foi lançado; após salvar, o formulário já está pronto para o próximo.",
+          "en": "Every entry form is on screen at once, together with the list of what was already logged; after saving, the form is ready for the next one."
+        },
+        "bestFor": {
+          "pt": "muitos lançamentos por turno",
+          "en": "many entries per shift"
+        }
+      },
+      {
+        "experience": "guidedCaptureFlow",
+        "file": "fieldDataCapture/page31.md",
+        "label": {
+          "pt": "Registro passo a passo",
+          "en": "Step-by-step entry"
+        },
+        "description": {
+          "pt": "Uma pergunta por tela, com botões grandes; o resto espera. Dá para registrar tudo só com o polegar.",
+          "en": "One question per screen, with big buttons; everything else waits. The whole entry can be done with the thumb alone."
+        },
+        "bestFor": {
+          "pt": "trabalho em campo, com uma mão",
+          "en": "field work with one hand"
+        }
+      },
+      {
+        "experience": "photoFirstReport",
+        "file": "fieldDataCapture/photoFirstReport.md",
+        "label": {
+          "pt": "Ocorrência com foto",
+          "en": "Photo incident report"
+        },
+        "description": {
+          "pt": "A página abre na câmera: primeiro as fotos, mostradas grandes, depois o tipo, o local, a gravidade e uma nota, com as fotos à vista.",
+          "en": "The page opens on the camera: photos first, shown large, then type, location, severity and a note, with the photos still in view."
+        },
+        "bestFor": {
+          "pt": "relatar problemas vistos em campo",
+          "en": "reporting problems seen in the field"
+        }
+      },
+      {
+        "experience": "scanToLog",
+        "file": "fieldDataCapture/scanToLog.md",
+        "label": {
+          "pt": "Leitura de código",
+          "en": "Scan and log"
+        },
+        "description": {
+          "pt": "Um campo de código sempre pronto; ao ler a etiqueta, abre o registro daquele item já identificado, e você só digita os valores.",
+          "en": "A code field always ready; scanning a label opens the entry for that item already identified, and you only type the values."
+        },
+        "bestFor": {
+          "pt": "rotas de itens com etiqueta",
+          "en": "routes of labeled items"
+        }
+      }
+    ],
+    "financialTransactions": [
+      {
+        "experience": "ledgerTable",
+        "file": "financialTransactions/page21.md",
+        "label": {
+          "pt": "Tabela de lançamentos",
+          "en": "Entries table"
+        },
+        "description": {
+          "pt": "Uma tabela densa com filtros fortes e totais sempre visíveis; selecione vários lançamentos e pague ou concilie de uma vez.",
+          "en": "A dense table with strong filters and totals always visible; select several entries and pay or reconcile them at once."
+        },
+        "bestFor": {
+          "pt": "conferir e baixar muitos lançamentos",
+          "en": "checking and settling many entries"
+        }
+      },
+      {
+        "experience": "cashflowReview",
+        "file": "financialTransactions/page31.md",
+        "label": {
+          "pt": "Extrato por período",
+          "en": "Statement by period"
+        },
+        "description": {
+          "pt": "Lida como um extrato bancário: lançamentos agrupados por dia ou período, cada grupo com subtotal, e um resumo de entradas e saídas no topo.",
+          "en": "Reads like a bank statement: entries grouped by day or period, each group with a subtotal, and an in/out summary on top."
+        },
+        "bestFor": {
+          "pt": "entender para onde foi o dinheiro",
+          "en": "understanding where the money went"
+        }
+      },
+      {
+        "experience": "dueAgenda",
+        "file": "financialTransactions/dueAgenda.md",
+        "label": {
+          "pt": "Agenda de vencimentos",
+          "en": "Due dates agenda"
+        },
+        "description": {
+          "pt": "Contas separadas em Vencidas, Hoje, Esta semana e Depois, com quantidade e soma; cada linha tem o pagar ou receber ali mesmo.",
+          "en": "Bills split into Overdue, Today, This week and Later, with count and sum; each row has pay or receive right there."
+        },
+        "bestFor": {
+          "pt": "rotina diária de contas a pagar e receber",
+          "en": "daily payables and receivables routine"
+        }
+      },
+      {
+        "experience": "paymentWizard",
+        "file": "financialTransactions/paymentWizard.md",
+        "label": {
+          "pt": "Pagamento guiado",
+          "en": "Guided payment"
+        },
+        "description": {
+          "pt": "Uma fila de contas em cartões; ao escolher uma, você confere a conta, informa os dados do pagamento e confirma, em passos curtos.",
+          "en": "A queue of bills as cards; picking one, you review it, enter the payment details and confirm, in short steps."
+        },
+        "bestFor": {
+          "pt": "pagamentos eventuais, com segurança",
+          "en": "occasional payments made with certainty"
+        }
+      }
+    ],
+    "globalSearchResults": [
+      {
+        "experience": "groupedResults",
+        "file": "globalSearchResults/page21.md",
+        "label": {
+          "pt": "Resultados por tipo",
+          "en": "Results by type"
+        },
+        "description": {
+          "pt": "Os resultados aparecem separados por tipo (clientes, pedidos, contratos), cada seção com os melhores itens e um \"ver mais\".",
+          "en": "Results are split by type (customers, orders, contracts), each section with its best matches and a \"see more\"."
+        },
+        "bestFor": {
+          "pt": "descobrir onde um termo aparece",
+          "en": "finding where a term shows up"
+        }
+      },
+      {
+        "experience": "unifiedListFacets",
+        "file": "globalSearchResults/page31.md",
+        "label": {
+          "pt": "Lista com filtros",
+          "en": "List with filters"
+        },
+        "description": {
+          "pt": "Uma lista única ordenada por relevância, com filtros laterais de tipo, data e situação para ir afunilando.",
+          "en": "A single list ranked by relevance, with side filters for type, date and status to narrow it down."
+        },
+        "bestFor": {
+          "pt": "buscas abertas, sem saber o que achar",
+          "en": "open-ended searches"
+        }
+      },
+      {
+        "experience": "commandPalette",
+        "file": "globalSearchResults/commandPalette.md",
+        "label": {
+          "pt": "Busca rápida pelo teclado",
+          "en": "Keyboard quick search"
+        },
+        "description": {
+          "pt": "Um campo onde você digita poucas letras e vê só alguns resultados, o primeiro já marcado; Enter abre o registro.",
+          "en": "A field where you type a few letters and see only a few matches, the first already highlighted; Enter opens the record."
+        },
+        "bestFor": {
+          "pt": "abrir um registro que você já conhece",
+          "en": "opening a record you already know"
+        }
+      },
+      {
+        "experience": "previewSplit",
+        "file": "globalSearchResults/previewSplit.md",
+        "label": {
+          "pt": "Lista com prévia",
+          "en": "List with preview"
+        },
+        "description": {
+          "pt": "Resultados de um lado e, ao lado, uma prévia do item selecionado; você percorre a lista e só abre o registro certo.",
+          "en": "Results on one side and a preview of the selected item beside them; you move down the list and open only the right record."
+        },
+        "bestFor": {
+          "pt": "diferenciar registros parecidos",
+          "en": "telling similar records apart"
+        }
+      }
+    ],
+    "hierarchyTreeView": [
+      {
+        "experience": "treeAndDetail",
+        "file": "hierarchyTreeView/page21.md",
+        "label": {
+          "pt": "Árvore com painel",
+          "en": "Tree with panel"
+        },
+        "description": {
+          "pt": "A estrutura inteira numa árvore que abre e fecha de um lado; ao clicar num item, os dados dele e as ações (incluir filho, editar, mover, excluir) aparecem num painel ao lado.",
+          "en": "The whole structure in an expandable tree on one side; clicking an item shows its data and actions (add child, edit, move, delete) in a panel beside it."
+        },
+        "bestFor": {
+          "pt": "manter departamentos, categorias ou estruturas de produto vendo tudo",
+          "en": "maintaining departments, categories or product structures with everything in view"
+        }
+      },
+      {
+        "experience": "columnsDrilldown",
+        "file": "hierarchyTreeView/page31.md",
+        "label": {
+          "pt": "Navegação por colunas",
+          "en": "Column navigation"
+        },
+        "description": {
+          "pt": "Cada nível abre numa nova coluna à direita, como pastas no Finder; as colunas formam o caminho percorrido e o item escolhido mostra seus dados na última posição.",
+          "en": "Each level opens in a new column to the right, like folders in Finder; the columns form the path you walked and the chosen item shows its data at the end."
+        },
+        "bestFor": {
+          "pt": "hierarquias profundas, como plano de contas ou locais aninhados",
+          "en": "deep hierarchies such as charts of accounts or nested locations"
+        }
+      },
+      {
+        "experience": "orgChartCanvas",
+        "file": "hierarchyTreeView/orgChartCanvas.md",
+        "label": {
+          "pt": "Organograma",
+          "en": "Org chart"
+        },
+        "description": {
+          "pt": "A hierarquia desenhada como caixas ligadas por linhas, a raiz no topo e cada nível numa fileira abaixo; selecione uma caixa e as ações aparecem junto dela.",
+          "en": "The hierarchy drawn as boxes joined by lines, the root on top and each level in a row below; select a box and its actions appear right next to it."
+        },
+        "bestFor": {
+          "pt": "ver quem responde a quem e o tamanho de cada ramo",
+          "en": "seeing who reports to whom and how wide each branch is"
+        }
+      },
+      {
+        "experience": "outlineEditor",
+        "file": "hierarchyTreeView/outlineEditor.md",
+        "label": {
+          "pt": "Editor de tópicos",
+          "en": "Outline editor"
+        },
+        "description": {
+          "pt": "Uma linha por item, recuada sob o item pai, editada como uma lista de tópicos: Enter cria a próxima linha, Tab recua, Shift+Tab traz de volta. Sem painel nem formulários.",
+          "en": "One line per item, indented under its parent, edited like a bulleted list: Enter adds the next line, Tab indents, Shift+Tab outdents. No panel, no forms."
+        },
+        "bestFor": {
+          "pt": "reorganizar uma árvore de categorias rapidamente pelo teclado",
+          "en": "restructuring a category tree quickly from the keyboard"
+        }
+      }
+    ],
+    "importMappingWizard": [
+      {
+        "experience": "stagedImport",
+        "file": "importMappingWizard/page21.md",
+        "label": {
+          "pt": "Importação em etapas",
+          "en": "Step-by-step import"
+        },
+        "description": {
+          "pt": "Quatro etapas, uma por vez: enviar o arquivo, ligar as colunas aos campos, revisar os erros e confirmar. Nada é gravado antes da última etapa.",
+          "en": "Four steps, one at a time: upload the file, match columns to fields, review errors and confirm. Nothing is saved before the last step."
+        },
+        "bestFor": {
+          "pt": "quem importa de vez em quando ou tem um arquivo arriscado",
+          "en": "occasional importers or risky files"
+        }
+      },
+      {
+        "experience": "mappingWorkbench",
+        "file": "importMappingWizard/page31.md",
+        "label": {
+          "pt": "Bancada de importação",
+          "en": "Import workbench"
+        },
+        "description": {
+          "pt": "Tudo numa só tela: as primeiras linhas reais do arquivo, a ligação das colunas ao lado e a validação atualizando a cada ajuste; o botão de importar libera quando está tudo certo.",
+          "en": "Everything on one screen: the file's real first rows, the column matching beside them and validation updating with every change; the import button unlocks when all is right."
+        },
+        "bestFor": {
+          "pt": "quem importa o mesmo formato toda semana",
+          "en": "people who import the same format every week"
+        }
+      },
+      {
+        "experience": "pasteFromSpreadsheet",
+        "file": "importMappingWizard/pasteFromSpreadsheet.md",
+        "label": {
+          "pt": "Colar da planilha",
+          "en": "Paste from spreadsheet"
+        },
+        "description": {
+          "pt": "Sem arquivo: copie as linhas da planilha e cole na página. Elas aparecem numa grade, com cada problema marcado na própria célula, prontas para importar.",
+          "en": "No file: copy the rows from your spreadsheet and paste them on the page. They show up in a grid with each problem marked on its cell, ready to import."
+        },
+        "bestFor": {
+          "pt": "lotes pequenos e frequentes, como alguns preços ou contatos",
+          "en": "small, frequent batches like a few prices or contacts"
+        }
+      },
+      {
+        "experience": "templateRoundTrip",
+        "file": "importMappingWizard/templateRoundTrip.md",
+        "label": {
+          "pt": "Modelo para preencher",
+          "en": "Fill-in template"
+        },
+        "description": {
+          "pt": "Baixe um modelo com as colunas certas, preencha fora do sistema e envie; um relatório diz a linha e a coluna de cada erro, e você reenvia até ficar limpo.",
+          "en": "Download a template with the right columns, fill it offline and upload it; a report names the row and column of each error, and you re-upload until it is clean."
+        },
+        "bestFor": {
+          "pt": "importações grandes ou preenchidas por terceiros",
+          "en": "large imports or files filled in by someone else"
+        }
+      }
+    ],
+    "inventoryControl": [
+      {
+        "experience": "splitViewOperations",
+        "file": "inventoryControl/page21.md",
+        "label": {
+          "pt": "Lista com painel",
+          "en": "List with panel"
+        },
+        "description": {
+          "pt": "Uma grade com todos os itens e seus saldos; ao escolher um item, um painel ao lado permite consultar, editar o cadastro ou lançar uma movimentação.",
+          "en": "A grid of all items and their balances; picking one opens a side panel to view it, edit its record or register a movement."
+        },
+        "bestFor": {
+          "pt": "qualquer tarefa avulsa de estoque no dia a dia",
+          "en": "any one-off stock task during the day"
+        }
+      },
+      {
+        "experience": "alertFirstReplenishment",
+        "file": "inventoryControl/page31.md",
+        "label": {
+          "pt": "Fila de reposição",
+          "en": "Restock queue"
+        },
+        "description": {
+          "pt": "Abre direto nos itens abaixo do mínimo, em uma fila; cada linha tem o ajuste de quantidade ali mesmo. O catálogo completo fica recolhido abaixo.",
+          "en": "Opens straight on the items below their minimum, as a queue; each row has its quantity adjustment right there. The full catalog stays folded below."
+        },
+        "bestFor": {
+          "pt": "reposição diária do que está faltando",
+          "en": "daily restocking of what is running low"
+        }
+      },
+      {
+        "experience": "movementLedger",
+        "file": "inventoryControl/movementLedger.md",
+        "label": {
+          "pt": "Histórico de movimentações",
+          "en": "Movement history"
+        },
+        "description": {
+          "pt": "Todas as entradas e saídas em ordem de data, cada linha dizendo o que moveu, quanto e para onde; filtrando um item, aparece o saldo após cada movimento.",
+          "en": "Every stock entry and exit in date order, each line saying what moved, how much and which way; filter one item to see its balance after each movement."
+        },
+        "bestFor": {
+          "pt": "explicar por que um saldo está como está",
+          "en": "explaining why a balance is what it is"
+        }
+      },
+      {
+        "experience": "stockCountSession",
+        "file": "inventoryControl/stockCountSession.md",
+        "label": {
+          "pt": "Contagem de estoque",
+          "en": "Stock count"
+        },
+        "description": {
+          "pt": "Você percorre as prateleiras digitando quanto há de cada item; no fim, as diferenças contra o sistema aparecem juntas para aceitar ou recontar antes de ajustar.",
+          "en": "You walk the shelves entering how much there is of each item; at the end, the differences from the records come together to accept or recount before adjusting."
+        },
+        "bestFor": {
+          "pt": "inventário cíclico ou balanço periódico",
+          "en": "cycle counts or periodic stocktakes"
+        }
+      }
+    ],
+    "kanbanBoardView": [
+      {
+        "experience": "classicBoard",
+        "file": "kanbanBoardView/page21.md",
+        "label": {
+          "pt": "Quadro por status",
+          "en": "Status board"
+        },
+        "description": {
+          "pt": "Uma coluna por status, na ordem do processo, com cartões pequenos; mover um cartão de coluna muda o status dele.",
+          "en": "One column per status, in process order, with small cards; moving a card to another column changes its status."
+        },
+        "bestFor": {
+          "pt": "ver onde está cada trabalho no processo",
+          "en": "seeing where every piece of work is in the process"
+        }
+      },
+      {
+        "experience": "swimlaneBoard",
+        "file": "kanbanBoardView/page31.md",
+        "label": {
+          "pt": "Quadro com raias",
+          "en": "Board with lanes"
+        },
+        "description": {
+          "pt": "As colunas de status cruzadas por faixas horizontais, uma por responsável, tipo ou prioridade, mostrando como o trabalho está distribuído.",
+          "en": "The status columns crossed by horizontal lanes, one per assignee, type or priority, showing how the work is spread."
+        },
+        "bestFor": {
+          "pt": "gestores que querem ver quem está sobrecarregado",
+          "en": "managers checking who is overloaded"
+        }
+      },
+      {
+        "experience": "collapsibleStatusList",
+        "file": "kanbanBoardView/collapsibleStatusList.md",
+        "label": {
+          "pt": "Lista por status",
+          "en": "List by status"
+        },
+        "description": {
+          "pt": "Os status empilhados de cima para baixo como seções que abrem e fecham, cada uma com sua contagem; os itens são linhas, não cartões, então cabem centenas.",
+          "en": "The statuses stacked top to bottom as sections that open and close, each with its count; items are rows, not cards, so hundreds fit."
+        },
+        "bestFor": {
+          "pt": "processos com muitos itens em andamento",
+          "en": "processes with many items in progress"
+        }
+      },
+      {
+        "experience": "myCardsBoard",
+        "file": "kanbanBoardView/myCardsBoard.md",
+        "label": {
+          "pt": "Meu quadro",
+          "en": "My board"
+        },
+        "description": {
+          "pt": "Só os cartões que são seus, com a coluna onde você age primeiro em destaque; cada cartão traz o próximo passo como único botão.",
+          "en": "Only the cards that are yours, with the column where you act next up front; each card carries its next step as its one button."
+        },
+        "bestFor": {
+          "pt": "cada pessoa saber o que precisa mover hoje",
+          "en": "each person knowing what to move today"
+        }
+      }
+    ],
+    "masterDataManagement": [
+      {
+        "experience": "compactCrudTable",
+        "file": "masterDataManagement/page21.md",
+        "label": {
+          "pt": "Tabela com painel",
+          "en": "Table with panel"
+        },
+        "description": {
+          "pt": "Uma tabela limpa, só para leitura; para incluir ou alterar um registro, um painel abre ao lado da tabela.",
+          "en": "A clean, read-only table; to add or change a record, a panel opens beside it."
+        },
+        "bestFor": {
+          "pt": "cadastros que mudam pouco e exigem cuidado",
+          "en": "reference data that changes rarely and needs care"
+        }
+      },
+      {
+        "experience": "inlineGridEdit",
+        "file": "masterDataManagement/page31.md",
+        "label": {
+          "pt": "Edição na grade",
+          "en": "Edit in grid"
+        },
+        "description": {
+          "pt": "Clique numa célula e digite, como numa planilha; as alterações pendentes ficam marcadas e cada linha é salva por vez. A última linha vazia cria um novo registro.",
+          "en": "Click a cell and type, as in a spreadsheet; pending changes are marked and each row is saved on its own. The empty last row creates a new record."
+        },
+        "bestFor": {
+          "pt": "revisar ou cadastrar muitos registros de uma vez",
+          "en": "reviewing or adding many records at once"
+        }
+      },
+      {
+        "experience": "duplicateResolver",
+        "file": "masterDataManagement/duplicateResolver.md",
+        "label": {
+          "pt": "Resolver duplicados",
+          "en": "Resolve duplicates"
+        },
+        "description": {
+          "pt": "Mostra grupos de registros que parecem repetidos lado a lado; você escolhe qual fica e o que acontece com os outros, um grupo por vez.",
+          "en": "Shows groups of records that look repeated side by side; you choose which one stays and what happens to the others, one group at a time."
+        },
+        "bestFor": {
+          "pt": "limpar cadastros com itens duplicados",
+          "en": "cleaning up reference data with duplicates"
+        }
+      },
+      {
+        "experience": "groupedCardList",
+        "file": "masterDataManagement/groupedCardList.md",
+        "label": {
+          "pt": "Cartões por tipo",
+          "en": "Cards by kind"
+        },
+        "description": {
+          "pt": "Registros em cartões agrupados por tipo, cada um com uma chave liga/desliga para dizer se está em uso; a edição é rara e leve.",
+          "en": "Records as cards grouped by kind, each with an on/off switch for whether it is in use; editing is occasional and light."
+        },
+        "bestFor": {
+          "pt": "listas pequenas, como unidades ou tipos de imposto",
+          "en": "small lists like units or tax types"
+        }
+      }
+    ],
+    "operationsQueue": [
+      {
+        "experience": "workQueueSplit",
+        "file": "operationsQueue/page21.md",
+        "label": {
+          "pt": "Fila com painel",
+          "en": "Queue with panel"
+        },
+        "description": {
+          "pt": "A fila de um lado, por status e prioridade, e o item aberto do outro, com as ações que o status dele permite (atribuir, iniciar, concluir).",
+          "en": "The queue on one side, by status and priority, and the open item on the other, with the actions its status allows (assign, start, complete)."
+        },
+        "bestFor": {
+          "pt": "operador sentado acompanhando o turno inteiro",
+          "en": "a seated operator following the whole shift"
+        }
+      },
+      {
+        "experience": "cardTriageMobile",
+        "file": "operationsQueue/page31.md",
+        "label": {
+          "pt": "Cartões no celular",
+          "en": "Cards on the phone"
+        },
+        "description": {
+          "pt": "Cada item é um cartão com tudo para agir; avançar o status leva dois toques no próprio cartão, sem abrir nada.",
+          "en": "Each item is a card with everything needed to act; moving its status forward takes two taps on the card itself, without opening anything."
+        },
+        "bestFor": {
+          "pt": "quem trabalha em pé com o celular na mão",
+          "en": "people working on their feet, phone in hand"
+        }
+      },
+      {
+        "experience": "slaCountdownList",
+        "file": "operationsQueue/slaCountdownList.md",
+        "label": {
+          "pt": "Fila por prazo",
+          "en": "Deadline queue"
+        },
+        "description": {
+          "pt": "Uma lista ordenada pelo tempo que falta, cada linha começando pela contagem regressiva (\"faltam 12 min\", \"atrasado 4 min\"); o mais urgente fica sempre no topo.",
+          "en": "A list ordered by time left, each row leading with its countdown (\"12 min left\", \"4 min overdue\"); the most urgent always stays on top."
+        },
+        "bestFor": {
+          "pt": "atendimento com prazo, para nada estourar",
+          "en": "deadline-bound work where nothing may slip"
+        }
+      },
+      {
+        "experience": "stationWallDisplay",
+        "file": "operationsQueue/stationWallDisplay.md",
+        "label": {
+          "pt": "Painel de parede",
+          "en": "Wall display"
+        },
+        "description": {
+          "pt": "Tela grande para uma estação, com os pedidos em ordem de chegada, legíveis de longe; um toque marca como pronto e a fila anda.",
+          "en": "A big screen for one station, tickets in arrival order, readable from across the room; one touch marks one done and the line moves up."
+        },
+        "bestFor": {
+          "pt": "cozinha, bancada de embalagem ou balcão de retirada",
+          "en": "kitchens, packing benches or pickup counters"
+        }
+      }
+    ],
+    "orderManagement": [
+      {
+        "experience": "orderDeskSplit",
+        "file": "orderManagement/page21.md",
+        "label": {
+          "pt": "Lista com detalhe",
+          "en": "List with detail"
+        },
+        "description": {
+          "pt": "A lista de pedidos filtrável por status de um lado e o pedido escolhido do outro, com itens, valores, cliente e só as ações que o status permite.",
+          "en": "The order list, filterable by status, on one side and the chosen order on the other, with lines, values, customer and only the actions its status allows."
+        },
+        "bestFor": {
+          "pt": "conferir pedidos um a um antes de aprovar ou faturar",
+          "en": "checking orders one by one before approving or dispatching"
+        }
+      },
+      {
+        "experience": "lifecycleLanes",
+        "file": "orderManagement/page31.md",
+        "label": {
+          "pt": "Quadro por etapa",
+          "en": "Stage board"
+        },
+        "description": {
+          "pt": "Uma coluna por etapa do pedido, com cada pedido como um cartão; dá para ver onde está o acúmulo e avançar os pedidos prontos. O detalhe abre por cima e fecha rápido.",
+          "en": "One column per order stage, each order a card; you see where orders pile up and move the ready ones forward. Detail opens on top and closes fast."
+        },
+        "bestFor": {
+          "pt": "acompanhar o fluxo e achar gargalos",
+          "en": "following the flow and spotting bottlenecks"
+        }
+      },
+      {
+        "experience": "fulfillmentChecklist",
+        "file": "orderManagement/fulfillmentChecklist.md",
+        "label": {
+          "pt": "Separação por pedido",
+          "en": "Picking checklist"
+        },
+        "description": {
+          "pt": "Um pedido por vez, com seus itens numa lista grande para marcar conforme são separados e um contador (\"7 de 10\"); o despacho libera quando tudo está marcado.",
+          "en": "One order at a time, its lines in a large list to tick off as they are picked, with a counter (\"7 of 10\"); dispatch unlocks when everything is ticked."
+        },
+        "bestFor": {
+          "pt": "separação e expedição no depósito",
+          "en": "picking and dispatch in the warehouse"
+        }
+      },
+      {
+        "experience": "orderEntrySheet",
+        "file": "orderManagement/orderEntrySheet.md",
+        "label": {
+          "pt": "Digitação de pedido",
+          "en": "Order entry sheet"
+        },
+        "description": {
+          "pt": "Abre em branco, pronta para digitar: cabeçalho curto em cima, uma grade de itens onde cada linha é digitada pelo teclado e o total atualizando embaixo; salva o pedido inteiro de uma vez.",
+          "en": "Opens blank, ready to type: a short header on top, a line grid where each row is typed from the keyboard and the total updating below; the whole order is saved at once."
+        },
+        "bestFor": {
+          "pt": "lançar pedidos novos rapidamente, como no televendas",
+          "en": "entering new orders fast, as in phone sales"
+        }
+      }
+    ],
+    "posWorkbench": [
+      {
+        "experience": "counterSplit",
+        "file": "posWorkbench/page21.md",
+        "label": {
+          "pt": "Balcão com carrinho",
+          "en": "Counter with cart"
+        },
+        "description": {
+          "pt": "Catálogo e busca de um lado, carrinho sempre visível do outro com o total em destaque; a venda toda, pagamento incluído, acontece nesta tela.",
+          "en": "Catalog and search on one side, the cart always visible on the other with the total in large type; the whole sale, payment included, happens on this screen."
+        },
+        "bestFor": {
+          "pt": "balcão onde o vendedor escolhe produtos na tela",
+          "en": "counters where the clerk picks products on screen"
+        }
+      },
+      {
+        "experience": "scanFirstFlow",
+        "file": "posWorkbench/page31.md",
+        "label": {
+          "pt": "Caixa com leitor",
+          "en": "Scanner checkout"
+        },
+        "description": {
+          "pt": "Um campo grande para bipar ou buscar domina a tela e cada leitura entra direto na venda; o pagamento abre numa tela própria e depois volta para a próxima venda.",
+          "en": "A large scan-or-search field fills the screen and each scan goes straight into the sale; payment opens on its own screen, then returns for the next sale."
+        },
+        "bestFor": {
+          "pt": "caixa de alto volume com leitor de código de barras",
+          "en": "high-volume checkouts with a barcode scanner"
+        }
+      },
+      {
+        "experience": "openTabs",
+        "file": "posWorkbench/openTabs.md",
+        "label": {
+          "pt": "Comandas abertas",
+          "en": "Open tabs"
+        },
+        "description": {
+          "pt": "Várias vendas abertas ao mesmo tempo, cada uma uma comanda com nome, total e tempo aberta; você alterna entre elas, adiciona itens e fecha só a que vai pagar.",
+          "en": "Several sales open at once, each a tab with its name, total and time open; you switch between them, add items and close only the one being paid."
+        },
+        "bestFor": {
+          "pt": "bares, restaurantes e oficinas",
+          "en": "bars, restaurants and workshops"
+        }
+      },
+      {
+        "experience": "selfServiceKiosk",
+        "file": "posWorkbench/selfServiceKiosk.md",
+        "label": {
+          "pt": "Autoatendimento",
+          "en": "Self-service kiosk"
+        },
+        "description": {
+          "pt": "Tela voltada para o cliente, em três passos: escolher em blocos grandes com imagens, revisar o pedido e pagar, com o total sempre à vista e sem códigos.",
+          "en": "A customer-facing screen in three steps: choose from large picture tiles, review the order and pay, with the total always in view and no codes."
+        },
+        "bestFor": {
+          "pt": "totem onde o cliente pede e paga sozinho",
+          "en": "kiosks where customers order and pay on their own"
+        }
+      }
+    ],
+    "processWizard": [
+      {
+        "experience": "linearStepper",
+        "file": "processWizard/page21.md",
+        "label": {
+          "pt": "Passo a passo numerado",
+          "en": "Numbered steps"
+        },
+        "description": {
+          "pt": "Uma etapa por tela, com uma barra mostrando todas as etapas numeradas; só avança quando a etapa está válida. No fim, um resumo completo e só então a confirmação grava.",
+          "en": "One step per screen, with a bar showing all numbered steps; you move on only when the step is valid. At the end, a full summary, and only then does confirming save."
+        },
+        "bestFor": {
+          "pt": "processos em que a ordem importa, como fechamentos",
+          "en": "processes where order matters, such as closings"
+        }
+      },
+      {
+        "experience": "growingDocument",
+        "file": "processWizard/page31.md",
+        "label": {
+          "pt": "Documento que cresce",
+          "en": "Growing document"
+        },
+        "description": {
+          "pt": "Uma página só, que começa com a primeira parte aberta; ao concluir, ela vira uma linha de resumo e a próxima aparece embaixo. As respostas anteriores ficam sempre à vista.",
+          "en": "A single page that starts with the first part open; once done, it shrinks to a one-line recap and the next part appears below. Earlier answers stay in view."
+        },
+        "bestFor": {
+          "pt": "processos curtos em que as respostas anteriores dão contexto às próximas",
+          "en": "short processes where earlier answers give context to later ones"
+        }
+      },
+      {
+        "experience": "checklistHub",
+        "file": "processWizard/checklistHub.md",
+        "label": {
+          "pt": "Cartões em qualquer ordem",
+          "en": "Cards in any order"
+        },
+        "description": {
+          "pt": "Todas as partes do processo aparecem juntas como cartões, cada um dizendo o que falta; você abre e completa qualquer um, na ordem que quiser. Uma linha conta quantos estão prontos e o botão de concluir diz o que ainda falta.",
+          "en": "All parts of the process show at once as cards, each saying what it still needs; you open and complete any of them, in any order. A line counts how many are ready and the finish button says what is still missing."
+        },
+        "bestFor": {
+          "pt": "processos com partes independentes reunidas ao longo do tempo",
+          "en": "processes with independent parts gathered over time"
+        }
+      },
+      {
+        "experience": "oneQuestionFlow",
+        "file": "processWizard/oneQuestionFlow.md",
+        "label": {
+          "pt": "Uma pergunta por vez",
+          "en": "One question at a time"
+        },
+        "description": {
+          "pt": "Como uma conversa: aparece uma pergunta em linguagem simples e um único campo para responder; as respostas dadas ficam acima, como histórico. No fim, um resumo e um botão para confirmar.",
+          "en": "Like a conversation: one plain-language question with a single answer control; the answers given so far stay above as a transcript. At the end, a summary and one button to confirm."
+        },
+        "bestFor": {
+          "pt": "pessoas leigas ou processos feitos raramente, como autoatendimento",
+          "en": "non-experts or rarely-run processes, such as self-service requests"
+        }
+      }
+    ],
+    "productCatalog": [
+      {
+        "experience": "masterDetailCatalog",
+        "file": "productCatalog/page21.md",
+        "label": {
+          "pt": "Lista com painel",
+          "en": "List with panel"
+        },
+        "description": {
+          "pt": "Lista de itens de um lado e, ao lado, o item selecionado para ler e corrigir. A lista nunca some, então dá para revisar um item atrás do outro sem perder o lugar.",
+          "en": "A list of items on one side and the selected item beside it to read and correct. The list never disappears, so you can review item after item without losing your place."
+        },
+        "bestFor": {
+          "pt": "revisar e corrigir muitos itens em sequência",
+          "en": "reviewing and correcting many items in a row"
+        }
+      },
+      {
+        "experience": "visualCardGrid",
+        "file": "productCatalog/page31.md",
+        "label": {
+          "pt": "Vitrine de cartões",
+          "en": "Card showcase"
+        },
+        "description": {
+          "pt": "Uma grade de cartões em que a foto e o preço aparecem em destaque; você acha o item pelo olho. Editar abre uma janela leve por cima da grade.",
+          "en": "A grid of cards where the picture and the price stand out; you find the item by sight. Editing opens a light window over the grid."
+        },
+        "bestFor": {
+          "pt": "produtos reconhecidos pela imagem, como pratos e roupas",
+          "en": "products recognized by their picture, such as dishes and garments"
+        }
+      },
+      {
+        "experience": "categoryShelves",
+        "file": "productCatalog/categoryShelves.md",
+        "label": {
+          "pt": "Prateleiras por categoria",
+          "en": "Shelves by category"
+        },
+        "description": {
+          "pt": "Os itens ficam agrupados em seções, uma por categoria, com nome e quantidade; cada seção tem seu próprio botão de adicionar. Um atalho leva direto a qualquer categoria.",
+          "en": "Items are grouped in sections, one per category, each with its name and count; every section has its own add button. A shortcut jumps straight to any category."
+        },
+        "bestFor": {
+          "pt": "cuidar do catálogo uma categoria de cada vez",
+          "en": "maintaining the catalog one category at a time"
+        }
+      },
+      {
+        "experience": "completenessQueue",
+        "file": "productCatalog/completenessQueue.md",
+        "label": {
+          "pt": "Fila de itens incompletos",
+          "en": "Incomplete items queue"
+        },
+        "description": {
+          "pt": "Uma fila com os itens que têm dados faltando (preço, foto, descrição), os mais incompletos primeiro. Cada item pede só o que falta e, ao salvar, já passa para o próximo.",
+          "en": "A queue of the items missing data (price, picture, description), the most incomplete first. Each item asks only for what is missing and, on save, moves to the next."
+        },
+        "bestFor": {
+          "pt": "completar o cadastro de um catálogo novo ou importado",
+          "en": "completing a new or imported catalog"
+        }
+      }
+    ],
+    "readOnlyDetailPortal": [
+      {
+        "experience": "summaryFirstStatement",
+        "file": "readOnlyDetailPortal/page21.md",
+        "label": {
+          "pt": "Resposta em destaque",
+          "en": "Headline answer"
+        },
+        "description": {
+          "pt": "O valor ou situação que importa aparece bem grande no topo; o detalhamento vem logo abaixo e as observações por último. Só leitura.",
+          "en": "The value or status that matters is shown very large at the top; the breakdown follows below and notes come last. Read-only."
+        },
+        "bestFor": {
+          "pt": "quem só quer saber quanto deve ou se está tudo certo",
+          "en": "someone who just wants to know how much or whether all is fine"
+        }
+      },
+      {
+        "experience": "printableDocument",
+        "file": "readOnlyDetailPortal/page31.md",
+        "label": {
+          "pt": "Documento formal",
+          "en": "Formal document"
+        },
+        "description": {
+          "pt": "A tela é o próprio documento: cabeçalho com as partes, corpo em tabela e rodapé, igual ao que sai impresso. Só leitura.",
+          "en": "The screen is the document itself: a header with the parties, a tabulated body and a footer, the same as on paper. Read-only."
+        },
+        "bestFor": {
+          "pt": "registros que serão impressos, anexados ou arquivados",
+          "en": "records to be printed, attached or filed"
+        }
+      },
+      {
+        "experience": "progressTracker",
+        "file": "readOnlyDetailPortal/progressTracker.md",
+        "label": {
+          "pt": "Acompanhamento de etapas",
+          "en": "Progress tracking"
+        },
+        "description": {
+          "pt": "Como um rastreio de encomenda: no topo, onde o registro está agora; abaixo, uma linha do tempo com o que já aconteceu e o que vem a seguir. Os dados do registro ficam depois.",
+          "en": "Like parcel tracking: at the top, where the record is now; below, a timeline of what has happened and what comes next. The record's details come after."
+        },
+        "bestFor": {
+          "pt": "clientes acompanhando um pedido ou solicitação por um link",
+          "en": "clients following an order or request from a link"
+        }
+      },
+      {
+        "experience": "questionAnswerSheet",
+        "file": "readOnlyDetailPortal/questionAnswerSheet.md",
+        "label": {
+          "pt": "Perguntas e respostas",
+          "en": "Questions and answers"
+        },
+        "description": {
+          "pt": "Uma folha de perguntas simples que a pessoa faria (\"Quanto devo?\"), cada uma respondida em uma frase com o valor dentro. Tudo visível, sem clicar.",
+          "en": "A sheet of plain questions the person would ask (\"How much do I owe?\"), each answered in one sentence with the value inside it. All visible, no clicking."
+        },
+        "bestFor": {
+          "pt": "pessoas de fora que não conhecem os termos do sistema",
+          "en": "outside people unfamiliar with the system's terms"
+        }
+      }
+    ],
+    "reportExplorer": [
+      {
+        "experience": "parameterPanel",
+        "file": "reportExplorer/page21.md",
+        "label": {
+          "pt": "Filtros e executar",
+          "en": "Filters and run"
+        },
+        "description": {
+          "pt": "Um painel à esquerda onde você monta todos os filtros e, só ao clicar em executar, o resultado aparece à direita. O resultado sempre mostra com quais filtros foi gerado.",
+          "en": "A panel on the left where you set every filter, and only when you click run does the result appear on the right. The result always shows which filters produced it."
+        },
+        "bestFor": {
+          "pt": "analistas que montam a própria consulta",
+          "en": "analysts who build their own query"
+        }
+      },
+      {
+        "experience": "catalogOfReports",
+        "file": "reportExplorer/page31.md",
+        "label": {
+          "pt": "Galeria de relatórios",
+          "en": "Report gallery"
+        },
+        "description": {
+          "pt": "Primeiro uma galeria de cartões, cada um dizendo que pergunta o relatório responde; ao escolher, o relatório ocupa a tela com poucos filtros numa barra no topo.",
+          "en": "First a gallery of cards, each saying what question the report answers; once chosen, the report fills the screen with a few filters in a bar on top."
+        },
+        "bestFor": {
+          "pt": "quem consome relatórios prontos e precisa escolher o certo",
+          "en": "people who use ready-made reports and need to pick the right one"
+        }
+      },
+      {
+        "experience": "narrativeSummary",
+        "file": "reportExplorer/narrativeSummary.md",
+        "label": {
+          "pt": "Resumo em frases",
+          "en": "Summary in sentences"
+        },
+        "description": {
+          "pt": "Acima da tabela, algumas frases com os números principais: o total, o maior item, o que está sinalizado. A tabela completa continua embaixo, e clicar num número leva às linhas dele.",
+          "en": "Above the table, a few sentences with the key numbers: the total, the largest item, what is flagged. The full table stays below, and clicking a number takes you to its rows."
+        },
+        "bestFor": {
+          "pt": "quem precisa decidir ou reportar a partir do resultado",
+          "en": "people who must decide or report from the result"
+        }
+      },
+      {
+        "experience": "savedViewTabs",
+        "file": "reportExplorer/savedViewTabs.md",
+        "label": {
+          "pt": "Abas de visões prontas",
+          "en": "Saved view tabs"
+        },
+        "description": {
+          "pt": "Um único relatório com abas, cada aba um conjunto de filtros pronto (\"Vencidos\", \"Este mês\"); a página já abre com o resultado da primeira e trocar de aba troca o resultado.",
+          "en": "One report with tabs, each tab a ready set of filters (\"Overdue\", \"This month\"); the page opens with the first tab's result and switching tabs switches the result."
+        },
+        "bestFor": {
+          "pt": "quem confere as mesmas visões todo dia ou toda semana",
+          "en": "people who check the same views every day or week"
+        }
+      }
+    ],
+    "settingsConsole": [
+      {
+        "experience": "sectionedForm",
+        "file": "settingsConsole/page21.md",
+        "label": {
+          "pt": "Menu de seções",
+          "en": "Section menu"
+        },
+        "description": {
+          "pt": "Um menu fixo de seções à esquerda e o formulário da seção escolhida à direita; cada seção é salva separadamente e avisa quando há algo não salvo.",
+          "en": "A fixed menu of sections on the left and the chosen section's form on the right; each section is saved on its own and warns when something is unsaved."
+        },
+        "bestFor": {
+          "pt": "módulos com muitas configurações organizadas por área",
+          "en": "modules with many settings organized by area"
+        }
+      },
+      {
+        "experience": "searchableSettings",
+        "file": "settingsConsole/page31.md",
+        "label": {
+          "pt": "Busca de configurações",
+          "en": "Settings search"
+        },
+        "description": {
+          "pt": "Uma caixa de busca grande no topo; ao digitar, aparecem só as configurações que combinam, e você edita ali mesmo.",
+          "en": "A large search box on top; as you type, only the matching settings appear, and you edit them right there."
+        },
+        "bestFor": {
+          "pt": "quem já sabe o que quer mudar",
+          "en": "people who already know what they want to change"
+        }
+      },
+      {
+        "experience": "featureToggleList",
+        "file": "settingsConsole/featureToggleList.md",
+        "label": {
+          "pt": "Chaves liga/desliga",
+          "en": "On/off switches"
+        },
+        "description": {
+          "pt": "Cada linha é um recurso do módulo, com uma explicação curta e uma chave liga/desliga. Não há botão salvar: mudou a chave, já vale, com opção de desfazer.",
+          "en": "Each row is a module feature, with a short explanation and an on/off switch. There is no save button: flipping the switch takes effect at once, with an undo option."
+        },
+        "bestFor": {
+          "pt": "ativar e desativar comportamentos do módulo",
+          "en": "turning module behaviors on and off"
+        }
+      },
+      {
+        "experience": "setupChecklist",
+        "file": "settingsConsole/setupChecklist.md",
+        "label": {
+          "pt": "Checklist de implantação",
+          "en": "Setup checklist"
+        },
+        "description": {
+          "pt": "Uma lista do que precisa ser configurado, cada item dizendo para que serve e se já está feito, com uma linha de progresso. Cada item abre suas configurações, em qualquer ordem.",
+          "en": "A list of what needs to be configured, each item saying what it is for and whether it is done, with a progress line. Each item opens its own settings, in any order."
+        },
+        "bestFor": {
+          "pt": "colocar um módulo em uso pela primeira vez",
+          "en": "bringing a module live for the first time"
+        }
+      }
+    ],
+    "supplierManagement": [
+      {
+        "experience": "directoryCompliance",
+        "file": "supplierManagement/page21.md",
+        "label": {
+          "pt": "Lista com análise fiscal",
+          "en": "List with compliance panel"
+        },
+        "description": {
+          "pt": "Lista de fornecedores e, ao lado, um painel com os dados fiscais e comerciais em destaque. Aprovar e bloquear são ações confirmadas, que ficam registradas no histórico.",
+          "en": "A list of suppliers with a panel beside it where fiscal and commercial data lead. Approve and block are confirmed actions recorded in a history."
+        },
+        "bestFor": {
+          "pt": "analisar e aprovar ou bloquear um fornecedor por vez",
+          "en": "examining and approving or blocking one supplier at a time"
+        }
+      },
+      {
+        "experience": "onboardingPipeline",
+        "file": "supplierManagement/page31.md",
+        "label": {
+          "pt": "Quadro de homologação",
+          "en": "Approval board"
+        },
+        "description": {
+          "pt": "Um quadro com uma coluna por etapa (novo, em análise, aprovado, bloqueado) e um cartão por fornecedor mostrando as pendências de documentos. Você avança cada um de etapa direto no quadro.",
+          "en": "A board with one column per stage (new, under review, approved, blocked) and a card per supplier showing missing documents. You move each one forward right on the board."
+        },
+        "bestFor": {
+          "pt": "ver quem está parado na homologação e destravar",
+          "en": "spotting who is stuck in approval and unblocking them"
+        }
+      },
+      {
+        "experience": "documentExpiryWatch",
+        "file": "supplierManagement/documentExpiryWatch.md",
+        "label": {
+          "pt": "Vencimento de documentos",
+          "en": "Document expiry watch"
+        },
+        "description": {
+          "pt": "Uma lista de documentos dos fornecedores ordenada pela data de vencimento: os vencidos no topo, depois os que vencem em breve. A renovação é registrada na própria linha.",
+          "en": "A list of supplier documents ordered by expiry date: expired ones at the top, then those expiring soon. Renewal is recorded on the line itself."
+        },
+        "bestFor": {
+          "pt": "não deixar certidões e certificados vencerem",
+          "en": "keeping certificates from expiring unnoticed"
+        }
+      },
+      {
+        "experience": "supplierScorecard",
+        "file": "supplierManagement/supplierScorecard.md",
+        "label": {
+          "pt": "Comparativo de desempenho",
+          "en": "Performance comparison"
+        },
+        "description": {
+          "pt": "Uma tabela com um fornecedor por linha e um indicador por coluna (pontualidade, prazo, preço); ordenar por um indicador mostra os melhores e os piores sem abrir ninguém.",
+          "en": "A table with one supplier per row and one measure per column (on-time rate, lead time, price); sorting by a measure shows the best and the worst without opening anyone."
+        },
+        "bestFor": {
+          "pt": "decisões de compra comparando fornecedores",
+          "en": "purchasing decisions comparing suppliers"
+        }
+      }
+    ],
+    "userAccessManagement": [
+      {
+        "experience": "memberDirectory",
+        "file": "userAccessManagement/page21.md",
+        "label": {
+          "pt": "Lista de pessoas",
+          "en": "People directory"
+        },
+        "description": {
+          "pt": "Lista de usuários com a situação de acesso de cada um e, ao lado, um painel da pessoa escolhida para ver e mudar seus perfis, desativar ou redefinir o acesso.",
+          "en": "A list of users with each one's access status and, beside it, a panel for the chosen person to view and change their roles, disable them or reset access."
+        },
+        "bestFor": {
+          "pt": "administrar o acesso de uma pessoa específica",
+          "en": "managing a specific person's access"
+        }
+      },
+      {
+        "experience": "roleMatrix",
+        "file": "userAccessManagement/page31.md",
+        "label": {
+          "pt": "Matriz de perfis",
+          "en": "Role matrix"
+        },
+        "description": {
+          "pt": "Os perfis são o centro: uma tabela de perfil por permissão, ou colunas de perfis com seus membros. Uma mudança vale para todos que têm aquele perfil.",
+          "en": "Roles are the center: a table of role by permission, or role columns with their members. A change applies to everyone holding that role."
+        },
+        "bestFor": {
+          "pt": "definir o que cada perfil pode fazer",
+          "en": "defining what each role can do"
+        }
+      },
+      {
+        "experience": "accessReviewCampaign",
+        "file": "userAccessManagement/accessReviewCampaign.md",
+        "label": {
+          "pt": "Revisão de acessos",
+          "en": "Access review"
+        },
+        "description": {
+          "pt": "Você passa pelas pessoas uma a uma e, para cada acesso, decide manter ou revogar; no fim, revisa o total e confirma tudo de uma vez.",
+          "en": "You go through people one by one and, for each access they hold, decide keep or revoke; at the end, you review the tally and confirm it all at once."
+        },
+        "bestFor": {
+          "pt": "auditorias periódicas de acesso",
+          "en": "periodic access audits"
+        }
+      },
+      {
+        "experience": "inviteOnboarding",
+        "file": "userAccessManagement/inviteOnboarding.md",
+        "label": {
+          "pt": "Convite em lote",
+          "en": "Batch invites"
+        },
+        "description": {
+          "pt": "Uma lista para convidar várias pessoas de uma vez, uma linha por pessoa já com o perfil escolhido; depois de enviar, os convites pendentes ficam à vista até serem aceitos.",
+          "en": "A list to invite several people at once, one line per person with the role already chosen; after sending, pending invites stay visible until accepted."
+        },
+        "bestFor": {
+          "pt": "trazer uma equipe nova para o sistema",
+          "en": "bringing a new team into the system"
+        }
+      }
+    ],
+    "workPlanningBoard": [
+      {
+        "experience": "timelineList",
+        "file": "workPlanningBoard/page21.md",
+        "label": {
+          "pt": "Lista por prazo",
+          "en": "List by deadline"
+        },
+        "description": {
+          "pt": "Todas as tarefas numa lista ordenada pelo prazo, a mais urgente no topo; tarefas sem responsável recebem um ali mesmo na linha e o resto se edita num painel ao lado.",
+          "en": "All tasks in one list ordered by deadline, the most urgent on top; unassigned tasks get an owner right on the row and the rest is edited in a side panel."
+        },
+        "bestFor": {
+          "pt": "acompanhar o que vence primeiro",
+          "en": "keeping up with what is due first"
+        }
+      },
+      {
+        "experience": "ganttLite",
+        "file": "workPlanningBoard/page31.md",
+        "label": {
+          "pt": "Cronograma em barras",
+          "en": "Bars over time"
+        },
+        "description": {
+          "pt": "Cada tarefa é uma barra numa linha do tempo, mostrando quando começa e quanto dura, com uma marca no dia de hoje. Fica fácil ver o que se sobrepõe e o que atrasou.",
+          "en": "Each task is a bar on a timeline, showing when it starts and how long it runs, with a mark for today. It is easy to see what overlaps and what slipped."
+        },
+        "bestFor": {
+          "pt": "planos com tarefas que duram vários dias",
+          "en": "plans with tasks spanning several days"
+        }
+      },
+      {
+        "experience": "ownerWorkload",
+        "file": "workPlanningBoard/ownerWorkload.md",
+        "label": {
+          "pt": "Carga por pessoa",
+          "en": "Workload by person"
+        },
+        "description": {
+          "pt": "Uma faixa por responsável mostrando quanto e o que cada um tem, com as tarefas sem dono numa faixa no topo. Você redistribui passando tarefas de uma pessoa para outra.",
+          "en": "One band per owner showing how much and what each person holds, with unassigned tasks in a band at the top. You rebalance by handing tasks from one person to another."
+        },
+        "bestFor": {
+          "pt": "líderes equilibrando o trabalho da equipe",
+          "en": "leads balancing work across a team"
+        }
+      },
+      {
+        "experience": "weekPlanner",
+        "file": "workPlanningBoard/weekPlanner.md",
+        "label": {
+          "pt": "Planejamento da semana",
+          "en": "Week planner"
+        },
+        "description": {
+          "pt": "Uma coluna para cada dia da semana, com as tarefas no dia em que estão planejadas; você move uma tarefa para outro dia e vê qual dia está carregado.",
+          "en": "One column per day of the week, with tasks in the day they are planned for; you move a task to another day and see which day is overloaded."
+        },
+        "bestFor": {
+          "pt": "planejar a semana dia a dia",
+          "en": "planning the week day by day"
+        }
+      }
+    ]
+  }
+}
