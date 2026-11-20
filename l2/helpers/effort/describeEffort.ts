@@ -613,7 +613,7 @@ function malformed(input: EffortInput): EffortAnswer {
   return answer(input, [], `change id ${input.item.changeId} is malformed`);
 }
 
-/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. The journeys index artifact is empty because each journey item already answers. An inbound change is refused. A new entity or process is empty because screens follow journeys. A changed entity answers by attribute. Text-only on any other kind is an empty computed answer. */
+/** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. The journeys index artifact is empty because each journey item already answers. An inbound change is empty because the arrival writes through the use case and the route. A new entity or process is empty because screens follow journeys. A changed entity answers by attribute. Text-only on any other kind is an empty computed answer. */
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (input.item.kind === 'artifact' && input.item.changeId === `artifact:${JOURNEY_INDEX_PATH}`) {
     console.info(input.item.changeId, JOURNEY_INDEX_REASON);
@@ -623,7 +623,9 @@ export function describeEffortFrom(input: EffortInput, contracts: Record<string,
     const path = input.item.changeId.startsWith('artifact:') ? input.item.changeId.slice('artifact:'.length) : input.item.changeId;
     return answer(input, [], `l4 file ${path} is not a known kind; Apply cannot plan it`);
   }
-  if (input.item.kind === 'inbound') return answer(input, [], 'inbound integration is not supported by Apply yet');
+  if (input.item.kind === 'inbound') {
+    return notedEmpty(input, 'an arrival writes the entities through the use case and the route, which are L1');
+  }
   if (input.item.kind === 'connection') {
     return notedEmpty(input, 'a connection reaches the screen through the use case and the route, which are L1');
   }

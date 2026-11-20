@@ -921,7 +921,7 @@ function contractCiting(pageId: string, eventId: string): string {
   return `/// <mls fileReference="_102047_/l2/tarefas/web/contracts/${pageId}.defs.ts" enhancement="_blank"/>\n\nexport interface ${pascal}Contracts {\n  'tarefas.${pageId}.qryPainel': {\n    kind: 'qry';\n    input: { event: '${eventId}' };\n    output: {};\n    rules: [];\n    access: { actors: []; grants: []; scope: 'organization' };\n  };\n}\n`;
 }
 
-void test('a published event is empty unless a page cites it; an inbound change abends', () => {
+void test('a published event is empty unless a page cites it; an inbound change is empty with a reason', () => {
   const pages = defsIn(TAREFAS_CONTRACTS);
   const sources = { shared: defsIn(TAREFAS_SHARED) };
 
@@ -953,18 +953,30 @@ void test('a published event is empty unless a page cites it; an inbound change 
     pageUnit('quadro'), sharedUnit('quadro'),
   ]);
 
-  const inboundText = describeEffortFrom(input({
-    changeId: 'inbound:avisoExterno', kind: 'inbound', op: 'changed', entity: '',
-    before: { description: 'a' }, after: { description: 'b' },
-  }), pages, sources);
-  const inboundAdded = describeEffortFrom(input({
-    changeId: 'inbound:avisoExterno', kind: 'inbound', op: 'added', entity: '',
-    after: { id: 'avisoExterno' },
-  }), pages, sources);
+  const inboundReasons: string[] = [];
+  const originalInfo = console.info;
+  console.info = (...args: unknown[]) => { inboundReasons.push(args.map(item => String(item)).join(' ')); };
+  let inboundText: ReturnType<typeof describeEffortFrom>;
+  let inboundAdded: ReturnType<typeof describeEffortFrom>;
+  try {
+    inboundText = describeEffortFrom(input({
+      changeId: 'inbound:avisoExterno', kind: 'inbound', op: 'changed', entity: '',
+      before: { description: 'a' }, after: { description: 'b' },
+    }), pages, sources);
+    inboundAdded = describeEffortFrom(input({
+      changeId: 'inbound:avisoExterno', kind: 'inbound', op: 'added', entity: '',
+      after: { id: 'avisoExterno' },
+    }), pages, sources);
+  } finally {
+    console.info = originalInfo;
+  }
   for (const row of [inboundText, inboundAdded]) {
-    assert.equal(row.status, 'abend');
-    assert.equal(row.abend?.reason, 'inbound integration is not supported by Apply yet');
+    assert.equal(row.status, 'computed');
+    assert.equal(row.abend, undefined);
     assert.deepEqual(row.materialize, []);
+    assert.deepEqual(row.regenerateDefs, []);
+    assert.ok(inboundReasons.some(line => line.startsWith(row.item) && line.includes('use case and the route')));
+    assert.equal(inboundReasons.some(line => line.includes('not supported')), false);
   }
 
   const rule = describeEffortFrom(removed('rule:resumoDiarioOitoHoras'), pages, sources);
@@ -1229,11 +1241,6 @@ void test('each effort gap is a treatment, an empty answer with a reason, or a r
   }), contracts());
   assert.equal(unknownFile.abend?.reason, 'l4 file rules.defs.ts is not a known kind; Apply cannot plan it');
 
-  const inbound = describeEffortFrom(input({
-    changeId: 'inbound:aviso', kind: 'inbound', op: 'added', entity: '',
-  }), contracts());
-  assert.equal(inbound.abend?.reason, 'inbound integration is not supported by Apply yet');
-
   const noContracts = describeEffortFrom(input({
     changeId: 'rule:anotacaoObrigatoriaNoAtendimento', kind: 'rule', op: 'changed', entity: '',
   }), {});
@@ -1244,6 +1251,46 @@ void test('each effort gap is a treatment, an empty answer with a reason, or a r
   }), contracts());
   assert.equal(badId.status, 'abend');
   assert.equal(badId.abend?.reason.includes('rule-sem-prefixo'), true);
+});
+
+void test('an arrival answers empty with a reason; a connection and a changed rule stay as before', () => {
+  const pages = contracts();
+  const reasons: string[] = [];
+  const original = console.info;
+  console.info = (...args: unknown[]) => { reasons.push(args.map(item => String(item)).join(' ')); };
+  const rows: ReturnType<typeof describeEffortFrom>[] = [];
+  try {
+    for (const op of L4_DIFF_OPS) {
+      rows.push(describeEffortFrom(input({
+        changeId: 'inbound:aviso', kind: 'inbound', op, entity: '',
+        before: op === 'added' ? undefined : { id: 'aviso' },
+        after: op === 'removed' ? undefined : { id: 'aviso' },
+      }), pages));
+    }
+  } finally {
+    console.info = original;
+  }
+  assert.equal(rows.length, 3);
+  for (const row of rows) {
+    assert.equal(row.status, 'computed', row.item);
+    assert.equal(row.abend, undefined, row.item);
+    assert.deepEqual(row.materialize, []);
+    assert.deepEqual(row.regenerateDefs, []);
+    assert.deepEqual(row.create, []);
+    assert.equal(reasons.some(line => line.startsWith(row.item) && line.includes('use case and the route')), true, row.item);
+  }
+  assert.equal(reasons.some(line => line.includes('not supported')), false);
+  const connection = describeEffortFrom(input({
+    changeId: 'connection:cm.listAgents', kind: 'connection', op: 'changed', entity: '',
+    before: { id: 'cm.listAgents' }, after: { id: 'cm.listAgents' },
+  }), pages);
+  assert.equal(connection.status, 'computed');
+  assert.deepEqual(connection.materialize, []);
+  const rule = describeEffortFrom(input({
+    changeId: 'rule:anotacaoObrigatoriaNoAtendimento', kind: 'rule', op: 'changed', entity: '',
+  }), pages);
+  assert.equal(rule.status, 'computed');
+  assert.deepEqual(rule.materialize.map(unit => unit.id), ['agenda_diaria']);
 });
 
 void test('connection, plugin and externalSystem answer empty with a reason', () => {
@@ -1283,8 +1330,6 @@ void test('connection, plugin and externalSystem answer empty with a reason', ()
   assert.equal(menu.length, 3);
   assert.equal(menu.filter(line => line.includes('exists while the module has an outside system')).length, 2);
   assert.equal(menu.filter(line => line.includes('no outside system left')).length, 1);
-  const inbound = describeEffortFrom(input({ changeId: 'inbound:aviso', kind: 'inbound', op: 'added', entity: '' }), pages);
-  assert.equal(inbound.abend?.reason, 'inbound integration is not supported by Apply yet');
   const outbound = describeEffortFrom(input({ changeId: 'outbound:aviso', kind: 'outbound', op: 'changed', entity: '' }), pages);
   assert.equal(outbound.status, 'computed');
 });
@@ -1292,7 +1337,6 @@ void test('connection, plugin and externalSystem answer empty with a reason', ()
 void test('every kind and op abends only as a known user refusal', () => {
   const pages = contracts();
   const allowed = [
-    'inbound integration is not supported by Apply yet',
     'is not a known kind; Apply cannot plan it',
     'no generated L2 contracts for module ',
     'is malformed',
