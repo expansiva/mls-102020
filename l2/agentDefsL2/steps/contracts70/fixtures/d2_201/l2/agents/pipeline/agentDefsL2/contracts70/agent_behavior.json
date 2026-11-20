@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "2026-10-04-agent-defs-l2-contracts-v3",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_behavior",
+  "sharedHash": "sha256:cdd285540887e13c063f281ac8bb8e5b13951e91bfa98ccb1f445212727201e9",
+  "designHash": "sha256:9a65dbcd63da9b2dbcc413928fbe13cb98d087c0fbf11410180a81a8329e04dd",
+  "sourceHash": "sha256:c2e26e175e2b4051d91887ed442c6476bc95301d6cad2db2cd11f88a761525a5"
+}

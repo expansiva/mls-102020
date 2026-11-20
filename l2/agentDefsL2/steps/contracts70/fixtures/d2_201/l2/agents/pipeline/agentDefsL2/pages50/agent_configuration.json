@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "2026-09-30-agent-defs-l2-pages-v2.1",
+  "needsVersion": "2026-09-30-agent-defs-l2-page11-needs-v1",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_configuration",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:417358299528a93de5b2b3ae2907a16adf58e767e86279299efa1980c048f21e",
+  "template": {
+    "category": "settingsConsole",
+    "experience": "sectionedForm",
+    "reason": "The page is an administrative configuration screen for one chosen agent: the admin edits a few settings (@name, on/off, responsible person) and reads the limits the cm lists. That matches Settings Console better than a record list or an entity lifecycle screen. Derived sectionedForm from settingsConsole.page21.",
+    "reference": "_102020_/l4/collabux/templates/settingsConsole/page21.md",
+    "hash": "sha256:1bcdc99a23d6bc7054e2b5389ddc0bb7f4de4bbac17b61c0ee6a5bb3a94ef51e",
+    "catalogHash": "sha256:285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc"
+  },
+  "moleculeInventoryHash": "sha256:a243774aee05d980d07cae75cf2e574b3a9c93761f3cec240a457e3dc5d5b78d",
+  "moleculeHashes": {
+    "/_102040_/l2/molecules/groupentertext/index.defs": "sha256:38ec5d8bb137a2b12192fec3b1a9df3357f9034cc7f6106ddc8ba07dc73095db",
+    "/_102020_/l2/aura/molecules/skills/groupEnterText/usage": "sha256:ac42da7e457722bd9f08e16cb6ffdae397b3ffd9fbe02a4481e1381eb6f8a75f",
+    "/_102040_/l2/molecules/groupenterboolean/index.defs": "sha256:f01bf583edd0aaeae58e296fa52b185cda14f065da42f6dd8dfab20798043c2b",
+    "/_102020_/l2/aura/molecules/skills/groupEnterBoolean/usage": "sha256:a6e099d45adbfe024dfe2d3660a13746992b3f20e4dc892496aab900db0fdcc7",
+    "/_102040_/l2/molecules/groupselectone/index.defs": "sha256:6cd31103bd70d5d83feffcc8fe97dbbdbbd1cd3912cf50251c8e650f412b882a",
+    "/_102020_/l2/aura/molecules/skills/groupSelectOne/usage": "sha256:c73313923583dcf4d758e1ef6ec4db945f48d5f5211fdc9c9e2d247ca90f0234",
+    "/_102040_/l2/molecules/groupnotifyuser/index.defs": "sha256:b041b5f2e0d3deb0e4abf184e15d9542862677e3659da5f1969d6db2bd8d8e08",
+    "/_102020_/l2/aura/molecules/skills/groupNotifyUser/usage": "sha256:5275105f3dce8e67e723759f8f7a0bbdbd2804bceed800d891e73191b0b3a49d",
+    "/_102040_/l2/molecules/groupviewdata/index.defs": "sha256:cd1aeb8f281ca1e1fcf30f0acf8f6b1707f6c43a675faedfca4b8f12504499fa",
+    "/_102020_/l2/aura/molecules/skills/groupViewData/usage": "sha256:703144b5c2c99c194b39c594508c6912734d7ac5560ea451807b9408bf4ebbd6"
+  },
+  "moleculeGroupAssessments": [
+    {
+      "organismId": "organism1",
+      "groups": [
+        {
+          "groupId": "groupEnterText",
+          "relevant": true
+        },
+        {
+          "groupId": "groupEnterBoolean",
+          "relevant": true
+        },
+        {
+          "groupId": "groupSelectOne",
+          "relevant": true
+        },
+        {
+          "groupId": "groupNotifyUser",
+          "relevant": true
+        }
+      ]
+    },
+    {
+      "organismId": "organism2",
+      "groups": [
+        {
+          "groupId": "groupViewData",
+          "relevant": true
+        }
+      ]
+    }
+  ],
+  "skillHash": "sha256:c3517179ccbde253ae6f8f2824b85092ccd698ba82925d87739370ba48f2e9d8",
+  "promptHash": "sha256:7c32290937225111880488f28364629141f1c1a16cff64eafa536c2ebaa93455",
+  "promptChars": 55814,
+  "repairPromptChars": 0,
+  "sourceHashes": {
+    "desktop": "sha256:6acd07746f2e9bed738a837407b47f54e94223aceba63f44de9c0e17b33bcffe",
+    "mobile": "sha256:19cb389228024cb5af7379191ff5c4fe0c8d4d12349c03eb5cde8e8ebd90fa1d"
+  },
+  "needsHashes": {
+    "desktop": "sha256:a948feafa8b4544d86649e6e80b97fdebc9ff425169a785ca2e3901cd2cd9f47",
+    "mobile": "sha256:a948feafa8b4544d86649e6e80b97fdebc9ff425169a785ca2e3901cd2cd9f47"
+  },
+  "menuOrigins": [
+    {
+      "organismId": "agentConfigurationForm",
+      "sourceIndex": 0,
+      "kind": "form",
+      "text": "The @name people use to call the agent in a chat, on or off, and the responsible person; you are told if another active agent already uses the name"
+    },
+    {
+      "organismId": "agentLimits",
+      "sourceIndex": 1,
+      "kind": "detail",
+      "text": "The agent's limits as the cm lists them"
+    }
+  ]
+}

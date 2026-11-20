@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "2026-09-30-agent-defs-l2-pages-v2.1",
+  "needsVersion": "2026-09-30-agent-defs-l2-page11-needs-v1",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "tool_catalog",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:bc836710480c5786d5a288a61a713a6b76f4d78f1073146faf563f0c7481c293",
+  "template": {
+    "category": "hierarchyTreeView",
+    "experience": "treeAndDetail",
+    "reason": "The Tool catalog is a read-only view of every tool, arranged as a module / subject / action tree. Removed tools are marked, usage counts sit next to each tool and a history of catalog updates sits alongside. The main thing the page shows is a browsable hierarchy, so hierarchyTreeView fits it on both devices. Derived treeAndDetail from hierarchyTreeView.page21.",
+    "reference": "_102020_/l4/collabux/templates/hierarchyTreeView/page21.md",
+    "hash": "sha256:9c488a4710b36e48fdca86235ed9f1dcf54a15aa5aedfdc97ccea172466a14a5",
+    "catalogHash": "sha256:285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc"
+  },
+  "moleculeInventoryHash": "sha256:a243774aee05d980d07cae75cf2e574b3a9c93761f3cec240a457e3dc5d5b78d",
+  "moleculeHashes": {
+    "/_102040_/l2/molecules/groupviewtable/index.defs": "sha256:3e2e055853cf7b3fb3d01991dcfd148dc9030d8b9cbef76640feb87157f0d4f9",
+    "/_102020_/l2/aura/molecules/skills/groupViewTable/usage": "sha256:21dcc060fd27d97540007a97963472de294713e9d47778820d88a401b36f13fe",
+    "/_102040_/l2/molecules/groupviewdata/index.defs": "sha256:cd1aeb8f281ca1e1fcf30f0acf8f6b1707f6c43a675faedfca4b8f12504499fa",
+    "/_102020_/l2/aura/molecules/skills/groupViewData/usage": "sha256:703144b5c2c99c194b39c594508c6912734d7ac5560ea451807b9408bf4ebbd6",
+    "/_102040_/l2/molecules/groupviewmetric/index.defs": "sha256:d29744fb8f555f77212029439f071181c7bb012342fcf00969df59f1446b99d7",
+    "/_102020_/l2/aura/molecules/skills/groupViewMetric/usage": "sha256:e96d4458079d90f4671c275e0954dcb9fcc318871e30e8199d491c7d90d4e6c5",
+    "/_102040_/l2/molecules/groupviewhierarchy/index.defs": "sha256:f3292d5896547f23d63de4ccf87bd65c612ca8dfe35f15e0a0f80f66b24660b3",
+    "/_102020_/l2/aura/molecules/skills/groupViewHierarchy/usage": "sha256:7fa307df97a5bf098a20ecc177a8eb2510bdaf790db6a2b32549ba8fb90de248",
+    "/_102040_/l2/molecules/groupexpandcontent/index.defs": "sha256:4f146a29d3a56473d367c42390259ea16b89e65d700a59a4718f86fc647d49fc",
+    "/_102020_/l2/aura/molecules/skills/groupExpandContent/usage": "sha256:77b8a0975f2381a96e4cc0db7e6f3d3844bbc956c8e410b242c6686ca4352f27"
+  },
+  "moleculeGroupAssessments": [
+    {
+      "organismId": "organism1",
+      "groups": [
+        {
+          "groupId": "groupViewTable",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewData",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewMetric",
+          "relevant": true
+        }
+      ]
+    },
+    {
+      "organismId": "organism2",
+      "groups": [
+        {
+          "groupId": "groupViewTable",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewHierarchy",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewData",
+          "relevant": true
+        }
+      ]
+    },
+    {
+      "organismId": "organism3",
+      "groups": [
+        {
+          "groupId": "groupViewData",
+          "relevant": true
+        },
+        {
+          "groupId": "groupExpandContent",
+          "relevant": true
+        }
+      ]
+    }
+  ],
+  "skillHash": "sha256:c3517179ccbde253ae6f8f2824b85092ccd698ba82925d87739370ba48f2e9d8",
+  "promptHash": "sha256:7c32290937225111880488f28364629141f1c1a16cff64eafa536c2ebaa93455",
+  "promptChars": 48429,
+  "repairPromptChars": 0,
+  "sourceHashes": {
+    "desktop": "sha256:da7823da7610b80608f9593241f38d5abecb242a2ccc63f80cfbd0fa3a45bfc2",
+    "mobile": "sha256:ffeb5cfe6049cb1515e243eca41cc5ad33366a350cefc76de16b3c120edeb42c"
+  },
+  "needsHashes": {
+    "desktop": "sha256:cfe3d18ab52aea48d2ca12ec2aba2de2644d43922ad2646dc9a1f9a266568cce",
+    "mobile": "sha256:53440aec8afe7e36bd33ab8dc6ecbadd19b361e70a1d75e1382b47afc0e46fb1"
+  },
+  "menuOrigins": [
+    {
+      "organismId": "toolUsageHighlights",
+      "sourceIndex": 0,
+      "kind": "highlights",
+      "text": "Which agents use each tool"
+    },
+    {
+      "organismId": "toolCatalogTree",
+      "sourceIndex": 1,
+      "kind": "list",
+      "text": "All actions of the app modules and the cm tools, by module and subject, with removed tools marked"
+    },
+    {
+      "organismId": "catalogUpdatesTimeline",
+      "sourceIndex": 2,
+      "kind": "timeline",
+      "text": "Catalog updates after a new module or release: tools added and tools marked removed"
+    }
+  ]
+}

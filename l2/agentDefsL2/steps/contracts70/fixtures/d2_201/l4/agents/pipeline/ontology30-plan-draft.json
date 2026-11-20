@@ -1,0 +1,240 @@
+{
+  "moduleName": "agents",
+  "businessDomain": "Home of the company's AI agents: agents, drafts, behavior and simulation live in the cm (collab messages) and are read and changed through it; this module owns the tool catalog of the app modules and the cm, which tools each agent has on, which people may not use a tool, and the execution summaries the cm sends.",
+  "entities": [
+    {
+      "entityId": "Agent",
+      "kind": "external",
+      "family": "tdm",
+      "title": "Agent",
+      "description": "An AI agent of the organization as the cm keeps it: definition, @name, who it talks to, on whose behalf it acts, whether it is on, who is responsible and its limits. Read and changed only through the cm.",
+      "displayField": "name",
+      "connectionId": "cm",
+      "source": "/_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "entityId": "AgentDraft",
+      "kind": "external",
+      "family": "tdm",
+      "title": "Agent draft",
+      "description": "A virtual employee the cm prepares from the admin's prompt, with its situation (preparing, ready, or refused with the reason); it is activated or discarded through the cm and stays in the cm.",
+      "displayField": "name",
+      "connectionId": "cm",
+      "source": "/_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "entityId": "AgentBehavior",
+      "kind": "external",
+      "family": "tdm",
+      "title": "Agent behavior",
+      "description": "The current behavior of an agent in plain language (role and state texts in the cm) and the history of its changes with author, date and a one-line summary; changed or undone through the cm.",
+      "displayField": "summary",
+      "connectionId": "cm",
+      "source": "/_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "entityId": "PersonalConduct",
+      "kind": "external",
+      "family": "tdm",
+      "title": "Personal conduct",
+      "description": "How an agent that acts on a member's behalf behaves for that member, with the history of the member's own changes; kept and changed in the cm.",
+      "displayField": "summary",
+      "connectionId": "cm",
+      "source": "/_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "entityId": "AgentSimulation",
+      "kind": "external",
+      "family": "tdm",
+      "title": "Agent simulation",
+      "description": "A simulation run by the cm at two levels: what the agent can do for a person or role, and what it understands from a sentence. Nothing is saved.",
+      "displayField": "sentence",
+      "connectionId": "cm",
+      "source": "/_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "entityId": "Tool",
+      "kind": "entity",
+      "family": "tdm",
+      "title": "Tool",
+      "description": "One action of the tool catalog, from an app module or from the cm itself, placed in the module / subject / action tree with a readable name and description. Rebuilt when a module is created or a release arrives; a tool that leaves the release is marked removed and never deleted.",
+      "displayField": "name",
+      "writer": "inbound",
+      "class": "supporting",
+      "storage": {
+        "target": "moduleDatabase",
+        "table": "agents_tool",
+        "kind": "relational"
+      }
+    },
+    {
+      "entityId": "AgentTool",
+      "kind": "entity",
+      "family": "tdm",
+      "title": "Agent tool",
+      "description": "Whether one tool is on or off for one agent, and whether that choice was made by the admin or by the automatic choice; an admin's choice is never changed automatically.",
+      "displayField": "toolName",
+      "class": "core",
+      "storage": {
+        "target": "moduleDatabase",
+        "table": "agents_agenttool",
+        "kind": "relational"
+      }
+    },
+    {
+      "entityId": "PersonToolRestriction",
+      "kind": "entity",
+      "family": "tdm",
+      "title": "Person tool restriction",
+      "description": "A tool a given person may not use through any agent, marked by the company admin.",
+      "displayField": "toolName",
+      "class": "core",
+      "storage": {
+        "target": "moduleDatabase",
+        "table": "agents_persontoolrestriction",
+        "kind": "relational"
+      }
+    },
+    {
+      "entityId": "ExecutionSummary",
+      "kind": "entity",
+      "family": "tdm",
+      "title": "Execution summary",
+      "description": "The summary of one finished execution of an agent sent by the cm: when, how long, cost, actions and their results, whether a person took over, and the link to the conversation. The same execution is never recorded twice.",
+      "displayField": "startedAt",
+      "writer": "inbound",
+      "class": "event",
+      "storage": {
+        "target": "moduleDatabase",
+        "table": "agents_executionsummary",
+        "kind": "relational"
+      }
+    },
+    {
+      "entityId": "OrganizationUser",
+      "kind": "role",
+      "family": "mdm",
+      "title": "Organization user",
+      "description": "A person of the organization chosen from the platform user list: the person whose tools are restricted, or the person who called an agent in an execution.",
+      "displayField": "details.identification.name",
+      "writer": "crud",
+      "subtype": "Person",
+      "roleTag": "agents.OrganizationUser",
+      "source": "/_102034_/l4/ontology/mdm.defs.ts"
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "agentToolTool",
+      "from": "AgentTool",
+      "to": "Tool",
+      "type": "manyToOne",
+      "required": true,
+      "mode": "fk",
+      "description": "Each agent tool choice refers to one tool of the catalog.",
+      "field": "AgentTool.toolId"
+    },
+    {
+      "relationshipId": "agentToolAgent",
+      "from": "AgentTool",
+      "to": "Agent",
+      "type": "manyToOne",
+      "required": true,
+      "mode": "fk",
+      "description": "Each agent tool choice belongs to one agent of the cm (or its draft); the table stores the cm id.",
+      "field": "AgentTool.agentId"
+    },
+    {
+      "relationshipId": "restrictionPerson",
+      "from": "PersonToolRestriction",
+      "to": "OrganizationUser",
+      "type": "manyToOne",
+      "required": true,
+      "mode": "fk",
+      "description": "Each restriction applies to one organization user.",
+      "field": "PersonToolRestriction.personId"
+    },
+    {
+      "relationshipId": "restrictionTool",
+      "from": "PersonToolRestriction",
+      "to": "Tool",
+      "type": "manyToOne",
+      "required": true,
+      "mode": "fk",
+      "description": "Each restriction blocks one tool of the catalog.",
+      "field": "PersonToolRestriction.toolId"
+    },
+    {
+      "relationshipId": "executionAgent",
+      "from": "ExecutionSummary",
+      "to": "Agent",
+      "type": "manyToOne",
+      "required": true,
+      "mode": "fk",
+      "description": "Each execution summary is about one agent; the table stores the cm id.",
+      "field": "ExecutionSummary.agentId"
+    },
+    {
+      "relationshipId": "executionRequester",
+      "from": "ExecutionSummary",
+      "to": "OrganizationUser",
+      "type": "manyToOne",
+      "required": false,
+      "mode": "fk",
+      "description": "The person who called the agent in the execution, when known.",
+      "field": "ExecutionSummary.personId"
+    }
+  ],
+  "normalizations": [
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "Agent",
+      "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "AgentDraft",
+      "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "AgentBehavior",
+      "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "PersonalConduct",
+      "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "AgentSimulation",
+      "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "Tool",
+      "detail": "storage.table agents_tool"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "AgentTool",
+      "detail": "storage.table agents_agenttool"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "PersonToolRestriction",
+      "detail": "storage.table agents_persontoolrestriction"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "ExecutionSummary",
+      "detail": "storage.table agents_executionsummary"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "OrganizationUser",
+      "detail": "roleTag agents.OrganizationUser; source /_102034_/l4/ontology/mdm.defs.ts"
+    }
+  ]
+}

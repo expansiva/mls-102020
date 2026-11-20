@@ -1,0 +1,147 @@
+{
+  "schemaVersion": "2026-09-30-agent-defs-l2-pipeline-v2",
+  "flowId": "agentDefsL2",
+  "project": 102047,
+  "module": "agents",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:35:18.009Z"
+    },
+    "input20": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:35:18.239Z",
+      "artifactPaths": [
+        "l2/agents/pipeline/agentDefsL2/input.json"
+      ],
+      "snapshotHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137"
+    },
+    "pages50": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:36:19.712Z",
+      "artifactPaths": [
+        "l2/agents/pipeline/agentDefsL2/pages50/agent_activity.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/agent_behavior.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/agent_configuration.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/agent_overview.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/agent_simulation.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/agent_tools.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/agents.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/draft_review.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/my_conduct.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/person_restrictions.json",
+        "l2/agents/pipeline/agentDefsL2/pages50/tool_catalog.json"
+      ],
+      "snapshotHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137"
+    },
+    "bff55": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:38:24.856Z",
+      "artifactPaths": [
+        "l2/agents/pipeline/agentDefsL2/bff/agent_activity.json",
+        "l2/agents/pipeline/agentDefsL2/bff/agent_behavior.json",
+        "l2/agents/pipeline/agentDefsL2/bff/agent_configuration.json",
+        "l2/agents/pipeline/agentDefsL2/bff/agent_overview.json",
+        "l2/agents/pipeline/agentDefsL2/bff/agent_simulation.json",
+        "l2/agents/pipeline/agentDefsL2/bff/agent_tools.json",
+        "l2/agents/pipeline/agentDefsL2/bff/agents.json",
+        "l2/agents/pipeline/agentDefsL2/bff/draft_review.json",
+        "l2/agents/pipeline/agentDefsL2/bff/my_conduct.json",
+        "l2/agents/pipeline/agentDefsL2/bff/person_restrictions.json",
+        "l2/agents/pipeline/agentDefsL2/bff/tool_catalog.json"
+      ],
+      "snapshotHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137"
+    },
+    "shared60": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:38:25.391Z",
+      "artifactPaths": [
+        "l2/agents/pipeline/agentDefsL2/shared60/agent_activity.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/agent_behavior.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/agent_configuration.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/agent_overview.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/agent_simulation.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/agent_tools.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/agents.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/draft_review.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/my_conduct.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/person_restrictions.json",
+        "l2/agents/pipeline/agentDefsL2/shared60/tool_catalog.json"
+      ],
+      "snapshotHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137"
+    },
+    "contracts70": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:38:25.974Z",
+      "artifactPaths": [
+        "l2/agents/web/contracts/agent_activity.defs.ts",
+        "l2/agents/web/contracts/agent_behavior.defs.ts",
+        "l2/agents/web/contracts/agent_configuration.defs.ts",
+        "l2/agents/web/contracts/agent_overview.defs.ts",
+        "l2/agents/web/contracts/agent_simulation.defs.ts",
+        "l2/agents/web/contracts/agent_tools.defs.ts",
+        "l2/agents/web/contracts/agents.defs.ts",
+        "l2/agents/web/contracts/draft_review.defs.ts",
+        "l2/agents/web/contracts/my_conduct.defs.ts",
+        "l2/agents/web/contracts/person_restrictions.defs.ts",
+        "l2/agents/web/contracts/tool_catalog.defs.ts"
+      ],
+      "snapshotHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137"
+    },
+    "finalize80": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:38:26.909Z",
+      "artifactPaths": [
+        "l2/agents/web/contracts/agent_activity.defs.ts",
+        "l2/agents/web/contracts/agent_behavior.defs.ts",
+        "l2/agents/web/contracts/agent_configuration.defs.ts",
+        "l2/agents/web/contracts/agent_overview.defs.ts",
+        "l2/agents/web/contracts/agent_simulation.defs.ts",
+        "l2/agents/web/contracts/agent_tools.defs.ts",
+        "l2/agents/web/contracts/agents.defs.ts",
+        "l2/agents/web/contracts/draft_review.defs.ts",
+        "l2/agents/web/contracts/my_conduct.defs.ts",
+        "l2/agents/web/contracts/person_restrictions.defs.ts",
+        "l2/agents/web/contracts/tool_catalog.defs.ts",
+        "l2/agents/web/desktop/page11/agent_activity.defs.ts",
+        "l2/agents/web/desktop/page11/agent_behavior.defs.ts",
+        "l2/agents/web/desktop/page11/agent_configuration.defs.ts",
+        "l2/agents/web/desktop/page11/agent_overview.defs.ts",
+        "l2/agents/web/desktop/page11/agent_simulation.defs.ts",
+        "l2/agents/web/desktop/page11/agent_tools.defs.ts",
+        "l2/agents/web/desktop/page11/agents.defs.ts",
+        "l2/agents/web/desktop/page11/draft_review.defs.ts",
+        "l2/agents/web/desktop/page11/my_conduct.defs.ts",
+        "l2/agents/web/desktop/page11/person_restrictions.defs.ts",
+        "l2/agents/web/desktop/page11/tool_catalog.defs.ts",
+        "l2/agents/web/mobile/page11/agent_activity.defs.ts",
+        "l2/agents/web/mobile/page11/agent_behavior.defs.ts",
+        "l2/agents/web/mobile/page11/agent_configuration.defs.ts",
+        "l2/agents/web/mobile/page11/agent_overview.defs.ts",
+        "l2/agents/web/mobile/page11/agent_simulation.defs.ts",
+        "l2/agents/web/mobile/page11/agent_tools.defs.ts",
+        "l2/agents/web/mobile/page11/agents.defs.ts",
+        "l2/agents/web/mobile/page11/draft_review.defs.ts",
+        "l2/agents/web/mobile/page11/my_conduct.defs.ts",
+        "l2/agents/web/mobile/page11/person_restrictions.defs.ts",
+        "l2/agents/web/mobile/page11/tool_catalog.defs.ts",
+        "l2/agents/web/shared/agent_activity.defs.ts",
+        "l2/agents/web/shared/agent_behavior.defs.ts",
+        "l2/agents/web/shared/agent_configuration.defs.ts",
+        "l2/agents/web/shared/agent_overview.defs.ts",
+        "l2/agents/web/shared/agent_simulation.defs.ts",
+        "l2/agents/web/shared/agent_tools.defs.ts",
+        "l2/agents/web/shared/agents.defs.ts",
+        "l2/agents/web/shared/draft_review.defs.ts",
+        "l2/agents/web/shared/my_conduct.defs.ts",
+        "l2/agents/web/shared/person_restrictions.defs.ts",
+        "l2/agents/web/shared/tool_catalog.defs.ts",
+        "l2/agents/pipeline/agentDefsL2/finalize80/report.json"
+      ],
+      "snapshotHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137"
+    }
+  },
+  "createdAt": "2026-11-20T19:35:18.009Z",
+  "updatedAt": "2026-11-20T19:38:26.909Z"
+}

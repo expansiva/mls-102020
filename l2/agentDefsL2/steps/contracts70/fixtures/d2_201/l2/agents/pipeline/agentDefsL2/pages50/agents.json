@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "2026-09-30-agent-defs-l2-pages-v2.1",
+  "needsVersion": "2026-09-30-agent-defs-l2-page11-needs-v1",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agents",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:3d234f4791d01b8d4826e430107e2905f28ab9549b54897498603de8cf731c52",
+  "template": {
+    "category": "aiAssistedAuthoring",
+    "experience": "generateReviewShare",
+    "reason": "The Agents page is where a new virtual employee starts: the admin describes it in plain words, the cm prepares a draft (or refuses it), and the draft then waits for review before it becomes a working agent. That generate → review → activate loop is AI-assisted authoring. Around it sit the list of all agents and drafts and the history of what happened to each request. Derived generateReviewShare from aiAssistedAuthoring.page21.",
+    "reference": "_102020_/l4/collabux/templates/aiAssistedAuthoring/page21.md",
+    "hash": "sha256:f8e960af00f6f607229abbfb8831f7405c97c92baf1a33997ec578a98de6e40b",
+    "catalogHash": "sha256:285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc"
+  },
+  "moleculeInventoryHash": "sha256:a243774aee05d980d07cae75cf2e574b3a9c93761f3cec240a457e3dc5d5b78d",
+  "moleculeHashes": {
+    "/_102040_/l2/molecules/groupviewdata/index.defs": "sha256:cd1aeb8f281ca1e1fcf30f0acf8f6b1707f6c43a675faedfca4b8f12504499fa",
+    "/_102020_/l2/aura/molecules/skills/groupViewData/usage": "sha256:703144b5c2c99c194b39c594508c6912734d7ac5560ea451807b9408bf4ebbd6",
+    "/_102040_/l2/molecules/groupviewcard/index.defs": "sha256:ef557fceab6248a6ef1292cb692929b1793b71d12866fe13d1980a1378819f4c",
+    "/_102020_/l2/aura/molecules/skills/groupViewCard/usage": "sha256:db49b5cff3db0583ea91138980ce4e6ed35bf301eca4c3b7856eb3ec9840d20e",
+    "/_102040_/l2/molecules/groupnavigatesection/index.defs": "sha256:367863a7c12c553fa024f441d4cf41632b6d54a6387b33bd03da7b83a1b8c369",
+    "/_102020_/l2/aura/molecules/skills/groupNavigateSection/usage": "sha256:b423ffd8d0fb5dff08d7f92452261d1294613c2d0591e0f6426e7f49f79894b6",
+    "/_102040_/l2/molecules/grouptriggeraction/index.defs": "sha256:b64c73d526fbc780a7a512a661d48a92fe29722bb9338ca939090a9dad2d4dca",
+    "/_102020_/l2/aura/molecules/skills/groupTriggerAction/usage": "sha256:cce1281a675cdc3b9b5191c64637bc8136cecb0a5f02725252003abbd6c78547",
+    "/_102040_/l2/molecules/groupviewtable/index.defs": "sha256:3e2e055853cf7b3fb3d01991dcfd148dc9030d8b9cbef76640feb87157f0d4f9",
+    "/_102020_/l2/aura/molecules/skills/groupViewTable/usage": "sha256:21dcc060fd27d97540007a97963472de294713e9d47778820d88a401b36f13fe",
+    "/_102040_/l2/molecules/groupsearchcontent/index.defs": "sha256:27988d1fa4120362c6529663ac2cfc8a97b53ece995329bb6fe9bc98a9acbb5f",
+    "/_102020_/l2/aura/molecules/skills/groupSearchContent/usage": "sha256:c9bf99303b6d99c1e11d0ad80b0d0bc1d71e2fe29b31b984abc04d153ca54234",
+    "/_102040_/l2/molecules/groupselectone/index.defs": "sha256:6cd31103bd70d5d83feffcc8fe97dbbdbbd1cd3912cf50251c8e650f412b882a",
+    "/_102020_/l2/aura/molecules/skills/groupSelectOne/usage": "sha256:c73313923583dcf4d758e1ef6ec4db945f48d5f5211fdc9c9e2d247ca90f0234",
+    "/_102040_/l2/molecules/groupenterboolean/index.defs": "sha256:f01bf583edd0aaeae58e296fa52b185cda14f065da42f6dd8dfab20798043c2b",
+    "/_102020_/l2/aura/molecules/skills/groupEnterBoolean/usage": "sha256:a6e099d45adbfe024dfe2d3660a13746992b3f20e4dc892496aab900db0fdcc7",
+    "/_102040_/l2/molecules/groupentertext/index.defs": "sha256:38ec5d8bb137a2b12192fec3b1a9df3357f9034cc7f6106ddc8ba07dc73095db",
+    "/_102020_/l2/aura/molecules/skills/groupEnterText/usage": "sha256:ac42da7e457722bd9f08e16cb6ffdae397b3ffd9fbe02a4481e1381eb6f8a75f",
+    "/_102040_/l2/molecules/groupnotifyuser/index.defs": "sha256:b041b5f2e0d3deb0e4abf184e15d9542862677e3659da5f1969d6db2bd8d8e08",
+    "/_102020_/l2/aura/molecules/skills/groupNotifyUser/usage": "sha256:5275105f3dce8e67e723759f8f7a0bbdbd2804bceed800d891e73191b0b3a49d",
+    "/_102040_/l2/molecules/groupexpandcontent/index.defs": "sha256:4f146a29d3a56473d367c42390259ea16b89e65d700a59a4718f86fc647d49fc",
+    "/_102020_/l2/aura/molecules/skills/groupExpandContent/usage": "sha256:77b8a0975f2381a96e4cc0db7e6f3d3844bbc956c8e410b242c6686ca4352f27"
+  },
+  "moleculeGroupAssessments": [
+    {
+      "organismId": "organism1",
+      "groups": [
+        {
+          "groupId": "groupViewData",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewCard",
+          "relevant": true
+        },
+        {
+          "groupId": "groupNavigateSection",
+          "relevant": true
+        },
+        {
+          "groupId": "groupTriggerAction",
+          "relevant": true
+        }
+      ]
+    },
+    {
+      "organismId": "organism2",
+      "groups": [
+        {
+          "groupId": "groupViewTable",
+          "relevant": true
+        },
+        {
+          "groupId": "groupSearchContent",
+          "relevant": true
+        },
+        {
+          "groupId": "groupSelectOne",
+          "relevant": true
+        },
+        {
+          "groupId": "groupEnterBoolean",
+          "relevant": true
+        }
+      ]
+    },
+    {
+      "organismId": "organism3",
+      "groups": [
+        {
+          "groupId": "groupEnterText",
+          "relevant": true
+        },
+        {
+          "groupId": "groupTriggerAction",
+          "relevant": true
+        },
+        {
+          "groupId": "groupNotifyUser",
+          "relevant": true
+        }
+      ]
+    },
+    {
+      "organismId": "organism4",
+      "groups": [
+        {
+          "groupId": "groupViewData",
+          "relevant": true
+        },
+        {
+          "groupId": "groupExpandContent",
+          "relevant": true
+        }
+      ]
+    }
+  ],
+  "skillHash": "sha256:c3517179ccbde253ae6f8f2824b85092ccd698ba82925d87739370ba48f2e9d8",
+  "promptHash": "sha256:7c32290937225111880488f28364629141f1c1a16cff64eafa536c2ebaa93455",
+  "promptChars": 118092,
+  "repairPromptChars": 0,
+  "sourceHashes": {
+    "desktop": "sha256:83cc162f69822985a67f0fc8e9a545bbcd4e9932934c7b547d314daf612531ee",
+    "mobile": "sha256:9c692192c097dd5d36a5db08072202f5aab788fa8d0ec70ce550b31395603b93"
+  },
+  "needsHashes": {
+    "desktop": "sha256:d1fbaa4fa47f8754940c83dc8d85371baafafb1f178049c35214645e87a8a816",
+    "mobile": "sha256:37543874859d12455fc52726bacbaf670907cc6d3bc0403ecf554716091eb582"
+  },
+  "menuOrigins": [
+    {
+      "organismId": "draftsInbox",
+      "sourceIndex": 0,
+      "kind": "inbox",
+      "text": "Drafts the cm has prepared and that are waiting for your review, and requests for new agents you are still describing"
+    },
+    {
+      "organismId": "agentsList",
+      "sourceIndex": 1,
+      "kind": "list",
+      "text": "All company agents and drafts: name, who the agent talks to, whether it is on, who is responsible, and for drafts whether they are preparing, ready or refused with the reason"
+    },
+    {
+      "organismId": "newAgentForm",
+      "sourceIndex": 2,
+      "kind": "form",
+      "text": "Create a new virtual employee: describe the agent and its functions in plain words and send it to the cm"
+    },
+    {
+      "organismId": "requestTimeline",
+      "sourceIndex": 3,
+      "kind": "timeline",
+      "text": "What happened to each request: sent, draft ready with suggested tools turned on, or refused with the reason"
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "2026-09-30-agent-defs-l2-pages-v2.1",
+  "needsVersion": "2026-09-30-agent-defs-l2-page11-needs-v1",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_simulation",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:d44fab9a36931bc1f15e40ef182d3664edf26c545a7284e6ba3952f16f6d73a7",
+  "template": {
+    "category": "bespoke",
+    "experience": "none",
+    "reason": "The simulation page is a read-only, interactive inspection tool. The user picks a subject or types a sentence and reads what the cm works out, and nothing is saved. No catalog category fits this two-part \"ask and see\" workbench: it is not a record editor, a report or a wizard. So bespoke is the closest honest category, and it is used on both devices. No published page11 or page21 experience applies.",
+    "reference": null,
+    "hash": "sha256:140bedbf9c3f6d56a9846d2ba7088798683f4da0c248231336e6a05679e4fdfe",
+    "catalogHash": "sha256:285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc"
+  },
+  "moleculeInventoryHash": "sha256:a243774aee05d980d07cae75cf2e574b3a9c93761f3cec240a457e3dc5d5b78d",
+  "moleculeHashes": {
+    "/_102040_/l2/molecules/groupselectone/index.defs": "sha256:6cd31103bd70d5d83feffcc8fe97dbbdbbd1cd3912cf50251c8e650f412b882a",
+    "/_102020_/l2/aura/molecules/skills/groupSelectOne/usage": "sha256:c73313923583dcf4d758e1ef6ec4db945f48d5f5211fdc9c9e2d247ca90f0234",
+    "/_102040_/l2/molecules/groupviewtable/index.defs": "sha256:3e2e055853cf7b3fb3d01991dcfd148dc9030d8b9cbef76640feb87157f0d4f9",
+    "/_102020_/l2/aura/molecules/skills/groupViewTable/usage": "sha256:21dcc060fd27d97540007a97963472de294713e9d47778820d88a401b36f13fe",
+    "/_102040_/l2/molecules/grouptriggeraction/index.defs": "sha256:b64c73d526fbc780a7a512a661d48a92fe29722bb9338ca939090a9dad2d4dca",
+    "/_102020_/l2/aura/molecules/skills/groupTriggerAction/usage": "sha256:cce1281a675cdc3b9b5191c64637bc8136cecb0a5f02725252003abbd6c78547",
+    "/_102040_/l2/molecules/groupsearchcontent/index.defs": "sha256:27988d1fa4120362c6529663ac2cfc8a97b53ece995329bb6fe9bc98a9acbb5f",
+    "/_102020_/l2/aura/molecules/skills/groupSearchContent/usage": "sha256:c9bf99303b6d99c1e11d0ad80b0d0bc1d71e2fe29b31b984abc04d153ca54234",
+    "/_102040_/l2/molecules/groupnotifyuser/index.defs": "sha256:b041b5f2e0d3deb0e4abf184e15d9542862677e3659da5f1969d6db2bd8d8e08",
+    "/_102020_/l2/aura/molecules/skills/groupNotifyUser/usage": "sha256:5275105f3dce8e67e723759f8f7a0bbdbd2804bceed800d891e73191b0b3a49d",
+    "/_102040_/l2/molecules/groupentertext/index.defs": "sha256:38ec5d8bb137a2b12192fec3b1a9df3357f9034cc7f6106ddc8ba07dc73095db",
+    "/_102020_/l2/aura/molecules/skills/groupEnterText/usage": "sha256:ac42da7e457722bd9f08e16cb6ffdae397b3ffd9fbe02a4481e1381eb6f8a75f",
+    "/_102040_/l2/molecules/groupviewhierarchy/index.defs": "sha256:f3292d5896547f23d63de4ccf87bd65c612ca8dfe35f15e0a0f80f66b24660b3",
+    "/_102020_/l2/aura/molecules/skills/groupViewHierarchy/usage": "sha256:7fa307df97a5bf098a20ecc177a8eb2510bdaf790db6a2b32549ba8fb90de248",
+    "/_102040_/l2/molecules/groupviewdata/index.defs": "sha256:cd1aeb8f281ca1e1fcf30f0acf8f6b1707f6c43a675faedfca4b8f12504499fa",
+    "/_102020_/l2/aura/molecules/skills/groupViewData/usage": "sha256:703144b5c2c99c194b39c594508c6912734d7ac5560ea451807b9408bf4ebbd6",
+    "/_102040_/l2/molecules/groupshowprogress/index.defs": "sha256:072c083ab8c8f558aac8605b1bf381e6a3ca5f54bdffe5790f7d9941953719f5",
+    "/_102020_/l2/aura/molecules/skills/groupShowProgress/usage": "sha256:cb29a9fc515fc7ec7424875b83b8bd4482ad7eaf23a90a72a71473b96faaa1a0"
+  },
+  "moleculeGroupAssessments": [
+    {
+      "organismId": "organism1",
+      "groups": [
+        {
+          "groupId": "groupSelectOne",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewTable",
+          "relevant": true
+        },
+        {
+          "groupId": "groupTriggerAction",
+          "relevant": true
+        },
+        {
+          "groupId": "groupSearchContent",
+          "relevant": true
+        },
+        {
+          "groupId": "groupNotifyUser",
+          "relevant": true
+        }
+      ]
+    },
+    {
+      "organismId": "organism2",
+      "groups": [
+        {
+          "groupId": "groupEnterText",
+          "relevant": true
+        },
+        {
+          "groupId": "groupTriggerAction",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewHierarchy",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewData",
+          "relevant": true
+        },
+        {
+          "groupId": "groupShowProgress",
+          "relevant": true
+        },
+        {
+          "groupId": "groupNotifyUser",
+          "relevant": true
+        }
+      ]
+    }
+  ],
+  "skillHash": "sha256:c3517179ccbde253ae6f8f2824b85092ccd698ba82925d87739370ba48f2e9d8",
+  "promptHash": "sha256:7c32290937225111880488f28364629141f1c1a16cff64eafa536c2ebaa93455",
+  "promptChars": 80968,
+  "repairPromptChars": 0,
+  "sourceHashes": {
+    "desktop": "sha256:d9a78b4557c3ece0afcd9d9ec3b84d54fc2f29872120c8e42f1cba7763d15812",
+    "mobile": "sha256:37a9c2e1b9b85a30fed02bc5ea4fd1c8d01a945a4fe9f194030cb91d567190b4"
+  },
+  "needsHashes": {
+    "desktop": "sha256:4de87d8dd49b33a51820af20ee845bedaf864ba32802ba3cf70196fc5f0793f3",
+    "mobile": "sha256:4de87d8dd49b33a51820af20ee845bedaf864ba32802ba3cf70196fc5f0793f3"
+  },
+  "menuOrigins": [
+    {
+      "organismId": "whatItCan",
+      "sourceIndex": 0,
+      "kind": "form",
+      "text": "What it can: see which tools the agent can or cannot use and why, for yourself or, as admin, for a chosen person or role"
+    },
+    {
+      "organismId": "whatItUnderstands",
+      "sourceIndex": 1,
+      "kind": "form",
+      "text": "What it understands: type a sentence and see whether it asks for an action, which part of the tree and which actions"
+    }
+  ]
+}

@@ -1,0 +1,587 @@
+{
+  "schemaVersion": "2026-10-04-agent-defs-l2-bff-v2",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_tools",
+  "attempt": 2,
+  "diagnostic": "D2_BFF_COMMAND_INPUT: endpoints.toggleToolChoice.input: command toggleToolChoice (AgentTool.update) asks for AgentTool.toolId; each input leaf that fills a stored value names that Entity.path as a field origin.",
+  "previous": {
+    "types": [
+      {
+        "name": "ToolDetails",
+        "fields": [
+          {
+            "name": "moduleTitle",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.details.moduleTitle"
+              ]
+            }
+          },
+          {
+            "name": "subjectTitle",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.details.subjectTitle"
+              ]
+            }
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.details.description"
+              ]
+            }
+          },
+          {
+            "name": "removedAt",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.details.removedAt"
+              ]
+            },
+            "optional": true
+          }
+        ],
+        "description": "Readable placement and explanation of one catalog action."
+      },
+      {
+        "name": "AgentToolChoiceDetails",
+        "fields": [
+          {
+            "name": "decidedAt",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.details.decidedAt"
+              ]
+            }
+          },
+          {
+            "name": "decidedBy",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.details.decidedBy"
+              ]
+            },
+            "optional": true
+          },
+          {
+            "name": "automaticOrigin",
+            "type": "'draftSuggestion' | 'catalogRefresh'",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.details.automaticOrigin"
+              ]
+            },
+            "optional": true
+          },
+          {
+            "name": "toolName",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.details.toolName"
+              ]
+            }
+          },
+          {
+            "name": "toolRemoved",
+            "type": "boolean",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.details.toolRemoved"
+              ]
+            }
+          }
+        ],
+        "description": "When and by whom a tool choice of an agent was made, and the state of the tool it refers to."
+      },
+      {
+        "name": "AgentToolChoice",
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.id"
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "type": "number",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.version"
+              ]
+            }
+          },
+          {
+            "name": "enabled",
+            "type": "boolean",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.enabled"
+              ]
+            }
+          },
+          {
+            "name": "choiceSource",
+            "type": "'admin' | 'automatic'",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.choiceSource"
+              ]
+            }
+          },
+          {
+            "name": "details",
+            "type": "AgentToolChoiceDetails",
+            "origin": null
+          }
+        ],
+        "description": "The on or off choice of one tool for one agent, with who made it."
+      },
+      {
+        "name": "ToolTreeAction",
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.id"
+              ]
+            }
+          },
+          {
+            "name": "moduleName",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.moduleName"
+              ]
+            }
+          },
+          {
+            "name": "subject",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.subject"
+              ]
+            }
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.name"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "type": "'available' | 'removed'",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.status"
+              ]
+            }
+          },
+          {
+            "name": "details",
+            "type": "ToolDetails",
+            "origin": null
+          },
+          {
+            "name": "agentTool",
+            "type": "AgentToolChoice",
+            "origin": null,
+            "optional": true
+          }
+        ],
+        "description": "One action of the tool catalog in the module / subject / action tree, with the agent's choice for it when one exists."
+      },
+      {
+        "name": "ToolReleaseDetails",
+        "fields": [
+          {
+            "name": "releaseLabel",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Tool.details.releaseLabel"
+              ]
+            },
+            "optional": true
+          }
+        ],
+        "description": "The release in which a catalog tool was last found."
+      },
+      {
+        "name": "ToolRelease",
+        "fields": [
+          {
+            "name": "details",
+            "type": "ToolReleaseDetails",
+            "origin": null
+          }
+        ],
+        "description": "Release information of the catalog tool a choice refers to."
+      },
+      {
+        "name": "AutomaticToolChoice",
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.id"
+              ]
+            }
+          },
+          {
+            "name": "enabled",
+            "type": "boolean",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.enabled"
+              ]
+            }
+          },
+          {
+            "name": "choiceSource",
+            "type": "'admin' | 'automatic'",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.choiceSource"
+              ]
+            }
+          },
+          {
+            "name": "details",
+            "type": "AgentToolChoiceDetails",
+            "origin": null
+          },
+          {
+            "name": "tool",
+            "type": "ToolRelease",
+            "origin": null
+          }
+        ],
+        "description": "A tool choice of an agent made by an automatic step, with the release of its tool."
+      }
+    ],
+    "bindings": {
+      "updates": [
+        {
+          "mode": "upsert",
+          "state": "getAgentToolTree.actions",
+          "endpoint": "enableUnchosenTool"
+        },
+        {
+          "mode": "upsert",
+          "state": "getAgentToolTree.actions",
+          "endpoint": "toggleToolChoice"
+        }
+      ],
+      "commands": [
+        {
+          "endpoint": "enableUnchosenTool",
+          "refreshes": []
+        },
+        {
+          "endpoint": "toggleToolChoice",
+          "refreshes": [
+            "listAutomaticToolChoices"
+          ]
+        }
+      ],
+      "journeys": [
+        {
+          "step": "adjustAgentTools/findAgentForTools",
+          "endpoints": [],
+          "organisms": [],
+          "continuesIn": "agents"
+        },
+        {
+          "step": "adjustAgentTools/browseToolTree",
+          "endpoints": [
+            "getAgentToolTree",
+            "listAutomaticToolChoices"
+          ],
+          "organisms": [
+            "agentToolTree",
+            "automaticToolChoices"
+          ]
+        },
+        {
+          "step": "adjustAgentTools/enableUnchosenTool",
+          "endpoints": [
+            "enableUnchosenTool"
+          ],
+          "organisms": [
+            "agentToolTree"
+          ]
+        },
+        {
+          "step": "adjustAgentTools/toggleTools",
+          "endpoints": [
+            "toggleToolChoice"
+          ],
+          "organisms": [
+            "agentToolTree"
+          ]
+        }
+      ],
+      "organisms": [
+        {
+          "reads": "getAgentToolTree.agentName",
+          "organism": "agentToolTree"
+        },
+        {
+          "reads": "getAgentToolTree.actions",
+          "organism": "agentToolTree"
+        },
+        {
+          "reads": "listAutomaticToolChoices.choices",
+          "organism": "automaticToolChoices"
+        }
+      ],
+      "selections": []
+    },
+    "endpoints": [
+      {
+        "id": "getAgentToolTree",
+        "kind": "qry",
+        "when": "onLoad",
+        "input": [
+          {
+            "name": "agentId",
+            "type": "string",
+            "origin": {
+              "kind": "context",
+              "paths": [
+                "AgentTool.agentId"
+              ]
+            }
+          }
+        ],
+        "jsdoc": {
+          "input": "agentId: the cm id of the agent opened from the URL.",
+          "output": "agentName and the list of every catalog action with its readable names, description, status and removal date, plus agentTool (id, version, on/off, who chose, when) when the agent has a choice for it.",
+          "purpose": "Loads the agent's name and the whole tool catalog as module / subject / action entries, each with the agent's current choice for it.",
+          "processing": "Reads the agent name from the cm. Reads every tool of the catalog (available and removed, per agentToolsShowWholeCatalog) via agents.toolTree, and all tool choices of the agent in one listByForeignKey read, joining them by tool. Sorted by module title, subject title and action name. decidedBy is resolved to the admin's readable name via read.mdmRecord (noTechnicalIdsOnScreen); toolName and toolRemoved are derived from the catalog at read time (removedToolNeverSent: removed tools are shown as removed). Tool.toolKey and catalogItem are never returned."
+        },
+        "rules": [
+          "agentToolsShowWholeCatalog",
+          "noTechnicalIdsOnScreen",
+          "removedToolNeverSent"
+        ],
+        "output": [
+          {
+            "name": "agentName",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Agent.name"
+              ]
+            }
+          },
+          {
+            "name": "actions",
+            "type": "ToolTreeAction[]",
+            "origin": null
+          }
+        ]
+      },
+      {
+        "id": "listAutomaticToolChoices",
+        "kind": "qry",
+        "when": "onLoad",
+        "input": [
+          {
+            "name": "agentId",
+            "type": "string",
+            "origin": {
+              "kind": "context",
+              "paths": [
+                "AgentTool.agentId"
+              ]
+            }
+          }
+        ],
+        "jsdoc": {
+          "input": "agentId: the cm id of the agent opened from the URL.",
+          "output": "The automatic choices with on/off, automatic origin (draft suggestion or catalog refresh), when, tool name, removed mark and the release label of the tool.",
+          "purpose": "Lists the tool choices of the agent that were made automatically, newest first.",
+          "processing": "Locates the agent's tool choices with choiceSource = automatic (locate.byColumn), ordered by decidedAt descending. Joins the tool to read its releaseLabel; toolName and toolRemoved are derived from the catalog. Choices the admin has made are never listed here, since adminChoiceNeverOverridden keeps them out of automatic steps."
+        },
+        "rules": [
+          "adminChoiceNeverOverridden",
+          "draftSuggestedToolsTurnedOn",
+          "newToolsChosenFromDescription"
+        ],
+        "output": [
+          {
+            "name": "choices",
+            "type": "AutomaticToolChoice[]",
+            "origin": null
+          }
+        ]
+      },
+      {
+        "id": "enableUnchosenTool",
+        "kind": "cmd",
+        "when": "enableUnchosenTool",
+        "input": [
+          {
+            "name": "agentId",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.agentId"
+              ]
+            }
+          },
+          {
+            "name": "toolId",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.toolId"
+              ]
+            }
+          },
+          {
+            "name": "enabled",
+            "type": "boolean",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.enabled"
+              ]
+            }
+          }
+        ],
+        "jsdoc": {
+          "input": "agentId: cm id of the agent; toolId: the catalog action ticked; enabled: the ticked state, true.",
+          "output": "The catalog action with its tool data and its new agentTool choice, on, chosen by the admin, with id and version.",
+          "purpose": "Creates the agent's first choice for a catalog action the admin has just ticked.",
+          "processing": "Per markingWithoutChoiceCreatesAdminChoice, creates the AgentTool for this agent and tool as on with choiceSource = admin and decidedBy = the logged admin; decidedAt is filled by the system. oneChoicePerAgentAndTool: refuses when a choice already exists for this pair (the page must then use toggleToolChoice). Being an admin choice, it is never changed by later automatic steps (adminChoiceNeverOverridden)."
+        },
+        "rules": [
+          "markingWithoutChoiceCreatesAdminChoice",
+          "oneChoicePerAgentAndTool",
+          "adminChoiceNeverOverridden"
+        ],
+        "output": [
+          {
+            "name": "action",
+            "type": "ToolTreeAction",
+            "origin": null
+          }
+        ],
+        "writes": "AgentTool.create"
+      },
+      {
+        "id": "toggleToolChoice",
+        "kind": "cmd",
+        "when": "toggleToolChoice",
+        "input": [
+          {
+            "name": "id",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.id"
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "type": "number",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.version"
+              ]
+            }
+          },
+          {
+            "name": "enabled",
+            "type": "boolean",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "AgentTool.enabled"
+              ]
+            }
+          }
+        ],
+        "jsdoc": {
+          "input": "id and version: the existing choice and the version the page holds; enabled: the new on/off value.",
+          "output": "The catalog action with its tool data and the updated agentTool choice in its new state and version.",
+          "purpose": "Turns an existing tool choice of the agent on or off.",
+          "processing": "Checks the version (optimistic concurrency). Changes only enabled, sets choiceSource = admin and decidedBy = the logged admin; decidedAt is refreshed by the system. From then on no automatic step changes this choice (adminChoiceNeverOverridden). No new choice is created (markingWithoutChoiceCreatesAdminChoice, oneChoicePerAgentAndTool)."
+        },
+        "rules": [
+          "markingWithoutChoiceCreatesAdminChoice",
+          "adminChoiceNeverOverridden",
+          "oneChoicePerAgentAndTool"
+        ],
+        "output": [
+          {
+            "name": "action",
+            "type": "ToolTreeAction",
+            "origin": null
+          }
+        ],
+        "writes": "AgentTool.update"
+      }
+    ]
+  },
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:623c7f8ebae14ba82ff42a31b77cc41d5f3c45b5b7ac33c0f5abe2d6b313a978",
+  "promptHash": "sha256:2f7fd377acc146eed4a52e8aa30911379186d4f883f2b06dee910a7496d61ee8",
+  "promptChars": 52664,
+  "repairPromptChars": 52664,
+  "designHash": "sha256:9057e55c668fd8c58d639b32e1959b3b92f51ee517fc6a5c017e26bfc482df99"
+}

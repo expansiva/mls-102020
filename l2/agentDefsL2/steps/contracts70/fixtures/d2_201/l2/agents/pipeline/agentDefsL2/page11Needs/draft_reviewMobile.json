@@ -1,0 +1,91 @@
+{
+  "organisms": {
+    "draftSummary": {
+      "reads": [
+        "AgentDraft.name",
+        "AgentDraft.summary",
+        "AgentDraft.audience",
+        "AgentDraft.onBehalfOf",
+        "AgentDraft.proposedBehavior",
+        "AgentDraft.prompt",
+        "AgentDraft.situation",
+        "AgentDraft.requestedBy",
+        "AgentDraft.requestedAt"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "draftTools": {
+      "reads": [
+        "AgentTool.toolId",
+        "AgentTool.details.toolName",
+        "AgentTool.enabled",
+        "AgentTool.choiceSource",
+        "AgentTool.details.decidedAt",
+        "AgentTool.details.toolRemoved",
+        "Tool.details.moduleTitle",
+        "Tool.details.subjectTitle",
+        "Tool.name",
+        "Tool.details.description",
+        "Tool.status"
+      ],
+      "edits": [
+        "AgentTool.enabled"
+      ],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "saveDraftTools",
+          "write": "AgentTool.update"
+        }
+      ]
+    },
+    "draftSimulation": {
+      "reads": [
+        "AgentSimulation.agent",
+        "AgentSimulation.toolVerdicts.moduleName",
+        "AgentSimulation.toolVerdicts.subjectName",
+        "AgentSimulation.toolVerdicts.actionName",
+        "AgentSimulation.toolVerdicts.canUse",
+        "AgentSimulation.toolVerdicts.reason",
+        "AgentSimulation.toolVerdicts.reasonText",
+        "AgentSimulation.understanding.asksForAction",
+        "AgentSimulation.understanding.moduleName",
+        "AgentSimulation.understanding.subjectName",
+        "AgentSimulation.understanding.actions.actionName",
+        "AgentSimulation.understanding.explanation",
+        "OrganizationUser.details.identification.name",
+        "OrganizationUser.details.identification.status",
+        "OrganizationUser.details.agents.loginEmail"
+      ],
+      "edits": [
+        "AgentSimulation.level",
+        "AgentSimulation.subjectKind",
+        "AgentSimulation.person",
+        "AgentSimulation.roleName",
+        "AgentSimulation.sentence"
+      ],
+      "selects": "",
+      "submits": []
+    },
+    "draftDecision": {
+      "reads": [
+        "AgentDraft.name",
+        "AgentDraft.situation"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "activateDraft",
+          "write": "AgentDraft.activate"
+        },
+        {
+          "intentId": "discardDraft",
+          "write": "AgentDraft.discard"
+        }
+      ]
+    }
+  }
+}

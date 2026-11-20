@@ -1,0 +1,698 @@
+{
+  "schemaVersion": "2026-09-10-ns5-pipeline-v1",
+  "flowId": "agentNewSolution5",
+  "moduleName": "agents",
+  "status": "complete",
+  "steps": {
+    "module10": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T01:09:44.179Z",
+      "artifactPaths": [
+        "l4/agents/module.defs.ts"
+      ],
+      "compile": {
+        "status": "clean",
+        "files": 1
+      },
+      "actors": [
+        {
+          "actorId": "companyAdmin",
+          "kind": "internal",
+          "origin": "named",
+          "title": "Company admin",
+          "description": "Creates virtual employees, reviews and activates or discards drafts, changes agent behavior, adjusts each agent's tools, configures agents, simulates them by role and marks per person the tools that person may not use through any agent."
+        },
+        {
+          "actorId": "organizationMember",
+          "kind": "internal",
+          "origin": "named",
+          "title": "Organization member",
+          "description": "Sees the agents and their activity, simulates an agent as themselves and changes only their own conduct with an agent that acts on their behalf."
+        }
+      ],
+      "autoReason": "fast"
+    },
+    "journeys20": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T01:11:11.937Z",
+      "artifactPaths": [
+        "l4/agents/journeys/createVirtualEmployee.defs.ts",
+        "l4/agents/journeys/reviewAndActivateDraft.defs.ts",
+        "l4/agents/journeys/changeAgentBehavior.defs.ts",
+        "l4/agents/journeys/adjustAgentTools.defs.ts",
+        "l4/agents/journeys/configureAgent.defs.ts",
+        "l4/agents/journeys/simulateAgentByRole.defs.ts",
+        "l4/agents/journeys/restrictPersonTools.defs.ts",
+        "l4/agents/journeys/followAgentActivity.defs.ts",
+        "l4/agents/journeys/simulateAsMyself.defs.ts",
+        "l4/agents/journeys/changeMyConduct.defs.ts",
+        "l4/agents/journeys/index.defs.ts"
+      ],
+      "decideStepCount": 1,
+      "droppedActors": [],
+      "compile": {
+        "status": "clean",
+        "files": 11
+      },
+      "autoReason": "fast"
+    },
+    "workflows50": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T01:11:39.770Z",
+      "artifactPaths": [
+        "l4/agents/workflows.defs.ts"
+      ],
+      "compile": {
+        "status": "clean",
+        "files": 1
+      },
+      "autoReason": "fast"
+    },
+    "ontology30": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T01:13:04.622Z",
+      "artifactPaths": [
+        "l4/agents/ontology/Agent.defs.ts",
+        "l4/agents/ontology/AgentDraft.defs.ts",
+        "l4/agents/ontology/AgentBehavior.defs.ts",
+        "l4/agents/ontology/PersonalConduct.defs.ts",
+        "l4/agents/ontology/AgentSimulation.defs.ts",
+        "l4/agents/ontology/Tool.defs.ts",
+        "l4/agents/ontology/AgentTool.defs.ts",
+        "l4/agents/ontology/PersonToolRestriction.defs.ts",
+        "l4/agents/ontology/ExecutionSummary.defs.ts",
+        "l4/agents/ontology/OrganizationUser.defs.ts",
+        "l4/agents/ontology/index.defs.ts"
+      ],
+      "uncitedEntities": [
+        "Tool",
+        "OrganizationUser"
+      ],
+      "liftedAggregateEntities": [],
+      "compile": {
+        "status": "clean",
+        "files": 11
+      },
+      "normalizations": [
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "Agent",
+          "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "AgentDraft",
+          "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "AgentBehavior",
+          "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "PersonalConduct",
+          "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "AgentSimulation",
+          "detail": "source /_102034_/l4/ontology/connections/cm.defs.ts"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "Tool",
+          "detail": "storage.table agents_tool"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "AgentTool",
+          "detail": "storage.table agents_agenttool"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "PersonToolRestriction",
+          "detail": "storage.table agents_persontoolrestriction"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "ExecutionSummary",
+          "detail": "storage.table agents_executionsummary"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "OrganizationUser",
+          "detail": "roleTag agents.OrganizationUser; source /_102034_/l4/ontology/mdm.defs.ts"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "Tool",
+          "detail": "record.fields.id, record.fields.version"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "Tool",
+          "detail": "record.fields.details.fields.usedByAgents.derived (derived[])"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "AgentTool",
+          "detail": "record.fields.id, record.fields.version"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "AgentTool",
+          "detail": "record.fields.details.fields.toolName.derived (derived[])"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "AgentTool",
+          "detail": "record.fields.details.fields.toolRemoved.derived (derived[])"
+        },
+        {
+          "kind": "displayFieldResolved",
+          "entityId": "AgentTool",
+          "detail": "toolName → details.toolName"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "PersonToolRestriction",
+          "detail": "record.fields.id, record.fields.version"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "PersonToolRestriction",
+          "detail": "record.fields.details.fields.toolName.derived (derived[])"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "PersonToolRestriction",
+          "detail": "record.fields.details.fields.toolPath.derived (derived[])"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "PersonToolRestriction",
+          "detail": "record.fields.details.fields.toolRemoved.derived (derived[])"
+        },
+        {
+          "kind": "displayFieldResolved",
+          "entityId": "PersonToolRestriction",
+          "detail": "toolName → details.toolName"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "ExecutionSummary",
+          "detail": "record.fields.id, record.fields.version"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "OrganizationUser",
+          "detail": "record.fields.id, record.fields.version"
+        },
+        {
+          "kind": "derivedFromPlatform",
+          "entityId": "OrganizationUser",
+          "detail": "record.fields.details.agents.fields.loginEmail.derived (derived[])"
+        }
+      ],
+      "citedRules": [
+        "agentNameUniqueAmongActive",
+        "agentDraftSuggestedToolsOnWhenReady",
+        "agentDraftNoticeIdempotent",
+        "adminChoiceNotOverriddenByAutomatic",
+        "agentBehaviorChangedOnlyThroughCm",
+        "behaviorChangeByAdminOnly",
+        "undoRestoresPreviousBehavior",
+        "ownConductOnly",
+        "conductOnlyForAgentActingOnBehalf",
+        "simulationSavesNothing",
+        "memberSimulatesOnlyAsSelf",
+        "adminSimulatesByRole",
+        "onlyToolsOnAreConsidered",
+        "personRestrictionAppliesInRequest",
+        "noTechnicalIdsOnScreen",
+        "toolKeyUnique",
+        "toolNeverDeleted",
+        "catalogRebuiltOnRelease",
+        "removedToolNotSent",
+        "adminChoiceNeverOverridden",
+        "oneChoicePerAgentAndTool",
+        "onlyEnabledToolsSent",
+        "removedToolNeverSent",
+        "personRestrictionsExcludeTools",
+        "repeatedNoticeChangesNothing",
+        "draftSuggestedToolsTurnedOn",
+        "restrictionUniquePerPersonTool",
+        "restrictionAppliesThroughAnyAgent",
+        "onlyCompanyAdminRestrictsTools",
+        "removedToolRestrictionKept",
+        "executionRecordedOnce",
+        "onlyInboundWritesExecution",
+        "executionNeverEdited",
+        "rule-foreign-namespace-refused",
+        "rule-identity-never-in-namespace",
+        "rule-document-shape-validated",
+        "onlyActiveUsersRestricted"
+      ],
+      "citedCapabilities": [
+        "read.byId",
+        "locate.byColumn",
+        "locate.byText",
+        "count",
+        "create",
+        "update",
+        "transition",
+        "uniqueKey",
+        "transaction",
+        "agents.rebuildCatalog",
+        "agents.toolTree",
+        "listByForeignKey",
+        "read.mdmRecord",
+        "agents.toolsForRequest",
+        "delete",
+        "agents.availableToolsForPerson",
+        "agents.openConversation",
+        "locate.users",
+        "locate.byName",
+        "listLinks"
+      ],
+      "autoReason": "fast"
+    },
+    "judge35": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T01:13:38.592Z",
+      "artifactPaths": [
+        "l4/agents/pipeline/judge35-draft.json"
+      ],
+      "normalizations": [
+        {
+          "kind": "switchKeptAsField",
+          "detail": "switchKeptAsField Agent.isOn",
+          "entityId": "Agent"
+        },
+        {
+          "kind": "switchKeptAsField",
+          "detail": "switchKeptAsField ExecutionSummary.tookOver",
+          "entityId": "ExecutionSummary"
+        },
+        {
+          "kind": "judgeComment",
+          "detail": "NS5_JUDGE_ORPHAN_PERSISTS switch:AgentTool.enabled: judge35: written switches still need a lifecycle after ontology repair: AgentTool.enabled."
+        }
+      ],
+      "autoReason": "fast"
+    },
+    "rules40": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T01:14:01.605Z",
+      "artifactPaths": [
+        "l4/agents/rules.defs.ts"
+      ],
+      "compile": {
+        "status": "clean",
+        "files": 1
+      },
+      "autoReason": "fast"
+    },
+    "access60": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T01:14:12.749Z",
+      "artifactPaths": [
+        "l4/agents/access.defs.ts"
+      ],
+      "compile": {
+        "status": "clean",
+        "files": 1
+      },
+      "autoReason": "fast"
+    },
+    "integration70": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T01:14:40.338Z",
+      "artifactPaths": [
+        "l4/agents/integration.defs.ts"
+      ],
+      "compile": {
+        "status": "clean",
+        "files": 1
+      },
+      "autoReason": "fast"
+    },
+    "finalize80": {
+      "status": "approved",
+      "updatedAt": "2026-11-18T01:14:40.531Z",
+      "artifactPaths": [
+        "l4/agents/pipeline/finalize-report.json",
+        "l4/organization/registry.defs.ts",
+        "l5/config.json",
+        "l5/project.json"
+      ],
+      "autoReason": "fast"
+    }
+  },
+  "sourcePrompt": "Agents module: the home of the company's AI agents inside the app, and a showcase of collab. The agents live in the cm (collab messages): who each agent is, its definition, its behavior (role and state texts), whether it is on, who is responsible for it, its limits, its drafts and what it did. This module stores none of that: it shows it and changes it through the cm. This module owns only the tools: the catalog of actions of the app modules and the cm tools, which tools each agent has on, and which people may not use a tool. First screen: the list of agents from the cm, drafts included with their situation (preparing, ready, or refused with the reason). Each card shows the name, who the agent talks to, whether it is on and who is responsible. The first screen also offers to create a new virtual employee. Create a virtual employee: the company admin describes the new agent and its functions in a prompt. The cm prepares a draft from it, with the suggested tools from the catalog, or refuses it with a reason. When the draft is ready, the admin reviews it, adjusts its tools, simulates it and activates it, or discards it. Agent screen, one per agent, with scenarios: - overview: what the agent is, who it talks to and on whose behalf it acts; read only; - behavior: the current behavior in plain language, a box \"what do you want to change\", the history of changes with who, when and a one-line summary, and undo; - tools: a tree module / subject / action with readable names and a description, and a checkbox per action to turn it on or off for this agent; a choice the admin made is never changed by the automatic choice; - configuration: the name people use to call the agent in a chat (shown as @name), on or off, the responsible person, and the limits as the cm lists them; - activity: what the agent did, newest first, from the execution summaries the cm sends: when, how long, cost, the actions and their results, whether a person took over, and the link to the conversation; - simulation, at two levels: \"what it can\" (for a chosen person or role, which tools can or cannot be used and why) and \"what it understands\" (for a sentence: whether it asks for an action, which path of the tree and which actions). People restrictions: the company admin marks, per person, the tools that person may not use through any agent, as a checkbox list. An agent's name is how people call it in a chat (@name), and it then acts in its own name. The cm refuses a name already used by another active agent, and the screen says so. When someone calls an agent by name, the tools that person may not use are not available to the agent in that request. Tool catalog: rebuilt when a module is created or a new release arrives. New tools are chosen per agent from the agent description, and the admin adjusts them. A tool that leaves the release is marked removed and never deleted. The cm asks this module, for an agent and a person, which tools the agent has on and which of them that person may use now; only tools that are on are sent. The cm sends a summary of each finished execution, and the same execution is never recorded twice. The cm tells this module when a draft is ready or refused. When a draft is ready, its suggested tools are turned on for that agent in this module; the draft itself stays in the cm. A notice that arrives again changes nothing. Everything works with no screen open. Screens are simple for an ordinary person and never show technical ids. People: the company admin creates, activates, changes the behavior of, adjusts the tools of and simulates agents, simulating by role. Every organization member sees the agents, simulates as themselves and changes only their own conduct with an agent that acts on their behalf.",
+  "invocation": {
+    "fast": true,
+    "module": "agents",
+    "rebuildAll": true
+  },
+  "updatedAt": "2026-11-20T19:34:58.864Z",
+  "messageThreadId": "20260511215938.1000",
+  "rebuildAll": {
+    "deleted": [
+      "l4/agents/access.defs.ts",
+      "l4/agents/integration.defs.ts",
+      "l4/agents/journeys/adjustAgentTools.defs.ts",
+      "l4/agents/journeys/browseAgents.defs.ts",
+      "l4/agents/journeys/changeAgentBehavior.defs.ts",
+      "l4/agents/journeys/changeOwnConduct.defs.ts",
+      "l4/agents/journeys/configureAgent.defs.ts",
+      "l4/agents/journeys/createVirtualEmployee.defs.ts",
+      "l4/agents/journeys/index.defs.ts",
+      "l4/agents/journeys/restrictPersonTools.defs.ts",
+      "l4/agents/journeys/reviewAgentActivity.defs.ts",
+      "l4/agents/journeys/reviewAgentDraft.defs.ts",
+      "l4/agents/journeys/simulateAgentByRole.defs.ts",
+      "l4/agents/journeys/simulateAsSelf.defs.ts",
+      "l4/agents/module.defs.ts",
+      "l4/agents/ontology/Agent.defs.ts",
+      "l4/agents/ontology/AgentDraft.defs.ts",
+      "l4/agents/ontology/AgentExecution.defs.ts",
+      "l4/agents/ontology/AgentSimulation.defs.ts",
+      "l4/agents/ontology/AgentTool.defs.ts",
+      "l4/agents/ontology/BehaviorChange.defs.ts",
+      "l4/agents/ontology/DraftNotice.defs.ts",
+      "l4/agents/ontology/OrganizationUser.defs.ts",
+      "l4/agents/ontology/PersonToolRestriction.defs.ts",
+      "l4/agents/ontology/Tool.defs.ts",
+      "l4/agents/ontology/index.defs.ts",
+      "l4/agents/pipeline/access60-draft.json",
+      "l4/agents/pipeline/finalize-report.json",
+      "l4/agents/pipeline/integration70-draft.json",
+      "l4/agents/pipeline/journeys20-draft.json",
+      "l4/agents/pipeline/judge35-draft.json",
+      "l4/agents/pipeline/module10-draft.json",
+      "l4/agents/pipeline/ontology30-draft.json",
+      "l4/agents/pipeline/ontology30-entity-Agent-draft.json",
+      "l4/agents/pipeline/ontology30-entity-AgentDraft-draft.json",
+      "l4/agents/pipeline/ontology30-entity-AgentExecution-draft.json",
+      "l4/agents/pipeline/ontology30-entity-AgentSimulation-draft.json",
+      "l4/agents/pipeline/ontology30-entity-AgentTool-draft.json",
+      "l4/agents/pipeline/ontology30-entity-BehaviorChange-draft.json",
+      "l4/agents/pipeline/ontology30-entity-DraftNotice-draft.json",
+      "l4/agents/pipeline/ontology30-entity-OrganizationUser-draft.json",
+      "l4/agents/pipeline/ontology30-entity-PersonToolRestriction-draft.json",
+      "l4/agents/pipeline/ontology30-entity-Tool-draft.json",
+      "l4/agents/pipeline/ontology30-plan-draft.json",
+      "l4/agents/pipeline/pipeline.json",
+      "l4/agents/pipeline/rules40-draft.json",
+      "l4/agents/pipeline/run01_newsolution5.json",
+      "l4/agents/pipeline/workflows50-draft.json",
+      "l4/agents/pool/l1/pipeline.json",
+      "l4/agents/pool/l1/web/l4diff.json",
+      "l4/agents/pool/l1/web/needs.json",
+      "l4/agents/pool/l2/effort40-draft.json",
+      "l4/agents/pool/l2/menu20-draft.json",
+      "l4/agents/pool/l2/needs30-draft.json",
+      "l4/agents/pool/l2/pipeline.json",
+      "l4/agents/pool/l2/responses/menu20/menu-1.json",
+      "l4/agents/pool/l2/web/backend.json",
+      "l4/agents/pool/l2/web/effort.json",
+      "l4/agents/pool/l2/web/l4diff.json",
+      "l4/agents/pool/l2/web/menu.json",
+      "l4/agents/rules.defs.ts",
+      "l4/agents/workflows.defs.ts"
+    ],
+    "edited": [
+      "l4/organization/registry.defs.ts",
+      "l5/config.json",
+      "l5/project.json"
+    ],
+    "at": "2026-11-18T01:09:43.928Z"
+  },
+  "poolWiped": [
+    "l4/agents/pool/l1/web/l4diff.json",
+    "l4/agents/pool/l1/web/needs.json",
+    "l4/agents/pool/l1/web/postprocess.json",
+    "l4/agents/pool/l2/web/l4diff.json",
+    "l4/agents/pool/l2/web/menu.json",
+    "l4/agents/pool/l2/web/backend.json",
+    "l4/agents/pool/l2/web/effort.json"
+  ],
+  "pool": [
+    {
+      "at": "2026-11-18T01:15:00.569Z",
+      "file": "l4/agents/pool/l2/20261118011500_agents-20261118011500_1.json",
+      "from": "l4",
+      "to": "l2",
+      "thread": "agents-20261118011500",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T01:15:38.880Z",
+      "file": "l4/agents/pool/l1/20261118011538_agents-20261118011500_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261118011500",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T01:15:39.467Z",
+      "file": "l4/agents/pool/l2/20261118011539_agents-20261118011500_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261118011500",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T01:15:40.039Z",
+      "file": "l4/agents/pool/l4/20261118011539_agents-20261118011500_1.json",
+      "from": "l2",
+      "to": "l4",
+      "thread": "agents-20261118011500",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    },
+    {
+      "at": "2026-11-18T03:55:58.036Z",
+      "file": "l4/agents/pool/l2/20261118035558_agents-20261118035558_1.json",
+      "from": "l4",
+      "to": "l2",
+      "thread": "agents-20261118035558",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T03:56:27.178Z",
+      "file": "l4/agents/pool/l1/20261118035626_agents-20261118035558_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261118035558",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T03:56:27.741Z",
+      "file": "l4/agents/pool/l2/20261118035627_agents-20261118035558_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261118035558",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T03:56:28.268Z",
+      "file": "l4/agents/pool/l4/20261118035628_agents-20261118035558_1.json",
+      "from": "l2",
+      "to": "l4",
+      "thread": "agents-20261118035558",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    },
+    {
+      "at": "2026-11-18T10:21:07.691Z",
+      "file": "l4/agents/pool/l2/20261118102107_agents-20261118102107_1.json",
+      "from": "l4",
+      "to": "l2",
+      "thread": "agents-20261118102107",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T10:21:36.643Z",
+      "file": "l4/agents/pool/l1/20261118102136_agents-20261118102107_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261118102107",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T10:21:37.231Z",
+      "file": "l4/agents/pool/l2/20261118102137_agents-20261118102107_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261118102107",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-18T10:21:37.788Z",
+      "file": "l4/agents/pool/l4/20261118102137_agents-20261118102107_1.json",
+      "from": "l2",
+      "to": "l4",
+      "thread": "agents-20261118102107",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    },
+    {
+      "at": "2026-11-20T09:18:17.022Z",
+      "file": "l4/agents/pool/l2/20261120091817_agents-20261120091817_1.json",
+      "from": "l4",
+      "to": "l2",
+      "thread": "agents-20261120091817",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T09:18:46.176Z",
+      "file": "l4/agents/pool/l1/20261120091845_agents-20261120091817_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261120091817",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T09:18:53.018Z",
+      "file": "l4/agents/pool/l2/20261120091852_agents-20261120091817_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261120091817",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T09:18:53.718Z",
+      "file": "l4/agents/pool/l4/20261120091853_agents-20261120091817_1.json",
+      "from": "l2",
+      "to": "l4",
+      "thread": "agents-20261120091817",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    },
+    {
+      "at": "2026-11-20T13:53:30.075Z",
+      "file": "l4/agents/pool/l2/20261120135330_agents-20261120135330_1.json",
+      "from": "l4",
+      "to": "l2",
+      "thread": "agents-20261120135330",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T13:53:58.932Z",
+      "file": "l4/agents/pool/l1/20261120135358_agents-20261120135330_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261120135330",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T13:54:05.629Z",
+      "file": "l4/agents/pool/l2/20261120135405_agents-20261120135330_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261120135330",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T13:54:06.217Z",
+      "file": "l4/agents/pool/l4/20261120135405_agents-20261120135330_1.json",
+      "from": "l2",
+      "to": "l4",
+      "thread": "agents-20261120135330",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    },
+    {
+      "at": "2026-11-20T19:34:17.410Z",
+      "file": "l4/agents/pool/l2/20261120193417_agents-20261120193417_1.json",
+      "from": "l4",
+      "to": "l2",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T19:34:51.644Z",
+      "file": "l4/agents/pool/l1/20261120193451_agents-20261120193417_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T19:34:58.289Z",
+      "file": "l4/agents/pool/l2/20261120193458_agents-20261120193417_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T19:34:58.818Z",
+      "file": "l4/agents/pool/l4/20261120193458_agents-20261120193417_1.json",
+      "from": "l2",
+      "to": "l4",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    }
+  ],
+  "plOrchestration": [
+    {
+      "round": 1,
+      "l2": "done",
+      "l1": "done",
+      "effort": "done"
+    },
+    {
+      "round": 2,
+      "l2": "skipped",
+      "l1": "skipped",
+      "effort": "skipped"
+    }
+  ]
+}

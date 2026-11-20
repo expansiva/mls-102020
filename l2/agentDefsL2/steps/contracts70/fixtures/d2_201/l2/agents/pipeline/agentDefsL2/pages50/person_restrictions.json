@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "2026-09-30-agent-defs-l2-pages-v2.1",
+  "needsVersion": "2026-09-30-agent-defs-l2-page11-needs-v1",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "person_restrictions",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:df1a2521a051428bb55837cb00387d60f25c9aed098988320c5e24c51c1fccf1",
+  "template": {
+    "category": "userAccessManagement",
+    "experience": "memberDirectory",
+    "reason": "The page manages what one organization user may do: the admin picks a person and marks the tools that person may not use through any agent. That is a per-user permission screen, so it fits User Access Management on both devices. Derived memberDirectory from userAccessManagement.page21.",
+    "reference": "_102020_/l4/collabux/templates/userAccessManagement/page21.md",
+    "hash": "sha256:4c256ecdebb83339ce63a93febc58dda173da2d9066216f1feffb0fe4de62fa2",
+    "catalogHash": "sha256:285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc"
+  },
+  "moleculeInventoryHash": "sha256:a243774aee05d980d07cae75cf2e574b3a9c93761f3cec240a457e3dc5d5b78d",
+  "moleculeHashes": {
+    "/_102040_/l2/molecules/groupselectone/index.defs": "sha256:6cd31103bd70d5d83feffcc8fe97dbbdbbd1cd3912cf50251c8e650f412b882a",
+    "/_102020_/l2/aura/molecules/skills/groupSelectOne/usage": "sha256:c73313923583dcf4d758e1ef6ec4db945f48d5f5211fdc9c9e2d247ca90f0234",
+    "/_102040_/l2/molecules/groupselectmany/index.defs": "sha256:f4eb38abdd200520a97d15aed88f64cb20b3318dd3554eb663e92c6fd6d5a500",
+    "/_102020_/l2/aura/molecules/skills/groupSelectMany/usage": "sha256:0a14fb284e4c804e61e5e6204b5954bc37e11a28be76ddde7b18dbb542210941",
+    "/_102040_/l2/molecules/groupviewtable/index.defs": "sha256:3e2e055853cf7b3fb3d01991dcfd148dc9030d8b9cbef76640feb87157f0d4f9",
+    "/_102020_/l2/aura/molecules/skills/groupViewTable/usage": "sha256:21dcc060fd27d97540007a97963472de294713e9d47778820d88a401b36f13fe"
+  },
+  "moleculeGroupAssessments": [
+    {
+      "organismId": "organism1",
+      "groups": [
+        {
+          "groupId": "groupSelectOne",
+          "relevant": true
+        }
+      ]
+    },
+    {
+      "organismId": "organism2",
+      "groups": [
+        {
+          "groupId": "groupSelectMany",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewTable",
+          "relevant": true
+        }
+      ]
+    }
+  ],
+  "skillHash": "sha256:c3517179ccbde253ae6f8f2824b85092ccd698ba82925d87739370ba48f2e9d8",
+  "promptHash": "sha256:7c32290937225111880488f28364629141f1c1a16cff64eafa536c2ebaa93455",
+  "promptChars": 63173,
+  "repairPromptChars": 0,
+  "sourceHashes": {
+    "desktop": "sha256:e104c2da7e354e3c42e4bdb0f285832a78919649411e0563fb89efbd47ebb55e",
+    "mobile": "sha256:526159f62d8b082c553453c648d3ddfd7c8a56234fdcd1cf0e0bc40a66cb98e1"
+  },
+  "needsHashes": {
+    "desktop": "sha256:9ed14630e60f7edbea2787ed78b0e09e2303f8f70a0fc6838bb8edf0524280b8",
+    "mobile": "sha256:a235863bf3c5cd660eb0a77d370af20c456335262422d743fd63203df16147fb"
+  },
+  "menuOrigins": [
+    {
+      "organismId": "personPicker",
+      "sourceIndex": 0,
+      "kind": "list",
+      "text": "Choose a person from the organization, with their login e-mail"
+    },
+    {
+      "organismId": "blockedToolsChecklist",
+      "sourceIndex": 1,
+      "kind": "list",
+      "text": "Tools that person may not use through any agent: tool, where it sits, when it was marked and whether it left the release; tick or untick each one"
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+{
+  "candidates": [
+    {
+      "kind": "writtenSwitch",
+      "candidateId": "switch:Agent.isOn",
+      "entityId": "Agent",
+      "fieldId": "isOn",
+      "title": "On",
+      "type": "boolean",
+      "citedBy": [
+        "process:virtualEmployeeCreation",
+        "process:virtualEmployeeCreation.describeNewAgent",
+        "process:virtualEmployeeCreation.waitDraftPreparation",
+        "process:virtualEmployeeCreation.applySuggestedTools",
+        "process:toolCatalogRefresh",
+        "process:toolCatalogRefresh.rebuildCatalog",
+        "process:toolCatalogRefresh.chooseNewToolsPerAgent",
+        "process:executionRecording",
+        "process:executionRecording.recordExecution",
+        "derived:Tool.version",
+        "derived:Tool.usedByAgents",
+        "derived:AgentTool.version",
+        "derived:AgentTool.decidedAt",
+        "derived:AgentTool.toolName",
+        "derived:PersonToolRestriction.version",
+        "derived:PersonToolRestriction.markedAt",
+        "derived:PersonToolRestriction.toolName",
+        "derived:PersonToolRestriction.toolPath",
+        "derived:PersonToolRestriction.toolRemoved",
+        "derived:ExecutionSummary.version",
+        "derived:OrganizationUser.id",
+        "derived:OrganizationUser.version",
+        "derived:OrganizationUser.status",
+        "derived:OrganizationUser.tags",
+        "derived:OrganizationUser.loginEmail"
+      ]
+    },
+    {
+      "kind": "writtenSwitch",
+      "candidateId": "switch:AgentTool.enabled",
+      "entityId": "AgentTool",
+      "fieldId": "enabled",
+      "title": "On",
+      "type": "boolean",
+      "citedBy": [
+        "process:virtualEmployeeCreation",
+        "process:virtualEmployeeCreation.describeNewAgent",
+        "process:virtualEmployeeCreation.waitDraftPreparation",
+        "process:virtualEmployeeCreation.applySuggestedTools",
+        "process:toolCatalogRefresh",
+        "process:toolCatalogRefresh.rebuildCatalog",
+        "process:toolCatalogRefresh.chooseNewToolsPerAgent",
+        "process:executionRecording",
+        "process:executionRecording.recordExecution",
+        "derived:Tool.version",
+        "derived:Tool.usedByAgents",
+        "derived:PersonToolRestriction.version",
+        "derived:PersonToolRestriction.markedAt",
+        "derived:PersonToolRestriction.toolName",
+        "derived:PersonToolRestriction.toolPath",
+        "derived:PersonToolRestriction.toolRemoved",
+        "derived:ExecutionSummary.version",
+        "derived:OrganizationUser.id",
+        "derived:OrganizationUser.version",
+        "derived:OrganizationUser.status",
+        "derived:OrganizationUser.tags",
+        "derived:OrganizationUser.loginEmail"
+      ]
+    },
+    {
+      "kind": "writtenSwitch",
+      "candidateId": "switch:ExecutionSummary.tookOver",
+      "entityId": "ExecutionSummary",
+      "fieldId": "tookOver",
+      "title": "A person took over",
+      "type": "boolean",
+      "citedBy": [
+        "process:executionRecording.recordExecution"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "candidateId": "switch:Agent.isOn",
+      "verdict": "transitionUnjustified",
+      "journeyBrief": {
+        "actor": "",
+        "title": "",
+        "goal": "",
+        "transitionRef": ""
+      },
+      "coveredBy": "",
+      "states": []
+    },
+    {
+      "candidateId": "switch:AgentTool.enabled",
+      "verdict": "switchNeedsLifecycle",
+      "journeyBrief": {
+        "actor": "",
+        "title": "",
+        "goal": "",
+        "transitionRef": ""
+      },
+      "coveredBy": "",
+      "states": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "candidateId": "switch:ExecutionSummary.tookOver",
+      "verdict": "transitionUnjustified",
+      "journeyBrief": {
+        "actor": "",
+        "title": "",
+        "goal": "",
+        "transitionRef": ""
+      },
+      "coveredBy": "",
+      "states": []
+    }
+  ],
+  "rounds": 0,
+  "comments": [
+    {
+      "code": "NS5_JUDGE_ORPHAN_PERSISTS",
+      "message": "judge35: written switches still need a lifecycle after ontology repair: AgentTool.enabled.",
+      "candidateId": "switch:AgentTool.enabled"
+    }
+  ]
+}

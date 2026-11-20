@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "2026-10-04-agent-defs-l2-bff-v2",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_simulation",
+  "attempt": 1,
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:0f7afd5d1dbbd2c84a8dc46011b67059a12165a94c1b54194bae9cc0fb425b4b",
+  "promptHash": "sha256:2f7fd377acc146eed4a52e8aa30911379186d4f883f2b06dee910a7496d61ee8",
+  "promptChars": 49358,
+  "repairPromptChars": 0,
+  "designHash": "sha256:9353605c52b36239e768b0b0870c247db0ecc738a881394879119b8f4bd2ecb7"
+}

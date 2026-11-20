@@ -1,0 +1,18 @@
+{
+  "organisms": {
+    "agentOverviewDetail": {
+      "reads": [
+        "Agent.name",
+        "Agent.isOn",
+        "Agent.definition",
+        "Agent.talksTo",
+        "Agent.onBehalfOf",
+        "Agent.responsible",
+        "OrganizationUser.details.identification.name"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    }
+  }
+}

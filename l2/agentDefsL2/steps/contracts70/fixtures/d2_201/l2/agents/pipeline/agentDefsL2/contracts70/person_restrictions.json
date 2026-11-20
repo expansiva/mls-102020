@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "2026-10-04-agent-defs-l2-contracts-v3",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "person_restrictions",
+  "sharedHash": "sha256:597fd36227f543e0663ba30ef64f2e5f63b9d66348db7b267e24d65d8a3f4847",
+  "designHash": "sha256:6454d64fbfecff89d4afa23943b5124004dd86328898d22c98eb12a4baf031e7",
+  "sourceHash": "sha256:e0ac325db3e82d51c505c9cb799a79a1c2932ac75eec0014f036f4bfe155aa6c"
+}

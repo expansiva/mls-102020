@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2026-10-13-agent-defs-l2-shared-v5",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "person_restrictions",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "page11Hashes": {
+    "desktop": "sha256:e104c2da7e354e3c42e4bdb0f285832a78919649411e0563fb89efbd47ebb55e",
+    "mobile": "sha256:526159f62d8b082c553453c648d3ddfd7c8a56234fdcd1cf0e0bc40a66cb98e1"
+  },
+  "draftHashes": {
+    "desktop": "sha256:9ed14630e60f7edbea2787ed78b0e09e2303f8f70a0fc6838bb8edf0524280b8",
+    "mobile": "sha256:a235863bf3c5cd660eb0a77d370af20c456335262422d743fd63203df16147fb"
+  },
+  "designHash": "sha256:6454d64fbfecff89d4afa23943b5124004dd86328898d22c98eb12a4baf031e7",
+  "siblingsHash": "sha256:b705ad04c5db5a3534822014475a6bc263ab6d1b57abd0be257b5f351240e15c",
+  "sourceHash": "sha256:597fd36227f543e0663ba30ef64f2e5f63b9d66348db7b267e24d65d8a3f4847"
+}

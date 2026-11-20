@@ -1,0 +1,35 @@
+{
+  "organisms": {
+    "agentConfigurationForm": {
+      "reads": [
+        "Agent.name",
+        "Agent.isOn",
+        "Agent.responsible",
+        "OrganizationUser.details.identification.name",
+        "OrganizationUser.details.identification.status",
+        "OrganizationUser.details.agents.loginEmail"
+      ],
+      "edits": [
+        "Agent.name",
+        "Agent.isOn",
+        "Agent.responsible"
+      ],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "saveConfiguration",
+          "write": "Agent.update"
+        }
+      ]
+    },
+    "agentLimits": {
+      "reads": [
+        "Agent.limits.label",
+        "Agent.limits.value"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    }
+  }
+}

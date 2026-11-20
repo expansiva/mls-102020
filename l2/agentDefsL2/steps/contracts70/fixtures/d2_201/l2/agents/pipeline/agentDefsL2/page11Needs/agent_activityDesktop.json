@@ -1,0 +1,21 @@
+{
+  "organisms": {
+    "executionTimeline": {
+      "reads": [
+        "ExecutionSummary.startedAt",
+        "ExecutionSummary.details.durationMs",
+        "ExecutionSummary.details.cost",
+        "ExecutionSummary.details.tookOver",
+        "ExecutionSummary.details.conversationLink",
+        "ExecutionSummary.details.actions.toolName",
+        "ExecutionSummary.details.actions.result",
+        "ExecutionSummary.details.actions.resultNote",
+        "OrganizationUser.details.identification.name",
+        "Agent.name"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    }
+  }
+}

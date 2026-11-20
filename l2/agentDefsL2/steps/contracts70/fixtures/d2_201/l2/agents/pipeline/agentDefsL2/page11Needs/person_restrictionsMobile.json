@@ -1,0 +1,36 @@
+{
+  "organisms": {
+    "personPicker": {
+      "reads": [
+        "OrganizationUser.details.identification.name",
+        "OrganizationUser.details.identification.status",
+        "OrganizationUser.details.agents.loginEmail"
+      ],
+      "edits": [],
+      "selects": "blockedToolsChecklist",
+      "submits": []
+    },
+    "blockedToolsChecklist": {
+      "reads": [
+        "PersonToolRestriction.details.toolName",
+        "PersonToolRestriction.details.toolPath",
+        "PersonToolRestriction.details.markedAt",
+        "PersonToolRestriction.details.toolRemoved",
+        "Tool.name",
+        "Tool.details.moduleTitle",
+        "Tool.details.subjectTitle",
+        "Tool.status"
+      ],
+      "edits": [
+        "PersonToolRestriction.toolId"
+      ],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "saveRestrictions",
+          "write": "PersonToolRestriction.update"
+        }
+      ]
+    }
+  }
+}

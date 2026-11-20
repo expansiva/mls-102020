@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "2026-09-30-agent-defs-l2-pages-v2.1",
+  "needsVersion": "2026-09-30-agent-defs-l2-page11-needs-v1",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_overview",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:61b3b95a796893f63c7081134c64bb7c6de3a3c81997ee20396583648cc83320",
+  "template": {
+    "category": "readOnlyDetailPortal",
+    "experience": "summaryFirstStatement",
+    "reason": "The Overview is a read-only view of one chosen agent with no writes. It opens with a short summary of what the agent is, who it talks to, on whose behalf it acts, whether it is on and who is responsible. That fits readOnlyDetailPortal on both devices. Derived summaryFirstStatement from readOnlyDetailPortal.page21.",
+    "reference": "_102020_/l4/collabux/templates/readOnlyDetailPortal/page21.md",
+    "hash": "sha256:c02c87fcce6c706504f84a222ee5ce0ed38c829d238e85e335fff5c5fa314d15",
+    "catalogHash": "sha256:285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc"
+  },
+  "moleculeInventoryHash": "sha256:a243774aee05d980d07cae75cf2e574b3a9c93761f3cec240a457e3dc5d5b78d",
+  "moleculeHashes": {
+    "/_102040_/l2/molecules/groupentertext/index.defs": "sha256:38ec5d8bb137a2b12192fec3b1a9df3357f9034cc7f6106ddc8ba07dc73095db",
+    "/_102020_/l2/aura/molecules/skills/groupEnterText/usage": "sha256:ac42da7e457722bd9f08e16cb6ffdae397b3ffd9fbe02a4481e1381eb6f8a75f",
+    "/_102040_/l2/molecules/groupselectone/index.defs": "sha256:6cd31103bd70d5d83feffcc8fe97dbbdbbd1cd3912cf50251c8e650f412b882a",
+    "/_102020_/l2/aura/molecules/skills/groupSelectOne/usage": "sha256:c73313923583dcf4d758e1ef6ec4db945f48d5f5211fdc9c9e2d247ca90f0234",
+    "/_102040_/l2/molecules/groupselectmany/index.defs": "sha256:f4eb38abdd200520a97d15aed88f64cb20b3318dd3554eb663e92c6fd6d5a500",
+    "/_102020_/l2/aura/molecules/skills/groupSelectMany/usage": "sha256:0a14fb284e4c804e61e5e6204b5954bc37e11a28be76ddde7b18dbb542210941"
+  },
+  "moleculeGroupAssessments": [
+    {
+      "organismId": "organism1",
+      "groups": [
+        {
+          "groupId": "groupEnterText",
+          "relevant": true
+        },
+        {
+          "groupId": "groupSelectOne",
+          "relevant": true
+        },
+        {
+          "groupId": "groupSelectMany",
+          "relevant": true
+        }
+      ]
+    }
+  ],
+  "skillHash": "sha256:c3517179ccbde253ae6f8f2824b85092ccd698ba82925d87739370ba48f2e9d8",
+  "promptHash": "sha256:7c32290937225111880488f28364629141f1c1a16cff64eafa536c2ebaa93455",
+  "promptChars": 64417,
+  "repairPromptChars": 0,
+  "sourceHashes": {
+    "desktop": "sha256:5b9102e20bbf56f7bc4f9c825739c14749d17eb05bf80f54cc22edeeba8b2a35",
+    "mobile": "sha256:300a3511cceb1a37866ebe4f5cc8648310bee188566091ee78ad23a12a35e728"
+  },
+  "needsHashes": {
+    "desktop": "sha256:561b89c194dbdcf57e4937c664c140b417262c79fcb25fda8475b360835503d2",
+    "mobile": "sha256:561b89c194dbdcf57e4937c664c140b417262c79fcb25fda8475b360835503d2"
+  },
+  "menuOrigins": [
+    {
+      "organismId": "agentOverviewDetail",
+      "sourceIndex": 0,
+      "kind": "detail",
+      "text": "What the agent is, who it talks to, on whose behalf it acts and who is responsible for it"
+    }
+  ]
+}

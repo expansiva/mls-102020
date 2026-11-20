@@ -1,0 +1,141 @@
+{
+  "types": [
+    {
+      "name": "AgentOverview",
+      "description": "An agent of the organization as the cm keeps it, read only: its @name, whether it is on, what it is, who it talks to, on whose behalf it acts and the name of the person responsible for it.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.name"
+            ]
+          }
+        },
+        {
+          "name": "isOn",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.isOn"
+            ]
+          }
+        },
+        {
+          "name": "definition",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.definition"
+            ]
+          }
+        },
+        {
+          "name": "talksTo",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.talksTo"
+            ]
+          }
+        },
+        {
+          "name": "onBehalfOf",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.onBehalfOf"
+            ]
+          }
+        },
+        {
+          "name": "responsibleName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Agent.responsible",
+              "OrganizationUser.details.identification.name"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "getAgentOverview",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "agent",
+          "type": "AgentOverview"
+        }
+      ],
+      "rules": [
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Loads, in one call, the read-only overview of the chosen agent: what it is, who it talks to, on whose behalf it acts, whether it is on and who is responsible for it.",
+        "input": "agentId: the cm identifier of the chosen agent, taken from the page URL; it is never shown on screen.",
+        "processing": "Reads the agent from the cm (name, isOn, definition, talksTo, onBehalfOf, responsible). Resolves the responsible person's organization user record and returns only their readable name (OrganizationUser.details.identification.name), never the record id, as noTechnicalIdsOnScreen demands. Only fields allowed to organization members and company admins by their grants are returned. Writes nothing.",
+        "output": "agent: the agent's @name, on/off state, plain-language description, who it talks to, on whose behalf it acts, and the responsible person's name (absent when no responsible person is set)."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "agentOverviewDetail",
+        "reads": "getAgentOverview.agent"
+      }
+    ],
+    "commands": [],
+    "selections": [],
+    "journeys": [
+      {
+        "step": "followAgentActivity/browseAgents",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agents"
+      },
+      {
+        "step": "followAgentActivity/readOverview",
+        "organisms": [
+          "agentOverviewDetail"
+        ],
+        "endpoints": [
+          "getAgentOverview"
+        ]
+      },
+      {
+        "step": "followAgentActivity/readActivity",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_activity"
+      }
+    ],
+    "updates": []
+  }
+}

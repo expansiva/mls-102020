@@ -1,0 +1,32 @@
+{
+  "organisms": {
+    "conductSummary": {
+      "reads": [
+        "Agent.name",
+        "Agent.onBehalfOf",
+        "PersonalConduct.summary",
+        "PersonalConduct.history.changedAt",
+        "PersonalConduct.history.changedBy",
+        "PersonalConduct.history.summary"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "conductChange": {
+      "reads": [
+        "PersonalConduct.summary"
+      ],
+      "edits": [
+        "PersonalConduct.changeRequest"
+      ],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "sendConductChange",
+          "write": "PersonalConduct.update"
+        }
+      ]
+    }
+  }
+}

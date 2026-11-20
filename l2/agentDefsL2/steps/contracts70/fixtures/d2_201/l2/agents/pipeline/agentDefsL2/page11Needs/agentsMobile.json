@@ -1,0 +1,55 @@
+{
+  "organisms": {
+    "draftsInbox": {
+      "reads": [
+        "AgentDraft.name",
+        "AgentDraft.situation",
+        "AgentDraft.summary",
+        "AgentDraft.requestedAt"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "agentsList": {
+      "reads": [
+        "Agent.name",
+        "Agent.talksTo",
+        "Agent.isOn",
+        "Agent.responsible",
+        "OrganizationUser.details.identification.name",
+        "AgentDraft.name",
+        "AgentDraft.situation",
+        "AgentDraft.refusalReason"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "newAgentForm": {
+      "reads": [],
+      "edits": [
+        "AgentDraft.prompt"
+      ],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "sendNewAgentRequest",
+          "write": "AgentDraft.create"
+        }
+      ]
+    },
+    "requestTimeline": {
+      "reads": [
+        "AgentDraft.name",
+        "AgentDraft.situation",
+        "AgentDraft.requestedAt",
+        "AgentDraft.refusalReason",
+        "AgentDraft.suggestedTools"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "2026-10-04-agent-defs-l2-bff-v2",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "tool_catalog",
+  "attempt": 1,
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:e5ae281df81c7f837d5f36197f97df85976b6e7eb40d3bd6773cf9717e4753ec",
+  "promptHash": "sha256:2f7fd377acc146eed4a52e8aa30911379186d4f883f2b06dee910a7496d61ee8",
+  "promptChars": 27893,
+  "repairPromptChars": 0,
+  "designHash": "sha256:acb9828625d038a245b41281df542799d9a6bcac225d8ff9d395ac851d1e3ee6"
+}

@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "2026-09-18-p2-pipeline-v2",
+  "flowId": "agentPlannerL2",
+  "moduleName": "agents",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:34:58.466Z",
+      "artifactPaths": [
+        "l4/agents/pool/l2/pipeline.json"
+      ]
+    },
+    "menu20": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:34:51.241Z",
+      "artifactPaths": [
+        "l4/agents/pool/l2/web/menu.json",
+        "l4/agents/pool/l2/menu20-draft.json"
+      ]
+    },
+    "needs30": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:34:51.456Z",
+      "artifactPaths": [
+        "l4/agents/pool/l1/web/needs.json",
+        "l4/agents/pool/l1/20261120193451_agents-20261120193417_1.json"
+      ]
+    },
+    "effort40": {
+      "status": "approved",
+      "updatedAt": "2026-11-20T19:34:58.645Z",
+      "artifactPaths": [
+        "l4/agents/pool/l2/web/effort.json",
+        "l4/agents/pool/l4/20261120193458_agents-20261120193417_1.json"
+      ]
+    }
+  },
+  "thread": "agents-20261120193417",
+  "round": 1,
+  "messageFile": "l4/agents/pool/l2/20261120193458_agents-20261120193417_1.json",
+  "sourceMessages": [
+    "20261120193458_agents-20261120193417_1.json"
+  ],
+  "webDir": "preserved",
+  "updatedAt": "2026-11-20T19:34:58.646Z",
+  "warnings": [],
+  "device": "web",
+  "actionCounts": {
+    "new": 12,
+    "change": 0,
+    "keep": 0,
+    "remove": 0
+  },
+  "pool": [
+    {
+      "at": "2026-11-20T19:34:51.402Z",
+      "file": "l4/agents/pool/l2/20261120193417_agents-20261120193417_1.json",
+      "from": "l4",
+      "to": "l2",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    },
+    {
+      "at": "2026-11-20T19:34:51.402Z",
+      "file": "l4/agents/pool/l1/20261120193451_agents-20261120193417_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-11-20T19:34:58.627Z",
+      "file": "l4/agents/pool/l2/20261120193458_agents-20261120193417_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    },
+    {
+      "at": "2026-11-20T19:34:58.627Z",
+      "file": "l4/agents/pool/l4/20261120193458_agents-20261120193417_1.json",
+      "from": "l2",
+      "to": "l4",
+      "thread": "agents-20261120193417",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    }
+  ]
+}

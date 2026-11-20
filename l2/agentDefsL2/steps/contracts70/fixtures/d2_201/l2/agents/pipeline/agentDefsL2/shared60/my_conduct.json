@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2026-10-13-agent-defs-l2-shared-v5",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "my_conduct",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "page11Hashes": {
+    "desktop": "sha256:6defaeb3403bba72a58ca023de6603f9819810b1a4cbe173ed3ddf05bea0b941",
+    "mobile": "sha256:8c43e7bd4ec68d7b9384636221747e5635181e3a01be366b607897e249c34278"
+  },
+  "draftHashes": {
+    "desktop": "sha256:cbeec12d84f9acab595e420743bd777eb24c87ea9bc732dd690663f6d820386a",
+    "mobile": "sha256:cbeec12d84f9acab595e420743bd777eb24c87ea9bc732dd690663f6d820386a"
+  },
+  "designHash": "sha256:2c20fe313426db30f5c5d31d4cd4492d30415d832ff2d2a36c7a68e5249aab7c",
+  "siblingsHash": "sha256:5f7a5e655182c9a2fff1ce2762a6c5407fda8fb09c49ce25b48e275c20f76aca",
+  "sourceHash": "sha256:f234ae8103ce08ba539c2aab123f2db185c1b7248d16b7f162c09c4ac99ff13e"
+}

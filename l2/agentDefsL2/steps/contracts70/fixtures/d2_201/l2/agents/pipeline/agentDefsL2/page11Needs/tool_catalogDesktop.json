@@ -1,0 +1,42 @@
+{
+  "organisms": {
+    "toolUsageHighlights": {
+      "reads": [
+        "Tool.name",
+        "Tool.details.moduleTitle",
+        "Tool.details.subjectTitle",
+        "Tool.details.usedByAgents"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "toolCatalogTree": {
+      "reads": [
+        "Tool.moduleName",
+        "Tool.subject",
+        "Tool.name",
+        "Tool.status",
+        "Tool.details.moduleTitle",
+        "Tool.details.subjectTitle",
+        "Tool.details.description"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "catalogUpdatesTimeline": {
+      "reads": [
+        "Tool.name",
+        "Tool.status",
+        "Tool.details.moduleTitle",
+        "Tool.details.subjectTitle",
+        "Tool.details.addedAt",
+        "Tool.details.removedAt"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    }
+  }
+}

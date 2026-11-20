@@ -1,0 +1,298 @@
+{
+  "schemaVersion": "2026-10-04-agent-defs-l2-bff-v2",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "my_conduct",
+  "attempt": 2,
+  "diagnostic": "D2_BFF_COMMAND_INPUT: endpoints.sendConductChange.input: command sendConductChange (PersonalConduct.update) asks for expectVersion; each input leaf that fills a stored value names that Entity.path as a field origin.",
+  "previous": {
+    "types": [
+      {
+        "name": "ConductAgent",
+        "fields": [
+          {
+            "name": "name",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Agent.name"
+              ]
+            }
+          },
+          {
+            "name": "onBehalfOf",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "Agent.onBehalfOf"
+              ]
+            },
+            "optional": true
+          }
+        ],
+        "description": "The agent a personal conduct belongs to: its @name and on whose behalf it acts."
+      },
+      {
+        "name": "MyConduct",
+        "fields": [
+          {
+            "name": "agent",
+            "type": "ConductAgent",
+            "origin": null
+          },
+          {
+            "name": "summary",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "PersonalConduct.summary"
+              ]
+            }
+          }
+        ],
+        "description": "The signed-in member's personal conduct with one agent: the agent and how it currently behaves for that member."
+      },
+      {
+        "name": "ConductHistoryEntry",
+        "fields": [
+          {
+            "name": "changedAt",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "PersonalConduct.history.changedAt"
+              ]
+            }
+          },
+          {
+            "name": "changedBy",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "PersonalConduct.history.changedBy"
+              ]
+            }
+          },
+          {
+            "name": "summary",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "PersonalConduct.history.summary"
+              ]
+            }
+          }
+        ],
+        "description": "One earlier change the member made to their own conduct with an agent: when, who and a one-line summary."
+      }
+    ],
+    "bindings": {
+      "updates": [
+        {
+          "mode": "replace",
+          "state": "getMyConduct.conduct",
+          "endpoint": "sendConductChange"
+        },
+        {
+          "mode": "append",
+          "state": "listMyConductHistory.history",
+          "endpoint": "listMyConductHistory"
+        }
+      ],
+      "commands": [
+        {
+          "endpoint": "sendConductChange",
+          "refreshes": [
+            "listMyConductHistory"
+          ]
+        }
+      ],
+      "journeys": [
+        {
+          "step": "changeMyConduct/findMyAgent",
+          "endpoints": [],
+          "organisms": [],
+          "continuesIn": "agents"
+        },
+        {
+          "step": "changeMyConduct/readMyConduct",
+          "endpoints": [
+            "getMyConduct",
+            "listMyConductHistory"
+          ],
+          "organisms": [
+            "conductSummary"
+          ]
+        },
+        {
+          "step": "changeMyConduct/changeConduct",
+          "endpoints": [
+            "sendConductChange"
+          ],
+          "organisms": [
+            "conductChange"
+          ]
+        }
+      ],
+      "organisms": [
+        {
+          "reads": "getMyConduct.conduct",
+          "organism": "conductSummary"
+        },
+        {
+          "reads": "listMyConductHistory.history",
+          "organism": "conductSummary"
+        },
+        {
+          "reads": "getMyConduct.conduct",
+          "organism": "conductChange"
+        }
+      ],
+      "selections": []
+    },
+    "endpoints": [
+      {
+        "id": "getMyConduct",
+        "kind": "qry",
+        "when": "onLoad",
+        "input": [
+          {
+            "name": "agentId",
+            "type": "string",
+            "origin": {
+              "kind": "context",
+              "paths": [
+                "PersonalConduct.agent"
+              ]
+            }
+          }
+        ],
+        "jsdoc": {
+          "input": "agentId: the agent chosen in the URL.",
+          "output": "The personal conduct of the signed-in person with that agent: the agent's name and onBehalfOf, and the current conduct summary in plain language.",
+          "purpose": "Loads the signed-in person's current conduct with the chosen agent, together with the agent's @name and on whose behalf it acts.",
+          "processing": "Reads the agent from the cm (name, onBehalfOf) and the personal conduct of the logged-in person with that agent from the cm. ownConductOnly: only the conduct of the person signed in is read, never another person's. conductOnlyForAgentActingOnBehalf: if the agent does not act on this person's behalf, the query refuses with a clear error."
+        },
+        "rules": [
+          "ownConductOnly",
+          "conductOnlyForAgentActingOnBehalf"
+        ],
+        "output": [
+          {
+            "name": "conduct",
+            "type": "MyConduct",
+            "origin": null
+          }
+        ]
+      },
+      {
+        "id": "listMyConductHistory",
+        "kind": "qry",
+        "when": "onLoad",
+        "input": [
+          {
+            "name": "agentId",
+            "type": "string",
+            "origin": {
+              "kind": "context",
+              "paths": [
+                "PersonalConduct.agent"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "type": "number",
+            "origin": {
+              "kind": "context",
+              "paths": []
+            }
+          },
+          {
+            "name": "pageSize",
+            "type": "number",
+            "origin": {
+              "kind": "context",
+              "paths": []
+            }
+          }
+        ],
+        "jsdoc": {
+          "input": "agentId: the agent chosen in the URL. page and pageSize: the page of history requested.",
+          "output": "One page of history entries { items, page, pageSize, hasMore }, each with when it happened, who made it and a one-line summary.",
+          "purpose": "Lists the signed-in person's own earlier changes to their conduct with the chosen agent, newest first, page by page.",
+          "processing": "Reads from the cm the history of the logged-in person's conduct with that agent, ordered by changedAt descending, and returns the requested page. ownConductOnly: only the history of the person signed in. conductOnlyForAgentActingOnBehalf: refuses for an agent that does not act on this person's behalf. changedBy is returned as the person's readable name, never an id."
+        },
+        "rules": [
+          "ownConductOnly",
+          "conductOnlyForAgentActingOnBehalf"
+        ],
+        "output": [
+          {
+            "name": "history",
+            "type": "ConductHistoryEntry[]",
+            "origin": null,
+            "paginated": true
+          }
+        ]
+      },
+      {
+        "id": "sendConductChange",
+        "kind": "cmd",
+        "when": "sendConductChange",
+        "input": [
+          {
+            "name": "agentId",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "PersonalConduct.agent"
+              ]
+            }
+          },
+          {
+            "name": "changeRequest",
+            "type": "string",
+            "origin": {
+              "kind": "field",
+              "paths": [
+                "PersonalConduct.changeRequest"
+              ]
+            }
+          }
+        ],
+        "jsdoc": {
+          "input": "agentId: the agent whose conduct changes. changeRequest: what the person wrote should change.",
+          "output": "The personal conduct of the signed-in person with that agent in its new state: the agent's name and onBehalfOf and the updated current conduct summary.",
+          "purpose": "Sends to the cm, in plain words, what the signed-in person wants to change in how the agent behaves for them.",
+          "processing": "Sends the change request to the cm as an update of the personal conduct of the logged-in person with that agent; the person is taken from the session, never from the input. ownConductOnly: only the caller's own conduct is updated, no one else's. conductOnlyForAgentActingOnBehalf: refuses when the agent does not act on this person's behalf. Refuses an empty change request. The cm records the change in the person's history."
+        },
+        "rules": [
+          "ownConductOnly",
+          "conductOnlyForAgentActingOnBehalf"
+        ],
+        "output": [
+          {
+            "name": "conduct",
+            "type": "MyConduct",
+            "origin": null
+          }
+        ],
+        "writes": "PersonalConduct.update"
+      }
+    ]
+  },
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:d9330d82a7f49d8003773052c3ab2a102d254b616cf96affb92c1e8485341ab1",
+  "promptHash": "sha256:2f7fd377acc146eed4a52e8aa30911379186d4f883f2b06dee910a7496d61ee8",
+  "promptChars": 30632,
+  "repairPromptChars": 30632,
+  "designHash": "sha256:2c20fe313426db30f5c5d31d4cd4492d30415d832ff2d2a36c7a68e5249aab7c"
+}

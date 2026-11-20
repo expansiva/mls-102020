@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "2026-09-30-agent-defs-l2-pages-v2.1",
+  "needsVersion": "2026-09-30-agent-defs-l2-page11-needs-v1",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_activity",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:36a122f518515a0b94db78f8183f2af2fee420ca6eb7539189e81282352d4523",
+  "template": {
+    "category": "auditTrail",
+    "experience": "chronologicalLog",
+    "reason": "The page is a read-only, newest-first history of what one agent did: when each run happened, who called it and what came of it. That fits the Audit Trail category, which is for looking up past events, the people involved and operational history without changing anything. Both devices use this category. Derived chronologicalLog from auditTrail.page21.",
+    "reference": "_102020_/l4/collabux/templates/auditTrail/page21.md",
+    "hash": "sha256:d12d2f90ceb4d4a812bf2d83c2a385214d4b96bbce04a07c5e1ad726391e95d0",
+    "catalogHash": "sha256:285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc"
+  },
+  "moleculeInventoryHash": "sha256:a243774aee05d980d07cae75cf2e574b3a9c93761f3cec240a457e3dc5d5b78d",
+  "moleculeHashes": {
+    "/_102040_/l2/molecules/groupviewdata/index.defs": "sha256:cd1aeb8f281ca1e1fcf30f0acf8f6b1707f6c43a675faedfca4b8f12504499fa",
+    "/_102020_/l2/aura/molecules/skills/groupViewData/usage": "sha256:703144b5c2c99c194b39c594508c6912734d7ac5560ea451807b9408bf4ebbd6",
+    "/_102040_/l2/molecules/groupexpandcontent/index.defs": "sha256:4f146a29d3a56473d367c42390259ea16b89e65d700a59a4718f86fc647d49fc",
+    "/_102020_/l2/aura/molecules/skills/groupExpandContent/usage": "sha256:77b8a0975f2381a96e4cc0db7e6f3d3844bbc956c8e410b242c6686ca4352f27",
+    "/_102040_/l2/molecules/grouptriggeraction/index.defs": "sha256:b64c73d526fbc780a7a512a661d48a92fe29722bb9338ca939090a9dad2d4dca",
+    "/_102020_/l2/aura/molecules/skills/groupTriggerAction/usage": "sha256:cce1281a675cdc3b9b5191c64637bc8136cecb0a5f02725252003abbd6c78547"
+  },
+  "moleculeGroupAssessments": [
+    {
+      "organismId": "organism1",
+      "groups": [
+        {
+          "groupId": "groupViewData",
+          "relevant": true
+        },
+        {
+          "groupId": "groupExpandContent",
+          "relevant": true
+        },
+        {
+          "groupId": "groupTriggerAction",
+          "relevant": true
+        }
+      ]
+    }
+  ],
+  "skillHash": "sha256:c3517179ccbde253ae6f8f2824b85092ccd698ba82925d87739370ba48f2e9d8",
+  "promptHash": "sha256:7c32290937225111880488f28364629141f1c1a16cff64eafa536c2ebaa93455",
+  "promptChars": 63659,
+  "repairPromptChars": 0,
+  "sourceHashes": {
+    "desktop": "sha256:3c9c56ab28c76c663392f6eab374fcec5bd078255f99449344d2fbaab1ab9aa6",
+    "mobile": "sha256:75d363c480387efad3e9a81921c0c639c988a47c0860b6c4fba56597e2af60cb"
+  },
+  "needsHashes": {
+    "desktop": "sha256:dc28d96aa469b7f583460c0e24ad4859e272ef4abd7b7fe1fc5a636d67c6fc4d",
+    "mobile": "sha256:dc28d96aa469b7f583460c0e24ad4859e272ef4abd7b7fe1fc5a636d67c6fc4d"
+  },
+  "menuOrigins": [
+    {
+      "organismId": "executionTimeline",
+      "sourceIndex": 0,
+      "kind": "timeline",
+      "text": "What the agent did, newest first: when, how long, cost, the actions and their results, whether a person took over, who called it and the link to the conversation"
+    }
+  ]
+}

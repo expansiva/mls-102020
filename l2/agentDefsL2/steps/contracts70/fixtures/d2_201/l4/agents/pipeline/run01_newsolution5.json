@@ -1,0 +1,162 @@
+{
+  "savedAt": "2026-11-18T01:14:40.538Z",
+  "moduleName": "agents",
+  "agent": "agentNewSolution5",
+  "command": "/fast /rebuild all Agents module: the home of the company's AI agents inside the app, and a showcase of collab. The agents live in the cm (collab messages): who each agent is, its definition, its behavior (role and state texts), whether it is on, who is responsible for it, its limits, its drafts and what it did. This module stores none of that: it shows it and changes it through the cm. This module owns only the tools: the catalog of actions of the app modules and the cm tools, which tools each agent has on, and which people may not use a tool. First screen: the list of agents from the cm, drafts included with their situation (preparing, ready, or refused with the reason). Each card shows the name, who the agent talks to, whether it is on and who is responsible. The first screen also offers to create a new virtual employee. Create a virtual employee: the company admin describes the new agent and its functions in a prompt. The cm prepares a draft from it, with the suggested tools from the catalog, or refuses it with a reason. When the draft is ready, the admin reviews it, adjusts its tools, simulates it and activates it, or discards it. Agent screen, one per agent, with scenarios: - overview: what the agent is, who it talks to and on whose behalf it acts; read only; - behavior: the current behavior in plain language, a box \"what do you want to change\", the history of changes with who, when and a one-line summary, and undo; - tools: a tree module / subject / action with readable names and a description, and a checkbox per action to turn it on or off for this agent; a choice the admin made is never changed by the automatic choice; - configuration: the name people use to call the agent in a chat (shown as @name), on or off, the responsible person, and the limits as the cm lists them; - activity: what the agent did, newest first, from the execution summaries the cm sends: when, how long, cost, the actions and their results, whether a person took over, and the link to the conversation; - simulation, at two levels: \"what it can\" (for a chosen person or role, which tools can or cannot be used and why) and \"what it understands\" (for a sentence: whether it asks for an action, which path of the tree and which actions). People restrictions: the company admin marks, per person, the tools that person may not use through any agent, as a checkbox list. An agent's name is how people call it in a chat (@name), and it then acts in its own name. The cm refuses a name already used by another active agent, and the screen says so. When someone calls an agent by name, the tools that person may not use are not available to the agent in that request. Tool catalog: rebuilt when a module is created or a new release arrives. New tools are chosen per agent from the agent description, and the admin adjusts them. A tool that leaves the release is marked removed and never deleted. The cm asks this module, for an agent and a person, which tools the agent has on and which of them that person may use now; only tools that are on are sent. The cm sends a summary of each finished execution, and the same execution is never recorded twice. The cm tells this module when a draft is ready or refused. When a draft is ready, its suggested tools are turned on for that agent in this module; the draft itself stays in the cm. A notice that arrives again changes nothing. Everything works with no screen open. Screens are simple for an ordinary person and never show technical ids. People: the company admin creates, activates, changes the behavior of, adjusts the tools of and simulates agents, simulating by role. Every organization member sees the agents, simulates as themselves and changes only their own conduct with an agent that acts on their behalf.",
+  "startedAt": "2026-11-18T01:14:40.531Z",
+  "finishedAt": "2026-11-18T01:14:40.538Z",
+  "verdict": "degraded",
+  "reason": "finalize80 passed; pipeline complete. PUBLISH CHECKLIST (1): projects.102041: no type in config.projects nor in mls-102041/l5/project.json projectType, assumed 'lib' — set projectType on that project.json if this dependency is a master frontend/backend",
+  "cost": {
+    "total": 2.9768,
+    "byStep": {
+      "module10": 0.0845,
+      "journeys20": 0.3733,
+      "workflows50": 0.1144,
+      "ontology30": 1.9203,
+      "judge35": 0.0631,
+      "rules40": 0.1063,
+      "access60": 0.1833,
+      "integration70": 0.1316
+    }
+  },
+  "counts": {
+    "steps": {
+      "module10": "approved",
+      "journeys20": "approved",
+      "workflows50": "approved",
+      "ontology30": "approved",
+      "judge35": "approved",
+      "rules40": "approved",
+      "access60": "approved",
+      "integration70": "approved",
+      "finalize80": "approved"
+    },
+    "oracle": {
+      "actors": 2,
+      "journeys": 10,
+      "entities": 10,
+      "rules": 38,
+      "processes": 3,
+      "grants": 11
+    },
+    "compile": {
+      "module10": {
+        "status": "clean",
+        "files": 1
+      },
+      "journeys20": {
+        "status": "clean",
+        "files": 11
+      },
+      "ontology30": {
+        "status": "clean",
+        "files": 11
+      },
+      "rules40": {
+        "status": "clean",
+        "files": 1
+      },
+      "workflows50": {
+        "status": "clean",
+        "files": 1
+      },
+      "access60": {
+        "status": "clean",
+        "files": 1
+      },
+      "integration70": {
+        "status": "clean",
+        "files": 1
+      }
+    }
+  },
+  "checks": [
+    {
+      "checkId": "I1",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I2",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I3",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I4",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I5",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I6",
+      "status": "warned",
+      "errorCount": 0,
+      "warningCount": 2
+    },
+    {
+      "checkId": "I7",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I8",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I9",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I10",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I11",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I12",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I13",
+      "status": "warned",
+      "errorCount": 0,
+      "warningCount": 3
+    }
+  ],
+  "handoff": "never",
+  "degradations": [
+    {
+      "at": "2026-11-18T01:14:40.538Z",
+      "kind": "publish-checklist",
+      "reason": "projects.102041: no type in config.projects nor in mls-102041/l5/project.json projectType, assumed 'lib' — set projectType on that project.json if this dependency is a master frontend/backend"
+    }
+  ]
+}

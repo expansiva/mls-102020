@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2026-10-13-agent-defs-l2-shared-v5",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_tools",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "page11Hashes": {
+    "desktop": "sha256:c3742b35caa764ec1f663ad6b311bbe91a54f1e6f34fac4839d5398ac7e5bd5d",
+    "mobile": "sha256:a9f424a669cd4bd57aa02b61d32a4f9882f409fd1de0375dba9947ad9fc8b812"
+  },
+  "draftHashes": {
+    "desktop": "sha256:748495b09a57b01b23f8bb4d3afad1b3c6bd2f44be4854322b0bd918dbc7c65b",
+    "mobile": "sha256:748495b09a57b01b23f8bb4d3afad1b3c6bd2f44be4854322b0bd918dbc7c65b"
+  },
+  "designHash": "sha256:9057e55c668fd8c58d639b32e1959b3b92f51ee517fc6a5c017e26bfc482df99",
+  "siblingsHash": "sha256:90f6499e1e19af868980c4b98d41d8050fce2cc90082f4424b6fd5436b8f0c4a",
+  "sourceHash": "sha256:25bf48360905d43c1a3249b87f65ab4db21e7dc668fd6248b5a7adbc4c1be96f"
+}

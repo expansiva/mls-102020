@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2026-10-13-agent-defs-l2-shared-v5",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_simulation",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "page11Hashes": {
+    "desktop": "sha256:d9a78b4557c3ece0afcd9d9ec3b84d54fc2f29872120c8e42f1cba7763d15812",
+    "mobile": "sha256:37a9c2e1b9b85a30fed02bc5ea4fd1c8d01a945a4fe9f194030cb91d567190b4"
+  },
+  "draftHashes": {
+    "desktop": "sha256:4de87d8dd49b33a51820af20ee845bedaf864ba32802ba3cf70196fc5f0793f3",
+    "mobile": "sha256:4de87d8dd49b33a51820af20ee845bedaf864ba32802ba3cf70196fc5f0793f3"
+  },
+  "designHash": "sha256:9353605c52b36239e768b0b0870c247db0ecc738a881394879119b8f4bd2ecb7",
+  "siblingsHash": "sha256:680f8e0a7da535fb824db47f1c27f9a41c0399e07fe404e7e65ebfe8fe0fd92e",
+  "sourceHash": "sha256:2ae17409977e7f08f5e63a1c03a4af7b9f3ecfdfc6875a830101f79461239652"
+}

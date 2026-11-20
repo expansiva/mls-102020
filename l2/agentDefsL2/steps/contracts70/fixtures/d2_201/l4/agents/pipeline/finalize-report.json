@@ -1,0 +1,126 @@
+{
+  "schemaVersion": "2026-09-10-ns5-finalize-report-v1",
+  "moduleName": "agents",
+  "finalStatus": "passed",
+  "checks": [
+    {
+      "checkId": "I1",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I2",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I3",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I4",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I5",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I6",
+      "status": "warned",
+      "errorCount": 0,
+      "warningCount": 2
+    },
+    {
+      "checkId": "I7",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I8",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I9",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I10",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I11",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I12",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I13",
+      "status": "warned",
+      "errorCount": 0,
+      "warningCount": 3
+    }
+  ],
+  "errors": [],
+  "warnings": [
+    {
+      "checkId": "I6",
+      "code": "NS5_FINALIZE_I6_SYSTEM_TRANSITION_UNOWNED",
+      "path": "ontology.Tool.removeFromRelease",
+      "message": "system/time transition Tool.removeFromRelease is not an effect:transition stage or trigger.event."
+    },
+    {
+      "checkId": "I6",
+      "code": "NS5_FINALIZE_I6_SYSTEM_TRANSITION_UNOWNED",
+      "path": "ontology.Tool.restoreToRelease",
+      "message": "system/time transition Tool.restoreToRelease is not an effect:transition stage or trigger.event."
+    },
+    {
+      "checkId": "I13",
+      "code": "NS5_FINALIZE_I13",
+      "path": "access.grants[4]",
+      "message": "custom grant adminOwnConduct for actor companyAdmin; the backend does not apply custom."
+    },
+    {
+      "checkId": "I13",
+      "code": "NS5_FINALIZE_I13",
+      "path": "access.grants[9]",
+      "message": "custom grant memberSimulateAsMyself for actor organizationMember; the backend does not apply custom."
+    },
+    {
+      "checkId": "I13",
+      "code": "NS5_FINALIZE_I13",
+      "path": "access.grants[10]",
+      "message": "custom grant memberOwnConduct for actor organizationMember; the backend does not apply custom."
+    }
+  ],
+  "counts": {
+    "actors": 2,
+    "journeys": 10,
+    "entities": 10,
+    "rules": 38,
+    "processes": 3,
+    "grants": 11
+  }
+}

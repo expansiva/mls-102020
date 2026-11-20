@@ -1,0 +1,44 @@
+{
+  "organisms": {
+    "whatItCan": {
+      "reads": [
+        "Agent.name",
+        "AgentSimulation.agent",
+        "AgentSimulation.level",
+        "AgentSimulation.toolVerdicts.tool",
+        "AgentSimulation.toolVerdicts.moduleName",
+        "AgentSimulation.toolVerdicts.subjectName",
+        "AgentSimulation.toolVerdicts.actionName",
+        "AgentSimulation.toolVerdicts.canUse",
+        "AgentSimulation.toolVerdicts.reason",
+        "AgentSimulation.toolVerdicts.reasonText",
+        "OrganizationUser.details.identification.name"
+      ],
+      "edits": [
+        "AgentSimulation.subjectKind",
+        "AgentSimulation.person",
+        "AgentSimulation.roleName"
+      ],
+      "selects": "",
+      "submits": []
+    },
+    "whatItUnderstands": {
+      "reads": [
+        "Agent.name",
+        "AgentSimulation.agent",
+        "AgentSimulation.level",
+        "AgentSimulation.understanding.asksForAction",
+        "AgentSimulation.understanding.moduleName",
+        "AgentSimulation.understanding.subjectName",
+        "AgentSimulation.understanding.actions.tool",
+        "AgentSimulation.understanding.actions.actionName",
+        "AgentSimulation.understanding.explanation"
+      ],
+      "edits": [
+        "AgentSimulation.sentence"
+      ],
+      "selects": "",
+      "submits": []
+    }
+  }
+}

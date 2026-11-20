@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "2026-09-30-agent-defs-l2-pages-v2.1",
+  "needsVersion": "2026-09-30-agent-defs-l2-page11-needs-v1",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_tools",
+  "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
+  "unitInputHash": "sha256:55cb268313f7d1eadbca7beb36e266469d9084bda97980604dbe324a1d1e71e9",
+  "template": {
+    "category": "hierarchyTreeView",
+    "experience": "treeAndDetail",
+    "reason": "The page centres on the tool catalog as a module, subject and action tree. The admin turns each action on or off for the chosen agent right in the tree, so hierarchyTreeView fits best on both desktop and mobile. The history of automatic choices is a secondary, supporting part of the page. Derived treeAndDetail from hierarchyTreeView.page21.",
+    "reference": "_102020_/l4/collabux/templates/hierarchyTreeView/page21.md",
+    "hash": "sha256:9c488a4710b36e48fdca86235ed9f1dcf54a15aa5aedfdc97ccea172466a14a5",
+    "catalogHash": "sha256:285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc"
+  },
+  "moleculeInventoryHash": "sha256:a243774aee05d980d07cae75cf2e574b3a9c93761f3cec240a457e3dc5d5b78d",
+  "moleculeHashes": {
+    "/_102040_/l2/molecules/groupviewhierarchy/index.defs": "sha256:f3292d5896547f23d63de4ccf87bd65c612ca8dfe35f15e0a0f80f66b24660b3",
+    "/_102020_/l2/aura/molecules/skills/groupViewHierarchy/usage": "sha256:7fa307df97a5bf098a20ecc177a8eb2510bdaf790db6a2b32549ba8fb90de248",
+    "/_102040_/l2/molecules/groupviewtable/index.defs": "sha256:3e2e055853cf7b3fb3d01991dcfd148dc9030d8b9cbef76640feb87157f0d4f9",
+    "/_102020_/l2/aura/molecules/skills/groupViewTable/usage": "sha256:21dcc060fd27d97540007a97963472de294713e9d47778820d88a401b36f13fe",
+    "/_102040_/l2/molecules/groupenterboolean/index.defs": "sha256:f01bf583edd0aaeae58e296fa52b185cda14f065da42f6dd8dfab20798043c2b",
+    "/_102020_/l2/aura/molecules/skills/groupEnterBoolean/usage": "sha256:a6e099d45adbfe024dfe2d3660a13746992b3f20e4dc892496aab900db0fdcc7",
+    "/_102040_/l2/molecules/groupviewdata/index.defs": "sha256:cd1aeb8f281ca1e1fcf30f0acf8f6b1707f6c43a675faedfca4b8f12504499fa",
+    "/_102020_/l2/aura/molecules/skills/groupViewData/usage": "sha256:703144b5c2c99c194b39c594508c6912734d7ac5560ea451807b9408bf4ebbd6"
+  },
+  "moleculeGroupAssessments": [
+    {
+      "organismId": "organism1",
+      "groups": [
+        {
+          "groupId": "groupViewHierarchy",
+          "relevant": true
+        },
+        {
+          "groupId": "groupViewTable",
+          "relevant": true
+        },
+        {
+          "groupId": "groupEnterBoolean",
+          "relevant": true
+        }
+      ]
+    },
+    {
+      "organismId": "organism2",
+      "groups": [
+        {
+          "groupId": "groupViewData",
+          "relevant": true
+        }
+      ]
+    }
+  ],
+  "skillHash": "sha256:c3517179ccbde253ae6f8f2824b85092ccd698ba82925d87739370ba48f2e9d8",
+  "promptHash": "sha256:7c32290937225111880488f28364629141f1c1a16cff64eafa536c2ebaa93455",
+  "promptChars": 62471,
+  "repairPromptChars": 0,
+  "sourceHashes": {
+    "desktop": "sha256:c3742b35caa764ec1f663ad6b311bbe91a54f1e6f34fac4839d5398ac7e5bd5d",
+    "mobile": "sha256:a9f424a669cd4bd57aa02b61d32a4f9882f409fd1de0375dba9947ad9fc8b812"
+  },
+  "needsHashes": {
+    "desktop": "sha256:748495b09a57b01b23f8bb4d3afad1b3c6bd2f44be4854322b0bd918dbc7c65b",
+    "mobile": "sha256:748495b09a57b01b23f8bb4d3afad1b3c6bd2f44be4854322b0bd918dbc7c65b"
+  },
+  "menuOrigins": [
+    {
+      "organismId": "agentToolTree",
+      "sourceIndex": 0,
+      "kind": "list",
+      "text": "Tools by module, subject and action with readable names and descriptions, when each was chosen and whether it was removed from the release; tick to turn an action on or off for this agent"
+    },
+    {
+      "organismId": "automaticToolChoices",
+      "sourceIndex": 1,
+      "kind": "timeline",
+      "text": "Tools turned on automatically: suggested by a ready draft or chosen after a new release, never overriding your own choices"
+    }
+  ]
+}
