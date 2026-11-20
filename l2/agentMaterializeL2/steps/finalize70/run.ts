@@ -14,7 +14,7 @@ import { m4DefsInfo } from '/_102020_/l2/agentMaterializeL2/steps/input20/io.js'
 import { readM4Snapshot } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { pageSourceInfo, studioPagePort, type M4PagePort } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { extractExportedObject } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
-import { composeM4ModuleEntry, M4_EXTERNAL_SYSTEMS_NAV_ID, type M4FinalizePage } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
+import { composeM4ModuleEntry, M4_EXTERNAL_SYSTEMS_NAV_ID, m4PageNeedsRecord, type M4FinalizePage } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
 import { themesFromSource } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 import { designSystemNames } from '/_102020_/l2/aura/plugins/helpers/dsConfigList.js';
 
@@ -96,7 +96,7 @@ export async function runM4Finalize(identity: M4RunIdentity, port: M4FinalizePor
     if (!await desktopApproved(identity, pageId, port)) { notApproved.push(pageId); continue; }
     const page11 = parseL2Page11(await port.read(m4DefsInfo(identity, 'desktop', pageId))).definition;
     const shared = parseL2Shared(await port.read(m4DefsInfo(identity, 'shared', pageId))).definition;
-    pages.push({ pageId, intent: page11.intent, sharedActors: shared.access.actors });
+    pages.push({ pageId, intent: page11.intent, sharedActors: shared.access.actors, needsRecord: m4PageNeedsRecord(shared.entry.params) });
   }
   const menu = port.exists(menuInfo(identity)) ? await port.readJson<unknown>(menuInfo(identity)) : null;
   const languages = port.exists(moduleDefsInfo(identity)) ? m4ModuleLanguages(await port.read(moduleDefsInfo(identity))) : { productLanguages: [], userLanguage: '' };

@@ -6,15 +6,18 @@
 //
 // Sources and rules:
 // - pages: the pages approved by pages50 (page11 desktop), in the input20 order;
-// - first generation (no current module entry): order and label come from menu.json `tree`, depth first; a hub is flattened;
-//   a page the menu does not list goes after the others, labelled from its id; actors from menu.json `authorities`
-//   (`actor:<id>` → page or hub ids; a hub gives its children), fallback shared.access.actors; description is the first
-//   sentence of the page11 desktop intent; the landing of each actor is the first page of its own authorities list
-//   (fallback: its first page in menu order);
-// - module already generated: every current navigation item, frontend page and landing stays as it is (order, label,
-//   description, actors, landing). Approved pages the navigation does not have are appended, in plan order, built as on
-//   the first generation. A page that exists only in the config stays. Nothing is removed, except the external-systems
-//   item (`external_systems`): it is appended when the module declares a system and dropped when it no longer does.
+// - first generation (no current module entry): order and label come from menu.json `tree`, depth first. A hub is not a
+//   menu entry. A page that needs a chosen record (an id param of its shared with `required: true`) is not a menu item;
+//   a page that needs no record is an item as it is, including a hub child. A page the menu does not list goes after the
+//   others, labelled from its id. Actors come from menu.json `authorities` (`actor:<id>` → page or hub ids; a hub gives
+//   its children, record pages included), fallback shared.access.actors. Description is the first sentence of the page11
+//   desktop intent. The landing of each actor is the first page of its own authorities list (fallback: its first page in
+//   menu order). A record page gets its actors, its route and that landing, and no menu item.
+// - module already generated: current navigation items stay (order, label, description, actors, landing), except a page
+//   that needs a record: it leaves the menu and its route stays. Approved pages the navigation does not have are
+//   appended, in plan order, built as on the first generation. A page that exists only in the config stays. The
+//   external-systems item (`external_systems`) is appended when the module declares a system and dropped when it no
+//   longer does.
 // - languages: l4 module.defs.ts productLanguages (what Ctrl+Alt+L cycles); userLanguage from the same file;
 // - designSystems: the names of the project's DS, in designSystem.ts order (what the boot picks by name, the header's
 //   DS select and Ctrl+Alt+D cycle) — the L5 → UI save keeps it in step afterwards;
@@ -28,6 +31,8 @@ export interface M4FinalizePage {
   intent: string;
   /** shared.access.actors: used when the menu gives the page no actor. */
   sharedActors: string[];
+  /** An id param of the shared is `required: true`: the page needs a chosen record and is not a menu item. */
+  needsRecord?: boolean;
 }
 
 export interface M4FinalizeSources {
@@ -85,9 +90,17 @@ export function m4FirstSentence(text: string): string {
   return match ? match[0] : trimmed;
 }
 
-/** The pages of the menu tree in reading order (hubs flattened), and the pages under each hub. */
-export function m4MenuPages(menu: unknown): { order: Array<{ pageId: string; label: string; icon?: string }>; hubs: Map<string, string[]> } {
-  const order: Array<{ pageId: string; label: string; icon?: string }> = [];
+/** A shared id param with `required: true` (`agentId`, `draftId`). Any other required param is not a chosen record. */
+export function m4PageNeedsRecord(params: Record<string, { required?: boolean }>): boolean {
+  return Object.entries(params).some(([name, row]) => row.required === true && name.endsWith('Id'));
+}
+
+type M4MenuPage = { pageId: string; label: string; icon?: string };
+
+/** Menu pages in reading order. A page in `recordPageIds` is not an item; it still sits under its hub, so actors and landings reach it. */
+export function m4MenuPages(menu: unknown, recordPageIds: ReadonlySet<string> = new Set()): { order: M4MenuPage[]; pages: Map<string, M4MenuPage>; hubs: Map<string, string[]> } {
+  const order: M4MenuPage[] = [];
+  const pages = new Map<string, M4MenuPage>();
   const hubs = new Map<string, string[]>();
   const walk = (list: MenuNode[], ancestors: string[]) => {
     for (const node of list) {
@@ -96,14 +109,16 @@ export function m4MenuPages(menu: unknown): { order: Array<{ pageId: string; lab
       const children = nodes(node.children);
       if (str(node.kind) === 'page') {
         const icon = str(node.icon);
-        order.push({ pageId: id, label: str(node.label) || m4HumanizeId(id), ...(icon ? { icon } : {}) });
+        const entry: M4MenuPage = { pageId: id, label: str(node.label) || m4HumanizeId(id), ...(icon ? { icon } : {}) };
+        pages.set(id, entry);
+        if (!recordPageIds.has(id)) order.push(entry);
         for (const hub of ancestors) hubs.set(hub, [...(hubs.get(hub) ?? []), id]);
       }
       if (children.length) walk(children, str(node.kind) === 'page' ? ancestors : [...ancestors, id]);
     }
   };
   walk(nodes((menu as { tree?: unknown } | null)?.tree), []);
-  return { order, hubs };
+  return { order, pages, hubs };
 }
 
 /** pageId → actors, from menu.json `authorities` (`actor:<id>` → page or hub ids). */
@@ -175,7 +190,8 @@ export function m4MenuFirstPages(menu: unknown, hubs: Map<string, string[]>): Ma
 export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Record<string, unknown>): M4FinalizeResult {
   const { module, project } = sources;
   const basePath = `/${module}`;
-  const { order, hubs } = m4MenuPages(sources.menu);
+  const recordPageIds = new Set(sources.pages.filter(page => page.needsRecord).map(page => page.pageId));
+  const { order, pages: menuPages, hubs } = m4MenuPages(sources.menu, recordPageIds);
   const menuActors = m4MenuActors(sources.menu, hubs);
   const approved = new Map(sources.pages.map(page => [page.pageId, page]));
   const currentNav = Array.isArray(current?.navigation) ? current.navigation as M4NavigationItem[] : [];
@@ -183,15 +199,19 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
     const frontend = current?.frontend && typeof current.frontend === 'object' ? current.frontend as Record<string, unknown> : {};
     return Array.isArray(frontend.pages) ? frontend.pages as Array<Record<string, unknown>> : [];
   })();
-  const planned: Array<{ pageId: string; label: string; icon?: string }> = [
+  const planned: M4MenuPage[] = [
     ...order.filter(item => approved.has(item.pageId)),
-    ...sources.pages.filter(page => !order.some(item => item.pageId === page.pageId)).map(page => ({ pageId: page.pageId, label: m4HumanizeId(page.pageId) })),
+    ...sources.pages.filter(page => !page.needsRecord && !order.some(item => item.pageId === page.pageId)).map(page => ({ pageId: page.pageId, label: m4HumanizeId(page.pageId) })),
   ];
   const composeApproved = (pageId: string, label: string, icon?: string): M4NavigationItem => {
     const page = approved.get(pageId)!;
     const actors = menuActors.get(pageId) ?? [...page.sharedActors];
     return { id: pageId, label, href: `${basePath}/${pageId}`, description: m4FirstSentence(page.intent), actors, ...(icon ? { icon } : {}) };
   };
+  const recordItems = sources.pages.filter(page => page.needsRecord).map(page => {
+    const fromMenu = menuPages.get(page.pageId);
+    return composeApproved(page.pageId, fromMenu?.label ?? m4HumanizeId(page.pageId), fromMenu?.icon);
+  });
   const frontendPage = (item: M4NavigationItem) => ({
     pageId: item.id,
     route: item.href,
@@ -209,7 +229,7 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
   let navigationKept: number;
 
   if (current) {
-    const keptNav = currentNav.map(item => structuredClone(item));
+    const keptNav = currentNav.filter(item => !(item && recordPageIds.has(item.id))).map(item => structuredClone(item));
     const keptIds = new Set(keptNav.flatMap(item => (item && typeof item.id === 'string' ? [item.id] : [])));
     const addedNav = planned.filter(item => !keptIds.has(item.pageId)).map(item => composeApproved(item.pageId, item.label, item.icon));
     navigation = [...keptNav, ...addedNav];
@@ -222,11 +242,12 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
     const firstByActor = m4MenuFirstPages(sources.menu, hubs);
     const landed = new Set(landings.map(landing => landing.actorId));
     const addedIds = new Set(navigationAdded);
-    for (const item of addedNav) {
+    const routed = [...navigation, ...recordItems];
+    for (const item of [...addedNav, ...recordItems]) {
       for (const actor of item.actors) {
         if (landed.has(actor)) continue;
-        const preferred = firstByActor.get(actor)?.find(pageId => navigation.some(other => other.id === pageId && other.actors.includes(actor)));
-        const target = navigation.find(other => other.id === (preferred ?? item.id))!;
+        const preferred = firstByActor.get(actor)?.find(pageId => routed.some(other => other.id === pageId && other.actors.includes(actor)));
+        const target = routed.find(other => other.id === (preferred ?? item.id))!;
         landings.push({ actorId: actor, pageId: target.id, route: target.href });
         if (addedIds.has(target.id)) target.landing = true;
         landed.add(actor);
@@ -235,29 +256,31 @@ export function composeM4ModuleEntry(sources: M4FinalizeSources, current?: Recor
     const keptPages = currentFrontendPages.map(item => structuredClone(item));
     const have = new Set(keptPages.map(item => String(item.pageId)));
     pages = [...keptPages];
-    for (const item of addedNav) {
+    for (const item of [...addedNav, ...recordItems]) {
       if (have.has(item.id)) continue;
       pages.push(frontendPage(item));
       have.add(item.id);
     }
   } else {
     navigation = planned.map(({ pageId, label, icon }) => composeApproved(pageId, label, icon));
-    // The landing of an actor is the first page of ITS authorities list in menu.json (the planner's order for that actor);
-    // an actor the menu does not list lands on its first page in menu order. tarefas (16/10/2026): by menu order alone the
-    // gestor would land on meus_avisos, which sits in the membro hub before "Painel da equipe".
+    // The landing of an actor is the first page of ITS authorities list in menu.json (the planner's order for that actor),
+    // including a record page that is not a menu item. An actor the menu does not list lands on its first page in menu
+    // order. tarefas (16/10/2026): by menu order alone the gestor would land on meus_avisos, which sits in the membro hub
+    // before "Painel da equipe".
     const firstByActor = m4MenuFirstPages(sources.menu, hubs);
+    const routed = [...navigation, ...recordItems];
     landings = [];
-    for (const item of navigation) {
+    for (const item of routed) {
       if (!approved.has(item.id)) continue;
       for (const actor of item.actors) {
         if (landings.some(landing => landing.actorId === actor)) continue;
-        const preferred = firstByActor.get(actor)?.find(pageId => navigation.some(other => other.id === pageId && other.actors.includes(actor)));
-        const target = navigation.find(other => other.id === (preferred ?? item.id))!;
+        const preferred = firstByActor.get(actor)?.find(pageId => routed.some(other => other.id === pageId && other.actors.includes(actor)));
+        const target = routed.find(other => other.id === (preferred ?? item.id))!;
         landings.push({ actorId: actor, pageId: target.id, route: target.href });
-        target.landing = true;
+        if (navigation.some(other => other.id === target.id)) target.landing = true;
       }
     }
-    pages = navigation.map(item => frontendPage(item));
+    pages = routed.map(item => frontendPage(item));
     navigationAdded = navigation.map(item => item.id);
     navigationKept = 0;
   }

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
-import { composeM4ModuleEntry, EXTERNAL_SYSTEM_MENU_NODE_MISSING, m4FirstSentence, m4MenuActors, m4MenuPages, type M4FinalizePage, type M4FinalizeSources } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
+import { composeM4ModuleEntry, EXTERNAL_SYSTEM_MENU_NODE_MISSING, m4FirstSentence, m4MenuActors, m4MenuPages, m4PageNeedsRecord, type M4FinalizePage, type M4FinalizeSources } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/compose.js';
 import { m4ModuleLanguages } from '/_102020_/l2/agentMaterializeL2/steps/finalize70/run.js';
 
 const root = new URL('./fixtures/reembolsoDespesas/', import.meta.url);
@@ -183,10 +183,11 @@ test('icon is copied onto a new item only when the page has one; an existing ite
   assert.deepEqual(again.navigationAdded, ['despesas_aprovadas']);
 });
 
-test('menu helpers: hubs, authorities through a hub, first sentence', () => {
+test('menu helpers: a record page is not a menu item, a hub still gives it actors, first sentence', () => {
   const menu = { tree: [{ id: 'area', kind: 'hub', children: [{ id: 'a', kind: 'page', label: 'A' }, { id: 'b', kind: 'page' }] }, { id: 'c', kind: 'page', label: 'C' }], authorities: { 'actor:x': ['area'], 'actor:y': ['c', 'a'] } };
-  const { order, hubs } = m4MenuPages(menu);
-  assert.deepEqual(order, [{ pageId: 'a', label: 'A' }, { pageId: 'b', label: 'B' }, { pageId: 'c', label: 'C' }]);
+  const { order, hubs } = m4MenuPages(menu, new Set(['b']));
+  assert.deepEqual(order, [{ pageId: 'a', label: 'A' }, { pageId: 'c', label: 'C' }]);
+  assert.deepEqual(hubs.get('area'), ['a', 'b']);
   assert.deepEqual(Object.fromEntries(m4MenuActors(menu, hubs)), { a: ['x', 'y'], b: ['x'], c: ['y'] });
   assert.equal(m4FirstSentence('Registra a despesa. Envia depois.'), 'Registra a despesa.');
   assert.equal(m4FirstSentence('Sem ponto final'), 'Sem ponto final');
@@ -269,6 +270,58 @@ test('external systems: an existing module gains the link, keeps a hand edit, an
   assert.deepEqual(gone.entry.landings, current.landings);
   assert.deepEqual((gone.entry.frontend as { pages: unknown[] }).pages, current.frontend.pages);
   assert.equal(gone.navigationKept, 1);
+});
+
+test('agents: a page with a required id leaves the menu and keeps its route; the hub is not flattened', () => {
+  assert.equal(m4PageNeedsRecord({ agentId: { required: true }, agentBehaviorId: { required: false } }), true);
+  assert.equal(m4PageNeedsRecord({ agentDraftId: { required: false }, page: { required: true } }), false);
+  const agentsRoot = new URL('../../../../../mls-102047/', import.meta.url);
+  const load = (path: string) => readFileSync(new URL(path, agentsRoot), 'utf8');
+  const pageIds = ['agents', 'draft_review', 'agent_overview', 'agent_behavior', 'agent_tools', 'agent_configuration', 'agent_activity', 'agent_simulation', 'my_conduct', 'person_restrictions', 'tool_catalog'];
+  // The shared files on disk are the generation from before s1, so only draft_review has required: true.
+  // The other six hub children and my_conduct are required by the s1 rule (s0 table).
+  const record = new Set(['draft_review', 'agent_overview', 'agent_behavior', 'agent_tools', 'agent_configuration', 'agent_activity', 'agent_simulation', 'my_conduct']);
+  assert.equal(m4PageNeedsRecord(parseL2Shared(load('l2/agents/web/shared/draft_review.defs.ts')).definition.entry.params), true);
+  assert.equal(m4PageNeedsRecord(parseL2Shared(load('l2/agents/web/shared/agent_overview.defs.ts')).definition.entry.params), false);
+  const pages: M4FinalizePage[] = pageIds.map(pageId => ({
+    pageId,
+    intent: parseL2Page11(load(`l2/agents/web/desktop/page11/${pageId}.defs.ts`)).definition.intent,
+    sharedActors: parseL2Shared(load(`l2/agents/web/shared/${pageId}.defs.ts`)).definition.access.actors,
+    needsRecord: record.has(pageId),
+  }));
+  const src: M4FinalizeSources = { project: 102047, module: 'agents', pages, menu: JSON.parse(load('l4/agents/pool/l2/web/menu.json')), productLanguages: ['en-US'], userLanguage: 'en-US' };
+  const fresh = composeM4ModuleEntry(src);
+  const navigation = fresh.entry.navigation as Array<{ id: string }>;
+  assert.deepEqual(navigation.map(item => item.id), ['agents', 'person_restrictions', 'tool_catalog']);
+  const routes = (fresh.entry.frontend as { pages: Array<{ pageId: string; actors: string[] }> }).pages;
+  assert.deepEqual(routes.map(item => item.pageId), [...navigation.map(item => item.id), ...record]);
+  assert.deepEqual(routes.find(item => item.pageId === 'agent_overview')!.actors, ['companyAdmin', 'organizationMember']);
+  assert.deepEqual(fresh.entry.landings, [
+    { actorId: 'companyAdmin', pageId: 'agents', route: '/agents/agents' },
+    { actorId: 'organizationMember', pageId: 'agents', route: '/agents/agents' },
+  ]);
+  const menu = structuredClone(src.menu) as { authorities: Record<string, string[]> };
+  menu.authorities['actor:onlyRecord'] = ['agent_overview'];
+  const landed = composeM4ModuleEntry({ ...src, menu });
+  assert.equal((landed.entry.navigation as Array<{ id: string }>).some(item => item.id === 'agent_overview'), false);
+  assert.deepEqual((landed.entry.landings as Array<{ actorId: string; pageId: string }>).find(item => item.actorId === 'onlyRecord'), { actorId: 'onlyRecord', pageId: 'agent_overview', route: '/agents/agent_overview' });
+  const current = {
+    navigation: [
+      { id: 'agents', label: 'Agents', href: '/agents/agents', description: 'kept', actors: ['companyAdmin'] },
+      { id: 'agent_overview', label: 'Hand', href: '/agents/agent_overview', description: 'hand', actors: ['companyAdmin'] },
+    ],
+    landings: [{ actorId: 'companyAdmin', pageId: 'agents', route: '/agents/agents' }],
+    frontend: { pages: [
+      { pageId: 'agents', route: '/agents/agents', title: 'Agents' },
+      { pageId: 'agent_overview', route: '/agents/agent_overview', title: 'Hand' },
+    ] },
+  };
+  const again = composeM4ModuleEntry(src, current);
+  assert.equal((again.entry.navigation as Array<{ id: string }>).some(item => item.id === 'agent_overview'), false);
+  assert.equal((again.entry.navigation as Array<{ id: string }>).some(item => item.id === 'agents'), true);
+  const againPages = (again.entry.frontend as { pages: Array<{ pageId: string; title?: string }> }).pages;
+  assert.equal(againPages.find(item => item.pageId === 'agent_overview')!.title, 'Hand');
+  assert.ok(againPages.length === pageIds.length);
 });
 
 test('designSystems: the project DS names go in after languages; without names the field is left as it is', () => {
