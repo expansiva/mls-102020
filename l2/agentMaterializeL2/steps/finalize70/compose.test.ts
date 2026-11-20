@@ -275,19 +275,19 @@ test('external systems: an existing module gains the link, keeps a hand edit, an
 test('agents: a page with a required id leaves the menu and keeps its route; the hub is not flattened', () => {
   assert.equal(m4PageNeedsRecord({ agentId: { required: true }, agentBehaviorId: { required: false } }), true);
   assert.equal(m4PageNeedsRecord({ agentDraftId: { required: false }, page: { required: true } }), false);
-  const agentsRoot = new URL('../../../../../mls-102047/', import.meta.url);
+  const agentsRoot = new URL('./fixtures/agents/', import.meta.url);
   const load = (path: string) => readFileSync(new URL(path, agentsRoot), 'utf8');
   const pageIds = ['agents', 'draft_review', 'agent_overview', 'agent_behavior', 'agent_tools', 'agent_configuration', 'agent_activity', 'agent_simulation', 'my_conduct', 'person_restrictions', 'tool_catalog'];
-  // The shared files on disk are the generation from before s1, so only draft_review has required: true.
-  // The other six hub children and my_conduct are required by the s1 rule (s0 table).
-  const record = new Set(['draft_review', 'agent_overview', 'agent_behavior', 'agent_tools', 'agent_configuration', 'agent_activity', 'agent_simulation', 'my_conduct']);
-  assert.equal(m4PageNeedsRecord(parseL2Shared(load('l2/agents/web/shared/draft_review.defs.ts')).definition.entry.params), true);
-  assert.equal(m4PageNeedsRecord(parseL2Shared(load('l2/agents/web/shared/agent_overview.defs.ts')).definition.entry.params), false);
+  const paramsOf = (pageId: string) => parseL2Shared(load(`l2/agents/web/shared/${pageId}.defs.ts`)).definition.entry.params;
+  const record = pageIds.filter(pageId => m4PageNeedsRecord(paramsOf(pageId)));
+  assert.deepEqual(record, ['draft_review', 'agent_overview', 'agent_behavior', 'agent_tools', 'agent_configuration', 'agent_activity', 'agent_simulation', 'my_conduct']);
+  assert.equal(m4PageNeedsRecord(paramsOf('draft_review')), true);
+  assert.equal(m4PageNeedsRecord(paramsOf('agent_overview')), true);
   const pages: M4FinalizePage[] = pageIds.map(pageId => ({
     pageId,
     intent: parseL2Page11(load(`l2/agents/web/desktop/page11/${pageId}.defs.ts`)).definition.intent,
     sharedActors: parseL2Shared(load(`l2/agents/web/shared/${pageId}.defs.ts`)).definition.access.actors,
-    needsRecord: record.has(pageId),
+    needsRecord: m4PageNeedsRecord(paramsOf(pageId)),
   }));
   const src: M4FinalizeSources = { project: 102047, module: 'agents', pages, menu: JSON.parse(load('l4/agents/pool/l2/web/menu.json')), productLanguages: ['en-US'], userLanguage: 'en-US' };
   const fresh = composeM4ModuleEntry(src);
