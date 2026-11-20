@@ -9,11 +9,12 @@ import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js
 import { approveM4Shared, buildM4SharedContext } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 import {
-  M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4MoveI18nBeforeClass, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, productLocales, reusableM4Page, studioPagePort, type M4PagePort,
+  M4_CONNECTION_REFUSED_LINE, M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4ConnectionCallsSection, m4MoveI18nBeforeClass, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, m4ServedJourneySteps, productLocales, reusableM4Page, studioPagePort, type M4PagePort,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { createAgent as createPageAgent } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4PagesPage.js';
 import { gateM4PageSource, m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
+import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import { sha256Text } from '/_102020_/l2/agentMaterializeL2/helpers/hash.js';
 import { defsWithoutHistory, withDefsHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import type { M4InputPage, M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
@@ -394,6 +395,76 @@ test('a page that reads an outside system gets its title, setting titles and the
   assert.match(content.humanPrompt, /- GitHub; link: \/monitor\/external-systems\?module=repoHost; settings: repositorio → Repositório; chaveAcesso → Chave de acesso; segredoAviso → Segredo dos avisos/);
   const notices = await buildM4PageContext(repoHost, 'avisos_mudanca', 'desktop', port, snapshot);
   assert.equal(notices.humanPrompt.includes('# Systems outside this page'), false);
+});
+
+test('a page that calls a connection lists the catalogue operation and the refused state; a page whose steps call none does not', async () => {
+  const root = new URL('./fixtures/connectionCalls/', import.meta.url);
+  const fix = (path: string) => readFileSync(new URL(path, root), 'utf8');
+  const agents = { project: 102047, module: 'agents' };
+  const files = new Map<string, string>();
+  const put = (info: Ns5FileInfo, text: string) => files.set(key(info), text);
+  const pages = ['agent_simulation', 'person_restrictions'] as const;
+  const hashes: Record<string, string> = {};
+  for (const pageId of pages) {
+    const desktop = fix(`web/desktop/page11/${pageId}.defs.ts`);
+    hashes[pageId] = await sha256Text(defsWithoutHistory(desktop));
+    put({ project: agents.project, level: 2, folder: `${agents.module}/web/desktop/page11`, shortName: pageId, extension: '.defs.ts' }, desktop);
+    put({ project: agents.project, level: 2, folder: `${agents.module}/web/contracts`, shortName: pageId, extension: '.defs.ts' }, fix(`web/contracts/${pageId}.defs.ts`));
+    put({ project: agents.project, level: 2, folder: `${agents.module}/web/shared`, shortName: pageId, extension: '.defs.ts' }, fix(`web/shared/${pageId}.defs.ts`));
+    put({ project: agents.project, level: 2, folder: `${agents.module}/web/shared`, shortName: pageId, extension: '.ts' }, fix(`web/shared/${pageId}.ts`));
+    put({ project: agents.project, level: 2, folder: `${agents.module}/web/shared`, shortName: `${pageId}Dts`, extension: '.txt' }, fix(`web/shared/${pageId}Dts.txt`));
+  }
+  put({ project: agents.project, level: 4, folder: agents.module, shortName: 'integration', extension: '.defs.ts' }, fix('l4/integration.defs.ts'));
+  put({ project: 102034, level: 2, folder: 'shared/contracts/connections', shortName: 'cm', extension: '.ts' }, fix('cm.ts'));
+  put({ project: 102020, level: 2, folder: 'agentMaterializeL2/steps/pages50', shortName: 'prompt', extension: '.md' }, readFileSync(new URL('./prompt.md', import.meta.url), 'utf8'));
+  put({ project: 102034, level: 1, folder: 'mdm/defs', shortName: 'ontology', extension: '.ts' }, 'export const Address = {} as const;\n');
+  const groups = new Set([...pages.flatMap(pageId => [...fix(`web/desktop/page11/${pageId}.defs.ts`).matchAll(/"(?:preferred|alternative)": "([^"]+)"/gu)].map(match => match[1].split('--')[0]))]);
+  for (const group of groups) {
+    put({ project: 102040, level: 2, folder: `molecules/${group}`, shortName: 'index', extension: '.defs.ts' }, 'export const index = {};\n');
+  }
+  const port: M4PagePort = {
+    read: async info => { const text = files.get(key(info)); if (text === undefined) throw new Error(`file not found: ${key(info)}`); return text; },
+    exists: info => files.has(key(info)),
+    readJson: async <T>(info: Ns5FileInfo) => { const text = files.get(key(info)); return text === undefined ? null : JSON.parse(text) as T; },
+    writeText: async () => { throw new Error('not used'); },
+    writeJson: async () => { throw new Error('not used'); },
+    deleteText: async () => { throw new Error('not used'); },
+    declarations: async () => [],
+    listDefs: () => [],
+    compile: async () => ({ errors: [], declaration: null }),
+  };
+  const snapshotPage = (pageId: string): M4InputPage => ({
+    pageId, status: 'accepted', problems: [], methods: {}, l4: null,
+    inputs: { contract: null, shared: null, mobile: null, desktop: { path: pageId, sha256: hashes[pageId] } },
+    units: [{ unitId: `${pageId}__desktop`, kind: 'desktop', inputHash: 'unit' }],
+  });
+  const snapshot: M4InputSnapshot = {
+    schemaVersion: '2026-10-14-materialize-l2-input-v4', project: agents.project, module: agents.module,
+    defsPipelineStatus: 'complete', snapshotHash: 'fixture', accepted: [...pages], refused: [], moduleProblems: [],
+    pages: pages.map(snapshotPage),
+  };
+  const simulation = await buildM4PageContext(agents, 'agent_simulation', 'desktop', port, snapshot);
+  assert.match(simulation.prompt, /code: 'refused'/);
+  assert.match(simulation.prompt, /never the raw message, never "could not open"/);
+  const section = simulation.humanPrompt.slice(simulation.humanPrompt.indexOf('# Connections this page calls'), simulation.humanPrompt.indexOf('# Template'));
+  assert.equal(section.includes('cm.listAgents'), false);
+  assert.match(section, /- cm\.simulateAgent: Simulate an agent at the levels what it can and what it understands; nothing is saved\. A person the cm holds no current roles for \(they have not used the assistant, or not recently\) answers the error refused; every other failure is invalid or not_found\./);
+  assert.ok(section.includes(M4_CONNECTION_REFUSED_LINE));
+  assert.deepEqual(simulation.target.refusingConnections, ['cm.simulateAgent']);
+  const restrictions = await buildM4PageContext(agents, 'person_restrictions', 'desktop', port, snapshot);
+  assert.equal(restrictions.humanPrompt.includes('# Connections this page calls'), false);
+  assert.equal(restrictions.target.refusingConnections, undefined);
+});
+
+test('agents only forwards the simulate steps, so its section does not list simulateAgent', () => {
+  const repo = '/Volumes/WagnerSSD1/collab/mls-base/mls-102047';
+  const shared = execFileSync('git', ['-C', repo, 'show', '9e8b640a:l2/agents/web/shared/agents.defs.ts'], { encoding: 'utf8' });
+  const integration = readFileSync(new URL('./fixtures/connectionCalls/l4/integration.defs.ts', import.meta.url), 'utf8');
+  const catalog = readFileSync(new URL('./fixtures/connectionCalls/cm.ts', import.meta.url), 'utf8');
+  const steps = m4ServedJourneySteps(parseL2Shared(shared).definition.journeys);
+  const section = m4ConnectionCallsSection('agents', steps, integration, new Map([['cm', catalog]]));
+  assert.equal(section.some(line => line.includes('simulateAgent')), false);
+  assert.match(section.join('\n'), /- cm\.listAgents: /);
 });
 
 // Saved from git objects, not the live trees. mls-102047@9e8b640a; mls-102039@812e46e; mls-102056@4c0b77f.

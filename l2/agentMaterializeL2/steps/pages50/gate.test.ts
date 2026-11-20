@@ -1,10 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeL2/steps/pages50/gate.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
-import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4MoleculeEvents, m4MoleculeImport, m4MoleculeDetailEvents, m4MoleculeProperties, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PageHistory, m4PageMoleculeTags, m4PagePath, m4PageTag, m4PageNavIdIssues, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { gateM4PageSource, htmlTemplates, m4BoundEvents, m4DomProperties, m4MoleculeEvents, m4MoleculeImport, m4MoleculeDetailEvents, m4MoleculeProperties, m4MoleculeSurfaceLine, m4PageOnlyRequests, m4OwnEventDrops, m4PageClassName, m4PageHistory, m4PageMoleculeTags, m4PagePath, m4PageTag, m4PageConnectionRefusedIssues, m4PageNavIdIssues, withoutExpressions, type M4PageTarget } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
+import { m4ConnectionCalls, m4RefusingConnections, m4ServedJourneySteps } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import type { L2ContractDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
 import type { M4Navigation } from '/_102020_/l2/agentMaterializeL2/steps/input20/gate.js';
 import { M4_DOM_PROPERTIES } from '/_102020_/l2/agentMaterializeL2/steps/pages50/domProperties.js';
@@ -524,4 +527,71 @@ test('a list navigation passes the contract id, not the display name (calls copi
   assert.deepEqual(m4PageNavIdIssues('this.openAgentOverview(agent.name)', [nav('openAgentOverview', 'agentId')], withFields(['name'])), [], 'no id field on the contract: the call is not refused');
   assert.deepEqual(m4PageNavIdIssues('this.openAgentOverview()\nthis.openAgentOverview(String(agent.name))\nthis.openAgentOverview(selected)', [nav('openAgentOverview', 'agentId')], contract), []);
   assert.equal(m4PageNavIdIssues('this.openAgentOverview(title)', [nav('openAgentOverview', 'agentId')], contract)[0].message.includes('title'), true);
+});
+
+// Copies pinned from git, not the live tree: mls-102047@9e8b640a. The catalogue is fixtures/connectionCalls/cm.ts (mls-102034@0fdb175).
+const connectionPage = (name: string) => readFileSync(new URL(`./fixtures/connectionCalls/${name}`, import.meta.url), 'utf8');
+const REFUSED_STATE = "cm.simulateAgent can answer refused; the page must handle code 'refused' as its own state";
+
+test('a recorded page that calls simulateAgent must cite code \'refused\'; citing it passes; no refusing call leaves the page unchanged (d2_200)', () => {
+  const desktop = connectionPage('web/desktop/page11/agent_simulation.ts');
+  const mobile = connectionPage('web/mobile/page11/agent_simulation.ts');
+  const draft = connectionPage('web/desktop/page11/draft_review.ts');
+  const draftMobile = connectionPage('web/mobile/page11/draft_review.ts');
+  for (const source of [desktop, mobile, draft, draftMobile]) {
+    assert.deepEqual(m4PageConnectionRefusedIssues(source, ['cm.simulateAgent']).map(item => item.message), [REFUSED_STATE]);
+  }
+  const cited = `${desktop}\nif (error.code === 'refused') return this.msg['state.refused'];\n`;
+  assert.deepEqual(m4PageConnectionRefusedIssues(cited, ['cm.simulateAgent']), []);
+  const plain = target();
+  assert.deepEqual(gateM4PageSource(desktop, plain), gateM4PageSource(desktop, { ...plain, refusingConnections: [] }));
+  assert.equal(gateM4PageSource(desktop, { ...plain, refusingConnections: ['cm.simulateAgent'] }).some(item => item.message === REFUSED_STATE), true);
+  assert.equal(gateM4PageSource(cited, { ...plain, refusingConnections: ['cm.simulateAgent'] }).some(item => item.code === 'M4_PAGE_CONNECTION_REFUSED'), false);
+});
+
+test('bench: recorded pages of 102047, 102039 and 102056, catalogue 0fdb175 — only a call whose description says refused is refused (d2_200)', () => {
+  const show = (repo: string, rev: string, path: string) => execFileSync('git', ['-C', repo, 'show', `${rev}:${path}`], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  const catalogRev = '0fdb175921d2ea49eef92c8278d62e51bd5dbdba';
+  const catalogRepo = '/Volumes/WagnerSSD1/collab/mls-base/mls-102034';
+  const benches = [
+    ['/Volumes/WagnerSSD1/collab/mls-base/mls-102047', '9e8b640a'],
+    ['/Volumes/WagnerSSD1/collab/mls-base/mls-102039', '812e46e94daa744191f42b9984db518ff61a682a'],
+    ['/Volumes/WagnerSSD1/collab/mls-base/mls-102056', '4c0b77f5ce4e0d94642a83492243f6e2d3a08f34'],
+  ] as const;
+  const catalogs = new Map<string, string | null>();
+  const catalogOf = (connectionId: string): string | null => {
+    if (catalogs.has(connectionId)) return catalogs.get(connectionId) ?? null;
+    let text: string | null = null;
+    try { text = show(catalogRepo, catalogRev, `l2/shared/contracts/connections/${connectionId}.ts`); } catch { text = null; }
+    catalogs.set(connectionId, text);
+    return text;
+  };
+  const refused: string[] = [];
+  const falses: string[] = [];
+  for (const [repo, rev] of benches) {
+    const files = execFileSync('git', ['-C', repo, 'ls-tree', '-r', '--name-only', rev], { encoding: 'utf8' }).split('\n').filter(path => /\/web\/(?:desktop|mobile)\/page11\/[^/]+\.ts$/u.test(path) && !path.endsWith('.defs.ts'));
+    for (const path of files) {
+      const source = show(repo, rev, path);
+      const sharedPath = path.replace(/\/(?:desktop|mobile)\/page11\/([^/]+)\.ts$/u, '/shared/$1.defs.ts');
+      const moduleId = path.split('/')[1] ?? '';
+      let integration: string | null = null;
+      try { integration = show(repo, rev, `l4/${moduleId}/integration.defs.ts`); } catch { integration = null; }
+      let steps: string[] = [];
+      try { steps = m4ServedJourneySteps(parseL2Shared(show(repo, rev, sharedPath)).definition.journeys); } catch { steps = []; }
+      const calls = m4ConnectionCalls(moduleId, steps, integration, new Map());
+      const withCatalogs = m4ConnectionCalls(moduleId, steps, integration, new Map(calls.map(call => [call.id.split('.')[0], catalogOf(call.id.split('.')[0])])));
+      const refusing = m4RefusingConnections(withCatalogs);
+      const issues = m4PageConnectionRefusedIssues(source, refusing.length ? refusing : undefined);
+      if (!issues.length) continue;
+      refused.push(`${repo.split('/').pop()}:${path} [${refusing.join(', ')}]`);
+      if (!refusing.length) falses.push(path);
+    }
+  }
+  assert.deepEqual(falses, []);
+  assert.deepEqual(refused.sort(), [
+    'mls-102047:l2/agents/web/desktop/page11/agent_simulation.ts [cm.simulateAgent]',
+    'mls-102047:l2/agents/web/desktop/page11/draft_review.ts [cm.simulateAgent]',
+    'mls-102047:l2/agents/web/mobile/page11/agent_simulation.ts [cm.simulateAgent]',
+    'mls-102047:l2/agents/web/mobile/page11/draft_review.ts [cm.simulateAgent]',
+  ]);
 });

@@ -1,0 +1,80 @@
+import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import type { Person_restrictionsContracts, PersonOption, ChecklistTool, RestrictionRef } from '/_102047_/l2/agents/web/contracts/person_restrictions.defs.js';
+export type { Person_restrictionsContracts, PersonOption, PersonOptionDetails, PersonIdentification, PersonAgentsData, ChecklistTool, ChecklistToolDetails, BlockedToolRestriction, BlockedToolRestrictionDetails, RestrictionRef } from '/_102047_/l2/agents/web/contracts/person_restrictions.defs.js';
+type Output<R extends keyof Person_restrictionsContracts> = Person_restrictionsContracts[R]['output'];
+export type ErrorState = {
+    code: string;
+    message: string;
+    details?: unknown;
+} | null;
+/** A page of people as the list query returns it. */
+export type PeoplePage = Output<'agents.person_restrictions.listPeople'>['people'];
+/** Draft of the saveRestrictions command: the person, every tool ticked as blocked and the restrictions known when the checklist was loaded. */
+export type SaveRestrictionsDraft = {
+    personId: string | null;
+    toolId: string[];
+    knownRestrictions: RestrictionRef[];
+};
+export declare class AgentsPerson_restrictionsShared extends StateLitElement {
+    /** state people — the page of active people the admin can restrict, shown by name and login e-mail; source listPeople.people; organism personPicker */
+    people: PeoplePage;
+    /** state person — the chosen person whose checklist is loaded (name, status, login e-mail); source getPersonRestrictions.person; organism blockedToolsChecklist */
+    person: PersonOption | null;
+    /** state tools — the whole tool catalog of the chosen person with module, subject, description, blocked flag and, when blocked, its restriction; source getPersonRestrictions.tools; organism blockedToolsChecklist */
+    tools: ChecklistTool[];
+    /** state selectedOrganizationUser — the id of the organization user selected in the person picker; source entry.params.organizationUserId; organisms blockedToolsChecklist, personPicker */
+    selectedOrganizationUser: string | null;
+    /** state search — text typed to find a person by name (filter of the person picker); source entry.params.search; organism personPicker; persisted */
+    search: string | null;
+    /** state saveRestrictionsDraft — the checklist being edited: person, tools ticked as blocked and known restrictions; source saveRestrictions.input; organism blockedToolsChecklist */
+    saveRestrictionsDraft: SaveRestrictionsDraft;
+    /** state pageStatus — overall status of the page: loading, empty when no person is listed, success, error */
+    pageStatus: 'idle' | 'loading' | 'empty' | 'success' | 'error';
+    /** state listPeopleStatus — status of the listPeople request */
+    listPeopleStatus: 'idle' | 'loading' | 'success' | 'error';
+    /** state listPeopleError — error of the listPeople request, null when none */
+    listPeopleError: ErrorState;
+    /** state getPersonRestrictionsStatus — status of the getPersonRestrictions request */
+    getPersonRestrictionsStatus: 'idle' | 'loading' | 'success' | 'error';
+    /** state getPersonRestrictionsError — error of the getPersonRestrictions request, null when none */
+    getPersonRestrictionsError: ErrorState;
+    /** state saveRestrictionsStatus — status of the saveRestrictions command; success stays until the person changes the checklist */
+    saveRestrictionsStatus: 'idle' | 'loading' | 'success' | 'error';
+    /** state saveRestrictionsError — error of the saveRestrictions command, null when none */
+    saveRestrictionsError: ErrorState;
+    /** state scenary — the visible scene of the page; '' until the page shows its first scene */
+    scenary: string;
+    private prefillToolId;
+    private peopleRequestSeq;
+    private loadingPersonId;
+    private publish;
+    private assignState;
+    private readonly onPopState;
+    connectedCallback(): void;
+    disconnectedCallback(): void;
+    handleIcaStateChange(key: string, value: any): void;
+    private hydrateData;
+    /** Transient members start every visit from their initial value. */
+    private resetVisit;
+    private resetCommandResults;
+    private readParam;
+    private applyEntryParams;
+    private runVisit;
+    private unexpectedError;
+    /** draft init — builds the checklist draft from a loaded record: ticked = tools already blocked (plus the prefilled tool), known = id and version of each loaded restriction */
+    private buildDraft;
+    /** scene — publishes the visible scene of the page */
+    setScenario(value: string): void;
+    /** draft — replaces the whole checklist draft (person, ticked tools, known restrictions) */
+    setSaveRestrictionsDraft(value: SaveRestrictionsDraft): void;
+    /** draft — ticks (checked true) or unticks (checked false) one tool of the checklist by its id; saved only by saveRestrictions */
+    toggleTool(toolId: string, checked: boolean): void;
+    /** select — chooses a person of the picker by id (null clears the choice) and loads that person's checklist into person, tools and the draft */
+    selectOrganizationUser(personId: string | null): void;
+    /** request listPeople — lists the active people the admin can restrict, searched by name; redraws people (replace; append adds the next page); search: text to find a person by name (undefined keeps the current search, '' clears it and reloads from the first page), page: page to load (default 1), append: add that page to the loaded items instead of replacing (default false). A replace loads every page up to 500 people so the picker chooses from the whole list. */
+    listPeople(search?: string | null, page?: number, append?: boolean): Promise<void>;
+    /** request getPersonRestrictions — loads the restriction checklist of the selected person (the whole tool catalog with blocked tools marked); redraws person and tools (replace) and refills saveRestrictionsDraft from them; takes no argument: it reads selectedOrganizationUser (use selectOrganizationUser to choose a person) */
+    getPersonRestrictions(): Promise<void>;
+    /** request saveRestrictions — saves the checklist of the chosen person: ticked tools become blocked through any agent, unticked ones are freed; redraws person and tools (replace with the saved state) and refills saveRestrictionsDraft from the result; takes no argument: it sends saveRestrictionsDraft (person, ticked tools, known restrictions) */
+    saveRestrictions(): Promise<void>;
+}

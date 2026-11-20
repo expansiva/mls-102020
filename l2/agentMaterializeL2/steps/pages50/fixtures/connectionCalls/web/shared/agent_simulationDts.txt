@@ -1,0 +1,86 @@
+import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import type { Agent_simulationContracts, AgentHeader, WhatItCanResult, WhatItUnderstandsResult } from '/_102047_/l2/agents/web/contracts/agent_simulation.defs.js';
+export type { Agent_simulationContracts, AgentHeader, PersonIdentification, PersonDetails, SimulatedPerson, ToolVerdict, WhatItCanResult, UnderstoodAction, Understanding, WhatItUnderstandsResult } from '/_102047_/l2/agents/web/contracts/agent_simulation.defs.js';
+type Output<R extends keyof Agent_simulationContracts> = Agent_simulationContracts[R]['output'];
+export type ErrorState = {
+    code: string;
+    message: string;
+    details?: unknown;
+} | null;
+export type PeoplePage = Output<'agents.agent_simulation.findPeopleToSimulate'>['people'];
+/** Who the simulation is run for: a person (by reference) or a role (by readable name). Every leaf is null until chosen. */
+export type SimulateWhatItCanDraft = {
+    subjectKind: 'person' | 'role' | null;
+    person: string | null;
+    roleName: string | null;
+};
+/** The sample sentence typed to see how the agent reads it. */
+export type SimulateWhatItUnderstandsDraft = {
+    sentence: string | null;
+};
+export declare class AgentsAgent_simulationShared extends StateLitElement {
+    /** state agent — the agent being simulated, identified by its @name; source getSimulationPage.agent; organism whatItCan, whatItUnderstands */
+    agent: AgentHeader | null;
+    /** state whatItCan — the 'what it can' simulation of the agent for one person or role: who it was run for and the verdict for each tool; source getSimulationPage.whatItCan; organism whatItCan */
+    whatItCan: WhatItCanResult | null;
+    /** state people — the page of active organization users a simulation can be run for (items, page, pageSize, hasMore), each with a reference and a readable name; source findPeopleToSimulate.people; organism whatItCan */
+    people: PeoplePage | null;
+    /** state whatItUnderstands — the 'what it understands' simulation of the agent for one sentence; source simulateWhatItUnderstands.whatItUnderstands; organism whatItUnderstands */
+    whatItUnderstands: WhatItUnderstandsResult | null;
+    /** draft — who to simulate for (person reference or role name), read by simulateWhatItCan and also by simulateWhatItUnderstands; fill it with setSimulateWhatItCanDraft; organism whatItCan */
+    simulateWhatItCanDraft: SimulateWhatItCanDraft;
+    /** draft — the sample sentence typed for simulateWhatItUnderstands; fill it with setSimulateWhatItUnderstandsDraft; organism whatItUnderstands */
+    simulateWhatItUnderstandsDraft: SimulateWhatItUnderstandsDraft;
+    /** filter — the text typed to search people by name; set by findPeopleToSimulate; organism whatItCan */
+    peopleSearch: string;
+    /** state pageStatus — overall status of the page: idle, loading, empty (no tool verdicts), success or error */
+    pageStatus: 'idle' | 'loading' | 'empty' | 'success' | 'error';
+    /** state getSimulationPageStatus — status of the opening load */
+    getSimulationPageStatus: 'idle' | 'loading' | 'success' | 'error';
+    /** state getSimulationPageError — error of the opening load, null when none */
+    getSimulationPageError: ErrorState;
+    /** state simulateWhatItCanStatus — status of the 'what it can' simulation */
+    simulateWhatItCanStatus: 'idle' | 'loading' | 'success' | 'error';
+    /** state simulateWhatItCanError — error of the 'what it can' simulation, null when none */
+    simulateWhatItCanError: ErrorState;
+    /** state findPeopleToSimulateStatus — status of the people search */
+    findPeopleToSimulateStatus: 'idle' | 'loading' | 'success' | 'error';
+    /** state findPeopleToSimulateError — error of the people search, null when none */
+    findPeopleToSimulateError: ErrorState;
+    /** state simulateWhatItUnderstandsStatus — status of the 'what it understands' simulation */
+    simulateWhatItUnderstandsStatus: 'idle' | 'loading' | 'success' | 'error';
+    /** state simulateWhatItUnderstandsError — error of the 'what it understands' simulation, null when none */
+    simulateWhatItUnderstandsError: ErrorState;
+    /** state scenary — the visible scene of the page; '' until the page shows its first scene */
+    scenary: string;
+    private agentIdParam;
+    private subscribed;
+    private readonly onPopState;
+    private publish;
+    private assignState;
+    /** Keeps the agentId entry param (url only) in the query: every change of it goes through history.replaceState. */
+    private publishAgentId;
+    private hydrate;
+    private resetVisit;
+    private applyEntryParams;
+    private unexpectedError;
+    connectedCallback(): void;
+    disconnectedCallback(): void;
+    handleIcaStateChange(key: string, value: any): void;
+    /** Publishes the visible scene of the page. */
+    setScenario(value: string): void;
+    /** draft — replaces the draft of who to simulate for (subjectKind, person reference, roleName); used by simulateWhatItCan and simulateWhatItUnderstands */
+    setSimulateWhatItCanDraft(value: SimulateWhatItCanDraft): void;
+    /** draft — replaces the draft of the sample sentence; used by simulateWhatItUnderstands */
+    setSimulateWhatItUnderstandsDraft(value: SimulateWhatItUnderstandsDraft): void;
+    /** request getSimulationPage — opens the simulation of the agent in the URL: its @name and the 'what it can' simulation for the logged-in person; redraws agent and whatItCan (replace) and pageStatus; no arguments (agentId is read from the URL); also the method to reload the page */
+    getSimulationPage(): Promise<void>;
+    /** request simulateWhatItCan — runs the 'what it can' simulation of the agent for the person or role chosen in simulateWhatItCanDraft (a member is always simulated as themselves); redraws whatItCan (replace); no arguments */
+    simulateWhatItCan(): Promise<void>;
+    /** request findPeopleToSimulate — finds the active people a company admin can choose to simulate for; redraws people (replace, or append the next page when append is true) and peopleSearch; search: part of the name typed (defaults to the current peopleSearch); page: the page to load (first page by default); append: true for a "load more", which does nothing when the loaded list has no more pages */
+    findPeopleToSimulate(search?: string, page?: number, append?: boolean): Promise<void>;
+    /** request simulateWhatItUnderstands — asks how the agent reads the sentence typed in simulateWhatItUnderstandsDraft, for the person or role chosen in simulateWhatItCanDraft (none: the logged-in person); redraws whatItUnderstands (replace); no arguments */
+    simulateWhatItUnderstands(): Promise<void>;
+    /** navigate — opens the tool catalog page (organism whatItCan); carries nothing */
+    openToolCatalog(): void;
+}

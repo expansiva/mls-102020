@@ -224,6 +224,92 @@ export function m4OutsideSystemsSection(moduleId: string, pageId: string, backen
   ];
 }
 
+/** The line the prompt repeats: a `refused` from a listed call is a screen state, with catalogue words. */
+export const M4_CONNECTION_REFUSED_LINE = 'a request error with code \'refused\' from one of these calls is a state of the screen: a neutral title and a catalogue text saying, in this page\'s words, that the system refused for this person or record; never the raw message, never "could not open"';
+
+function journeyStepKey(step: string): string {
+  return step.trim().replaceAll('/', '.');
+}
+
+/** Journey steps this page serves. A step with no organism is only forwarded (`continuesIn`). */
+export function m4ServedJourneySteps(journeys: readonly { step: string; organisms: readonly string[] }[]): string[] {
+  return journeys.filter(item => item.organisms.length > 0).map(item => item.step);
+}
+
+function operationDescription(catalogText: string | null, operationId: string, fallback: string): string {
+  const catalog = catalogText ? asRecord(extractExportedObject(catalogText)) : null;
+  for (const item of Array.isArray(catalog?.operations) ? catalog.operations : []) {
+    const row = asRecord(item);
+    if (asText(row?.operationId) !== operationId) continue;
+    const description = asText(row?.description);
+    if (description) return description;
+  }
+  return fallback;
+}
+
+/** One call this page makes: `<connectionId>.<operationId>` and the description the section shows. */
+export interface M4ConnectionCall { id: string; description: string }
+
+/**
+ * Call connections whose `usedBy` names a journey step of this page, or [] when none do.
+ * The operation description is read from the connection catalogue (`operations[]`); the integration
+ * description is the reserve when that catalogue is missing. A missing integration is no section.
+ */
+export function m4ConnectionCalls(moduleId: string, journeySteps: readonly string[], integrationText: string | null, catalogs: ReadonlyMap<string, string | null>): M4ConnectionCall[] {
+  void moduleId;
+  if (integrationText === null) return [];
+  const integration = asRecord(extractExportedObject(integrationText));
+  if (!integration) return [];
+  const steps = new Set(journeySteps.map(journeyStepKey).filter(Boolean));
+  if (!steps.size) return [];
+  const calls: M4ConnectionCall[] = [];
+  for (const item of Array.isArray(integration.connections) ? integration.connections : []) {
+    const row = asRecord(item);
+    if (asText(row?.direction) !== 'call') continue;
+    const usedBy = Array.isArray(row?.usedBy) ? row.usedBy.map(asText) : [];
+    if (!usedBy.some(step => steps.has(step))) continue;
+    const connectionId = asText(row?.connectionId);
+    const operationId = asText(row?.operationId);
+    if (!connectionId || !operationId) continue;
+    calls.push({ id: `${connectionId}.${operationId}`, description: operationDescription(catalogs.get(connectionId) ?? null, operationId, asText(row?.description)) });
+  }
+  return calls;
+}
+
+/** Calls whose description says they can answer `refused` (the word, not a longer token). */
+export function m4RefusingConnections(calls: readonly M4ConnectionCall[]): string[] {
+  return calls.filter(call => /\brefused\b/u.test(call.description)).map(call => call.id);
+}
+
+/** The `# Connections this page calls` lines, or [] when the page calls none. */
+export function m4ConnectionCallsLines(calls: readonly M4ConnectionCall[]): string[] {
+  if (!calls.length) return [];
+  return ['# Connections this page calls', ...calls.map(call => `- ${call.id}: ${call.description}`), M4_CONNECTION_REFUSED_LINE, ''];
+}
+
+/** The `# Connections this page calls` section, or [] when the page calls none. */
+export function m4ConnectionCallsSection(moduleId: string, journeySteps: readonly string[], integrationText: string | null, catalogs: ReadonlyMap<string, string | null>): string[] {
+  return m4ConnectionCallsLines(m4ConnectionCalls(moduleId, journeySteps, integrationText, catalogs));
+}
+
+/** Connection catalogues (102034) for the call connections this page's journey steps name. */
+async function m4ConnectionCatalogs(port: Pick<M4PagePort, 'exists' | 'read'>, integrationText: string | null, journeySteps: readonly string[]): Promise<Map<string, string | null>> {
+  const catalogs = new Map<string, string | null>();
+  const integration = integrationText ? asRecord(extractExportedObject(integrationText)) : null;
+  const steps = new Set(journeySteps.map(journeyStepKey).filter(Boolean));
+  for (const item of Array.isArray(integration?.connections) ? integration.connections : []) {
+    const row = asRecord(item);
+    if (asText(row?.direction) !== 'call') continue;
+    const usedBy = Array.isArray(row?.usedBy) ? row.usedBy.map(asText) : [];
+    if (!usedBy.some(step => steps.has(step))) continue;
+    const connectionId = asText(row?.connectionId);
+    if (!connectionId || catalogs.has(connectionId)) continue;
+    const info: Ns5FileInfo = { project: 102034, level: 2, folder: 'shared/contracts/connections', shortName: connectionId, extension: '.ts' };
+    catalogs.set(connectionId, port.exists(info) ? await port.read(info) : null);
+  }
+  return catalogs;
+}
+
 export async function buildM4PageContext(identity: M4RunIdentity, pageId: string, device: L2Page11Device, port: M4PagePort = studioPagePort, snapshot?: M4InputSnapshot, genome: string = L2_PRIMARY_GENOME): Promise<M4PageContext> {
   const snap = snapshot ?? await readM4Snapshot(identity, port);
   const page = snap.pages.find(item => item.pageId === pageId);
@@ -281,7 +367,12 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
 
   const l4Context = page.l4 ? await readL4Module(identity.project, identity.module, { listDefs: (project, folder) => port.listDefs(project, folder, 4), exists: port.exists, read: port.read }) : null;
   const l4 = l4Context && page.l4 ? renderL4Slice(resolveL4Refs(l4Context, page.l4)) : '';
-  const outsideSystems = m4OutsideSystemsSection(identity.module, pageId, await readOptional(port, backendPlanInfo(identity)), await readOptional(port, integrationDefsInfo(identity)));
+  const integrationText = await readOptional(port, integrationDefsInfo(identity));
+  const journeySteps = m4ServedJourneySteps(shared.journeys);
+  const outsideSystems = m4OutsideSystemsSection(identity.module, pageId, await readOptional(port, backendPlanInfo(identity)), integrationText);
+  const connectionCatalogs = await m4ConnectionCatalogs(port, integrationText, journeySteps);
+  const connectionCalls = m4ConnectionCalls(identity.module, journeySteps, integrationText, connectionCatalogs);
+  const refusingConnections = m4RefusingConnections(connectionCalls);
 
   const scenaryInfo: Ns5FileInfo = { project: 102020, level: 2, folder: 'molecules', shortName: 'ml-scenary', extension: '.defs.ts' };
   const scenarySource = port.exists(scenaryInfo) ? await port.read(scenaryInfo) : '';
@@ -297,6 +388,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     pageOnlyRequests,
     sharedSource: sharedText,
     navigations: page.navigations ?? [],
+    ...(refusingConnections.length ? { refusingConnections } : {}),
     contract: parseL2Contract(contractSource).definition,
     ...(history.kept.length ? { history: history.kept } : {}),
   };
@@ -331,6 +423,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     l4 || '(the module has no L4 context)',
     '',
     ...outsideSystems,
+    ...m4ConnectionCallsLines(connectionCalls),
     `# Template — ${page11.template.category}`,
     templateText.trim() || '(template not found)',
     '',

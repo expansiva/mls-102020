@@ -44,6 +44,11 @@ export interface M4PageTarget {
   history?: DefsHistoryEntry[];
   /** Navigate intents (input20). Absent skips the navigation-id check. */
   navigations?: M4Navigation[];
+  /**
+   * `<connectionId>.<operationId>` of the calls this page makes whose catalogue description says they can
+   * answer `refused`. Absent skips the check (d2_200).
+   */
+  refusingConnections?: string[];
   /** Page contract. The navigation-id check runs only for a param that is a required field of some projection. */
   contract?: L2ContractDefinition;
 }
@@ -604,6 +609,7 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
   }
 
   for (const issue of m4PageNavIdIssues(code, target.navigations ?? [], target.contract)) issues.push(issue);
+  for (const issue of m4PageConnectionRefusedIssues(code, target.refusingConnections)) issues.push(issue);
 
   // Intents.
   for (const [organism, row] of Object.entries(target.page11.organisms)) {
@@ -702,6 +708,24 @@ export function m4PageNavIdIssues(code: string, navigations: readonly M4Navigati
     }
   }
   return issues;
+}
+
+/** The error code, as a comparison with `code` or a `case`, not the same word in another union. */
+const REFUSED_CODE = /\bcode\s*(?:!==|===|==|!=)\s*(['"])refused\1|(['"])refused\2\s*(?:!==|===|==|!=)\s*[\w?.]*\bcode\b|\bcase\s+(['"])refused\3\b/u;
+
+/**
+ * A call whose catalogue says it can answer `refused` must be a state of the screen.
+ * Absent or empty list: no check. The page cites the code as the literal `'refused'` or `"refused"`.
+ */
+export function m4PageConnectionRefusedIssues(code: string, refusingConnections: readonly string[] | undefined): M4PageIssue[] {
+  if (!refusingConnections?.length) return [];
+  if (REFUSED_CODE.test(stripComments(code))) return [];
+  return refusingConnections.map(operation => ({
+    code: 'M4_PAGE_CONNECTION_REFUSED',
+    severity: 'error' as const,
+    always: true,
+    message: `${operation} can answer refused; the page must handle code 'refused' as its own state`,
+  }));
 }
 
 /** First argument of each `this.<method>(…)` call, or '' when the call has none. Nested calls stay inside the argument. */
