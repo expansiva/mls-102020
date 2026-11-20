@@ -23,6 +23,7 @@ import { m4SharedClassName } from '/_102020_/l2/agentMaterializeL2/steps/shared4
 import {
   M4_SCENARY_IMPORT, M4_SCENARY_TAG, gateM4PageSource, m4MoleculeEvents, m4MoleculeImport, m4MoleculeSurfaceLine, m4PageHistory, m4PageOnlyRequests, m4PageClassName, m4PageMoleculeTags, m4PagePath, m4PageTag, m4SharedImport, type M4PageTarget,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { extractExportedObject } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
 import { defsWithoutHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
 export const M4_PAGE_VERSION = '2026-10-05-materialize-l2-v4-page-v1' as const;
@@ -131,6 +132,98 @@ export function productLocales(moduleSource: string): string[] {
   return keys.length ? keys : ['en'];
 }
 
+/** l4/<module>/pool/l2/web/backend.json — the L2 plan (page → usecase). Absent: the page names no outside system. */
+export function backendPlanInfo(identity: M4RunIdentity): Ns5FileInfo {
+  return { project: identity.project, level: 4, folder: `${identity.module}/pool/l2/web`, shortName: 'backend', extension: '.json' };
+}
+/** l4/<module>/integration.defs.ts — call connections and the titles of outside systems. */
+export function integrationDefsInfo(identity: M4RunIdentity): Ns5FileInfo {
+  return { project: identity.project, level: 4, folder: identity.module, shortName: 'integration', extension: '.defs.ts' };
+}
+
+async function readOptional(port: Pick<M4PagePort, 'exists' | 'read'>, info: Ns5FileInfo): Promise<string | null> {
+  return port.exists(info) ? await port.read(info) : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * Systems this page reads from outside the module, or [] when it reads none.
+ * `endpoints[].page` → `usecaseRef` → `usecases[]` (`entity` + `operation` `list`/`read`) matched to
+ * `connections[]` of `direction: 'call'` (`entityRefs`, `effect`). Titles come from `externalSystems`, never from route text.
+ * A missing plan or integration file is no system and no error. A plan that exists but is not JSON is an error.
+ */
+export function m4OutsideSystemsSection(moduleId: string, pageId: string, backendText: string | null, integrationText: string | null): string[] {
+  if (backendText === null || integrationText === null) return [];
+  let backend: unknown;
+  try { backend = JSON.parse(backendText) as unknown; }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`M4_PAGE_BACKEND_UNREADABLE: l4/${moduleId}/pool/l2/web/backend.json: ${message}`);
+  }
+  const plan = asRecord(backend);
+  const integration = asRecord(extractExportedObject(integrationText));
+  if (!plan || !integration) return [];
+  const usecases = new Map<string, { entity: string; operation: string }>();
+  for (const item of Array.isArray(plan.usecases) ? plan.usecases : []) {
+    const row = asRecord(item);
+    const usecaseId = asText(row?.usecaseId);
+    const entity = asText(row?.entity);
+    const operation = asText(row?.operation);
+    if (usecaseId && entity && (operation === 'list' || operation === 'read')) usecases.set(usecaseId, { entity, operation });
+  }
+  const pairs: Array<{ entity: string; operation: string }> = [];
+  for (const item of Array.isArray(plan.endpoints) ? plan.endpoints : []) {
+    const row = asRecord(item);
+    if (asText(row?.page) !== pageId) continue;
+    const usecase = usecases.get(asText(row?.usecaseRef));
+    if (usecase && !pairs.some(pair => pair.entity === usecase.entity && pair.operation === usecase.operation)) pairs.push(usecase);
+  }
+  if (!pairs.length) return [];
+  const systems = new Map<string, { title: string; settings: Array<{ id: string; title: string }> }>();
+  for (const item of Array.isArray(integration.externalSystems) ? integration.externalSystems : []) {
+    const row = asRecord(item);
+    const id = asText(row?.id);
+    const title = asText(row?.title);
+    if (!id || !title || systems.has(id)) continue;
+    const settings: Array<{ id: string; title: string }> = [];
+    for (const setting of Array.isArray(row?.settings) ? row.settings : []) {
+      const field = asRecord(setting);
+      const settingId = asText(field?.id);
+      const settingTitle = asText(field?.title);
+      if (settingId && settingTitle) settings.push({ id: settingId, title: settingTitle });
+    }
+    systems.set(id, { title, settings });
+  }
+  const chosen: string[] = [];
+  for (const item of Array.isArray(integration.connections) ? integration.connections : []) {
+    const row = asRecord(item);
+    if (asText(row?.direction) !== 'call') continue;
+    const effect = asText(row?.effect);
+    const refs = Array.isArray(row?.entityRefs) ? row.entityRefs.map(asText) : [];
+    const hit = pairs.some(pair => pair.operation === effect && refs.includes(pair.entity));
+    const connectionId = asText(row?.connectionId);
+    if (hit && systems.has(connectionId) && !chosen.includes(connectionId)) chosen.push(connectionId);
+  }
+  if (!chosen.length) return [];
+  const link = `/monitor/external-systems?module=${moduleId}`;
+  return [
+    '# Systems outside this page',
+    ...chosen.flatMap(id => {
+      const system = systems.get(id);
+      if (!system) return [];
+      const settings = system.settings.map(item => `${item.id} → ${item.title}`).join('; ');
+      return [`- ${system.title}; link: ${link}${settings ? `; settings: ${settings}` : ''}`];
+    }),
+    '',
+  ];
+}
+
 export async function buildM4PageContext(identity: M4RunIdentity, pageId: string, device: L2Page11Device, port: M4PagePort = studioPagePort, snapshot?: M4InputSnapshot, genome: string = L2_PRIMARY_GENOME): Promise<M4PageContext> {
   const snap = snapshot ?? await readM4Snapshot(identity, port);
   const page = snap.pages.find(item => item.pageId === pageId);
@@ -188,6 +281,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
 
   const l4Context = page.l4 ? await readL4Module(identity.project, identity.module, { listDefs: (project, folder) => port.listDefs(project, folder, 4), exists: port.exists, read: port.read }) : null;
   const l4 = l4Context && page.l4 ? renderL4Slice(resolveL4Refs(l4Context, page.l4)) : '';
+  const outsideSystems = m4OutsideSystemsSection(identity.module, pageId, await readOptional(port, backendPlanInfo(identity)), await readOptional(port, integrationDefsInfo(identity)));
 
   const scenaryInfo: Ns5FileInfo = { project: 102020, level: 2, folder: 'molecules', shortName: 'ml-scenary', extension: '.defs.ts' };
   const scenarySource = port.exists(scenaryInfo) ? await port.read(scenaryInfo) : '';
@@ -234,6 +328,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     '# Business context (L4): labels, meanings, rules, journeys, actors',
     l4 || '(the module has no L4 context)',
     '',
+    ...outsideSystems,
     `# Template — ${page11.template.category}`,
     templateText.trim() || '(template not found)',
     '',

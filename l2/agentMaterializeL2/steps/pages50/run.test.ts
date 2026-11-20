@@ -13,7 +13,9 @@ import {
 import { createAgent as createPageAgent } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4PagesPage.js';
 import { m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
-import { withDefsHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
+import { sha256Text } from '/_102020_/l2/agentMaterializeL2/helpers/hash.js';
+import { defsWithoutHistory, withDefsHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
+import type { M4InputPage, M4InputSnapshot } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 
 interface Fixture { project: number; module: string; knownMolecules: string[]; pages: Record<string, { contract: string; shared: string; desktop: string; mobile: string }> }
 const fixture = JSON.parse(readFileSync(new URL('../input20/fixtures/controleEstoque.json', import.meta.url), 'utf8')) as Fixture;
@@ -331,4 +333,58 @@ test('a Studio edit history reaches the prompt in its own section, is left out o
   assert.deepEqual(context.history, { given: 1, dropped: [{ entry: `molecule ${organism}/groupviewtable--ml-data-table`, reason: 'molecule groupviewtable--ml-nao-existe is not in the catalog' }] });
   const receipt = await approveM4Page(context, pageRef.source, 1, port);
   assert.deepEqual(receipt.history, context.history);
+});
+
+test('a page that reads an outside system gets its title, setting titles and the monitor link; one that does not gets nothing', async () => {
+  const root = new URL('./fixtures/repoHost/', import.meta.url);
+  const fix = (path: string) => readFileSync(new URL(path, root), 'utf8');
+  const repoHost = { project: 102047, module: 'repoHost' };
+  const files = new Map<string, string>();
+  const put = (info: Ns5FileInfo, text: string) => files.set(key(info), text);
+  const pages = ['conteudo_repositorio', 'avisos_mudanca'] as const;
+  const hashes: Record<string, string> = {};
+  for (const pageId of pages) {
+    const desktop = fix(`web/desktop/page11/${pageId}.defs.ts`);
+    hashes[pageId] = await sha256Text(defsWithoutHistory(desktop));
+    put({ project: repoHost.project, level: 2, folder: `${repoHost.module}/web/desktop/page11`, shortName: pageId, extension: '.defs.ts' }, desktop);
+    put({ project: repoHost.project, level: 2, folder: `${repoHost.module}/web/contracts`, shortName: pageId, extension: '.defs.ts' }, fix(`web/contracts/${pageId}.defs.ts`));
+    put({ project: repoHost.project, level: 2, folder: `${repoHost.module}/web/shared`, shortName: pageId, extension: '.defs.ts' }, fix(`web/shared/${pageId}.defs.ts`));
+    put({ project: repoHost.project, level: 2, folder: `${repoHost.module}/web/shared`, shortName: pageId, extension: '.ts' }, 'export class Shared {}\n');
+    put({ project: repoHost.project, level: 2, folder: `${repoHost.module}/web/shared`, shortName: `${pageId}Dts`, extension: '.txt' }, 'export declare class Shared {}\n');
+  }
+  put({ project: repoHost.project, level: 4, folder: repoHost.module, shortName: 'integration', extension: '.defs.ts' }, fix('integration.defs.ts'));
+  put({ project: repoHost.project, level: 4, folder: `${repoHost.module}/pool/l2/web`, shortName: 'backend', extension: '.json' }, fix('pool/l2/web/backend.json'));
+  put({ project: 102020, level: 2, folder: 'agentMaterializeL2/steps/pages50', shortName: 'prompt', extension: '.md' }, readFileSync(new URL('./prompt.md', import.meta.url), 'utf8'));
+  put({ project: 102034, level: 1, folder: 'mdm/defs', shortName: 'ontology', extension: '.ts' }, 'export const Address = {} as const;\n');
+  const groups = new Set([...pages.flatMap(pageId => [...fix(`web/desktop/page11/${pageId}.defs.ts`).matchAll(/"(?:preferred|alternative)": "([^"]+)"/gu)].map(match => match[1].split('--')[0]))]);
+  for (const group of groups) {
+    put({ project: 102040, level: 2, folder: `molecules/${group}`, shortName: 'index', extension: '.defs.ts' }, 'export const index = {};\n');
+  }
+  const port: M4PagePort = {
+    read: async info => { const text = files.get(key(info)); if (text === undefined) throw new Error(`file not found: ${key(info)}`); return text; },
+    exists: info => files.has(key(info)),
+    readJson: async <T>(info: Ns5FileInfo) => { const text = files.get(key(info)); return text === undefined ? null : JSON.parse(text) as T; },
+    writeText: async () => { throw new Error('not used'); },
+    writeJson: async () => { throw new Error('not used'); },
+    deleteText: async () => { throw new Error('not used'); },
+    declarations: async () => [],
+    listDefs: () => [],
+    compile: async () => ({ errors: [], declaration: null }),
+  };
+  const snapshotPage = (pageId: string): M4InputPage => ({
+    pageId, status: 'accepted', problems: [], methods: {}, l4: null,
+    inputs: { contract: null, shared: null, mobile: null, desktop: { path: pageId, sha256: hashes[pageId] } },
+    units: [{ unitId: `${pageId}__desktop`, kind: 'desktop', inputHash: 'unit' }],
+  });
+  const snapshot: M4InputSnapshot = {
+    schemaVersion: '2026-10-14-materialize-l2-input-v4', project: repoHost.project, module: repoHost.module,
+    defsPipelineStatus: 'complete', snapshotHash: 'fixture', accepted: [...pages], refused: [], moduleProblems: [],
+    pages: pages.map(snapshotPage),
+  };
+  const content = await buildM4PageContext(repoHost, 'conteudo_repositorio', 'desktop', port, snapshot);
+  assert.match(content.prompt, /code: 'disabled'/);
+  assert.match(content.humanPrompt, /# Systems outside this page/);
+  assert.match(content.humanPrompt, /- GitHub; link: \/monitor\/external-systems\?module=repoHost; settings: repositorio → Repositório; chaveAcesso → Chave de acesso; segredoAviso → Segredo dos avisos/);
+  const notices = await buildM4PageContext(repoHost, 'avisos_mudanca', 'desktop', port, snapshot);
+  assert.equal(notices.humanPrompt.includes('# Systems outside this page'), false);
 });
