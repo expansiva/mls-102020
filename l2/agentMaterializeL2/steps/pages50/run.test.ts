@@ -121,6 +121,7 @@ test('the page prompt carries target, declaration, page11, tokens, molecules wit
   const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
   const { systemPrompt, humanPrompt } = buildM4PagePrompt(context);
   assert.ok(systemPrompt.includes('follows the same rule on desktop and on mobile; how it looks is free'));
+  assert.ok(systemPrompt.includes('the fixed text of `msg` is only the reserve'));
   for (const needle of [
     '- path: _102047_/l2/controleEstoque/web/desktop/page11/produtos.ts',
     '- tag: controle-estoque--web--desktop--page11--produtos-102047',
