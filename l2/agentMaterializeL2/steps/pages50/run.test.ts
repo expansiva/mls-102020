@@ -336,6 +336,12 @@ test('a Studio edit history reaches the prompt in its own section, is left out o
   assert.deepEqual(receipt.history, context.history);
 });
 
+test('the missing-record title in the real prompt is only for client.preconditionMissing', () => {
+  const prompt = readFileSync(new URL('./prompt.md', import.meta.url), 'utf8');
+  assert.match(prompt, /its error is `client\.preconditionMissing`\), say in words what is missing and offer a way back/u);
+  assert.match(prompt, /The title of that missing-record state is used only for that error code; any other opening error uses a neutral title, never the missing-record one\./u);
+});
+
 test('a page that reads an outside system gets its title, setting titles and the monitor link; one that does not gets nothing', async () => {
   const root = new URL('./fixtures/repoHost/', import.meta.url);
   const fix = (path: string) => readFileSync(new URL(path, root), 'utf8');
