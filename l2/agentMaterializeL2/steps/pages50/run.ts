@@ -2,7 +2,7 @@
 
 // pages50, one page × device: context and prompt for the LLM, then approval of its answer.
 // The page sees the shared only through the declaration shared40 saved (web/shared/<pageId>Dts.txt).
-// Approval = normalize a molecule tag that carries the project number → gate → write web/<device>/<genome>/<pageId>.ts → Studio compile → receipt. The genome is the page folder:
+// Approval = normalize a molecule tag that carries the project number → move the i18n catalogue before the class → gate → write web/<device>/<genome>/<pageId>.ts → Studio compile → receipt. The genome is the page folder:
 // page11, or a UX variant such as page21 (14/10/2026) that has its own page11 defs and reuses the page's shared. The receipt holds
 // the hash of the whole prompt context: any change in the declaration, page11, template, tokens, molecule
 // contracts, locales or prompt regenerates the page; an unchanged context reuses it with no LLM call.
@@ -488,9 +488,58 @@ export async function normalizeSuffixedMoleculeTags(source: string, port: M4Page
 
 export async function approveM4Page(context: M4PageContext, source: unknown, attempt: number, port: M4PagePort = studioPagePort, design: unknown = null): Promise<M4PageReceipt> {
   if (typeof source !== 'string' || !source.trim()) throw new Error('M4_PAGE_EMPTY: submitPageTs.source must be the whole file.');
+const I18N_START = '/// **collab_i18n_start**';
+const I18N_END = '/// **collab_i18n_end**';
+
+/** Index of the first top-level `@customElement` or `export class` line, or -1. */
+function m4PageClassLine(text: string): number {
+  const match = /^(?:@customElement|export class)/mu.exec(text);
+  return match?.index ?? -1;
+}
+
+function lineOpens(text: string, index: number): boolean {
+  return index === 0 || text[index - 1] === '\n';
+}
+
+/** The catalogue block declares only its own names, at column 0. Anything else stays put and the gate refuses the position. */
+function catalogueBlockIsClosed(block: string): boolean {
+  for (const line of block.split('\n')) {
+    const declared = /^(?:export\s+)?(?:const|let|var|function|class|type|interface|enum|namespace|import)\s+([A-Za-z_$][\w$]*)?/u.exec(line);
+    if (!declared) continue;
+    if (line.startsWith('export ') || line.startsWith('import ')) return false;
+    const name = declared[1] ?? '';
+    if (name !== 'PageMessageType' && name !== 'pageMessages' && !/^pageMessage_[A-Za-z0-9_]+$/u.test(name)) return false;
+  }
+  return true;
+}
+
+/**
+ * When the model leaves the catalogue after the class, move the whole marker block to just before the
+ * first top-level `@customElement` / `export class`, with one blank line on each side. Already in place,
+ * or not a closed block: the same text, byte for byte.
+ */
+export function m4MoveI18nBeforeClass(text: string): string {
+  const start = text.indexOf(I18N_START);
+  const end = text.indexOf(I18N_END);
+  if (start < 0 || end < start || !lineOpens(text, start) || !lineOpens(text, end)) return text;
+  const endLine = text.indexOf('\n', end);
+  const blockEnd = endLine < 0 ? text.length : endLine + 1;
+  const anchor = m4PageClassLine(text);
+  if (anchor < 0 || start < anchor) return text;
+  const block = text.slice(start, blockEnd);
+  if (!catalogueBlockIsClosed(block)) return text;
+  const without = text.slice(0, start) + text.slice(blockEnd);
+  let prefix = without.slice(0, anchor);
+  const suffix = without.slice(anchor);
+  if (!prefix.endsWith('\n\n')) prefix = prefix.endsWith('\n') ? `${prefix}\n` : `${prefix}\n\n`;
+  const body = block.endsWith('\n') ? block : `${block}\n`;
+  return `${prefix}${body}\n${suffix}`;
+}
+
   const raw = source.replace(/\r\n/gu, '\n').replace(/\n*$/u, '\n');
   const normalized = await normalizeSuffixedMoleculeTags(raw, port);
-  const text = normalized.text;
+  const text = m4MoveI18nBeforeClass(normalized.text);
+  const i18nMoved = text !== normalized.text;
   const issues = gateM4PageSource(text, context.target);
   // While the gate is not enforced, nothing here refuses: every issue goes to the receipt.
   const errors = issues.filter(item => item.severity === 'error');
@@ -516,6 +565,7 @@ export async function approveM4Page(context: M4PageContext, source: unknown, att
       ...normalized.lines.map(message => ({ code: 'M4_PAGE_MOLECULE_SUFFIX', message })),
       ...issues.filter(item => !M4_PAGE_GATE_ENFORCED || item.severity === 'advisory').map(item => ({ code: item.code, message: `${item.severity === 'error' ? '[contract] ' : ''}${item.message}` })),
     ],
+      ...(i18nMoved ? [{ code: 'M4_PAGE_I18N_MOVED', message: 'the catalogue block moved before the page class' }] : []),
     ...(context.history ? { history: context.history } : {}),
   };
   await port.writeJson(pageReceiptInfo(context.identity, context.pageId, context.device, context.genome), receipt);

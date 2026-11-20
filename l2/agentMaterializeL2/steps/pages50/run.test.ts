@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeL2/steps/pages50/run.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
@@ -8,10 +9,10 @@ import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js
 import { approveM4Shared, buildM4SharedContext } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 import {
-  M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, productLocales, reusableM4Page, studioPagePort, type M4PagePort,
+  M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4MoveI18nBeforeClass, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, productLocales, reusableM4Page, studioPagePort, type M4PagePort,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { createAgent as createPageAgent } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4PagesPage.js';
-import { m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
+import { gateM4PageSource, m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
 import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page11.js';
 import { sha256Text } from '/_102020_/l2/agentMaterializeL2/helpers/hash.js';
 import { defsWithoutHistory, withDefsHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
@@ -387,4 +388,79 @@ test('a page that reads an outside system gets its title, setting titles and the
   assert.match(content.humanPrompt, /- GitHub; link: \/monitor\/external-systems\?module=repoHost; settings: repositorio → Repositório; chaveAcesso → Chave de acesso; segredoAviso → Segredo dos avisos/);
   const notices = await buildM4PageContext(repoHost, 'avisos_mudanca', 'desktop', port, snapshot);
   assert.equal(notices.humanPrompt.includes('# Systems outside this page'), false);
+});
+
+// Saved from git objects, not the live trees. mls-102047@9e8b640a; mls-102039@812e46e; mls-102056@4c0b77f.
+const savedPage = (name: string) => readFileSync(new URL(`./fixtures/i18nPosition/${name}`, import.meta.url), 'utf8');
+const catalogue = (text: string) => {
+  const start = text.indexOf('/// **collab_i18n_start**');
+  const end = text.indexOf('/// **collab_i18n_end**');
+  const blockEnd = text.indexOf('\n', end) + 1;
+  return { block: text.slice(start, blockEnd), rest: text.slice(0, start) + text.slice(blockEnd) };
+};
+const codeLines = (text: string) => text.split('\n').filter(line => line.length > 0).join('\n');
+
+test('the catalogue block moves before the class; a block already there is unchanged', () => {
+  const desktop = savedPage('agent_behavior.desktop.txt');
+  const moved = m4MoveI18nBeforeClass(desktop);
+  const before = catalogue(desktop);
+  const after = catalogue(moved);
+  assert.equal(after.block, before.block);
+  assert.equal(codeLines(after.rest), codeLines(before.rest));
+  assert.match(moved, /\n\n\/\/\/ \*\*collab_i18n_start\*\*[\s\S]*\/\/\/ \*\*collab_i18n_end\*\*\n\n@customElement\(/u);
+  assert.ok(moved.indexOf('/// **collab_i18n_start**') < moved.indexOf('@customElement'));
+  const agenda = savedPage('agenda_diaria.mobile.txt');
+  const agendaMoved = m4MoveI18nBeforeClass(agenda);
+  assert.equal(catalogue(agendaMoved).block, catalogue(agenda).block);
+  assert.equal(codeLines(catalogue(agendaMoved).rest), codeLines(catalogue(agenda).rest));
+  assert.ok(agendaMoved.indexOf('/// **collab_i18n_start**') < agendaMoved.indexOf('@customElement'));
+  assert.equal(m4MoveI18nBeforeClass(savedPage('agent_behavior.mobile.txt')), savedPage('agent_behavior.mobile.txt'));
+  assert.equal(m4MoveI18nBeforeClass(savedPage('atendenteCatalogue.desktop.txt')), savedPage('atendenteCatalogue.desktop.txt'));
+  const foreign = desktop.replace('const pageMessage_en = {', 'const helper = 1;\nconst pageMessage_en = {');
+  assert.equal(m4MoveI18nBeforeClass(foreign), foreign);
+  const indented = desktop.replace('/// **collab_i18n_start**', ' /// **collab_i18n_start**');
+  assert.equal(m4MoveI18nBeforeClass(indented), indented);
+});
+
+test('approval records the move, and the saved pages of 102047, 102039 and 102056 are in place afterwards', async () => {
+  const port = await studio();
+  const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
+  const start = pageRef.source.indexOf('/// **collab_i18n_start**');
+  const end = pageRef.source.indexOf('/// **collab_i18n_end**');
+  const blockEnd = pageRef.source.indexOf('\n', end) + 1;
+  const block = pageRef.source.slice(start, blockEnd);
+  const parked = `${pageRef.source.slice(0, start)}${pageRef.source.slice(blockEnd).replace(/\n*$/u, '\n')}\n${block}`;
+  const receipt = await approveM4Page(context, parked, 1, port);
+  assert.deepEqual(receipt.advisories.filter(item => item.code === 'M4_PAGE_I18N_MOVED').map(item => item.message), ['the catalogue block moved before the page class']);
+  const written = port.files.get('102047/l2/controleEstoque/web/desktop/page11/produtos.ts') ?? '';
+  assert.ok(written.indexOf('/// **collab_i18n_start**') < written.indexOf('@customElement'));
+  const unchanged = await approveM4Page(context, pageRef.source, 1, port);
+  assert.equal(unchanged.advisories.some(item => item.code === 'M4_PAGE_I18N_MOVED'), false);
+
+  const position = 'the catalogue block must come before the page class (@customElement)';
+  const benches = [
+    ['/Volumes/WagnerSSD1/collab/mls-base/mls-102047', '9e8b640a'],
+    ['/Volumes/WagnerSSD1/collab/mls-base/mls-102039', '812e46e'],
+    ['/Volumes/WagnerSSD1/collab/mls-base/mls-102056', '4c0b77f5ce4e0d94642a83492243f6e2d3a08f34'],
+  ] as const;
+  let refused = 0;
+  let accepted = 0;
+  for (const [repo, rev] of benches) {
+    const files = execFileSync('git', ['-C', repo, 'ls-tree', '-r', '--name-only', rev], { encoding: 'utf8' }).split('\n').filter(path => /\/web\/.*\/page11\/[^/]+\.ts$/u.test(path) && !path.endsWith('.defs.ts'));
+    for (const path of files) {
+      const source = execFileSync('git', ['-C', repo, 'show', `${rev}:${path}`], { encoding: 'utf8' });
+      if (!source.includes('/// **collab_i18n_start**')) continue;
+      const classAt = /^(?:@customElement|export class)/mu.exec(source)?.index ?? -1;
+      const wasAfter = classAt >= 0 && source.indexOf('/// **collab_i18n_start**') > classAt;
+      const placed = m4MoveI18nBeforeClass(source);
+      if (wasAfter) {
+        refused += 1;
+        assert.notEqual(placed, source, path);
+        assert.ok(gateM4PageSource(source, context.target).some(item => item.message === position), path);
+      } else accepted += 1;
+      assert.equal(gateM4PageSource(placed, context.target).some(item => item.message === position), false, path);
+    }
+  }
+  assert.equal(refused, 2);
+  assert.ok(accepted >= 84);
 });

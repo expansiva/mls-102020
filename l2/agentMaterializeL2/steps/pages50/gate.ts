@@ -617,6 +617,8 @@ export function gateM4PageSource(source: string, target: M4PageTarget): M4PageIs
     if (!new RegExp(`\\bconst\\s+pageMessage_${suffix}\\b`, 'u').test(code)) push('M4_PAGE_I18N', `Locale ${locale} needs const pageMessage_${suffix}, keyed '${locale}' in pageMessages.`);
     else if (!new RegExp(`['"]?${[...locale].map(ch => (/[a-z0-9]/u.test(ch) ? ch : `\\x${ch.charCodeAt(0).toString(16).padStart(2, '0')}`)).join('')}['"]?\\s*:\\s*pageMessage_${suffix}\\b`, 'u').test(code)) push('M4_PAGE_I18N', `pageMessages must key pageMessage_${suffix} as '${locale}' (the code agentAddLanguage and the runtime look up).`);
   }
+  const classAt = /^(?:@customElement|export class)/mu.exec(text)?.index ?? -1;
+  if (start >= 0 && classAt >= 0 && start > classAt) push('M4_PAGE_I18N', 'the catalogue block must come before the page class (@customElement)');
   const extra = [...code.matchAll(/\bconst\s+pageMessage_([a-z0-9_]+)\b/gu)].map(match => match[1]).filter(suffix => !suffixes.includes(suffix));
   if (extra.length) push('M4_PAGE_I18N', `Catalogues [${extra.map(suffix => `pageMessage_${suffix}`).join(', ')}] are not product languages; declare only ${suffixes.map(suffix => `pageMessage_${suffix}`).join(', ')}.`);
   // The NAMES are the contract (@@addLanguage and the Studio text editor look for them); the compiler checks

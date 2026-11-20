@@ -479,3 +479,19 @@ test('requiredMissing with two or more form fields warns when the page never rea
   const noMissing = `public async load(): Promise<void> { this.publish('loadError', { code: 'client.unexpected', message: '' }); }`;
   assert.deepEqual(unread(noMissing), []);
 });
+
+// Copies pinned from git, not the live trees: mls-102047@9e8b640a and mls-102039@812e46e.
+const POSITION = 'the catalogue block must come before the page class (@customElement)';
+const savedPage = (name: string) => readFileSync(new URL(`./fixtures/i18nPosition/${name}`, import.meta.url), 'utf8');
+const position = (source: string) => gateM4PageSource(source, target()).some(item => item.message === POSITION);
+
+test('i18n: a catalogue after the class is refused; one already before it, or a file with no markers, is not', () => {
+  assert.equal(position(savedPage('agent_behavior.desktop.txt')), true);
+  assert.equal(position(savedPage('agenda_diaria.mobile.txt')), true);
+  assert.equal(position(savedPage('agent_behavior.mobile.txt')), false);
+  assert.equal(position(savedPage('atendenteCatalogue.desktop.txt')), false);
+  const bare = reference.replace(/\/\/\/ \*\*collab_i18n_start\*\*[\s\S]*?\/\/\/ \*\*collab_i18n_end\*\*\n/u, '');
+  assert.notEqual(bare, reference);
+  assert.match(gateM4PageSource(bare, target()).find(item => item.code === 'M4_PAGE_I18N')!.message, /The catalogue must sit between \/\/\/ \*\*collab_i18n_start\*\*/u);
+  assert.equal(position(bare), false);
+});
