@@ -58,14 +58,16 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
 
   // Selections: the selected id lives in an entry param; the state of the selection is the item that id resolves.
   // Precedence of entry params (d2_78): a filter, then a navigation, and a selection's select: wins over both.
-  const params: D2SharedV2Definition['entry']['params'] = { ...filterParams(input), ...navigationParams(input) };
+  // A param whose name is a non-optional onLoad input is required. The leaf name is the param name; origin is not read.
+  const requiredByLoad = onLoadRequiredNames(design);
+  const params: D2SharedV2Definition['entry']['params'] = { ...filterParams(input), ...navigationParams(input, requiredByLoad) };
   const selected = new Set<string>();
   for (const row of design.bindings.selections) {
     const entity = selectionEntity(row.via, design);
     if (!entity) continue;
     const param = `${camel(entity)}Id`;
     const target = organisms.get(row.organism)?.selects || row.organism;
-    if (!selected.has(param)) params[param] = { type: 'string', sources: URL_SOURCES, effect: `select:${target}`, persist: false, required: false };
+    if (!selected.has(param)) params[param] = { type: 'string', sources: URL_SOURCES, effect: `select:${target}`, persist: false, required: requiredByLoad.has(param) };
     selected.add(param);
     const stateId = `selected${entity}`;
     // d2_80: the selecting organism and its target, over every selection that lands in this state.
@@ -159,7 +161,7 @@ function entityIdRead(reads: string[] | undefined): string {
 }
 
 /** A sibling page that navigates here opens this page with the record's id (rule 8). The effect names the organism here that reads that entity. */
-function navigationParams(input: D2SharedDeriveInput): D2SharedV2Definition['entry']['params'] {
+function navigationParams(input: D2SharedDeriveInput, requiredByLoad: Set<string>): D2SharedV2Definition['entry']['params'] {
   const params: D2SharedV2Definition['entry']['params'] = {};
   const readers = mergedOrganisms(input);
   const organismFor = (entity: string): string => {
@@ -179,11 +181,25 @@ function navigationParams(input: D2SharedDeriveInput): D2SharedV2Definition['ent
         const entity = entityIdRead(source?.reads) || entityIdRead(selected?.reads) || target?.reads[0]?.split('.')[0] || '';
         const reader = organismFor(entity);
         if (!entity || !reader) continue;
-        params[`${camel(entity)}Id`] = params[`${camel(entity)}Id`] ?? { type: 'string', sources: URL_SOURCES, effect: `select:${reader}`, persist: false, required: false };
+        const name = `${camel(entity)}Id`;
+        params[name] = params[name] ?? { type: 'string', sources: URL_SOURCES, effect: `select:${reader}`, persist: false, required: requiredByLoad.has(name) };
       }
     }
   }
   return params;
+}
+
+/** Leaf names of non-optional inputs on this page's onLoad queries. Origin is not read. */
+function onLoadRequiredNames(design: D2BffDesign): Set<string> {
+  const names = new Set<string>();
+  for (const item of design.endpoints) {
+    if (item.kind !== 'qry' || item.when !== 'onLoad') continue;
+    for (const leaf of item.input) {
+      if (leaf.optional === true) continue;
+      names.add(leaf.name.split('.').slice(-1)[0]);
+    }
+  }
+  return names;
 }
 
 /** The inputs of the onLoad queries that filter what the page shows survive a reload (rule 8). page and pageSize do not. */
