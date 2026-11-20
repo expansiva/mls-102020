@@ -173,7 +173,8 @@ function navigationParams(input: D2SharedDeriveInput, requiredByLoad: Set<string
     const draft = (id: string) => sibling.drafts.map(row => row.organisms[id]).find(Boolean);
     for (const [id, organism] of Object.entries(sibling.page11.organisms)) {
       for (const intent of organism.intents) {
-        if (intent.kind !== 'navigate' || intent.to !== input.pageId) continue;
+        // A return to the list (`backTo…`) does not open the list with the record id (d2_193).
+        if (intent.kind !== 'navigate' || intent.to !== input.pageId || intent.id.startsWith('backTo')) continue;
         const source = draft(id);
         const selected = source?.selects ? draft(source.selects) : undefined;
         const target = selected ?? source;

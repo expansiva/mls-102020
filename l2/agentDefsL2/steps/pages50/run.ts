@@ -8,6 +8,7 @@ import { d2NormalizeWriteKey, d2WriteKey, type D2Write } from '/_102020_/l2/help
 import type { D2InputSnapshot, D2InputArtifacts, D2SelectedPage, D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { buildD2Page11WithExperience, parseD2Page11TemplateReference, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { d2Page11KeepingHistory, renderD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { applyD2BackNavigation, type D2BackMenuNode, type D2BackPage } from '/_102020_/l2/agentDefsL2/helpers/d2BackNavigation.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { d2BffL4Slice, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import type { D2MoleculeInventory, D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
@@ -347,6 +348,14 @@ export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesRe
     mobile: buildD2Page11Needs(normalizeSubmitWrites(normalizeNeedsPaths(raw.mobile.needs, context.page, context.artifacts.entities, grants), writes)),
   };
   if (!context.page.actors.length) throw new Error('D2_PAGE11_ACTOR_MISSING');
+  const menuTree = (record(context.artifacts.menu).tree as D2BackMenuNode[] | undefined) ?? [];
+  const selected = (context.snapshot.selection?.pages ?? []).map((item): D2BackPage => ({ pageId: item.pageId, reads: item.reads as D2BackPage['reads'] }));
+  const backWarnings = applyD2BackNavigation(context.page, menuTree, selected, definitions, {
+    refs: context.page.journeyRefs,
+    byId: context.artifacts.journeys,
+  });
+  // pages50 has no warning field on the receipt. The code is the report.
+  for (const warning of backWarnings) console.warn(`${warning.code}: page ${warning.pageId} candidates ${warning.candidates.join(', ') || 'none'}`);
   const issues = d2PageIssues(context, definitions, needs, Math.max(promptChars, repairPromptChars), category);
   if (issues.length) throw new Error(issues.map(issue => `${issue.code}: ${issue.message}`).join(' | '));
   const origins = menuOrigins(context.page, definitions.desktop);

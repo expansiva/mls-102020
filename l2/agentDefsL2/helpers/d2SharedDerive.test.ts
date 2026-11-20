@@ -92,3 +92,19 @@ void test('d2_193: an onLoad id leaf is required on the matching entry param; a 
   const draft = deriveD2Shared(openedFrom('draft_review', 'agents', 'AgentDraft', [leaf('draftId', { kind: 'context', paths: [] })], [{ organism: 'body', entity: 'AgentDraft' }]));
   assert.equal(draft.entry.params.draftId?.required, true);
 });
+
+void test('d2_193: a backTo navigate does not give the list an agentId', () => {
+  const input = openedFrom('agents', 'nowhere', 'Agent', [leaf('page', { kind: 'context', paths: [] }), leaf('pageSize', { kind: 'context', paths: [] })], [
+    { organism: 'drafts', entity: 'AgentDraft' },
+    { organism: 'tools', entity: 'AgentTool' },
+  ]);
+  input.siblings = [{
+    pageId: 'agent_overview',
+    page11: page({ body: { kind: 'detail', text: 'overview', intents: [{ id: 'backToAgents', kind: 'navigate', to: 'agents' }] } }),
+    drafts: [{ organisms: { body: { ...blank(), reads: ['Agent.id'] } } }],
+  }];
+  const shared = deriveD2Shared(input);
+  assert.equal(shared.entry.params.agentId, undefined);
+  assert.equal(shared.entry.params.agentDraftId?.required, false);
+  assert.equal(shared.entry.params.agentToolId?.required, false);
+});
