@@ -9,8 +9,8 @@ import { d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2Page11Base, parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import {
-  buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN, D2_BFF_UPDATE_MODES,
-  type D2BffDesign, type D2BffIssue, type D2Grant, type D2Menu, type D2NeedPage,
+  addD2RecordVersion, buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN, D2_BFF_UPDATE_MODES,
+  type D2BffDesign, type D2BffIssue, type D2BffNormalizeFacts, type D2Grant, type D2Menu, type D2NeedPage,
 } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import type { D2ExternalCallSources } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import type { D2PageRefusal } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
@@ -229,6 +229,59 @@ export async function readApprovedD2Bff(identity: D2RunIdentity, pageId: string,
   return design as D2BffDesign;
 }
 
+/** Connection calls the way `d2BffContextFrom` puts them on the context. */
+function d2ExternalSources(input: {
+  integration?: unknown;
+  journeys: Record<string, unknown>;
+  catalogs?: Record<string, string>;
+  catalogGaps?: Record<string, D2CatalogGap>;
+}): D2ExternalCallSources {
+  return {
+    connections: Array.isArray((input.integration as { connections?: unknown } | null)?.connections)
+      ? (input.integration as { connections: unknown[] }).connections
+      : [],
+    journeys: input.journeys,
+    catalogs: input.catalogs ?? {},
+    catalogGaps: input.catalogGaps ?? {},
+  };
+}
+
+/** Facts for `addD2RecordVersion`. Null when the page has no need. */
+export function d2NormalizeFactsFrom(artifacts: {
+  needs?: unknown;
+  integration?: unknown;
+  journeys?: Record<string, unknown>;
+  catalogs?: Record<string, string>;
+  catalogGaps?: Record<string, D2CatalogGap>;
+}, pageId: string): D2BffNormalizeFacts | null {
+  const need = ((artifacts.needs as { pages?: D2NeedPage[] } | null)?.pages ?? []).find(item => item.pageId === pageId);
+  if (!need) return null;
+  return {
+    writes: need.writes,
+    external: d2ExternalSources({
+      integration: artifacts.integration,
+      journeys: artifacts.journeys ?? {},
+      catalogs: artifacts.catalogs,
+      catalogGaps: artifacts.catalogGaps,
+    }),
+  };
+}
+
+/** The approved design, then `version` on a view the page already reads (d2_209). The stored file stays as approved. */
+export async function readUsableD2Bff(
+  identity: D2RunIdentity,
+  pageId: string,
+  artifacts: Parameters<typeof d2NormalizeFactsFrom>[0],
+  entities: Record<string, Ns5OntologyAnyEntity>,
+  port: { readReceipt: typeof readD2BffReceipt; readDesign: (info: Ns5FileInfo) => Promise<unknown> } = { readReceipt: readD2BffReceipt, readDesign: readJson },
+): Promise<D2BffDesign | null> {
+  const design = await readApprovedD2Bff(identity, pageId, port);
+  if (!design) return design;
+  const facts = d2NormalizeFactsFrom(artifacts, pageId);
+  if (!facts) return design;
+  return addD2RecordVersion(design, entities, facts);
+}
+
 export async function loadD2BffContext(identity: D2RunIdentity, pageId: string): Promise<D2BffContext> {
   const snapshot = await readD2Input(identity);
   if (!snapshot) throw new Error('D2_BFF_INPUT_MISSING');
@@ -289,14 +342,7 @@ export function d2BffContextFrom(input: {
     grants: ((input.access as { grants?: D2Grant[] } | null)?.grants ?? []),
     rules: ((input.rules as { rules?: Record<string, string> } | null)?.rules ?? {}),
     journeys,
-    external: {
-      connections: Array.isArray((input.integration as { connections?: unknown } | null)?.connections)
-        ? (input.integration as { connections: unknown[] }).connections
-        : [],
-      journeys: input.journeys,
-      catalogs: input.catalogs ?? {},
-      catalogGaps: input.catalogGaps ?? {},
-    },
+    external: d2ExternalSources(input),
   };
 }
 

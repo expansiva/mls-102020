@@ -320,6 +320,41 @@ export function cleanVersionDenials(text: string, operationId: string): string {
   return body ? `${body} ${line}` : line;
 }
 
+const directTypeRef = (leaf: D2BffLeaf): string => {
+  const parsed = parseD2BffType(leaf.type);
+  return parsed?.base === 'ref' && !parsed.list ? parsed.ref : '';
+};
+
+/**
+ * Puts `version` on a view the page already reads when an external command sends `expectVersion`
+ * and the call returns a required version (d2_209). Idempotent: a second pass returns the same design.
+ * The leaf may already be on the input (saved design, or written by the model).
+ */
+export function addD2RecordVersion(design: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, facts: D2BffNormalizeFacts): D2BffDesign {
+  if (!facts.writes || !facts.external) return design;
+  const readViews = new Set(design.endpoints.filter(item => item.kind === 'qry').flatMap(item => item.output.map(directTypeRef)).filter(Boolean));
+  const versionTypes = new Set<string>();
+  for (const endpoint of design.endpoints) {
+    if (endpoint.kind !== 'cmd' || !endpoint.writes) continue;
+    const written = entityOf(endpoint.writes);
+    if ((entitiesOf[written] as { kind?: string } | undefined)?.kind !== 'external') continue;
+    if (!endpoint.input.some(row => row.name === 'expectVersion')) continue;
+    const pageWrite = d2WriteByKey(facts.writes, endpoint.writes);
+    if (!pageWrite) continue;
+    const ask = externalAsk(pageWrite, entitiesOf, facts.external);
+    if (!ask?.returnsVersion) continue;
+    for (const name of endpoint.output.map(directTypeRef)) if (readViews.has(name)) versionTypes.add(name);
+  }
+  if (!versionTypes.size) return design;
+  let changed = false;
+  const types = design.types.map(type => {
+    if (!versionTypes.has(type.name) || type.fields.some(field => field.name === 'version')) return type;
+    changed = true;
+    return { ...type, description: `${type.description}${RECORD_VERSION_NOTE}`, fields: [...type.fields, recordVersionLeaf()] };
+  });
+  return changed ? { ...design, types } : design;
+}
+
 export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = '', facts?: D2BffNormalizeFacts): D2BffDesign {
   // The contract interface of the page owns its name: a type that took it is renamed, with its references (d2_76).
   let design = raw;
@@ -429,7 +464,6 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   };
   const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`, '', true, false, chainsOf(type.name), true).rows }));
   const outputs = new Map<string, Map<string, string>>();
-  const versionOn = new Set<string>();
   const endpoints = design.endpoints.map(endpoint => {
     const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`, '', false);
     outputs.set(endpoint.id, output.renamed);
@@ -440,7 +474,6 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const versionAsk = pageWrite && keepCallNames && facts?.external && !input.rows.some(row => row.name === 'expectVersion')
       ? externalAsk(pageWrite, entitiesOf, facts.external) : undefined;
     const versionLeaf = versionAsk?.expectsVersion === true;
-    if (versionLeaf && versionAsk?.returnsVersion) versionOn.add(endpoint.id);
     const inputDoc = replaceNames(endpoint.jsdoc.input, input.renamed);
     return {
       ...endpoint,
@@ -453,16 +486,6 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
       },
     };
   });
-  const directRef = (leaf: D2BffLeaf): string => {
-    const parsed = parseD2BffType(leaf.type);
-    return parsed?.base === 'ref' && !parsed.list ? parsed.ref : '';
-  };
-  const readViews = new Set(endpoints.filter(item => item.kind === 'qry').flatMap(item => item.output.map(directRef)).filter(Boolean));
-  const versionTypes = new Set(endpoints.filter(item => versionOn.has(item.id)).flatMap(item => item.output.map(directRef)).filter(name => readViews.has(name)));
-  const typesWithVersion = types.map(type => {
-    if (!versionTypes.has(type.name) || type.fields.some(field => field.name === 'version')) return type;
-    return { ...type, description: `${type.description}${RECORD_VERSION_NOTE}`, fields: [...type.fields, recordVersionLeaf()] };
-  });
   const ref = (value: string): string => {
     const dot = value.indexOf('.');
     if (dot <= 0) return value;
@@ -470,15 +493,15 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     return `${value.slice(0, dot)}.${outputs.get(value.slice(0, dot))?.get(key) ?? key}`;
   };
   const bindings = design.bindings;
-  return {
-    types: addMdmTypes(typesWithVersion, platformTypes), endpoints,
+  return addD2RecordVersion({
+    types: addMdmTypes(types, platformTypes), endpoints,
     bindings: {
       ...bindings,
       organisms: bindings.organisms.map(row => ({ ...row, reads: ref(row.reads) })),
       selections: bindings.selections.map(row => ('list' in row.via ? { ...row, via: { list: ref(row.via.list) } } : row)),
       updates: bindings.updates.map(row => ({ ...row, state: ref(row.state) })),
     },
-  };
+  }, entitiesOf, facts ?? {});
 }
 
 /** Leaves that only page a list, whatever name the answer gave them (d2_79). */

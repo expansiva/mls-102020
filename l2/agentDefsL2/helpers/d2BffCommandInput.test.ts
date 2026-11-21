@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
-import { buildD2BffDesign, checkD2Bff, cleanVersionDenials, normalizeD2BffDesign, type D2BffCheckContext, type D2BffDesign, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { addD2RecordVersion, buildD2BffDesign, checkD2Bff, cleanVersionDenials, normalizeD2BffDesign, type D2BffCheckContext, type D2BffDesign, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { loadD2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import type { D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
@@ -506,4 +506,56 @@ export const cm = { "operations": [ { "operationId": "updateAgent", "direction":
     assert.equal(out.endpoints.find(item => item.id === 'mudar')?.input.some(item => item.name === 'expectVersion'), true);
     assert.equal(out.types.find(item => item.name === 'Seen')?.fields.some(item => item.name === 'version'), false);
   }
+});
+
+const expectVersionLeaf = { name: 'expectVersion', type: 'number', origin: { kind: 'context' as const, paths: [] } };
+
+function withExpectVersion(raw: D2BffDesign): D2BffDesign {
+  return {
+    ...raw,
+    endpoints: raw.endpoints.map(endpoint => endpoint.kind === 'cmd'
+      ? { ...endpoint, input: [...endpoint.input, expectVersionLeaf] }
+      : endpoint),
+  };
+}
+
+test('a saved agent_behavior design gains version on the view the page already reads', async () => {
+  await withProjectFiles(async () => {
+    const envelope = JSON.parse(readFileSync(new URL('./fixtures/d2_207/agent_behavior-2.json', import.meta.url), 'utf8')) as { raw: { result: { arguments: unknown } } };
+    const context = await loadD2BffContext({ project: 102047, module: 'agents' }, 'agent_behavior');
+    const saved = withExpectVersion(buildD2BffDesign(envelope.raw.result.arguments));
+    const facts = { writes: context.need.writes, external: context.external };
+    assert.equal(saved.types.find(item => item.name === 'AgentBehaviorDetail')?.fields.some(item => item.name === 'version'), false);
+    const once = addD2RecordVersion(saved, context.entities, facts);
+    const view = once.types.find(item => item.name === 'AgentBehaviorDetail');
+    assert.deepEqual(view?.fields.at(-1), versionLeaf);
+    assert.equal(view?.description.endsWith(versionNote), true);
+    assert.equal(once.types.find(item => item.name === 'BehaviorChange')?.fields.some(item => item.name === 'version'), false);
+    const twice = addD2RecordVersion(once, context.entities, facts);
+    assert.equal(twice, once);
+  });
+});
+
+test('addD2RecordVersion leaves a design with no returning version untouched', () => {
+  const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
+  const facts = { writes: context.need.writes, external: context.external };
+  const plain = versionDesign([{ name: 'seen', type: 'Seen' }], [{ name: 'seen', type: 'Seen' }], 'Recebimento.update', 'estorno');
+  assert.equal(addD2RecordVersion(plain, entities, facts), plain);
+  const asked = withExpectVersion(versionDesign([{ name: 'seen', type: 'Seen' }], [{ name: 'seen', type: 'Seen' }]));
+  assert.equal(addD2RecordVersion(asked, context.entities, facts), asked);
+  assert.equal(JSON.stringify(addD2RecordVersion(asked, context.entities, facts)), JSON.stringify(asked));
+});
+
+test('expectVersion written on the input, not added by normalize, still puts version on the view', () => {
+  const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
+  const catalog = `
+export interface CmUpdateAgentInput { agentId: string; }
+export interface CmUpdateAgentOutput { version: string; }
+export const cm = { "operations": [ { "operationId": "updateAgent", "direction": "call", "inputType": "CmUpdateAgentInput", "outputType": "CmUpdateAgentOutput", "expectsVersion": true } ] };
+`;
+  context.external = { ...externalSources, catalogs: { cm: catalog } };
+  const saved = withExpectVersion(versionDesign([{ name: 'seen', type: 'Seen' }], [{ name: 'seen', type: 'Seen' }]));
+  const out = addD2RecordVersion(saved, context.entities, { writes: context.need.writes, external: context.external });
+  assert.deepEqual(out.types.find(item => item.name === 'Seen')?.fields.at(-1), versionLeaf);
+  assert.equal(out.types.find(item => item.name === 'Seen')?.description.endsWith(versionNote), true);
 });

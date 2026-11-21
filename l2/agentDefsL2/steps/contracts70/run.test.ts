@@ -10,8 +10,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2BffDesign } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { D2_BFF_VERSION, readUsableD2Bff, type D2BffReceipt } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import type { D2NavDestination } from '/_102020_/l2/agentDefsL2/helpers/d2NavigationIds.js';
 import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2ContractFromBff } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
@@ -225,4 +227,56 @@ void test('hard-code guard keeps fixture names out of the d2_73/d2_75 sources', 
   assert.deepEqual(files.filter(path => names.test(readFileSync(path, 'utf8'))), []);
   assert.ok(files.length >= 10);
   assert.ok(names.test(readFileSync(join(root, 'helpers/fixtures/e2e/dining/answers/bff55/atendimento.json'), 'utf8')));
+});
+
+const versionOrigin = { kind: 'context' as const, paths: [] as string[] };
+const versionJsdoc = { purpose: 'p', input: 'i', processing: 'c', output: 'o' };
+const versionCatalog = `
+export interface CmUpdateAgentInput { agentId: string; }
+export interface CmUpdateAgentOutput { version: string; }
+export const cm = { "operations": [ { "operationId": "updateAgent", "direction": "call", "inputType": "CmUpdateAgentInput", "outputType": "CmUpdateAgentOutput", "expectsVersion": true } ] };
+`;
+const versionEntities = {
+  Agent: { kind: 'external', connectionId: 'cm', record: { fields: { name: { type: 'string' } } } } as Ns5OntologyAnyEntity,
+  Item: { kind: 'entity' } as Ns5OntologyAnyEntity,
+};
+const versionArtifacts = {
+  needs: { pages: [
+    { pageId: 'behavior', actors: [], reads: [], writes: [{ entity: 'Agent', operation: 'update' as const }] },
+    { pageId: 'plain', actors: [], reads: [], writes: [{ entity: 'Item', operation: 'create' as const }] },
+  ] },
+  integration: { connections: [{ connectionId: 'cm', operationId: 'updateAgent', direction: 'call', usedBy: ['changeAgentBehavior.requestChange'], effect: 'update' }] },
+  journeys: { changeAgentBehavior: { business: { steps: [{ stepId: 'requestChange', kind: 'act', entity: 'Agent', effect: 'update' }] } } },
+  catalogs: { cm: versionCatalog },
+};
+
+function storedDesign(pageId: 'behavior' | 'plain'): D2BffDesign {
+  const external = pageId === 'behavior';
+  return {
+    types: [{ name: 'Seen', description: 'Seen', fields: [{ name: 'label', type: 'string', origin: versionOrigin }] }],
+    endpoints: [
+      { id: 'listar', kind: 'qry', when: 'onLoad', input: [], output: [{ name: 'seen', type: 'Seen', origin: versionOrigin }], rules: [], jsdoc: versionJsdoc },
+      { id: external ? 'mudar' : 'criar', kind: 'cmd', when: external ? 'requestChange' : 'save', writes: external ? 'Agent.update' : 'Item.create',
+        input: external ? [{ name: 'agentId', type: 'string', origin: versionOrigin }, { name: 'expectVersion', type: 'number', origin: versionOrigin }] : [{ name: 'label', type: 'string', origin: versionOrigin }],
+        output: [{ name: 'seen', type: 'Seen', origin: versionOrigin }], rules: [], jsdoc: versionJsdoc },
+    ],
+    bindings: { organisms: [], commands: [], selections: [], journeys: [], updates: [] },
+  };
+}
+
+async function readStored(pageId: 'behavior' | 'plain', design: D2BffDesign): Promise<D2BffDesign | null> {
+  const receipt = { schemaVersion: D2_BFF_VERSION, ...identity, pageId, inputHash: 'in', unitInputHash: 'u', promptHash: 'p', promptChars: 1, repairPromptChars: 0, designHash: await sha256Text(JSON.stringify(design)) } as D2BffReceipt;
+  return readUsableD2Bff(identity, pageId, versionArtifacts, versionEntities, {
+    readReceipt: async () => receipt,
+    readDesign: async () => design,
+  });
+}
+
+void test('contracts70 reads a saved design: the destination page facts put version on the view, a page without an external command keeps the stored object', async () => {
+  const behavior = storedDesign('behavior');
+  const plain = storedDesign('plain');
+  const withVersion = await readStored('behavior', behavior);
+  assert.deepEqual(withVersion?.types.find(item => item.name === 'Seen')?.fields.at(-1), { name: 'version', type: 'number', origin: versionOrigin });
+  assert.equal(await readStored('plain', behavior), behavior);
+  assert.equal(await readStored('plain', plain), plain);
 });

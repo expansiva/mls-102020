@@ -11,7 +11,7 @@ import { buildD2ContractFromBff } from '/_102020_/l2/agentDefsL2/helpers/d2Contr
 import { applyD2NavigationIds, type D2NavDestination } from '/_102020_/l2/agentDefsL2/helpers/d2NavigationIds.js';
 import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { parseD2SharedV2 } from '/_102020_/l2/helpers/sharedV2/format.js';
-import { readApprovedD2Bff, readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
+import { readD2BffRefusal, readUsableD2Bff } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { readD2SharedReceipt, readD2SharedRefusal, sharedInfo, D2_SHARED_VERSION, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 
 export const D2_CONTRACTS70_VERSION = '2026-10-04-agent-defs-l2-contracts-v3' as const;
@@ -151,7 +151,8 @@ export async function loadD2ContractsPage(identity: D2RunIdentity, pageId: strin
   const bundle = await readD2InputBundle(identity);
   await assertD2InputSourcesStable(bundle);
   if (!snapshot.selection.writePageIds.includes(pageId)) throw new Error(`D2_CONTRACTS_PAGE_NOT_SELECTED: ${pageId}`);
-  const design = await readApprovedD2Bff(identity, pageId);
+  const entities = bundle.artifacts.entities as Record<string, Ns5OntologyAnyEntity>;
+  const design = await readUsableD2Bff(identity, pageId, bundle.artifacts, entities);
   if (!design) throw new Error(`D2_CONTRACTS_BFF_MISSING: ${pageId}`);
   const need = (bundle.artifacts.needs as { pages: D2NeedPage[] }).pages.find(item => item.pageId === pageId);
   if (!need) throw new Error(`D2_CONTRACTS_NEEDS_PAGE: ${pageId}`);
@@ -173,7 +174,7 @@ export async function loadD2ContractsPage(identity: D2RunIdentity, pageId: strin
       for (const intent of organism.intents) {
         if (intent.kind !== 'navigate' || !intent.to || intent.id.startsWith('backTo') || destinations[intent.to]) continue;
         const targetShared = await readSourceText(sharedInfo(identity, intent.to));
-        const targetDesign = targetShared ? await readApprovedD2Bff(identity, intent.to) : null;
+        const targetDesign = targetShared ? await readUsableD2Bff(identity, intent.to, bundle.artifacts, entities) : null;
         if (!targetShared || !targetDesign) continue;
         const parsed = parseD2SharedV2(targetShared);
         if (parsed.location.pageId !== intent.to) throw new Error(`D2_NAV_ID_SHARED: ${intent.to}`);
@@ -185,7 +186,7 @@ export async function loadD2ContractsPage(identity: D2RunIdentity, pageId: strin
     identity, pageId, design,
     userLanguage: menu.userLanguage || (bundle.artifacts.module as { userLanguage?: string } | null)?.userLanguage || 'en',
     access: d2BffAccess(design, need, (bundle.artifacts.access as { grants?: D2Grant[] } | null)?.grants ?? []),
-    entities: bundle.artifacts.entities as Record<string, Ns5OntologyAnyEntity>,
+    entities,
     sharedSource, sharedReceipt: await readD2SharedReceipt(identity, pageId),
     page11, destinations,
   };

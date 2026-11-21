@@ -10,7 +10,7 @@ import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2
 import { d2BffAccess, type D2Grant, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { renderD2SharedV2 } from '/_102020_/l2/helpers/sharedV2/format.js';
 import { d2SharedDeriveIssues, deriveD2Shared, type D2SharedDeriveInput } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
-import { readApprovedD2Bff, readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
+import { readD2BffRefusal, readUsableD2Bff } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 
 /** d2_75: the shared is derived by code from the approved BFF; no LLM call. */
 export const D2_SHARED_VERSION = '2026-10-13-agent-defs-l2-shared-v5' as const;
@@ -170,7 +170,8 @@ export async function productionSharedPort(identity: D2RunIdentity): Promise<D2S
     pageIds: async () => ids,
     upstreamRefusal: async pageId => (await readD2BffRefusal(identity, pageId))?.diagnostic ?? null,
     load: async pageId => {
-      const design = await readApprovedD2Bff(identity, pageId);
+      const entities = bundle.artifacts.entities as Record<string, Ns5OntologyAnyEntity>;
+      const design = await readUsableD2Bff(identity, pageId, bundle.artifacts, entities);
       if (!design) throw new Error(`D2_SHARED_BFF_MISSING: ${pageId} has no approved BFF design; bff55 runs first.`);
       const need = (bundle.artifacts.needs as { pages: D2NeedPage[] }).pages.find(item => item.pageId === pageId);
       if (!need) throw new Error(`D2_SHARED_NEEDS_PAGE: ${pageId}`);
@@ -182,7 +183,7 @@ export async function productionSharedPort(identity: D2RunIdentity): Promise<D2S
       }
       return d2SharedPageFrom({
         identity, inputHash: snapshot.snapshotHash, pageId, page11Text: own.texts, drafts: own.drafts, need, menu: bundle.artifacts.menu as D2Menu,
-        grants: (bundle.artifacts.access as { grants?: D2Grant[] } | null)?.grants ?? [], entities: bundle.artifacts.entities as Record<string, Ns5OntologyAnyEntity>, design, siblings,
+        grants: (bundle.artifacts.access as { grants?: D2Grant[] } | null)?.grants ?? [], entities, design, siblings,
       });
     },
     readExisting: async pageId => {
