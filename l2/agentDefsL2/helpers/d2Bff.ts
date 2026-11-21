@@ -286,7 +286,39 @@ function parseBindings(value: unknown, fail: (path: string, what: string) => nev
  * A command that writes an external entity keeps every input name the answer wrote: that name is the connection
  * call's input. The type still comes from the ontology. An entity or mdm command still takes the field key.
  */
-export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = ''): D2BffDesign {
+/** Optional facts so a command can gain `expectVersion`. Absent, the design is unchanged (d2_207). */
+export interface D2BffNormalizeFacts {
+  writes?: readonly D2NeedWrite[];
+  external?: D2ExternalCallSources;
+}
+
+const expectVersionLeaf = (): D2BffLeaf => ({ name: 'expectVersion', type: 'number', origin: { kind: 'context', paths: [] } });
+
+const VERSION_WORD = /\bversion\b/;
+const VERSION_DENIAL = /\bno\b|\bnot\b|\bnone\b|\bnever\b|\bwithout\b/;
+
+/**
+ * When the code adds the `expectVersion` leaf, drop clauses that deny a version and name the call (d2_207 s1b).
+ * A text that already says `expectVersion` stays as the model wrote it.
+ */
+export function cleanVersionDenials(text: string, operationId: string): string {
+  if (text.includes('expectVersion')) return text;
+  const denies = (clause: string): boolean => VERSION_WORD.test(clause) && VERSION_DENIAL.test(clause);
+  const ended = text.endsWith('.');
+  const kept = text.split('. ').flatMap(sentence => {
+    const clauses = sentence.split('; ');
+    const next = clauses.filter(clause => clause !== '' && !denies(clause));
+    if (!next.length) return [];
+    if (next[0] !== clauses[0]) next[0] = `${next[0][0].toUpperCase()}${next[0].slice(1)}`;
+    return [next.join('; ')];
+  });
+  let body = kept.join('. ');
+  if (ended && body && !body.endsWith('.')) body = `${body}.`;
+  const line = `expectVersion: the version of the record, asked by ${operationId}.`;
+  return body ? `${body} ${line}` : line;
+}
+
+export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = '', facts?: D2BffNormalizeFacts): D2BffDesign {
   // The contract interface of the page owns its name: a type that took it is renamed, with its references (d2_76).
   let design = raw;
   if (reservedTypeName && raw.types.some(type => type.name === reservedTypeName)) {
@@ -401,11 +433,20 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const written = endpoint.writes ? entityOf(endpoint.writes) : '';
     const keepCallNames = endpoint.kind === 'cmd' && (entitiesOf[written] as { kind?: string } | undefined)?.kind === 'external';
     const input = fix(endpoint.input, `endpoints.${endpoint.id}.input`, written, true, endpoint.kind === 'qry', [], false, keepCallNames);
+    const pageWrite = facts?.writes && endpoint.writes ? d2WriteByKey(facts.writes, endpoint.writes) : undefined;
+    const versionAsk = pageWrite && keepCallNames && facts?.external && !input.rows.some(row => row.name === 'expectVersion')
+      ? externalAsk(pageWrite, entitiesOf, facts.external) : undefined;
+    const versionLeaf = versionAsk?.expectsVersion === true;
+    const inputDoc = replaceNames(endpoint.jsdoc.input, input.renamed);
     return {
       ...endpoint,
-      input: input.rows,
+      input: versionLeaf ? [...input.rows, expectVersionLeaf()] : input.rows,
       output: output.rows,
-      jsdoc: { ...endpoint.jsdoc, input: replaceNames(endpoint.jsdoc.input, input.renamed), output: replaceNames(endpoint.jsdoc.output, output.renamed) },
+      jsdoc: {
+        ...endpoint.jsdoc,
+        input: versionLeaf && versionAsk ? cleanVersionDenials(inputDoc, versionAsk.operationId) : inputDoc,
+        output: replaceNames(endpoint.jsdoc.output, output.renamed),
+      },
     };
   });
   const ref = (value: string): string => {
@@ -645,6 +686,29 @@ export function d2PageSubmits(context: Pick<D2BffCheckContext, 'page11' | 'draft
   return out;
 }
 
+function externalAsk(write: D2NeedWrite, entities: Record<string, Ns5OntologyAnyEntity>, external: D2ExternalCallSources) {
+  const entity = entities[write.entity];
+  const connectionId = externalConnectionId(entity);
+  return d2ExternalCallAsk({
+    entityId: write.entity, operation: write.operation, transitionRef: write.transitionRef, entity,
+    connections: external.connections ?? [], journeys: external.journeys ?? {},
+    catalogText: external.catalogs[connectionId] ?? '',
+    unresolved: external.catalogGaps?.[connectionId],
+  });
+}
+
+function commandInputMessage(command: D2BffEndpoint, write: D2NeedWrite, context: D2BffCheckContext, missing: string[]): string {
+  const callTokens = missing.filter(token => !token.includes('.'));
+  const fieldTokens = missing.filter(token => token.includes('.'));
+  const parts: string[] = [];
+  if (callTokens.length) {
+    const op = externalAsk(write, context.entities, context.external ?? { connections: [], journeys: {}, catalogs: {} })?.operationId ?? write.operation;
+    parts.push(callTokens.map(name => `the connection operation ${op} asks for ${name}: add an input leaf named ${name}`).join('; '));
+  }
+  if (fieldTokens.length) parts.push(`command ${command.id} (${command.writes}) asks for ${fieldTokens.join(', ')}; each input leaf that fills a stored value names that Entity.path as a field origin.`);
+  return parts.join(' ');
+}
+
 /** What a write asks for, by origin (d2_72): transition payload, the page's edits plus required context ids on create, id/version otherwise. An `external` entity asks for the connection call's input names instead of `Entity.id` / `Entity.version`. */
 export function d2WriteRequiredInput(write: D2NeedWrite, entities: Record<string, Ns5OntologyAnyEntity>, pageEdits: readonly string[], external?: D2ExternalCallSources): string[] {
   const entityId = write.entity;
@@ -732,7 +796,7 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
     const missing = d2WriteRequiredInput(pageWrite, context.entities, edits, context.external).filter(token => token.includes('.')
       ? !carried.some(origin => covers(origin, token)) && !relatedCover(token)
       : !leaves.some(item => item.leaf.name === token));
-    if (missing.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, `command ${command.id} (${command.writes}) asks for ${missing.join(', ')}; each input leaf that fills a stored value names that Entity.path as a field origin.`);
+    if (missing.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, commandInputMessage(command, pageWrite, context, missing));
   }
 
   // B.4 nothing beyond the plan: a command writes what the page may write and serves a submit of this page.

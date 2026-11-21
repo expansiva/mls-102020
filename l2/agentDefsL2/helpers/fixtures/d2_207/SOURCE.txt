@@ -1,0 +1,71 @@
+Fixture tree for the d2_207 gate test. The test reads only this folder. The live mls-base tree is not read.
+
+getKeyToFile was recorded for loadD2BffContext of agent_behavior and my_conduct (project 102047, module agents). Only those files are here.
+
+The step named commit f45e1e26 for mls-102047. That commit is the d1_250 tree: it has no l4/agents/ontology/ConductChange.defs.ts, and its bff55 receipts are approvals of an older design. The saved answers (-2) were written against the later working tree and fail the gate on that commit (coverage, ConductChange origins, rules, bindings). The 102047 bytes below are that working tree, with HEAD 0ab1ac6a.
+
+Origins:
+- working tree of mls-102047 (HEAD 0ab1ac6a; the saved answers do not pass at f45e1e26, which has no ConductChange and still stores an approval receipt) (59 files)
+  l2/agents/pipeline/agentDefsL2/input.json
+  l4/agents/module.defs.ts
+  l4/agents/journeys/index.defs.ts
+  l4/agents/ontology/index.defs.ts
+  l4/agents/rules.defs.ts
+  l4/agents/workflows.defs.ts
+  l4/agents/access.defs.ts
+  l4/agents/integration.defs.ts
+  l4/agents/pool/l2/web/menu.json
+  l4/agents/pool/l1/web/needs.json
+  l4/agents/pool/l2/web/backend.json
+  l4/agents/pool/l2/web/effort.json
+  l4/agents/journeys/createVirtualEmployee.defs.ts
+  l4/agents/journeys/reviewAndActivateDraft.defs.ts
+  l4/agents/journeys/changeAgentBehavior.defs.ts
+  l4/agents/journeys/adjustAgentTools.defs.ts
+  l4/agents/journeys/configureAgent.defs.ts
+  l4/agents/journeys/simulateAgentByRole.defs.ts
+  l4/agents/journeys/restrictPersonTools.defs.ts
+  l4/agents/journeys/followAgentActivity.defs.ts
+  l4/agents/journeys/simulateAsMyself.defs.ts
+  l4/agents/journeys/changeMyConduct.defs.ts
+  l4/agents/ontology/Agent.defs.ts
+  l4/agents/ontology/AgentDraft.defs.ts
+  l4/agents/ontology/AgentBehavior.defs.ts
+  l4/agents/ontology/PersonalConduct.defs.ts
+  l4/agents/ontology/AgentSimulation.defs.ts
+  l4/agents/ontology/Tool.defs.ts
+  l4/agents/ontology/AgentTool.defs.ts
+  l4/agents/ontology/PersonToolRestriction.defs.ts
+  l4/agents/ontology/ExecutionSummary.defs.ts
+  l4/agents/ontology/ConductChange.defs.ts
+  l4/agents/ontology/OrganizationUser.defs.ts
+  l4/organization/registry.defs.ts
+  l4/agendaClinica/integration.defs.ts
+  l4/comandaRestaurante/integration.defs.ts
+  l4/compras/integration.defs.ts
+  l4/conteudo/integration.defs.ts
+  l4/controleEstoque/integration.defs.ts
+  l4/financeiro/integration.defs.ts
+  l4/hiringPipeline/integration.defs.ts
+  l4/inscricaoEvento/integration.defs.ts
+  l4/locacaoEquipamentos/integration.defs.ts
+  l4/manutencaoFrota/integration.defs.ts
+  l4/mensalidadesAcademia/integration.defs.ts
+  l4/ordenServicio/integration.defs.ts
+  l4/reembolsoDespesas/integration.defs.ts
+  l4/repoHost/integration.defs.ts
+  l4/tarefas/integration.defs.ts
+  l2/agents/web/desktop/page11/agent_behavior.defs.ts
+  l2/agents/web/mobile/page11/agent_behavior.defs.ts
+  l2/agents/pipeline/agentDefsL2/page11Needs/agent_behaviorDesktop.json
+  l2/agents/pipeline/agentDefsL2/page11Needs/agent_behaviorMobile.json
+  l2/agents/pipeline/agentDefsL2/bff55/agent_behavior.json
+  l2/agents/web/desktop/page11/my_conduct.defs.ts
+  l2/agents/web/mobile/page11/my_conduct.defs.ts
+  l2/agents/pipeline/agentDefsL2/page11Needs/my_conductDesktop.json
+  l2/agents/pipeline/agentDefsL2/page11Needs/my_conductMobile.json
+  l2/agents/pipeline/agentDefsL2/bff55/my_conduct.json
+- git show HEAD of mls-102034 (6412ab9394a895f85429339d33e43aef98d79c9a) (1 files)
+  l2/shared/contracts/connections/cm.ts
+- git show HEAD of mls-102020 (8c61db522ff9f7e2770d453b772b5311cf1bb051) (1 files)
+  l2/agentDefsL2/steps/bff55/prompt.md

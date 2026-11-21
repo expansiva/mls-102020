@@ -1,9 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2BffCommandInput.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
-import { checkD2Bff, normalizeD2BffDesign, type D2BffCheckContext, type D2BffDesign, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { buildD2BffDesign, checkD2Bff, cleanVersionDenials, normalizeD2BffDesign, type D2BffCheckContext, type D2BffDesign, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { loadD2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
 import type { D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
@@ -214,8 +218,8 @@ test('an external command missing a call input is D2_BFF_COMMAND_INPUT and does 
   const built = externalDesign([{ id: 'mudar', when: 'requestChange', writes: 'Agent.update', input: ['expectVersion'] }]);
   const found = issues(context, built);
   assert.equal(found.length, 1);
-  assert.match(found[0], /agentId/);
-  assert.doesNotMatch(found[0], /Agent\.id|Agent\.version|D2_BFF_ORIGIN_UNKNOWN/);
+  assert.match(found[0], /the connection operation updateAgent asks for agentId: add an input leaf named agentId/);
+  assert.doesNotMatch(found[0], /Agent\.id|Agent\.version|D2_BFF_ORIGIN_UNKNOWN|Entity\.path/);
 });
 
 test('an external command keeps the call names of field leaves; an entity command still takes the field key', () => {
@@ -281,4 +285,122 @@ test('operation semantics reads the external call instead of entity transitions'
     external: externalSources,
   }, 'review', [{ route: '/descartar', usecaseRef: 'discardDraft' }], [{ usecaseId: 'discardDraft', entity: 'AgentDraft', operation: 'transition' }], ['companyAdmin']);
   assert.deepEqual(bindings[0]?.inputFields.map(field => field.path), ['draftId']);
+});
+
+test('normalize adds expectVersion only when the connection call asks for a version', () => {
+  const context = externalContext(
+    [{ entity: 'Agent', operation: 'update' }, { entity: 'AgentDraft', operation: 'transition', transitionRef: 'discardDraft' }],
+    { requestChange: { write: 'Agent.update' }, discardDraft: { write: 'AgentDraft.discardDraft' } },
+  );
+  const raw = externalDesign([
+    { id: 'mudar', when: 'requestChange', writes: 'Agent.update', input: ['agentId'] },
+    { id: 'descartar', when: 'discardDraft', writes: 'AgentDraft.discardDraft', input: ['draftId'] },
+  ]);
+  const facts = { writes: context.need.writes, external: context.external };
+  const gained = normalizeD2BffDesign(raw, context.entities, '', facts);
+  const version = gained.endpoints.find(item => item.id === 'mudar')?.input.find(item => item.name === 'expectVersion');
+  assert.deepEqual(version, { name: 'expectVersion', type: 'number', origin: { kind: 'context', paths: [] } });
+  assert.equal(gained.endpoints.find(item => item.id === 'descartar')?.input.some(item => item.name === 'expectVersion'), false);
+  assert.deepEqual(issues(context, gained), []);
+  const stored = normalizeD2BffDesign(design([{ id: 'estornar', when: 'estorno', writes: 'Recebimento.update', input: ['Recebimento.id'] }]), entities, '', facts);
+  const plain = normalizeD2BffDesign(design([{ id: 'estornar', when: 'estorno', writes: 'Recebimento.update', input: ['Recebimento.id'] }]), entities);
+  assert.deepEqual(stored, plain);
+  assert.equal(stored.endpoints.some(item => item.input.some(leaf => leaf.name === 'expectVersion')), false);
+});
+
+/** Reads the frozen tree in `fixtures/d2_207/tree`. A missing file is null. The live project tree is not consulted. */
+function readProjectFile(info: { project: number; level: number; folder: string; shortName: string; extension: string }): string | null {
+  const disk = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'fixtures/d2_207/tree',
+    `mls-${info.project}`,
+    `l${info.level}`,
+    info.folder,
+    `${info.shortName}${info.extension}`,
+  );
+  return existsSync(disk) ? readFileSync(disk, 'utf8') : null;
+}
+
+/** The bff context is read through `mls.stor`. Point that at the project files for this test only. */
+function withProjectFiles(run: () => Promise<void>): Promise<void> {
+  const stor = mls.stor as { files: typeof mls.stor.files; getKeyToFile?: typeof mls.stor.getKeyToFile };
+  const previous = { files: stor.files, getKey: stor.getKeyToFile };
+  const cache: Record<string, unknown> = {};
+  stor.getKeyToFile = ((info: { project: number; level: number; folder: string; shortName: string; extension: string }) => {
+    const key = [info.project, info.level, info.folder, info.shortName, info.extension].join('|');
+    const content = readProjectFile(info);
+    if (content !== null && !cache[key]) {
+      cache[key] = { ...info, status: 'unchanged', getValueInfo: async () => ({ content }), getContent: async () => content };
+    }
+    return key;
+  }) as typeof mls.stor.getKeyToFile;
+  stor.files = cache as typeof mls.stor.files;
+  return run().finally(() => { stor.files = previous.files; stor.getKeyToFile = previous.getKey; });
+}
+
+test('the two saved external answers pass the gate once expectVersion is added', async () => {
+  await withProjectFiles(async () => {
+  for (const pageId of ['agent_behavior', 'my_conduct'] as const) {
+    const commandId = pageId === 'agent_behavior' ? 'requestBehaviorChange' : 'sendConductChange';
+    const envelope = JSON.parse(readFileSync(new URL(`./fixtures/d2_207/${pageId}-2.json`, import.meta.url), 'utf8')) as { raw: { result: { arguments: unknown } } };
+    const context = await loadD2BffContext({ project: 102047, module: 'agents' }, pageId);
+    const design = normalizeD2BffDesign(buildD2BffDesign(envelope.raw.result.arguments), context.entities, '', { writes: context.need.writes, external: context.external });
+    const command = design.endpoints.find(item => item.id === commandId);
+    const leaf = command?.input.find(item => item.name === 'expectVersion');
+    assert.deepEqual(leaf, { name: 'expectVersion', type: 'number', origin: { kind: 'context', paths: [] } });
+    const input = command?.jsdoc.input ?? '';
+    if (pageId === 'agent_behavior') {
+      assert.equal(input, 'agentId: the cm id of the agent; changeRequest: what the admin wrote in the box; undoChangeRef: the cm reference of the change to undo. Exactly one of changeRequest or undoChangeRef is given. expectVersion: the version of the record, asked by updateAgent.');
+    } else {
+      assert.equal(input, 'agentId: the agent whose conduct changes. changeRequest: what the person wrote should change. The conduct is identified by the agent and the signed-in person. expectVersion: the version of the record, asked by updateAgent.');
+    }
+    assert.equal(command?.jsdoc.output, JSON.parse(readFileSync(new URL(`./fixtures/d2_207/${pageId}-2.json`, import.meta.url), 'utf8')).raw.result.arguments.endpoints.find((item: { id: string }) => item.id === commandId).jsdoc.output);
+    assert.deepEqual(checkD2Bff(design, context).map(item => `${item.code}: ${item.message}`), []);
+  }
+  });
+});
+
+test('cleanVersionDenials drops only a denied version, and only on the route that gained the leaf', () => {
+  const seen = 'the version the admin saw stays';
+  assert.equal(
+    cleanVersionDenials(`Before. AgentBehavior declares no version, so none is asked. ${seen}.`, 'updateAgent'),
+    `Before. ${seen}. expectVersion: the version of the record, asked by updateAgent.`,
+  );
+  assert.equal(cleanVersionDenials('Already names expectVersion. AgentBehavior declares no version.', 'updateAgent'), 'Already names expectVersion. AgentBehavior declares no version.');
+
+  const context = externalContext(
+    [{ entity: 'Agent', operation: 'update' }, { entity: 'AgentDraft', operation: 'transition', transitionRef: 'discardDraft' }],
+    { requestChange: { write: 'Agent.update' }, discardDraft: { write: 'AgentDraft.discardDraft' } },
+  );
+  const raw = externalDesign([
+    { id: 'mudar', when: 'requestChange', writes: 'Agent.update', input: ['agentId'] },
+    { id: 'descartar', when: 'discardDraft', writes: 'AgentDraft.discardDraft', input: ['draftId'] },
+  ]);
+  const mudar = raw.endpoints.find(item => item.id === 'mudar');
+  const descartar = raw.endpoints.find(item => item.id === 'descartar');
+  if (!mudar || !descartar) throw new Error('missing command');
+  mudar.jsdoc = { ...mudar.jsdoc, input: `Notes. ${seen}. Agent declares no version, so none is asked.` };
+  const already = 'The call already lists expectVersion. No version leaf is missing.';
+  const keptDoc = { ...descartar.jsdoc, input: already };
+  descartar.jsdoc = keptDoc;
+  const facts = { writes: context.need.writes, external: context.external };
+  const gained = normalizeD2BffDesign(raw, context.entities, '', facts);
+  assert.equal(gained.endpoints.find(item => item.id === 'mudar')?.jsdoc.input, `Notes. ${seen}. expectVersion: the version of the record, asked by updateAgent.`);
+  assert.equal(gained.endpoints.find(item => item.id === 'descartar')?.jsdoc.input, already);
+  assert.equal(gained.endpoints.find(item => item.id === 'descartar')?.jsdoc.purpose, 'p');
+
+  const cited = externalDesign([{ id: 'mudar', when: 'requestChange', writes: 'Agent.update', input: ['agentId'] }]);
+  const citedCommand = cited.endpoints.find(item => item.id === 'mudar');
+  if (!citedCommand) throw new Error('missing command');
+  citedCommand.jsdoc = { ...citedCommand.jsdoc, input: 'The box sends expectVersion. Agent declares no version.' };
+  const citedOut = normalizeD2BffDesign(cited, context.entities, '', facts);
+  assert.equal(citedOut.endpoints.find(item => item.id === 'mudar')?.jsdoc.input, 'The box sends expectVersion. Agent declares no version.');
+  assert.equal(citedOut.endpoints.find(item => item.id === 'mudar')?.input.some(item => item.name === 'expectVersion'), true);
+
+  const stored = design([{ id: 'estornar', when: 'estorno', writes: 'Recebimento.update', input: ['Recebimento.id'] }]);
+  const moduleCommand = stored.endpoints.find(item => item.id === 'estornar');
+  if (!moduleCommand) throw new Error('missing command');
+  moduleCommand.jsdoc = { ...moduleCommand.jsdoc, input: 'Recebimento declares no version, so none is asked.' };
+  const moduleOut = normalizeD2BffDesign(stored, entities, '', facts);
+  assert.equal(moduleOut.endpoints.find(item => item.id === 'estornar')?.jsdoc.input, 'Recebimento declares no version, so none is asked.');
 });

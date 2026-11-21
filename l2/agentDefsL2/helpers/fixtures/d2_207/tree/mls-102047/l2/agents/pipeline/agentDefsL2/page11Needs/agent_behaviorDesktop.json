@@ -1,0 +1,44 @@
+{
+  "organisms": {
+    "currentBehavior": {
+      "reads": [
+        "Agent.name",
+        "AgentBehavior.agent",
+        "AgentBehavior.summary",
+        "AgentBehavior.currentBehavior"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "behaviorChangeRequest": {
+      "reads": [
+        "AgentBehavior.agent",
+        "AgentBehavior.changes.changeRef",
+        "AgentBehavior.changes.summary"
+      ],
+      "edits": [
+        "AgentBehavior.changeRequest"
+      ],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "requestBehaviorChange",
+          "write": "AgentBehavior.update"
+        }
+      ]
+    },
+    "behaviorHistory": {
+      "reads": [
+        "AgentBehavior.changes.changeRef",
+        "AgentBehavior.changes.changedBy",
+        "AgentBehavior.changes.changedAt",
+        "AgentBehavior.changes.summary",
+        "AgentBehavior.changes.undone"
+      ],
+      "edits": [],
+      "selects": "behaviorChangeRequest",
+      "submits": []
+    }
+  }
+}

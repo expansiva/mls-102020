@@ -178,7 +178,7 @@ const productionWriter: D2BffWriter = { writeJson };
  */
 export function d2BffApproved(context: D2BffContext, raw: unknown): D2BffDesign {
   const format: D2BffIssue[] = [];
-  const design = normalizeD2BffDesign(buildD2BffDesign(raw, format), context.entities, d2ContractsTypeName(context.pageId));
+  const design = normalizeD2BffDesign(buildD2BffDesign(raw, format), context.entities, d2ContractsTypeName(context.pageId), { writes: context.need.writes, external: context.external });
   const issues = [...format, ...checkD2Bff(design, context)];
   if (!issues.length) {
     const access = d2BffAccess(design, context.need, context.grants);

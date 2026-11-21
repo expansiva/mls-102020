@@ -28,6 +28,8 @@ export interface D2ExternalCallSources {
 export interface D2ExternalCallAsk {
   names: string[];
   expectsVersion: boolean;
+  /** `operationId` of the call, for the gate message that names it. */
+  operationId: string;
 }
 
 export class D2OperationSemanticsError extends Error {
@@ -188,7 +190,7 @@ export function explainD2ExternalCall(input: D2ExternalCallInput): { ask: D2Exte
   const inputType = text(operationRow.inputType);
   const node = inputType ? parseContractSource(input.catalogText).types[inputType] : undefined;
   const names = node?.kind === 'object' ? node.fields.filter(field => !field.optional).map(field => field.name) : [];
-  return { ask: { names, expectsVersion: operationRow.expectsVersion === true }, gap: null };
+  return { ask: { names, expectsVersion: operationRow.expectsVersion === true, operationId: text(operationRow.operationId) }, gap: null };
 }
 
 function ruleMap(value: unknown): Map<string, string> {

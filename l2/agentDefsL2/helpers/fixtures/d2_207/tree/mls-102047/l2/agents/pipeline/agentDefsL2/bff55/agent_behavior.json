@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "2026-10-04-agent-defs-l2-bff-refusal",
+  "project": 102047,
+  "module": "agents",
+  "pageId": "agent_behavior",
+  "taskId": "20261121142515.1001",
+  "diagnostic": "D2_BFF_REPAIR_LIMIT: D2_BFF_COMMAND_INPUT: endpoints.requestBehaviorChange.input: command requestBehaviorChange (AgentBehavior.update) asks for expectVersion; each input leaf that fills a stored value names that Entity.path as a field origin."
+}
