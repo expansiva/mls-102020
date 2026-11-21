@@ -178,7 +178,8 @@ void test('d2_201: a complete pipeline reruns contracts70 without calling the mo
   const bundle = await bundleOf();
   const ids = [...snapshot.selection.writePageIds].sort();
   const pipeline = jsonAt<Record<string, unknown>>('l2/agents/pipeline/agentDefsL2/pipeline.json');
-  const promptBff = readFileSync(join(here, '../bff55/prompt.md'), 'utf8');
+  // o pipeline gravado foi aprovado com este prompt; a prova é que o contracts70 refaz o contrato sem chamar o modelo
+  const promptBff = readFileSync(join(root, 'bff55PromptRecorded.md'), 'utf8');
   const promptPages = readFileSync(join(here, '../pages50/prompt.md'), 'utf8');
   const skill = readFileSync(join(here, '../../skills/genD2Page11Definition.ts'), 'utf8');
 
