@@ -1,0 +1,704 @@
+{
+  "types": [
+    {
+      "name": "DraftInboxItem",
+      "description": "An agent draft that is waiting for the admin: either ready for review or still being prepared by the cm from the admin's description.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.name"
+            ]
+          }
+        },
+        {
+          "name": "situation",
+          "type": "'preparing' | 'ready' | 'refused' | 'activated' | 'discarded'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.situation"
+            ]
+          }
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.summary"
+            ]
+          }
+        },
+        {
+          "name": "prompt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.prompt"
+            ]
+          }
+        },
+        {
+          "name": "requestedAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.requestedAt"
+            ]
+          }
+        },
+        {
+          "name": "requestedBy",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.requestedBy"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AgentCard",
+      "description": "A company agent as the cm keeps it: its @name, who it talks to, whether it is on and the readable name of the person responsible for it.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.name"
+            ]
+          }
+        },
+        {
+          "name": "talksTo",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.talksTo"
+            ]
+          }
+        },
+        {
+          "name": "isOn",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Agent.isOn"
+            ]
+          }
+        },
+        {
+          "name": "responsibleName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Agent.responsible",
+              "OrganizationUser.details.identification.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "DraftCard",
+      "description": "An agent draft in the cm with its name, its situation and, when refused, the reason the cm gave.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.name"
+            ]
+          }
+        },
+        {
+          "name": "situation",
+          "type": "'preparing' | 'ready' | 'refused' | 'activated' | 'discarded'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.situation"
+            ]
+          }
+        },
+        {
+          "name": "refusalReason",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.refusalReason"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AgentsCollectionEntry",
+      "description": "One entry of the company's virtual employees: either an agent or a draft, exactly one of the two filled.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": "AgentCard",
+          "optional": true
+        },
+        {
+          "name": "draft",
+          "type": "DraftCard",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "RequestEvent",
+      "description": "A request for a new agent and what happened to it: sent, ready with the suggested tools turned on, refused with the reason, activated or discarded.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.name"
+            ]
+          }
+        },
+        {
+          "name": "situation",
+          "type": "'preparing' | 'ready' | 'refused' | 'activated' | 'discarded'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.situation"
+            ]
+          }
+        },
+        {
+          "name": "requestedAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.requestedAt"
+            ]
+          }
+        },
+        {
+          "name": "refusalReason",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.refusalReason"
+            ]
+          }
+        },
+        {
+          "name": "suggestedTools",
+          "type": "string[]",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.suggestedTools"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "loadAgentsPage",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "inbox",
+          "type": "DraftInboxItem[]"
+        },
+        {
+          "name": "agents",
+          "type": "AgentsCollectionEntry[]",
+          "paginated": true
+        },
+        {
+          "name": "requests",
+          "type": "RequestEvent[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "refusalReasonShownWhenRefused",
+        "agentDraftSuggestedToolsOnWhenReady",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Loads in one call everything the agents home shows when it opens: the drafts waiting for the admin, the first page of agents and drafts, and the first page of the request history.",
+        "input": "pageSize: how many entries the first page of the agents collection and of the request history bring.",
+        "processing": "Reads agents and drafts from the cm for the caller's organization. inbox: drafts in situation 'ready' (waiting for review) or 'preparing' (requests still being prepared), newest request first, with summary, prompt, requested on and the readable name of the requester. agents: page 1 of agents and drafts side by side; agents carry @name, talksTo, isOn and the responsible person resolved to OrganizationUser.details.identification.name; drafts carry name and situation limited to preparing, ready or refused, with refusalReason filled only when refused (refusalReasonShownWhenRefused). requests: page 1 of drafts in any situation, newest first, with readable names of the suggested tools for ready drafts (agentDraftSuggestedToolsOnWhenReady: those tools are already on for it). For an organizationMember, grants cover only Agent: inbox and requests come back empty and agents contains only agent entries with the allowed fields. Never returns technical ids (noTechnicalIdsOnScreen).",
+        "output": "inbox: plain list of waiting drafts; agents: first page { items, page, pageSize, hasMore } of agent or draft entries; requests: first page { items, page, pageSize, hasMore } of request events."
+      }
+    },
+    {
+      "id": "listAgentsCollection",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "agents",
+          "type": "AgentsCollectionEntry[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "refusalReasonShownWhenRefused",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Brings a further page of the company's agents and drafts.",
+        "input": "page: the page number wanted; pageSize: entries per page.",
+        "processing": "Same composition and order as loadAgentsPage.agents: agents with @name, talksTo, isOn and responsible person's readable name; drafts in preparing, ready or refused with refusalReason only when refused. Members receive only agent entries with their allowed fields. No technical ids.",
+        "output": "agents: the requested page { items, page, pageSize, hasMore }."
+      }
+    },
+    {
+      "id": "listRequestHistory",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "requests",
+          "type": "RequestEvent[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "refusalReasonShownWhenRefused",
+        "agentDraftSuggestedToolsOnWhenReady",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Brings a further page of the history of requests for new agents.",
+        "input": "page: the page number wanted; pageSize: events per page.",
+        "processing": "Drafts of the organization in any situation, newest request first; refusalReason only on refused drafts; suggested tools as readable names for ready drafts, which are already turned on for it. Company admin only by grant.",
+        "output": "requests: the requested page { items, page, pageSize, hasMore }."
+      }
+    },
+    {
+      "id": "sendNewAgentRequest",
+      "kind": "cmd",
+      "when": "sendNewAgentRequest",
+      "writes": "AgentDraft.create",
+      "input": [
+        {
+          "name": "prompt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.prompt"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "request",
+          "type": "RequestEvent"
+        },
+        {
+          "name": "inboxItem",
+          "type": "DraftInboxItem"
+        },
+        {
+          "name": "collectionEntry",
+          "type": "AgentsCollectionEntry"
+        }
+      ],
+      "rules": [],
+      "jsdoc": {
+        "purpose": "Sends the admin's plain-words description of a new virtual employee to the cm, which prepares a draft or refuses it.",
+        "input": "prompt: what the admin wrote describing the new agent and its functions.",
+        "processing": "Only the company admin may call it. Creates the draft request in the cm with the prompt; requestedBy is the logged-in admin and requestedAt the moment it is sent. The draft starts in situation 'preparing'; the cm later reports it ready or refused.",
+        "output": "The new draft in its 'preparing' situation in the three shapes it takes: request (history event), inboxItem (waiting draft with prompt, requester and date) and collectionEntry (draft card)."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "draftsInbox",
+        "reads": "loadAgentsPage.inbox"
+      },
+      {
+        "organism": "agentsList",
+        "reads": "loadAgentsPage.agents"
+      },
+      {
+        "organism": "requestTimeline",
+        "reads": "loadAgentsPage.requests"
+      }
+    ],
+    "commands": [
+      {
+        "endpoint": "sendNewAgentRequest",
+        "refreshes": []
+      }
+    ],
+    "selections": [],
+    "journeys": [
+      {
+        "step": "createVirtualEmployee/openAgentList",
+        "organisms": [
+          "agentsList",
+          "newAgentForm"
+        ],
+        "endpoints": [
+          "loadAgentsPage"
+        ]
+      },
+      {
+        "step": "createVirtualEmployee/describeAgent",
+        "organisms": [
+          "newAgentForm"
+        ],
+        "endpoints": [
+          "sendNewAgentRequest"
+        ]
+      },
+      {
+        "step": "createVirtualEmployee/followDraftSituation",
+        "organisms": [
+          "agentsList",
+          "requestTimeline",
+          "draftsInbox"
+        ],
+        "endpoints": [
+          "loadAgentsPage",
+          "listRequestHistory",
+          "listAgentsCollection"
+        ]
+      },
+      {
+        "step": "followAgentActivity/browseAgents",
+        "organisms": [
+          "agentsList"
+        ],
+        "endpoints": [
+          "loadAgentsPage",
+          "listAgentsCollection"
+        ]
+      },
+      {
+        "step": "followAgentActivity/readOverview",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_overview"
+      },
+      {
+        "step": "followAgentActivity/readActivity",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_activity"
+      },
+      {
+        "step": "reviewAndActivateDraft/openReadyDraft",
+        "organisms": [
+          "draftsInbox",
+          "agentsList",
+          "requestTimeline"
+        ],
+        "endpoints": [
+          "loadAgentsPage"
+        ],
+        "continuesIn": "draft_review"
+      },
+      {
+        "step": "reviewAndActivateDraft/reviewDraft",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "draft_review"
+      },
+      {
+        "step": "reviewAndActivateDraft/adjustDraftTools",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "draft_review"
+      },
+      {
+        "step": "reviewAndActivateDraft/simulateDraft",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "draft_review"
+      },
+      {
+        "step": "reviewAndActivateDraft/activateDraft",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "draft_review"
+      },
+      {
+        "step": "reviewAndActivateDraft/discardDraft",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "draft_review"
+      },
+      {
+        "step": "adjustAgentTools/findAgentForTools",
+        "organisms": [
+          "agentsList"
+        ],
+        "endpoints": [
+          "loadAgentsPage",
+          "listAgentsCollection"
+        ],
+        "continuesIn": "agent_tools"
+      },
+      {
+        "step": "adjustAgentTools/browseToolTree",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_tools"
+      },
+      {
+        "step": "adjustAgentTools/enableUnchosenTool",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_tools"
+      },
+      {
+        "step": "adjustAgentTools/toggleTools",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_tools"
+      },
+      {
+        "step": "changeAgentBehavior/findAgentForBehavior",
+        "organisms": [
+          "agentsList"
+        ],
+        "endpoints": [
+          "loadAgentsPage",
+          "listAgentsCollection"
+        ],
+        "continuesIn": "agent_behavior"
+      },
+      {
+        "step": "changeAgentBehavior/readBehavior",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_behavior"
+      },
+      {
+        "step": "changeAgentBehavior/requestBehaviorChange",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_behavior"
+      },
+      {
+        "step": "changeAgentBehavior/undoBehaviorChange",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_behavior"
+      },
+      {
+        "step": "changeMyConduct/findMyAgent",
+        "organisms": [
+          "agentsList"
+        ],
+        "endpoints": [
+          "loadAgentsPage",
+          "listAgentsCollection"
+        ],
+        "continuesIn": "my_conduct"
+      },
+      {
+        "step": "changeMyConduct/readMyConduct",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "my_conduct"
+      },
+      {
+        "step": "changeMyConduct/changeConduct",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "my_conduct"
+      },
+      {
+        "step": "configureAgent/findAgentForConfig",
+        "organisms": [
+          "agentsList"
+        ],
+        "endpoints": [
+          "loadAgentsPage",
+          "listAgentsCollection"
+        ],
+        "continuesIn": "agent_configuration"
+      },
+      {
+        "step": "configureAgent/readConfiguration",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_configuration"
+      },
+      {
+        "step": "configureAgent/saveConfiguration",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_configuration"
+      },
+      {
+        "step": "simulateAgentByRole/findAgentToSimulate",
+        "organisms": [
+          "agentsList"
+        ],
+        "endpoints": [
+          "loadAgentsPage",
+          "listAgentsCollection"
+        ],
+        "continuesIn": "agent_simulation"
+      },
+      {
+        "step": "simulateAgentByRole/simulateWhatItCan",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_simulation"
+      },
+      {
+        "step": "simulateAgentByRole/simulateWhatItUnderstands",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_simulation"
+      },
+      {
+        "step": "simulateAsMyself/findAgentForMe",
+        "organisms": [
+          "agentsList"
+        ],
+        "endpoints": [
+          "loadAgentsPage",
+          "listAgentsCollection"
+        ],
+        "continuesIn": "agent_simulation"
+      },
+      {
+        "step": "simulateAsMyself/seeWhatItCanForMe",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_simulation"
+      },
+      {
+        "step": "simulateAsMyself/seeWhatItUnderstandsForMe",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "agent_simulation"
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "listAgentsCollection",
+        "state": "loadAgentsPage.agents",
+        "mode": "append"
+      },
+      {
+        "endpoint": "listRequestHistory",
+        "state": "loadAgentsPage.requests",
+        "mode": "append"
+      },
+      {
+        "endpoint": "sendNewAgentRequest",
+        "state": "loadAgentsPage.requests",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "sendNewAgentRequest",
+        "state": "loadAgentsPage.inbox",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "sendNewAgentRequest",
+        "state": "loadAgentsPage.agents",
+        "mode": "upsert"
+      }
+    ]
+  }
+}

@@ -142,10 +142,23 @@ function outputReaches(design: D2BffDesign, endpointOutput: readonly D2BffLeaf[]
   return endpointOutput.some(leaf => references(leaf, new Set()));
 }
 
+/** A sentence that says the route does not return a technical id, and does not talk about showing one. */
+function deniesReturnedTechnicalId(sentence: string): boolean {
+  if (/\b(shown|show|shows|display|screen)\b/i.test(sentence)) return false;
+  if (sentence === 'No technical ids.' || sentence === 'No technical ids') return true;
+  return /\breturns?\b[^.]*\btechnical ids?\b/i.test(sentence);
+}
+
+/** Drop that denial from a route that carries the id. Other sentences stay, joined by one space. */
+function dropDeniedTechnicalIds(text: string): string {
+  return text.split(/(?<=[.!?])\s+/u).filter(sentence => sentence.length > 0 && !deniesReturnedTechnicalId(sentence)).join(' ');
+}
+
 function noteNavigationId(design: D2BffDesign, typeName: string, param: string): void {
   const sentence = `Each ${typeName} carries ${param} to open its page; the screen does not show it.`;
   for (const endpoint of design.endpoints) {
     if (!outputReaches(design, endpoint.output, typeName)) continue;
+    endpoint.jsdoc.processing = dropDeniedTechnicalIds(endpoint.jsdoc.processing);
     if (endpoint.jsdoc.processing.includes(sentence)) continue;
     const text = endpoint.jsdoc.processing;
     endpoint.jsdoc.processing = text.length === 0 || /\s$/u.test(text) ? `${text}${sentence}` : `${text} ${sentence}`;

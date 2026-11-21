@@ -126,24 +126,24 @@ void test('d2_196: no matching item type, or two, adds nothing and warns once', 
 const recordedRoot = join(dirname(fileURLToPath(import.meta.url)), 'fixtures/d2_196_9e8b640a');
 const navigationSentence = (typeName: string, param: string) => `Each ${typeName} carries ${param} to open its page; the screen does not show it.`;
 
-function recordedDesign(pageId: string): D2BffDesign {
-  return JSON.parse(readFileSync(join(recordedRoot, 'pipeline/agentDefsL2/bff', `${pageId}.json`), 'utf8')) as D2BffDesign;
+function recordedDesign(pageId: string, root = recordedRoot): D2BffDesign {
+  return JSON.parse(readFileSync(join(root, 'pipeline/agentDefsL2/bff', `${pageId}.json`), 'utf8')) as D2BffDesign;
 }
 
-function recordedPage11(pageId: string): Record<D2Page11Device, D2Page11Definition> {
-  const read = (device: D2Page11Device) => parseD2Page11Definition(readFileSync(join(recordedRoot, 'web', device, 'page11', `${pageId}.defs.ts`), 'utf8')).definition;
+function recordedPage11(pageId: string, root = recordedRoot): Record<D2Page11Device, D2Page11Definition> {
+  const read = (device: D2Page11Device) => parseD2Page11Definition(readFileSync(join(root, 'web', device, 'page11', `${pageId}.defs.ts`), 'utf8')).definition;
   return { desktop: read('desktop'), mobile: read('mobile') };
 }
 
-function recordedDestinations(page11: Record<D2Page11Device, D2Page11Definition>): Record<string, D2NavDestination> {
+function recordedDestinations(page11: Record<D2Page11Device, D2Page11Definition>, root = recordedRoot): Record<string, D2NavDestination> {
   const destinations: Record<string, D2NavDestination> = {};
   for (const device of ['desktop', 'mobile'] as const) {
     for (const organism of Object.values(page11[device].organisms)) {
       for (const intent of organism.intents) {
         if (intent.kind !== 'navigate' || !intent.to || intent.id.startsWith('backTo') || destinations[intent.to]) continue;
         destinations[intent.to] = {
-          shared: parseD2SharedV2(readFileSync(join(recordedRoot, 'web/shared', `${intent.to}.defs.ts`), 'utf8')).definition,
-          design: recordedDesign(intent.to),
+          shared: parseD2SharedV2(readFileSync(join(root, 'web/shared', `${intent.to}.defs.ts`), 'utf8')).definition,
+          design: recordedDesign(intent.to, root),
         };
       }
     }
@@ -187,4 +187,53 @@ void test('d2_203: recorded agents routes say the item carries the id, and a rou
     console.warn = original;
   }
   assert.equal(warnings.filter(line => line.includes('page agents ')).length, 0);
+});
+
+const recorded205 = join(dirname(fileURLToPath(import.meta.url)), 'fixtures/d2_205_f45e1e26');
+const showPhrases: Record<string, string> = {
+  agent_activity: 'so no technical id is shown (noTechnicalIdsOnScreen); executionRef is never returned.',
+  agent_configuration: 'no technical id is meant for display (noTechnicalIdsOnScreen).',
+  agent_simulation: 'no technical id is shown (noTechnicalIdsOnScreen).',
+  person_restrictions: 'No technical ids are meant for display.',
+};
+
+function processingOf(value: D2BffDesign, id: string): string {
+  return value.endpoints.find(endpoint => endpoint.id === id)!.jsdoc.processing;
+}
+
+void test('d2_205: a route that carries the id loses the denial, and a phrase about showing it stays', () => {
+  const original = console.warn;
+  console.warn = () => {};
+  try {
+    const design = recordedDesign('agents', recorded205);
+    design.endpoints.push({ id: 'ping', kind: 'qry', when: 'interaction', input: [], output: [{ name: 'ok', type: 'boolean' }], rules: [], jsdoc: { purpose: 'Ping.', input: 'None.', processing: 'No technical ids.', output: 'ok.' } });
+    const before = JSON.stringify(design);
+    const page11 = recordedPage11('agents', recorded205);
+    const input = { pageId: 'agents', design, page11, destinations: recordedDestinations(page11, recorded205) };
+    const once = applyD2NavigationIds(input);
+    const twice = applyD2NavigationIds({ ...input, design: once.design });
+    assert.equal(JSON.stringify(once.design), JSON.stringify(twice.design));
+    assert.equal(JSON.stringify(design), before);
+    for (const id of ['loadAgentsPage', 'listAgentsCollection']) {
+      const text = processingOf(once.design, id);
+      assert.equal(text.includes('Never returns technical ids (noTechnicalIdsOnScreen).'), false);
+      assert.equal(text.includes('No technical ids.'), false);
+      assert.ok(text.includes(navigationSentence('AgentCard', 'agentId')));
+      assert.ok(text.includes(navigationSentence('DraftCard', 'draftId')));
+    }
+    assert.equal(processingOf(once.design, 'ping'), 'No technical ids.');
+    const kept = once.design.endpoints.filter(endpoint => endpoint.id !== 'ping').map(endpoint => endpoint.jsdoc.processing).join('\n');
+    assert.equal(kept.includes('Never returns technical ids (noTechnicalIdsOnScreen).'), false);
+    assert.equal(kept.includes('No technical ids.'), false);
+    const technicalSentences = (value: D2BffDesign) => value.endpoints.flatMap(endpoint => endpoint.jsdoc.processing.split(/(?<=[.!?])\s+/u)).filter(sentence => /technical id/i.test(sentence));
+    for (const pageId of Object.keys(showPhrases)) {
+      const page = recordedDesign(pageId, recorded205);
+      const pageDef = recordedPage11(pageId, recorded205);
+      const applied = applyD2NavigationIds({ pageId, design: page, page11: pageDef, destinations: recordedDestinations(pageDef, recorded205) });
+      assert.deepEqual(technicalSentences(applied.design), technicalSentences(page));
+      assert.equal(technicalSentences(page).some(sentence => sentence.includes(showPhrases[pageId])), true);
+    }
+  } finally {
+    console.warn = original;
+  }
 });

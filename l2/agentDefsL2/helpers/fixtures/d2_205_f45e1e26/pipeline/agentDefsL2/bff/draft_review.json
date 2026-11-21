@@ -1,0 +1,980 @@
+{
+  "types": [
+    {
+      "name": "DraftReview",
+      "description": "A ready agent draft prepared by the cm: who the new agent would be, what it does, who it talks to, on whose behalf it acts, its proposed behavior, the original description, who requested it and when, and its situation.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.name"
+            ]
+          }
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.summary"
+            ]
+          }
+        },
+        {
+          "name": "audience",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.audience"
+            ]
+          }
+        },
+        {
+          "name": "onBehalfOf",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.onBehalfOf"
+            ]
+          }
+        },
+        {
+          "name": "proposedBehavior",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.proposedBehavior"
+            ]
+          }
+        },
+        {
+          "name": "prompt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.prompt"
+            ]
+          }
+        },
+        {
+          "name": "situation",
+          "type": "'preparing' | 'ready' | 'refused' | 'activated' | 'discarded'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.situation"
+            ]
+          }
+        },
+        {
+          "name": "requestedBy",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.requestedBy"
+            ]
+          }
+        },
+        {
+          "name": "requestedAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentDraft.requestedAt"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "DraftToolLineDetails",
+      "description": "Details of one tool choice: when it was made, the readable tool name and whether the tool left the release.",
+      "fields": [
+        {
+          "name": "decidedAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.details.decidedAt"
+            ]
+          }
+        },
+        {
+          "name": "toolName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.details.toolName"
+            ]
+          }
+        },
+        {
+          "name": "toolRemoved",
+          "type": "boolean",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.details.toolRemoved"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "DraftToolCatalogDetails",
+      "description": "Readable placement and description of a catalog tool in the module / subject / action tree.",
+      "fields": [
+        {
+          "name": "moduleTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.moduleTitle"
+            ]
+          }
+        },
+        {
+          "name": "subjectTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.subjectTitle"
+            ]
+          }
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.description"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "DraftToolCatalog",
+      "description": "The catalog tool a choice refers to, with its readable name, situation and tree placement.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.name"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'available' | 'removed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.status"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "DraftToolCatalogDetails"
+        }
+      ]
+    },
+    {
+      "name": "DraftToolLine",
+      "description": "One tool choice of the draft's agent: whether it is on, who made the choice and when, with the catalog tool it refers to.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.version"
+            ]
+          }
+        },
+        {
+          "name": "toolId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.toolId"
+            ]
+          }
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.enabled"
+            ]
+          }
+        },
+        {
+          "name": "choiceSource",
+          "type": "'admin' | 'automatic'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.choiceSource"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "DraftToolLineDetails"
+        },
+        {
+          "name": "tool",
+          "type": "DraftToolCatalog"
+        }
+      ]
+    },
+    {
+      "name": "DraftToolChange",
+      "description": "A change to one existing tool choice: the choice, its version and its new on/off value.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.version"
+            ]
+          }
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentTool.enabled"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "SimulationPersonIdentification",
+      "description": "Name and status of an organization user.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.identification.name"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'Active' | 'Inactive' | 'Merged' | 'Blocked'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.identification.status"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "SimulationPersonAgents",
+      "description": "Login data of an organization user read from the platform login.",
+      "fields": [
+        {
+          "name": "loginEmail",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.agents.loginEmail"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "SimulationPersonDetails",
+      "description": "Readable details of an organization user.",
+      "fields": [
+        {
+          "name": "identification",
+          "type": "SimulationPersonIdentification"
+        },
+        {
+          "name": "agents",
+          "type": "SimulationPersonAgents"
+        }
+      ]
+    },
+    {
+      "name": "SimulationPerson",
+      "description": "An active organization user with a platform login, with an opaque reference to choose them for a simulation.",
+      "fields": [
+        {
+          "name": "personRef",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "details",
+          "type": "SimulationPersonDetails"
+        }
+      ]
+    },
+    {
+      "name": "ToolVerdict",
+      "description": "Whether the agent can use one tool for the chosen person or role, and why.",
+      "fields": [
+        {
+          "name": "moduleName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.moduleName"
+            ]
+          }
+        },
+        {
+          "name": "subjectName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.subjectName"
+            ]
+          }
+        },
+        {
+          "name": "actionName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.actionName"
+            ]
+          }
+        },
+        {
+          "name": "canUse",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.canUse"
+            ]
+          }
+        },
+        {
+          "name": "reason",
+          "type": "'allowed' | 'restrictedForPerson' | 'notPermittedForRole' | 'removedFromRelease'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.reason"
+            ]
+          }
+        },
+        {
+          "name": "reasonText",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.toolVerdicts.reasonText"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "UnderstoodAction",
+      "description": "An action the agent would take from a sample sentence.",
+      "fields": [
+        {
+          "name": "actionName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.actions.actionName"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "SimulationUnderstanding",
+      "description": "How the agent reads a sample sentence: whether it asks for an action, the tree path it points to, the actions it would take and an explanation.",
+      "fields": [
+        {
+          "name": "asksForAction",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.asksForAction"
+            ]
+          }
+        },
+        {
+          "name": "moduleName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.moduleName"
+            ]
+          }
+        },
+        {
+          "name": "subjectName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.subjectName"
+            ]
+          }
+        },
+        {
+          "name": "actions",
+          "type": "UnderstoodAction[]"
+        },
+        {
+          "name": "explanation",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.understanding.explanation"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "DraftSimulation",
+      "description": "The result of one simulation of the draft, at the 'what it can' or 'what it understands' level; nothing of it is stored.",
+      "fields": [
+        {
+          "name": "agent",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.agent"
+            ]
+          }
+        },
+        {
+          "name": "level",
+          "type": "'whatItCan' | 'whatItUnderstands'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.level"
+            ]
+          }
+        },
+        {
+          "name": "toolVerdicts",
+          "type": "ToolVerdict[]",
+          "optional": true
+        },
+        {
+          "name": "understanding",
+          "type": "SimulationUnderstanding",
+          "optional": true
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "getDraftReview",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "draftId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "draft",
+          "type": "DraftReview"
+        },
+        {
+          "name": "tools",
+          "type": "DraftToolLine[]"
+        }
+      ],
+      "rules": [
+        "agentDraftSuggestedToolsOnWhenReady",
+        "draftSuggestedToolsTurnedOn",
+        "removedToolNeverSent",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Loads everything the draft review shows when it opens: the draft as the cm keeps it and the tool choices of the draft's agent.",
+        "input": "draftId: the cm reference of the draft, taken from the URL (the notification link).",
+        "processing": "Reads the draft from the cm (name, summary, audience, on whose behalf, proposed behavior, original prompt, situation, requester shown by readable name, requested date). Lists every AgentTool of the draft's agent in one read (listByForeignKey) and joins each to its Tool for module title, subject title, name, description and status. toolName and toolRemoved are derived from the catalog on read, never stored; decidedAt is the system-filled change time. The suggested tools are already on as automatic choices (agentDraftSuggestedToolsOnWhenReady, draftSuggestedToolsTurnedOn); removed tools are flagged (removedToolNeverSent). The requester is returned as a name, never an id (noTechnicalIdsOnScreen).",
+        "output": "draft: the draft in its current situation; tools: every tool choice of the draft's agent with its catalog tool, ordered by module title, subject title and tool name."
+      }
+    },
+    {
+      "id": "searchSimulationPeople",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "people",
+          "type": "SimulationPerson[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "onlyActiveUsersRestricted",
+        "adminSimulatesByRole",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Finds the people the company admin can simulate the draft for.",
+        "input": "name: typed text to filter by person name; page and pageSize: the page requested.",
+        "processing": "Uses OrganizationUser locate.users / locate.byName filtered by name, keeping only users with a platform login whose status is Active (onlyActiveUsersRestricted). Status and login e-mail are derived from the platform, not stored. Each person carries an opaque reference instead of a visible id (noTechnicalIdsOnScreen).",
+        "output": "people: one page of active people with name, status and login e-mail, ordered by name."
+      }
+    },
+    {
+      "id": "simulateDraft",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "draftId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "level",
+          "type": "'whatItCan' | 'whatItUnderstands'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.level"
+            ]
+          }
+        },
+        {
+          "name": "subjectKind",
+          "type": "'person' | 'role'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.subjectKind"
+            ]
+          }
+        },
+        {
+          "name": "person",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.person"
+            ]
+          }
+        },
+        {
+          "name": "roleName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.roleName"
+            ]
+          }
+        },
+        {
+          "name": "sentence",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "AgentSimulation.sentence"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "simulation",
+          "type": "DraftSimulation"
+        }
+      ],
+      "rules": [
+        "simulationSavesNothing",
+        "adminSimulatesByRole",
+        "onlyToolsOnAreConsidered",
+        "personRestrictionAppliesInRequest",
+        "removedToolNotSent",
+        "onlyActiveUsersRestricted",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Runs a simulation of the draft through the cm: which tools it could use for a person or role, or how it reads a sample sentence.",
+        "input": "draftId: the draft under review (URL); level: whatItCan or whatItUnderstands; subjectKind: person or role for whatItCan; person: the reference of the chosen active person; roleName: the chosen role; sentence: the sample request for whatItUnderstands.",
+        "processing": "For whatItCan, requires subjectKind with person (active only, onlyActiveUsersRestricted) or roleName (adminSimulatesByRole); considers only tools on for the draft's agent (onlyToolsOnAreConsidered), marks removed tools as removedFromRelease (removedToolNotSent) and, for a person, their restrictions as restrictedForPerson (personRestrictionAppliesInRequest). For whatItUnderstands, requires sentence and asks the cm how it reads it. Writes nothing (simulationSavesNothing); returns readable names only (noTechnicalIdsOnScreen).",
+        "output": "simulation: the draft agent's name and the level, with toolVerdicts for whatItCan or understanding for whatItUnderstands."
+      }
+    },
+    {
+      "id": "saveDraftTools",
+      "kind": "cmd",
+      "when": "saveDraftTools",
+      "writes": "AgentTool.update",
+      "input": [
+        {
+          "name": "draftId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "changes",
+          "type": "DraftToolChange[]"
+        }
+      ],
+      "output": [
+        {
+          "name": "tools",
+          "type": "DraftToolLine[]"
+        }
+      ],
+      "rules": [
+        "adminChoiceNeverOverridden",
+        "adminChoiceNotOverriddenByAutomatic",
+        "oneChoicePerAgentAndTool",
+        "draftDecisionOnlyWhenReady"
+      ],
+      "jsdoc": {
+        "purpose": "Saves the on/off choices the company admin made on the draft's suggested tools.",
+        "input": "draftId: the draft under review (URL); changes: each changed tool choice with its id, version and new on value.",
+        "processing": "Refuses when the draft is no longer ready. For each change, checks the choice belongs to the draft's agent and its version matches, then updates only enabled, sets choiceSource to admin and records the calling admin as decidedBy; decidedAt is filled by the system. All changes are applied together. From then on no automatic step changes these choices (adminChoiceNeverOverridden, adminChoiceNotOverriddenByAutomatic); one choice per agent and tool is kept (oneChoicePerAgentAndTool).",
+        "output": "tools: the changed tool choices in their new state, each with its catalog tool, derived name, removed flag and new version."
+      }
+    },
+    {
+      "id": "activateDraft",
+      "kind": "cmd",
+      "when": "activateDraft",
+      "writes": "AgentDraft.activate",
+      "input": [
+        {
+          "name": "draftId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "expectVersion",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "draft",
+          "type": "DraftReview"
+        }
+      ],
+      "rules": [
+        "draftDecisionOnlyWhenReady",
+        "agentNameUniqueAmongActive"
+      ],
+      "jsdoc": {
+        "purpose": "Asks the cm to activate the draft as a working agent with the reviewed tools.",
+        "input": "draftId: the draft under review (URL); expectVersion: the version of the draft the admin reviewed, so a draft changed meanwhile is refused.",
+        "processing": "Refuses when the draft changed since it was loaded (expectVersion) or unless its situation is ready (draftDecisionOnlyWhenReady). Calls the cm activate operation; if the cm refuses because the @name is used by another active agent, returns that the name is taken (agentNameUniqueAmongActive). The tool choices already saved stay as they are.",
+        "output": "draft: the draft in its new situation (activated)."
+      }
+    },
+    {
+      "id": "discardDraft",
+      "kind": "cmd",
+      "when": "discardDraft",
+      "writes": "AgentDraft.discard",
+      "input": [
+        {
+          "name": "draftId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "expectVersion",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "draft",
+          "type": "DraftReview"
+        }
+      ],
+      "rules": [
+        "draftDecisionOnlyWhenReady"
+      ],
+      "jsdoc": {
+        "purpose": "Asks the cm to discard the draft so it no longer shows as ready.",
+        "input": "draftId: the draft under review (URL); expectVersion: the version of the draft the admin reviewed, so a draft changed meanwhile is refused.",
+        "processing": "Refuses when the draft changed since it was loaded (expectVersion) or unless its situation is ready (draftDecisionOnlyWhenReady), then calls the cm discard operation.",
+        "output": "draft: the draft in its new situation (discarded)."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "draftSummary",
+        "reads": "getDraftReview.draft"
+      },
+      {
+        "organism": "draftTools",
+        "reads": "getDraftReview.tools"
+      },
+      {
+        "organism": "draftSimulation",
+        "reads": "simulateDraft.simulation"
+      },
+      {
+        "organism": "draftSimulation",
+        "reads": "searchSimulationPeople.people"
+      },
+      {
+        "organism": "draftDecision",
+        "reads": "getDraftReview.draft"
+      }
+    ],
+    "commands": [
+      {
+        "endpoint": "saveDraftTools",
+        "refreshes": []
+      },
+      {
+        "endpoint": "activateDraft",
+        "refreshes": []
+      },
+      {
+        "endpoint": "discardDraft",
+        "refreshes": []
+      }
+    ],
+    "selections": [],
+    "journeys": [
+      {
+        "step": "reviewAndActivateDraft/openReadyDraft",
+        "organisms": [
+          "draftSummary",
+          "draftDecision"
+        ],
+        "endpoints": [
+          "getDraftReview"
+        ]
+      },
+      {
+        "step": "reviewAndActivateDraft/reviewDraft",
+        "organisms": [
+          "draftSummary"
+        ],
+        "endpoints": [
+          "getDraftReview"
+        ]
+      },
+      {
+        "step": "reviewAndActivateDraft/adjustDraftTools",
+        "organisms": [
+          "draftTools"
+        ],
+        "endpoints": [
+          "getDraftReview",
+          "saveDraftTools"
+        ]
+      },
+      {
+        "step": "reviewAndActivateDraft/simulateDraft",
+        "organisms": [
+          "draftSimulation"
+        ],
+        "endpoints": [
+          "searchSimulationPeople",
+          "simulateDraft"
+        ]
+      },
+      {
+        "step": "reviewAndActivateDraft/activateDraft",
+        "organisms": [
+          "draftDecision"
+        ],
+        "endpoints": [
+          "activateDraft"
+        ],
+        "continuesIn": "agents"
+      },
+      {
+        "step": "reviewAndActivateDraft/discardDraft",
+        "organisms": [
+          "draftDecision"
+        ],
+        "endpoints": [
+          "discardDraft"
+        ],
+        "continuesIn": "agents"
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "saveDraftTools",
+        "state": "getDraftReview.tools",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "activateDraft",
+        "state": "getDraftReview.draft",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "discardDraft",
+        "state": "getDraftReview.draft",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "searchSimulationPeople",
+        "state": "searchSimulationPeople.people",
+        "mode": "append"
+      },
+      {
+        "endpoint": "simulateDraft",
+        "state": "simulateDraft.simulation",
+        "mode": "replace"
+      }
+    ]
+  }
+}

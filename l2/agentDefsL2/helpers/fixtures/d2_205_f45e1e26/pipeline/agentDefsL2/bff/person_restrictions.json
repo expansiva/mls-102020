@@ -1,0 +1,494 @@
+{
+  "types": [
+    {
+      "name": "PersonOption",
+      "description": "An active person of the organization who can be restricted, identified by name and login e-mail.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.id"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "PersonOptionDetails"
+        }
+      ]
+    },
+    {
+      "name": "PersonOptionDetails",
+      "description": "Identification and login data of an organization user.",
+      "fields": [
+        {
+          "name": "identification",
+          "type": "PersonIdentification"
+        },
+        {
+          "name": "agents",
+          "type": "PersonAgentsData"
+        }
+      ]
+    },
+    {
+      "name": "PersonIdentification",
+      "description": "Name and status of an organization user.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.identification.name"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'Active' | 'Inactive' | 'Merged' | 'Blocked'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.identification.status"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "PersonAgentsData",
+      "description": "Agents-module data of an organization user, read from the platform login.",
+      "fields": [
+        {
+          "name": "loginEmail",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "OrganizationUser.details.agents.loginEmail"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "ChecklistTool",
+      "description": "One action of the tool catalog with its place in the module / subject tree and, when it is blocked for the person, the restriction that blocks it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.id"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.name"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'available' | 'removed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.status"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "ChecklistToolDetails"
+        },
+        {
+          "name": "blocked",
+          "type": "boolean",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "PersonToolRestriction.toolId",
+              "PersonToolRestriction.personId"
+            ]
+          }
+        },
+        {
+          "name": "personToolRestriction",
+          "type": "BlockedToolRestriction",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "ChecklistToolDetails",
+      "description": "Readable module, subject and description of a catalog action.",
+      "fields": [
+        {
+          "name": "moduleTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.moduleTitle"
+            ]
+          }
+        },
+        {
+          "name": "subjectTitle",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.subjectTitle"
+            ]
+          }
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Tool.details.description"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "BlockedToolRestriction",
+      "description": "A restriction that blocks one tool for one person through any agent.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.version"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "BlockedToolRestrictionDetails"
+        }
+      ]
+    },
+    {
+      "name": "BlockedToolRestrictionDetails",
+      "description": "When the restriction was marked and the readable data of the blocked tool.",
+      "fields": [
+        {
+          "name": "markedAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.details.markedAt"
+            ]
+          }
+        },
+        {
+          "name": "toolName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.details.toolName"
+            ]
+          }
+        },
+        {
+          "name": "toolPath",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.details.toolPath"
+            ]
+          }
+        },
+        {
+          "name": "toolRemoved",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.details.toolRemoved"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "RestrictionRef",
+      "description": "Identity and version of an existing person tool restriction.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.version"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "listPeople",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "search",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "people",
+          "type": "PersonOption[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "onlyActiveUsersRestricted",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Lists the organization people with a platform login that the company admin can restrict, optionally searched by name.",
+        "input": "search: text typed to find a person by name (optional); page and pageSize: the page of people requested.",
+        "processing": "Uses OrganizationUser locate.users / locate.byName filtered by name when search is given. Applies onlyActiveUsersRestricted: only users with status Active are returned. Login e-mail is derived from the platform login, never stored. Ordered by name. noTechnicalIdsOnScreen: the id is returned only to identify the selection.",
+        "output": "A page of active people, each with id, name, status and login e-mail, as { items, page, pageSize, hasMore }."
+      }
+    },
+    {
+      "id": "getPersonRestrictions",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "personId",
+          "type": "string",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "person",
+          "type": "PersonOption"
+        },
+        {
+          "name": "tools",
+          "type": "ChecklistTool[]"
+        }
+      ],
+      "rules": [
+        "onlyActiveUsersRestricted",
+        "restrictionUniquePerPersonTool",
+        "removedToolRestrictionKept",
+        "noTechnicalIdsOnScreen"
+      ],
+      "jsdoc": {
+        "purpose": "Loads the restriction checklist of the chosen person: the whole tool catalog with the tools already blocked for that person marked.",
+        "input": "personId: the person selected in the picker.",
+        "processing": "Reads the person (refused if not Active, onlyActiveUsersRestricted). Reads the catalog via Tool agents.toolTree and the person's restrictions via PersonToolRestriction listByForeignKey in one read each, then joins them by tool: blocked is computed true when a restriction exists for the person and tool (at most one, restrictionUniquePerPersonTool). Removed tools stay listed with status removed and their restriction kept (removedToolRestrictionKept). toolName, toolPath, toolRemoved are derived from the catalog and markedAt from the restriction; nothing is stored. Ordered by module title, subject title and tool name. No technical ids are meant for display.",
+        "output": "The person (name, status, login e-mail) and every catalog tool with module, subject, description, status, blocked flag and, when blocked, the restriction with id, version, marked date, tool name, path and removed flag."
+      }
+    },
+    {
+      "id": "saveRestrictions",
+      "kind": "cmd",
+      "when": "saveRestrictions",
+      "writes": "PersonToolRestriction.update",
+      "input": [
+        {
+          "name": "personId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.personId"
+            ]
+          }
+        },
+        {
+          "name": "toolId",
+          "type": "string[]",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "PersonToolRestriction.toolId"
+            ]
+          }
+        },
+        {
+          "name": "knownRestrictions",
+          "type": "RestrictionRef[]"
+        }
+      ],
+      "output": [
+        {
+          "name": "person",
+          "type": "PersonOption"
+        },
+        {
+          "name": "tools",
+          "type": "ChecklistTool[]"
+        }
+      ],
+      "rules": [
+        "onlyCompanyAdminRestrictsTools",
+        "onlyActiveUsersRestricted",
+        "restrictionUniquePerPersonTool",
+        "restrictionAppliesThroughAnyAgent",
+        "removedToolRestrictionKept"
+      ],
+      "jsdoc": {
+        "purpose": "Saves the checklist of the chosen person: the ticked tools become blocked through any agent and the unticked ones are freed.",
+        "input": "personId: the person whose tools are restricted; toolId: every tool ticked as blocked after the edit; knownRestrictions: id and version of the restrictions the page loaded, for optimistic concurrency.",
+        "processing": "Refuses unless the caller is company admin (onlyCompanyAdminRestrictsTools) and the person is Active (onlyActiveUsersRestricted). Checks the versions of knownRestrictions against storage and refuses on conflict. In one transaction, creates a restriction for each ticked tool without one (markedAt filled by the system) and deletes the restriction of each unticked tool; a tool already blocked is left unchanged (restrictionUniquePerPersonTool). Restrictions on removed tools that stay ticked are kept (removedToolRestrictionKept). From then on no agent offers those tools to the person (restrictionAppliesThroughAnyAgent). Derived fields are computed on read, not recorded.",
+        "output": "The person and the full checklist in its new saved state, same shape as getPersonRestrictions, with the new restrictions, their marked dates and versions."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "personPicker",
+        "reads": "listPeople.people"
+      },
+      {
+        "organism": "blockedToolsChecklist",
+        "reads": "getPersonRestrictions.person"
+      },
+      {
+        "organism": "blockedToolsChecklist",
+        "reads": "getPersonRestrictions.tools"
+      }
+    ],
+    "commands": [
+      {
+        "endpoint": "saveRestrictions",
+        "refreshes": []
+      }
+    ],
+    "selections": [
+      {
+        "organism": "personPicker",
+        "via": {
+          "list": "listPeople.people"
+        }
+      }
+    ],
+    "journeys": [
+      {
+        "step": "restrictPersonTools/choosePerson",
+        "organisms": [
+          "personPicker"
+        ],
+        "endpoints": [
+          "listPeople"
+        ]
+      },
+      {
+        "step": "restrictPersonTools/reviewRestrictions",
+        "organisms": [
+          "blockedToolsChecklist"
+        ],
+        "endpoints": [
+          "getPersonRestrictions"
+        ]
+      },
+      {
+        "step": "restrictPersonTools/markRestrictions",
+        "organisms": [
+          "blockedToolsChecklist"
+        ],
+        "endpoints": [
+          "saveRestrictions"
+        ]
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "listPeople",
+        "state": "listPeople.people",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "saveRestrictions",
+        "state": "getPersonRestrictions.tools",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "saveRestrictions",
+        "state": "getPersonRestrictions.person",
+        "mode": "replace"
+      }
+    ]
+  }
+}
