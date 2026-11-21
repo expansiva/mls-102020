@@ -134,7 +134,7 @@ void test('shared60 reads a saved design: version lands on the view, a page with
   const plain = storedDesign('plain');
   const withVersion = await readStored('behavior', behavior);
   const view = withVersion?.types.find(item => item.name === 'Seen');
-  assert.deepEqual(view?.fields.at(-1), { name: 'version', type: 'number', origin: versionOrigin });
+  assert.deepEqual(view?.fields.at(-1), { name: 'version', type: 'string', origin: versionOrigin });
   assert.equal(view?.description.endsWith(' version: the version of the record read, sent back as expectVersion.'), true);
   assert.equal(await readStored('plain', plain), plain);
 });

@@ -292,8 +292,8 @@ export interface D2BffNormalizeFacts {
   external?: D2ExternalCallSources;
 }
 
-const expectVersionLeaf = (): D2BffLeaf => ({ name: 'expectVersion', type: 'number', origin: { kind: 'context', paths: [] } });
-const recordVersionLeaf = (): D2BffLeaf => ({ name: 'version', type: 'number', origin: { kind: 'context', paths: [] } });
+const expectVersionLeaf = (type: string): D2BffLeaf => ({ name: 'expectVersion', type, origin: { kind: 'context', paths: [] } });
+const recordVersionLeaf = (type: string): D2BffLeaf => ({ name: 'version', type, origin: { kind: 'context', paths: [] } });
 const RECORD_VERSION_NOTE = ' version: the version of the record read, sent back as expectVersion.';
 
 const VERSION_WORD = /\bversion\b/;
@@ -333,7 +333,8 @@ const directTypeRef = (leaf: D2BffLeaf): string => {
 export function addD2RecordVersion(design: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, facts: D2BffNormalizeFacts): D2BffDesign {
   if (!facts.writes || !facts.external) return design;
   const readViews = new Set(design.endpoints.filter(item => item.kind === 'qry').flatMap(item => item.output.map(directTypeRef)).filter(Boolean));
-  const versionTypes = new Set<string>();
+  const versionOfView = new Map<string, string>();
+  const commandType = new Map<string, string>();
   for (const endpoint of design.endpoints) {
     if (endpoint.kind !== 'cmd' || !endpoint.writes) continue;
     const written = entityOf(endpoint.writes);
@@ -342,17 +343,38 @@ export function addD2RecordVersion(design: D2BffDesign, entitiesOf: Record<strin
     const pageWrite = d2WriteByKey(facts.writes, endpoint.writes);
     if (!pageWrite) continue;
     const ask = externalAsk(pageWrite, entitiesOf, facts.external);
-    if (!ask?.returnsVersion) continue;
-    for (const name of endpoint.output.map(directTypeRef)) if (readViews.has(name)) versionTypes.add(name);
+    if (!ask?.returnsVersion || ask.versionType === '') continue;
+    commandType.set(endpoint.id, ask.versionType);
+    for (const name of endpoint.output.map(directTypeRef)) if (readViews.has(name)) versionOfView.set(name, ask.versionType);
   }
-  if (!versionTypes.size) return design;
+  if (!commandType.size && !versionOfView.size) return design;
   let changed = false;
-  const types = design.types.map(type => {
-    if (!versionTypes.has(type.name) || type.fields.some(field => field.name === 'version')) return type;
+  const endpoints = design.endpoints.map(endpoint => {
+    const wanted = commandType.get(endpoint.id);
+    if (!wanted) return endpoint;
+    const index = endpoint.input.findIndex(row => row.name === 'expectVersion');
+    if (index < 0 || endpoint.input[index].type === wanted) return endpoint;
     changed = true;
-    return { ...type, description: `${type.description}${RECORD_VERSION_NOTE}`, fields: [...type.fields, recordVersionLeaf()] };
+    const input = endpoint.input.slice();
+    input[index] = { ...endpoint.input[index], type: wanted };
+    return { ...endpoint, input };
   });
-  return changed ? { ...design, types } : design;
+  const types = design.types.map(type => {
+    const wanted = versionOfView.get(type.name);
+    if (!wanted) return type;
+    const index = type.fields.findIndex(field => field.name === 'version');
+    if (index < 0) {
+      changed = true;
+      return { ...type, description: `${type.description}${RECORD_VERSION_NOTE}`, fields: [...type.fields, recordVersionLeaf(wanted)] };
+    }
+    if (type.fields[index].type === wanted) return type;
+    changed = true;
+    const fields = type.fields.slice();
+    fields[index] = { ...type.fields[index], type: wanted };
+    return { ...type, fields };
+  });
+  if (!changed) return design;
+  return { ...design, endpoints: endpoints.some((endpoint, index) => endpoint !== design.endpoints[index]) ? endpoints : design.endpoints, types: types.some((type, index) => type !== design.types[index]) ? types : design.types };
 }
 
 export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = '', facts?: D2BffNormalizeFacts): D2BffDesign {
@@ -477,7 +499,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const inputDoc = replaceNames(endpoint.jsdoc.input, input.renamed);
     return {
       ...endpoint,
-      input: versionLeaf ? [...input.rows, expectVersionLeaf()] : input.rows,
+      input: versionLeaf ? [...input.rows, expectVersionLeaf(versionAsk?.versionType || 'number')] : input.rows,
       output: output.rows,
       jsdoc: {
         ...endpoint.jsdoc,

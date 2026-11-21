@@ -347,7 +347,7 @@ test('the two saved external answers pass the gate once expectVersion is added',
     const design = normalizeD2BffDesign(buildD2BffDesign(envelope.raw.result.arguments), context.entities, '', { writes: context.need.writes, external: context.external });
     const command = design.endpoints.find(item => item.id === commandId);
     const leaf = command?.input.find(item => item.name === 'expectVersion');
-    assert.deepEqual(leaf, { name: 'expectVersion', type: 'number', origin: { kind: 'context', paths: [] } });
+    assert.deepEqual(leaf, { name: 'expectVersion', type: 'string', origin: { kind: 'context', paths: [] } });
     const input = command?.jsdoc.input ?? '';
     if (pageId === 'agent_behavior') {
       assert.equal(input, 'agentId: the cm id of the agent; changeRequest: what the admin wrote in the box; undoChangeRef: the cm reference of the change to undo. Exactly one of changeRequest or undoChangeRef is given. expectVersion: the version of the record, asked by updateAgent.');
@@ -406,6 +406,7 @@ test('cleanVersionDenials drops only a denied version, and only on the route tha
 });
 
 const versionLeaf = { name: 'version', type: 'number', origin: { kind: 'context' as const, paths: [] } };
+const stringVersionLeaf = { name: 'version', type: 'string', origin: { kind: 'context' as const, paths: [] } };
 const versionNote = ' version: the version of the record read, sent back as expectVersion.';
 
 function viewType(name: string, fields: D2BffLeaf[], description = name): D2BffDesign['types'][number] {
@@ -436,7 +437,7 @@ test('the saved agent_behavior view gains version when the write returns it', as
     const context = await loadD2BffContext({ project: 102047, module: 'agents' }, 'agent_behavior');
     const design = normalizeD2BffDesign(buildD2BffDesign(envelope.raw.result.arguments), context.entities, '', { writes: context.need.writes, external: context.external });
     const view = design.types.find(item => item.name === 'AgentBehaviorDetail');
-    assert.deepEqual(view?.fields.at(-1), versionLeaf);
+    assert.deepEqual(view?.fields.at(-1), stringVersionLeaf);
     assert.equal(view?.fields.filter(item => item.name === 'version').length, 1);
     assert.equal(view?.description.endsWith(versionNote), true);
     assert.equal(design.types.find(item => item.name === 'BehaviorChange')?.fields.some(item => item.name === 'version'), false);
@@ -456,12 +457,12 @@ export const cm = { "operations": [ { "operationId": "updateAgent", "direction":
     [{ name: 'seen', type: 'Seen' }, { name: 'rows', type: 'Listed[]' }],
   );
   const out = normalizeD2BffDesign(raw, context.entities, '', { writes: context.need.writes, external: context.external });
-  assert.deepEqual(out.types.find(item => item.name === 'Seen')?.fields.at(-1), versionLeaf);
+  assert.deepEqual(out.types.find(item => item.name === 'Seen')?.fields.at(-1), stringVersionLeaf);
   assert.equal(out.types.find(item => item.name === 'Aside')?.fields.some(item => item.name === 'version'), false);
   assert.equal(out.types.find(item => item.name === 'Listed')?.fields.some(item => item.name === 'version'), false);
 });
 
-test('a type that already has version does not gain another', () => {
+test('a type that already has version is retyped to the catalog primitive and does not gain another', () => {
   const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
   const catalog = `
 export interface CmUpdateAgentInput { agentId: string; }
@@ -470,9 +471,10 @@ export const cm = { "operations": [ { "operationId": "updateAgent", "direction":
 `;
   context.external = { ...externalSources, catalogs: { cm: catalog } };
   const raw = versionDesign([{ name: 'already', type: 'Already' }], [{ name: 'already', type: 'Already' }]);
-  const before = raw.types.find(item => item.name === 'Already');
   const out = normalizeD2BffDesign(raw, context.entities, '', { writes: context.need.writes, external: context.external });
-  assert.deepEqual(out.types.find(item => item.name === 'Already'), before);
+  const view = out.types.find(item => item.name === 'Already');
+  assert.equal(view?.fields.filter(item => item.name === 'version').length, 1);
+  assert.deepEqual(view?.fields.find(item => item.name === 'version'), stringVersionLeaf);
 });
 
 test('a command that does not gain expectVersion leaves the design unchanged', () => {
@@ -528,7 +530,7 @@ test('a saved agent_behavior design gains version on the view the page already r
     assert.equal(saved.types.find(item => item.name === 'AgentBehaviorDetail')?.fields.some(item => item.name === 'version'), false);
     const once = addD2RecordVersion(saved, context.entities, facts);
     const view = once.types.find(item => item.name === 'AgentBehaviorDetail');
-    assert.deepEqual(view?.fields.at(-1), versionLeaf);
+    assert.deepEqual(view?.fields.at(-1), stringVersionLeaf);
     assert.equal(view?.description.endsWith(versionNote), true);
     assert.equal(once.types.find(item => item.name === 'BehaviorChange')?.fields.some(item => item.name === 'version'), false);
     const twice = addD2RecordVersion(once, context.entities, facts);
@@ -556,6 +558,69 @@ export const cm = { "operations": [ { "operationId": "updateAgent", "direction":
   context.external = { ...externalSources, catalogs: { cm: catalog } };
   const saved = withExpectVersion(versionDesign([{ name: 'seen', type: 'Seen' }], [{ name: 'seen', type: 'Seen' }]));
   const out = addD2RecordVersion(saved, context.entities, { writes: context.need.writes, external: context.external });
-  assert.deepEqual(out.types.find(item => item.name === 'Seen')?.fields.at(-1), versionLeaf);
+  assert.deepEqual(out.types.find(item => item.name === 'Seen')?.fields.at(-1), stringVersionLeaf);
   assert.equal(out.types.find(item => item.name === 'Seen')?.description.endsWith(versionNote), true);
+  assert.equal(out.endpoints.find(item => item.id === 'mudar')?.input.find(item => item.name === 'expectVersion')?.type, 'string');
+});
+
+function catalogOf(output: string): string {
+  return `
+export interface CmUpdateAgentInput { agentId: string; }
+export interface CmUpdateAgentOutput { ${output} }
+export const cm = { "operations": [ { "operationId": "updateAgent", "direction": "call", "inputType": "CmUpdateAgentInput", "outputType": "CmUpdateAgentOutput", "expectsVersion": true } ] };
+`;
+}
+
+test('an existing number leaf follows a string version in the catalog, and a second pass is the same object', () => {
+  const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
+  context.external = { ...externalSources, catalogs: { cm: catalogOf('version: string;') } };
+  const facts = { writes: context.need.writes, external: context.external };
+  const saved = withExpectVersion(versionDesign(
+    [{ name: 'seen', type: 'Seen' }],
+    [{ name: 'seen', type: 'Seen' }],
+  ));
+  const seen = saved.types.find(item => item.name === 'Seen');
+  if (!seen) throw new Error('missing Seen');
+  seen.fields = [...seen.fields, versionLeaf];
+  const once = addD2RecordVersion(saved, context.entities, facts);
+  assert.equal(once.endpoints.find(item => item.id === 'mudar')?.input.find(item => item.name === 'expectVersion')?.type, 'string');
+  assert.deepEqual(once.types.find(item => item.name === 'Seen')?.fields.find(item => item.name === 'version'), stringVersionLeaf);
+  assert.equal(addD2RecordVersion(once, context.entities, facts), once);
+});
+
+test('a number version in the catalog keeps number, including the same reference when the leaf is already number', () => {
+  const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
+  context.external = { ...externalSources, catalogs: { cm: catalogOf('version: number;') } };
+  const facts = { writes: context.need.writes, external: context.external };
+  const raw = versionDesign([{ name: 'seen', type: 'Seen' }], [{ name: 'seen', type: 'Seen' }]);
+  const added = normalizeD2BffDesign(raw, context.entities, '', facts);
+  assert.equal(added.endpoints.find(item => item.id === 'mudar')?.input.find(item => item.name === 'expectVersion')?.type, 'number');
+  assert.deepEqual(added.types.find(item => item.name === 'Seen')?.fields.at(-1), versionLeaf);
+  const saved = withExpectVersion(raw);
+  const seen = saved.types.find(item => item.name === 'Seen');
+  if (!seen) throw new Error('missing Seen');
+  seen.fields = [...seen.fields, versionLeaf];
+  assert.equal(addD2RecordVersion(saved, context.entities, facts), saved);
+});
+
+test('a catalog version that is not a string or number primitive leaves the design unchanged', () => {
+  const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
+  const facts = { writes: context.need.writes, external: context.external };
+  for (const output of ['version: boolean;', 'version: { id: string };']) {
+    context.external = { ...externalSources, catalogs: { cm: catalogOf(output) } };
+    const saved = withExpectVersion(versionDesign([{ name: 'seen', type: 'Seen' }], [{ name: 'seen', type: 'Seen' }]));
+    assert.equal(addD2RecordVersion(saved, context.entities, facts), saved);
+  }
+});
+
+test('a module entity command keeps version and expectVersion as number', () => {
+  const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
+  context.external = { ...externalSources, catalogs: { cm: catalogOf('version: string;') } };
+  const facts = { writes: context.need.writes, external: context.external };
+  const stored = { ...externalEntities.Agent, kind: 'entity' } as Ns5OntologyAnyEntity;
+  const saved = withExpectVersion(versionDesign([{ name: 'seen', type: 'Seen' }], [{ name: 'seen', type: 'Seen' }]));
+  const seen = saved.types.find(item => item.name === 'Seen');
+  if (!seen) throw new Error('missing Seen');
+  seen.fields = [...seen.fields, versionLeaf];
+  assert.equal(addD2RecordVersion(saved, { Agent: stored }, facts), saved);
 });

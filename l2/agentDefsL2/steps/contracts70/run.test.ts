@@ -276,7 +276,7 @@ void test('contracts70 reads a saved design: the destination page facts put vers
   const behavior = storedDesign('behavior');
   const plain = storedDesign('plain');
   const withVersion = await readStored('behavior', behavior);
-  assert.deepEqual(withVersion?.types.find(item => item.name === 'Seen')?.fields.at(-1), { name: 'version', type: 'number', origin: versionOrigin });
+  assert.deepEqual(withVersion?.types.find(item => item.name === 'Seen')?.fields.at(-1), { name: 'version', type: 'string', origin: versionOrigin });
   assert.equal(await readStored('plain', behavior), behavior);
   assert.equal(await readStored('plain', plain), plain);
 });

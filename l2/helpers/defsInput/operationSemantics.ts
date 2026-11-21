@@ -30,6 +30,8 @@ export interface D2ExternalCallAsk {
   expectsVersion: boolean;
   /** The write operation's `outputType` declares a required field named `version` (d2_208). */
   returnsVersion: boolean;
+  /** Primitive of that required `version` (`string` or `number`). Empty when the field is absent or not one of those primitives (d2_210). */
+  versionType: 'string' | 'number' | '';
   /** `operationId` of the call, for the gate message that names it. */
   operationId: string;
 }
@@ -195,8 +197,10 @@ export function explainD2ExternalCall(input: D2ExternalCallInput): { ask: D2Exte
   const names = node?.kind === 'object' ? node.fields.filter(field => !field.optional).map(field => field.name) : [];
   const outputType = text(operationRow.outputType);
   const outputNode = outputType ? catalogTypes[outputType] : undefined;
-  const returnsVersion = outputNode?.kind === 'object' && outputNode.fields.some(field => field.name === 'version' && !field.optional);
-  return { ask: { names, expectsVersion: operationRow.expectsVersion === true, operationId: text(operationRow.operationId), returnsVersion }, gap: null };
+  const versionField = outputNode?.kind === 'object' ? outputNode.fields.find(field => field.name === 'version' && !field.optional) : undefined;
+  const returnsVersion = versionField !== undefined;
+  const versionType = versionField?.type.kind === 'primitive' && (versionField.type.name === 'string' || versionField.type.name === 'number') ? versionField.type.name : '';
+  return { ask: { names, expectsVersion: operationRow.expectsVersion === true, operationId: text(operationRow.operationId), returnsVersion, versionType }, gap: null };
 }
 
 function ruleMap(value: unknown): Map<string, string> {
