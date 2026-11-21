@@ -1,0 +1,216 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "tarefas",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "meu_espaco",
+      "kind": "hub",
+      "label": "Meu espaço",
+      "context": "Participante",
+      "text": "Já abre com você selecionado como participante: suas tarefas, as que você criou e o que depende de você agora.",
+      "children": [
+        {
+          "id": "inicio",
+          "kind": "page",
+          "label": "Início",
+          "organisms": [
+            {
+              "kind": "inbox",
+              "text": "O que depende de mim agora: tarefas para iniciar e executar, tarefas que criei aguardando minha revisão e tarefas devolvidas para eu retomar."
+            },
+            {
+              "kind": "alerts",
+              "text": "Resumo das 8h: minhas tarefas abertas que vencem hoje ou estão atrasadas, para abrir direto."
+            },
+            {
+              "kind": "highlights",
+              "text": "Quantas tarefas abertas eu tenho, quantas vencem hoje, quantas estão atrasadas e quantas foram devolvidas aguardando retomada."
+            },
+            {
+              "kind": "summary",
+              "text": "Se eu aceito tarefas e se posso criar tarefas (efetivo)."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "minhas_tarefas",
+          "kind": "page",
+          "label": "Minhas tarefas",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Tarefas de que sou responsável e as que criei, com prazo, prioridade, lista, quem age agora, progresso da checklist e marcação de vence hoje ou atrasada."
+            },
+            {
+              "kind": "detail",
+              "text": "A tarefa aberta: responsável, prazo, prioridade, criada em, subtarefas, checklist com itens concluídos e quando, e o motivo da devolução quando houver."
+            },
+            {
+              "kind": "form",
+              "text": "Criar uma tarefa escolhendo o responsável pelo nome, prazo, prioridade e lista, adicionando itens de checklist; ou ajustar campos e checklist de uma tarefa sem mudar a situação."
+            },
+            {
+              "kind": "actions",
+              "text": "Iniciar, marcar item da checklist, enviar para revisão, aceitar ou devolver com motivo, retomar e reenviar, trocar o responsável ou cancelar uma tarefa que criei."
+            },
+            {
+              "kind": "timeline",
+              "text": "Histórico da tarefa: criação, início, envios para revisão, devoluções com motivo, aceite, troca de responsável e cancelamento."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "painel_tarefas",
+      "kind": "page",
+      "label": "Painel de tarefas",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Tarefas abertas, que vencem hoje, atrasadas e devolvidas aguardando retomada em toda a organização."
+        },
+        {
+          "kind": "summary",
+          "text": "Tarefas abertas por lista e progresso das checklists."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "tarefas_equipe",
+      "kind": "page",
+      "label": "Todas as tarefas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Todas as tarefas filtradas por lista, responsável, prioridade, prazo e situação, em lista ou em quadro, mostrando quem age agora."
+        },
+        {
+          "kind": "detail",
+          "text": "A tarefa aberta com responsável atual, prazo, criada em, subtarefas e checklist com progresso."
+        },
+        {
+          "kind": "actions",
+          "text": "Trocar o responsável ou cancelar a tarefa."
+        },
+        {
+          "kind": "timeline",
+          "text": "Histórico da tarefa: criação, execução, revisões, devoluções, trocas de responsável e cancelamento."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "participantes",
+      "kind": "page",
+      "label": "Participantes",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Usuários da organização que participam do módulo, com aceita tarefas e pode criar tarefas (efetivo)."
+        },
+        {
+          "kind": "form",
+          "text": "Incluir um usuário como participante e marcar se aceita tarefas e se pode criar tarefas."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "listas_tarefas",
+      "kind": "page",
+      "label": "Listas de tarefas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Listas que agrupam tarefas por projeto ou área, com a quantidade de tarefas abertas."
+        },
+        {
+          "kind": "form",
+          "text": "Criar uma lista ou ajustar nome e dados de uma lista existente."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:membroEquipe": [
+      "meu_espaco"
+    ],
+    "actor:gestor": [
+      "painel_tarefas",
+      "tarefas_equipe",
+      "participantes",
+      "listas_tarefas"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "configurarParticipantes": [
+        "participantes"
+      ],
+      "manterListas": [
+        "listas_tarefas"
+      ],
+      "criarTarefa": [
+        "minhas_tarefas"
+      ],
+      "executarTarefa": [
+        "inicio",
+        "minhas_tarefas"
+      ],
+      "revisarTarefa": [
+        "inicio",
+        "minhas_tarefas"
+      ],
+      "retomarTarefa": [
+        "inicio",
+        "minhas_tarefas"
+      ],
+      "editarTarefa": [
+        "minhas_tarefas"
+      ],
+      "reatribuirTarefa": [
+        "tarefas_equipe"
+      ],
+      "reatribuirTarefaCriada": [
+        "minhas_tarefas"
+      ],
+      "cancelarTarefa": [
+        "tarefas_equipe"
+      ],
+      "cancelarTarefaCriada": [
+        "minhas_tarefas"
+      ],
+      "minhasTarefas": [
+        "minhas_tarefas"
+      ],
+      "resumoDiario": [
+        "inicio",
+        "minhas_tarefas"
+      ],
+      "acompanharTarefas": [
+        "painel_tarefas",
+        "tarefas_equipe"
+      ]
+    },
+    "processes": {
+      "processoTarefa": [
+        "inicio",
+        "minhas_tarefas",
+        "tarefas_equipe"
+      ],
+      "resumoDiarioTarefas": [
+        "inicio"
+      ]
+    },
+    "records": {},
+    "removed": []
+  }
+}

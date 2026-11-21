@@ -1,0 +1,224 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "hiringPipeline",
+  "userLanguage": "en",
+  "device": "web",
+  "tree": [
+    {
+      "id": "recruiter_home",
+      "kind": "page",
+      "label": "Recruiting overview",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Active applications by stage and days in the current stage, plus remaining openings and hires so far for each open position"
+        },
+        {
+          "kind": "inbox",
+          "text": "Applications waiting for me: register new applications, move screened ones to interview, hand finished interviews to the hiring manager, or reject the ones that will not move forward"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "applications",
+      "kind": "page",
+      "label": "Applications",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Find an application by number, candidate, position or stage, with days in the current stage"
+        },
+        {
+          "kind": "form",
+          "text": "Record a candidate's application to an open position; it starts in screening"
+        },
+        {
+          "kind": "detail",
+          "text": "Review the application: candidate, position, stage, applied at, interview, offer, hire and rejection details"
+        },
+        {
+          "kind": "actions",
+          "text": "Move to interview, hand to the hiring manager, or reject with a reason"
+        },
+        {
+          "kind": "timeline",
+          "text": "Stage history of the application, including decisions made by the hiring manager"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "candidates",
+      "kind": "page",
+      "label": "Candidates",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Find a candidate by name, email or source"
+        },
+        {
+          "kind": "form",
+          "text": "Register a candidate with name, email, resume link and source"
+        },
+        {
+          "kind": "detail",
+          "text": "See the candidate's details and their applications"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "job_positions",
+      "kind": "page",
+      "label": "Job positions",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Find a job position by title, department, hiring manager or status, with remaining openings"
+        },
+        {
+          "kind": "form",
+          "text": "Open a job position with title, department, description, headcount and hiring manager"
+        },
+        {
+          "kind": "detail",
+          "text": "Review the position: opened at, headcount, hires so far, remaining openings and whether headcount is filled"
+        },
+        {
+          "kind": "timeline",
+          "text": "See when the system closed the position automatically after a hire filled its headcount"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "hiring_manager_workspace",
+      "kind": "hub",
+      "label": "My hiring",
+      "context": "HiringManager",
+      "text": "Opens with your own hiring manager record already selected; everything here covers the positions you manage and their applications.",
+      "children": [
+        {
+          "id": "hiring_manager_home",
+          "kind": "page",
+          "label": "My overview",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Active applications on my positions by stage and days in stage, and remaining openings for each position"
+            },
+            {
+              "kind": "inbox",
+              "text": "Applications waiting for my decision: interviewed candidates to offer or send back, and offers to hire or send back"
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "my_applications",
+          "kind": "page",
+          "label": "My applications",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Find applications on my positions by number, candidate, stage or position"
+            },
+            {
+              "kind": "detail",
+              "text": "Review the candidate and the application: interview, offer details and remaining openings of the position"
+            },
+            {
+              "kind": "actions",
+              "text": "Extend an offer, hire the candidate, or send the application back to the recruiter to be rejected"
+            },
+            {
+              "kind": "timeline",
+              "text": "Stage history of the application: who moved it, who decided the offer and the hire, and when"
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "my_positions",
+          "kind": "page",
+          "label": "My positions",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "The job positions I manage, with status and remaining openings"
+            },
+            {
+              "kind": "detail",
+              "text": "Check the position's headcount, hires so far, remaining openings and its applications by stage"
+            },
+            {
+              "kind": "timeline",
+              "text": "See when the system closed the position automatically once its headcount was filled"
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:recruiter": [
+      "recruiter_home",
+      "applications",
+      "candidates",
+      "job_positions"
+    ],
+    "actor:hiringManager": [
+      "hiring_manager_workspace"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "openJobPosition": [
+        "job_positions"
+      ],
+      "registerCandidateApplication": [
+        "candidates",
+        "job_positions",
+        "applications",
+        "recruiter_home"
+      ],
+      "advanceToInterview": [
+        "recruiter_home",
+        "applications"
+      ],
+      "rejectApplication": [
+        "recruiter_home",
+        "applications"
+      ],
+      "decideOffer": [
+        "hiring_manager_home",
+        "my_applications"
+      ],
+      "decideHire": [
+        "hiring_manager_home",
+        "my_applications",
+        "my_positions"
+      ],
+      "reviewMyPipeline": [
+        "my_positions",
+        "my_applications",
+        "hiring_manager_home"
+      ]
+    },
+    "processes": {
+      "applicationPipeline": [
+        "recruiter_home",
+        "applications",
+        "job_positions",
+        "hiring_manager_home",
+        "my_applications",
+        "my_positions"
+      ]
+    },
+    "records": {},
+    "removed": []
+  }
+}

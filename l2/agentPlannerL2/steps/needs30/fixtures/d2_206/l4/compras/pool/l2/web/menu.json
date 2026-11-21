@@ -1,0 +1,299 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "compras",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "area_comprador",
+      "kind": "hub",
+      "label": "Minha área",
+      "context": "Comprador",
+      "text": "Abre já com o seu próprio registro de comprador selecionado: suas pendências e seus dados de acesso.",
+      "children": [
+        {
+          "id": "inicio_comprador",
+          "kind": "page",
+          "label": "Início",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Minhas solicitações com necessidade vencida, quantas opções foram pesquisadas em cada uma e pedidos atrasados, com dias de atraso e saldo a receber."
+            },
+            {
+              "kind": "inbox",
+              "text": "Solicitações que preciso completar e enviar, com produto, quantidade, justificativa e data de necessidade."
+            }
+          ],
+          "icon": "house",
+          "action": "new"
+        },
+        {
+          "id": "meu_cadastro",
+          "kind": "page",
+          "label": "Meus dados",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Meu cadastro de comprador e o e-mail de acesso."
+            }
+          ],
+          "icon": "user",
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "painel_compras",
+      "kind": "page",
+      "label": "Painel de compras",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Solicitações aguardando autorização, pedidos em aberto, pedidos atrasados e total comprado por fornecedor no mês."
+        },
+        {
+          "kind": "inbox",
+          "text": "Solicitações enviadas aguardando minha decisão, com as opções pesquisadas, para autorizar escolhendo uma opção ou rejeitar com motivo."
+        },
+        {
+          "kind": "list",
+          "text": "Pedidos atrasados, com dias de atraso e saldo a receber, para abrir cada um."
+        }
+      ],
+      "icon": "layout-dashboard",
+      "action": "new"
+    },
+    {
+      "id": "solicitacoes",
+      "kind": "page",
+      "label": "Solicitações de compra",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Pesquisar solicitações por produto, fornecedor, situação e período, vendo número, completa, opções pesquisadas e necessidade vencida."
+        },
+        {
+          "kind": "form",
+          "text": "Abrir uma solicitação com produto, quantidade, justificativa e data em que preciso, e enviar."
+        },
+        {
+          "kind": "detail",
+          "text": "A solicitação com as até três opções pesquisadas: fornecedor, preço unitário, moeda, prazo, fonte, data da pesquisa, valor total estimado e qual foi escolhida."
+        },
+        {
+          "kind": "actions",
+          "text": "Enviar a solicitação; o gerente de compras autoriza escolhendo uma opção ou rejeita com motivo."
+        },
+        {
+          "kind": "timeline",
+          "text": "O que o sistema fez: conferência de completude, opções pesquisadas pela IA como estimativa e pedido gerado após a autorização."
+        }
+      ],
+      "icon": "file-text",
+      "action": "new"
+    },
+    {
+      "id": "pedidos",
+      "kind": "page",
+      "label": "Pedidos de compra",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Pesquisar pedidos por produto, fornecedor, situação e período, com número, data de emissão, valor total, atrasado e saldo a receber."
+        },
+        {
+          "kind": "detail",
+          "text": "O pedido com fornecedor, produto, quantidade, preço, quantidade recebida, saldo a receber e os recebimentos registrados."
+        },
+        {
+          "kind": "timeline",
+          "text": "Pedido gerado pelo sistema a partir da solicitação autorizada, lembretes de entrega enviados e recebimentos lançados."
+        }
+      ],
+      "icon": "shopping-cart",
+      "action": "new"
+    },
+    {
+      "id": "entregas_a_receber",
+      "kind": "page",
+      "label": "Entregas a receber",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Pedidos com entrega prevista para hoje, pedidos atrasados com dias de atraso e saldo a receber."
+        },
+        {
+          "kind": "inbox",
+          "text": "Pedidos aguardando entrega para conferir e registrar o recebimento."
+        },
+        {
+          "kind": "form",
+          "text": "Registrar o recebimento total ou parcial do pedido, dando entrada no estoque; vejo se completa o pedido ou qual saldo fica pendente."
+        },
+        {
+          "kind": "timeline",
+          "text": "Pedido gerado pelo sistema, lembretes enviados e recebimentos anteriores."
+        }
+      ],
+      "icon": "truck",
+      "action": "new"
+    },
+    {
+      "id": "fornecedores",
+      "kind": "page",
+      "label": "Fornecedores",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localizar fornecedores por CNPJ ou razão social."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastrar o fornecedor com CNPJ, razão social e contatos, e os produtos que ele fornece com preço combinado."
+        },
+        {
+          "kind": "detail",
+          "text": "Fornecedor com contatos e produtos fornecidos com preço combinado."
+        }
+      ],
+      "icon": "building-2",
+      "action": "new"
+    },
+    {
+      "id": "produtos",
+      "kind": "page",
+      "label": "Produtos",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Produtos do catálogo de compras."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastrar ou alterar um produto do catálogo."
+        }
+      ],
+      "icon": "package",
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:comprador": [
+      "area_comprador",
+      "solicitacoes",
+      "pedidos",
+      "fornecedores",
+      "produtos"
+    ],
+    "actor:gerenteCompras": [
+      "painel_compras",
+      "solicitacoes",
+      "pedidos",
+      "fornecedores",
+      "produtos"
+    ],
+    "actor:almoxarife": [
+      "entregas_a_receber",
+      "pedidos"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarFornecedor": [
+        "fornecedores"
+      ],
+      "abrirSolicitacao": [
+        "inicio_comprador",
+        "solicitacoes"
+      ],
+      "autorizarSolicitacao": [
+        "painel_compras",
+        "solicitacoes"
+      ],
+      "registrarRecebimento": [
+        "entregas_a_receber",
+        "pedidos"
+      ],
+      "pesquisarCompras": [
+        "solicitacoes",
+        "pedidos"
+      ],
+      "pesquisarComprasGerente": [
+        "solicitacoes",
+        "pedidos"
+      ],
+      "acompanharPainel": [
+        "painel_compras",
+        "pedidos"
+      ]
+    },
+    "processes": {
+      "cicloSolicitacaoCompra": [
+        "inicio_comprador",
+        "solicitacoes",
+        "painel_compras",
+        "pedidos",
+        "entregas_a_receber"
+      ]
+    },
+    "records": {
+      "Produto": [
+        "produtos"
+      ]
+    },
+    "placements": [
+      {
+        "journeyId": "cadastrarFornecedor",
+        "actorRef": "comprador",
+        "placement": "listWithAdd",
+        "pageId": "fornecedores",
+        "reason": "O comprador administra a lista de fornecedores e cadastra novos pelo \"+\"."
+      },
+      {
+        "journeyId": "abrirSolicitacao",
+        "actorRef": "comprador",
+        "placement": "listWithAdd",
+        "pageId": "solicitacoes",
+        "reason": "As solicitações são a coleção do comprador e a nova solicitação nasce do \"+\" da lista."
+      },
+      {
+        "journeyId": "autorizarSolicitacao",
+        "actorRef": "gerenteCompras",
+        "placement": "screenAction",
+        "pageId": "painel_compras",
+        "reason": "O gerente decide sobre a solicitação que já aparece na sua caixa de pendências."
+      },
+      {
+        "journeyId": "registrarRecebimento",
+        "actorRef": "almoxarife",
+        "placement": "screenAction",
+        "pageId": "entregas_a_receber",
+        "reason": "O almoxarife registra o recebimento sobre o pedido que já está na lista de entregas a receber."
+      },
+      {
+        "journeyId": "pesquisarCompras",
+        "actorRef": "comprador",
+        "placement": "screenAction",
+        "pageId": "solicitacoes",
+        "reason": "A pesquisa são os filtros das listas de solicitações e pedidos já exibidas."
+      },
+      {
+        "journeyId": "pesquisarComprasGerente",
+        "actorRef": "gerenteCompras",
+        "placement": "screenAction",
+        "pageId": "solicitacoes",
+        "reason": "O gerente filtra as listas de solicitações e pedidos que já vê."
+      },
+      {
+        "journeyId": "acompanharPainel",
+        "actorRef": "gerenteCompras",
+        "placement": "menuItem",
+        "pageId": "painel_compras",
+        "reason": "O painel é a entrada do gerente e tem seu próprio item de menu."
+      }
+    ],
+    "removed": []
+  }
+}

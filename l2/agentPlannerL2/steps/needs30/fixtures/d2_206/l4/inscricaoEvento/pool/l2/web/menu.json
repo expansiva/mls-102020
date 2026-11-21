@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "inscricaoEvento",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "painel_organizador",
+      "kind": "page",
+      "label": "Painel",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Eventos lotados, vagas restantes e tamanho da lista de espera de cada evento publicado"
+        },
+        {
+          "kind": "summary",
+          "text": "Total de vagas ocupadas e eventos publicados recentemente, com a data de publicação"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "gestao_eventos",
+      "kind": "page",
+      "label": "Eventos",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize seus eventos por título, data ou situação, com vagas ocupadas e restantes"
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre o evento com título, descrição, data, local e número de vagas"
+        },
+        {
+          "kind": "detail",
+          "text": "Revise o evento: dados cadastrados, publicado em, vagas ocupadas, vagas restantes, lotado e tamanho da lista de espera"
+        },
+        {
+          "kind": "actions",
+          "text": "Publicar o evento para receber inscrições"
+        },
+        {
+          "kind": "list",
+          "text": "Inscritos do evento com código da inscrição, recebida em, se ocupa vaga e posição na lista de espera"
+        },
+        {
+          "kind": "actions",
+          "text": "Baixar a lista de inscritos em CSV"
+        },
+        {
+          "kind": "timeline",
+          "text": "Promoções automáticas: quando uma inscrição com vaga é cancelada, a mais antiga da lista de espera passa a ocupar a vaga"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "area_participante",
+      "kind": "hub",
+      "label": "Minha área",
+      "context": "Participante",
+      "text": "Abre já com o seu cadastro de participante selecionado; aqui você encontra eventos e acompanha suas inscrições.",
+      "children": [
+        {
+          "id": "minhas_inscricoes",
+          "kind": "page",
+          "label": "Minhas inscrições",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Suas inscrições: quais ocupam vaga e sua posição na lista de espera"
+            },
+            {
+              "kind": "list",
+              "text": "Localize suas inscrições pelo código ou pelo evento"
+            },
+            {
+              "kind": "detail",
+              "text": "Veja a inscrição: código, recebida em, evento, se ocupa vaga e posição na lista de espera"
+            },
+            {
+              "kind": "actions",
+              "text": "Cancelar minha inscrição, liberando a vaga"
+            },
+            {
+              "kind": "timeline",
+              "text": "Quando você sai da lista de espera e passa a ocupar uma vaga liberada, isso aparece aqui"
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "eventos_abertos",
+          "kind": "page",
+          "label": "Eventos",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Encontre eventos publicados por título, data ou local"
+            },
+            {
+              "kind": "detail",
+              "text": "Veja o evento: descrição, data, local, vagas restantes, se está lotado e tamanho da lista de espera"
+            },
+            {
+              "kind": "actions",
+              "text": "Inscrever-me: garanto uma vaga ou entro na lista de espera se estiver lotado"
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:organizador": [
+      "painel_organizador",
+      "gestao_eventos"
+    ],
+    "actor:publico": [
+      "area_participante"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarPublicarEvento": [
+        "gestao_eventos"
+      ],
+      "acompanharInscritos": [
+        "gestao_eventos",
+        "painel_organizador"
+      ],
+      "inscreverEmEvento": [
+        "eventos_abertos"
+      ],
+      "cancelarInscricao": [
+        "minhas_inscricoes"
+      ]
+    },
+    "processes": {
+      "promoverListaEspera": [
+        "minhas_inscricoes",
+        "gestao_eventos"
+      ]
+    },
+    "records": {},
+    "removed": []
+  }
+}

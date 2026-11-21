@@ -150,11 +150,19 @@ void test('family table of mensalidadesAcademia: Aluno mdm, IndicadoresAcademia 
   assert.equal(familyOf('Pagamento'), 'tdm');
 });
 
-void test('widest scope wins own < related < organization', () => {
+void test('widest scope wins custom < own < assigned < related < organization < public', () => {
   assert.equal(p2WidestScope(['own', 'organization']), 'organization');
   assert.equal(p2WidestScope(['related', 'own']), 'related');
+  assert.equal(p2WidestScope(['assigned', 'own']), 'assigned');
+  assert.equal(p2WidestScope(['public', 'organization']), 'public');
+  assert.equal(p2WidestScope(['custom', 'organization']), 'organization');
+  assert.equal(p2WidestScope(['custom']), 'custom');
   assert.equal(p2WidestScope(['own']), 'own');
   assert.equal(p2WidestScope([]), '');
+  assert.throws(
+    () => p2WidestScope(['galactic'], { grants: [{ grantId: 'g1', dataScope: { mode: 'galactic' } }], entity: 'PersonalConduct' }),
+    /P2_NEEDS_SCOPE_UNKNOWN: grant g1 has data scope mode "galactic" for entity PersonalConduct/,
+  );
 });
 
 void test('mensalidadesAcademia pages: payments, plans, home, cancel transition', () => {

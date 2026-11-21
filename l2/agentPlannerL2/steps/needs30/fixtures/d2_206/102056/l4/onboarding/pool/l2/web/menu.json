@@ -1,0 +1,164 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "onboarding",
+  "userLanguage": "en",
+  "device": "web",
+  "tree": [
+    {
+      "id": "company_setup",
+      "kind": "page",
+      "label": "Company setup",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "See whether your company is prepared and which company data is still missing."
+        },
+        {
+          "kind": "form",
+          "text": "Fill in the missing company data, including the company country chosen from the active countries."
+        },
+        {
+          "kind": "actions",
+          "text": "Save the company data."
+        },
+        {
+          "kind": "detail",
+          "text": "Once the company is prepared, follow the guidance to create your first module in Studio."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "organization_people",
+      "kind": "page",
+      "label": "Organization people",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "See which people have completed their access and which still have something missing."
+        },
+        {
+          "kind": "list",
+          "text": "Find people in the organization by name or login e-mail, with their access status and what is still missing."
+        },
+        {
+          "kind": "detail",
+          "text": "Open a person to see their login e-mail, whether consent is required and valid, what is still missing and who resolves each pending item."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "countries",
+      "kind": "page",
+      "label": "Countries",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Find countries by name in your language, and see which ones are active or inactive."
+        },
+        {
+          "kind": "form",
+          "text": "Add a new country or edit an existing one."
+        },
+        {
+          "kind": "actions",
+          "text": "Add, edit, inactivate or reactivate a country."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "privacy_text",
+      "kind": "page",
+      "label": "Privacy text",
+      "organisms": [
+        {
+          "kind": "detail",
+          "text": "Read the current privacy text with its version code and publication date."
+        },
+        {
+          "kind": "list",
+          "text": "See all privacy text versions and which one is current."
+        },
+        {
+          "kind": "form",
+          "text": "Write a new version of the privacy text."
+        },
+        {
+          "kind": "actions",
+          "text": "Create a new version and publish it so it becomes the current one."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "my_access_hub",
+      "kind": "hub",
+      "label": "My access",
+      "context": "OrganizationMember",
+      "text": "Opens with your own access record already selected.",
+      "children": [
+        {
+          "id": "my_access",
+          "kind": "page",
+          "label": "Complete my access",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "See your login e-mail, whether your access is complete and what is still missing."
+            },
+            {
+              "kind": "form",
+              "text": "Fill in only the missing name and choose your country from the list."
+            },
+            {
+              "kind": "detail",
+              "text": "When your country requires it, read the current privacy text and accept it."
+            },
+            {
+              "kind": "actions",
+              "text": "Save my access and go to the modules I may use."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:companyOwner": [
+      "company_setup",
+      "organization_people",
+      "countries",
+      "privacy_text",
+      "my_access_hub"
+    ],
+    "actor:organizationMember": [
+      "my_access_hub"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "completeMyAccess": [
+        "my_access"
+      ],
+      "prepareCompany": [
+        "company_setup"
+      ],
+      "maintainCountries": [
+        "countries"
+      ],
+      "publishPrivacyText": [
+        "privacy_text"
+      ],
+      "reviewOrganizationPeople": [
+        "organization_people"
+      ]
+    },
+    "processes": {},
+    "records": {},
+    "removed": []
+  }
+}

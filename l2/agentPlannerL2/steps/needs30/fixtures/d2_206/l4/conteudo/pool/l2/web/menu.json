@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "conteudo",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "arquivos_conteudo",
+      "kind": "page",
+      "label": "Conteúdos",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Navegue pelas pastas blog, docs e site e veja os arquivos markdown que estão no repositório; a lista se atualiza quando o repositório muda por fora."
+        },
+        {
+          "kind": "detail",
+          "text": "Abra um arquivo e leia o texto em markdown com o caminho dele no repositório."
+        },
+        {
+          "kind": "form",
+          "text": "Altere o texto do arquivo aberto ou, para um conteúdo novo, escolha a pasta, informe o título e escreva o texto."
+        },
+        {
+          "kind": "actions",
+          "text": "Salvar a alteração no repositório ou criar o novo arquivo na pasta escolhida."
+        }
+      ],
+      "icon": "folder-open",
+      "action": "new"
+    },
+    {
+      "id": "historico_publicacoes",
+      "kind": "page",
+      "label": "Histórico de publicações",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Veja as publicações mais recentes pela data em que foram publicadas."
+        },
+        {
+          "kind": "list",
+          "text": "Liste o que cada pessoa publicou e quando, filtrando por pessoa ou pelo caminho do arquivo."
+        },
+        {
+          "kind": "detail",
+          "text": "Veja uma publicação: o arquivo gravado, quem publicou e a data de publicação."
+        }
+      ],
+      "icon": "history",
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:editor": [
+      "arquivos_conteudo",
+      "historico_publicacoes"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "editarConteudo": [
+        "arquivos_conteudo"
+      ],
+      "criarConteudo": [
+        "arquivos_conteudo"
+      ],
+      "consultarHistorico": [
+        "historico_publicacoes"
+      ]
+    },
+    "processes": {},
+    "records": {},
+    "placements": [
+      {
+        "journeyId": "editarConteudo",
+        "actorRef": "editor",
+        "placement": "screenAction",
+        "pageId": "arquivos_conteudo",
+        "reason": "O editor altera e salva o arquivo que já está aberto na tela de conteúdos."
+      },
+      {
+        "journeyId": "criarConteudo",
+        "actorRef": "editor",
+        "placement": "listWithAdd",
+        "pageId": "arquivos_conteudo",
+        "reason": "O editor cria um arquivo novo pelo botão de adicionar na lista de pastas e arquivos que ele mantém."
+      },
+      {
+        "journeyId": "consultarHistorico",
+        "actorRef": "editor",
+        "placement": "menuItem",
+        "pageId": "historico_publicacoes",
+        "reason": "Consultar o histórico é uma entrada própria do menu, separada da edição dos arquivos."
+      }
+    ],
+    "removed": []
+  }
+}

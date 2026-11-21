@@ -1,0 +1,160 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "financeiro",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "painel_recebiveis",
+      "kind": "page",
+      "label": "Painel de recebíveis",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Recebíveis do período por origem: total a receber, total recebido e saldo em aberto"
+        },
+        {
+          "kind": "summary",
+          "text": "Títulos vencidos e não quitados, com dias de atraso e saldo em aberto"
+        },
+        {
+          "kind": "list",
+          "text": "Filtrar recebíveis por período e origem e listar os títulos vencidos"
+        },
+        {
+          "kind": "detail",
+          "text": "Abrir um título vencido: total recebido, saldo em aberto, dias de atraso e recebimentos"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "titulos_receber",
+      "kind": "page",
+      "label": "Títulos a receber",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Saldo em aberto, total recebido e títulos vencidos ou com baixa parcial"
+        },
+        {
+          "kind": "list",
+          "text": "Localizar o título pelo número ou pelo pagador e ver se está quitado, vencido ou com baixa parcial"
+        },
+        {
+          "kind": "detail",
+          "text": "Conferir o título: valor, vencimento, total recebido, saldo em aberto e dias de atraso"
+        },
+        {
+          "kind": "actions",
+          "text": "Registrar recebimento total ou parcial em dinheiro, pix ou cartão via Stripe (caixa)"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "recebimentos",
+      "kind": "page",
+      "label": "Recebimentos",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localizar recebimentos pelo número ou data de recebimento e ver quais podem ser estornados"
+        },
+        {
+          "kind": "detail",
+          "text": "Conferir o recebimento: título, valor, forma de pagamento, recebido em, baixa parcial e estorno"
+        },
+        {
+          "kind": "form",
+          "text": "Registrar o recebimento do título com valor e forma de pagamento"
+        },
+        {
+          "kind": "actions",
+          "text": "Estornar o recebimento registrado por engano no mesmo dia (caixa)"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "pagador",
+      "kind": "hub",
+      "label": "Pagadores",
+      "context": "Pagador",
+      "text": "Escolha o pagador para ver seus títulos, recebimentos e extrato. No portal do pagador, abre já com o próprio cadastro selecionado.",
+      "children": [
+        {
+          "id": "titulos_pagador",
+          "kind": "page",
+          "label": "Títulos e extrato",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Total recebido, saldo em aberto e títulos vencidos do pagador"
+            },
+            {
+              "kind": "list",
+              "text": "Títulos do pagador com situação: em aberto, quitado, baixa parcial ou vencido"
+            },
+            {
+              "kind": "detail",
+              "text": "Ver o título: valor, vencimento, total recebido e saldo em aberto"
+            },
+            {
+              "kind": "timeline",
+              "text": "Recebimentos do pagador com data, valor e estornos"
+            },
+            {
+              "kind": "actions",
+              "text": "Emitir extrato de títulos e recebimentos; pagar com cartão um título em aberto (pagador)"
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:caixa": [
+      "titulos_receber",
+      "recebimentos"
+    ],
+    "actor:gerenteFinanceiro": [
+      "painel_recebiveis",
+      "titulos_receber",
+      "recebimentos",
+      "pagador"
+    ],
+    "actor:pagador": [
+      "pagador"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "receberTitulo": [
+        "titulos_receber",
+        "recebimentos"
+      ],
+      "estornarRecebimento": [
+        "recebimentos"
+      ],
+      "acompanharRecebiveis": [
+        "painel_recebiveis",
+        "titulos_receber"
+      ],
+      "emitirExtratoPagador": [
+        "titulos_pagador"
+      ],
+      "consultarMeusTitulos": [
+        "titulos_pagador"
+      ],
+      "pagarTituloCartao": [
+        "titulos_pagador"
+      ]
+    },
+    "processes": {},
+    "records": {},
+    "removed": []
+  }
+}

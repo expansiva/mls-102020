@@ -44,7 +44,14 @@ export const P2_NEEDS_ARTIFACT = 'pool/l1/web/needs.json' as const;
 
 const HOME_ID = /^inicio_/;
 const READ_STEP_KINDS = new Set(['locate', 'inspect']);
-const SCOPE_RANK: Record<P2NeedsScope, number> = { own: 0, related: 1, organization: 2 };
+const SCOPE_RANK: Record<P2NeedsScope, number> = {
+  custom: -1,
+  own: 0,
+  assigned: 1,
+  related: 2,
+  organization: 3,
+  public: 4,
+};
 
 export interface P2BuildNeedsInput {
   menu: PoolMenuFile;
@@ -88,12 +95,20 @@ export function p2EntityFamily(entity: P2OntologyEntityView): P2NeedsFamily {
   return 'tdm';
 }
 
-/** Widest grant wins: own < related < organization. */
-export function p2WidestScope(modes: readonly string[]): P2NeedsScope | '' {
+export interface P2ScopeWhere {
+  grants: readonly { grantId: string; dataScope: { mode: string } }[];
+  entity: string;
+}
+
+/** Widest grant wins. `custom` ranks below every other mode, so it is kept only when it is the only eligible mode. A mode outside the six throws. */
+export function p2WidestScope(modes: readonly string[], where?: P2ScopeWhere): P2NeedsScope | '' {
   let best: P2NeedsScope | '' = '';
-  let rank = -1;
+  let rank = Number.NEGATIVE_INFINITY;
   for (const mode of modes) {
-    if (!isP2NeedsScope(mode)) continue;
+    if (!isP2NeedsScope(mode)) {
+      const grantId = where?.grants.find(grant => grant.dataScope.mode === mode)?.grantId || '?';
+      throw new Error(`P2_NEEDS_SCOPE_UNKNOWN: grant ${grantId} has data scope mode "${mode}" for entity ${where?.entity || '?'}`);
+    }
     if (SCOPE_RANK[mode] > rank) {
       best = mode;
       rank = SCOPE_RANK[mode];
@@ -313,7 +328,10 @@ function pushRead(
   const entity = entityById.get(entityId);
   const family = entity ? p2EntityFamily(entity) : 'tdm';
   const eligibleGrants = grants.filter(grant => actors.includes(grant.actorRef) && grant.entityRefs.includes(entityId));
-  const scope = p2WidestScope(eligibleGrants.map(grant => grant.dataScope.mode));
+  const scope = p2WidestScope(
+    eligibleGrants.map(grant => grant.dataScope.mode),
+    { grants: eligibleGrants, entity: entityId },
+  );
   if (!scope) return;
   const provenance = [...from.split('\n'), ...eligibleGrants.map(grant => `grant:${grant.grantId}`)];
   const derived = derivedFieldNames(entityId, sources);
@@ -328,7 +346,7 @@ function pushRead(
     });
     return;
   }
-  current.scope = p2WidestScope([current.scope, scope]) || current.scope;
+  current.scope = p2WidestScope([current.scope, scope], { grants: eligibleGrants, entity: entityId }) || current.scope;
   current.from = mergeFrom([...current.from, ...provenance]);
   current.derived = mergeNames([...current.derived, ...derived]);
 }

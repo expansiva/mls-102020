@@ -1,0 +1,144 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "agendaClinica",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "consultas",
+      "kind": "page",
+      "label": "Consultas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo a agenda da clínica e localizo a consulta."
+        },
+        {
+          "kind": "detail",
+          "text": "Confero paciente, profissional, data e horário da consulta."
+        },
+        {
+          "kind": "form",
+          "text": "Marco uma consulta, confirmo o agendamento ou registro a falta do paciente."
+        },
+        {
+          "kind": "actions",
+          "text": "Agendar consulta, confirmar consulta e registrar falta."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "pacientes",
+      "kind": "page",
+      "label": "Pacientes",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localizo o paciente pelo nome para agendar a consulta."
+        },
+        {
+          "kind": "detail",
+          "text": "Vejo os dados de identificação do paciente."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastro um paciente novo para poder marcar consulta."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastrar paciente."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "profissionais",
+      "kind": "page",
+      "label": "Profissionais",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo os profissionais da clínica e quem está disponível."
+        },
+        {
+          "kind": "detail",
+          "text": "Confero o cadastro do profissional."
+        },
+        {
+          "kind": "form",
+          "text": "Mantenho o cadastro dos profissionais da clínica."
+        },
+        {
+          "kind": "actions",
+          "text": "Manter cadastro do profissional."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "agenda_diaria",
+      "kind": "page",
+      "label": "Agenda do dia",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo só as minhas consultas previstas para hoje."
+        },
+        {
+          "kind": "detail",
+          "text": "Abro a consulta do dia para ver o paciente e o horário."
+        },
+        {
+          "kind": "form",
+          "text": "Marco a consulta como atendida e anoto o atendimento."
+        },
+        {
+          "kind": "actions",
+          "text": "Registrar atendimento."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:recepcionista": [
+      "consultas",
+      "pacientes",
+      "profissionais"
+    ],
+    "actor:profissional": [
+      "agenda_diaria"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarPaciente": [
+        "pacientes"
+      ],
+      "agendarConsulta": [
+        "pacientes",
+        "consultas"
+      ],
+      "confirmarConsulta": [
+        "consultas"
+      ],
+      "registrarFalta": [
+        "consultas"
+      ],
+      "consultarAgendaDiaria": [
+        "agenda_diaria"
+      ],
+      "registrarAtendimento": [
+        "agenda_diaria"
+      ]
+    },
+    "processes": {},
+    "records": {
+      "Profissional": [
+        "profissionais"
+      ]
+    },
+    "removed": []
+  }
+}

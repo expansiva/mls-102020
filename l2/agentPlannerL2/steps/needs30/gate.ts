@@ -114,7 +114,7 @@ function validateReadSources(
     if (
       applicable.length !== citedGrants.length ||
       !applicable.length ||
-      p2WidestScope(applicable.map(grant => grant.dataScope.mode)) !== scope
+      p2WidestScope(applicable.map(grant => grant.dataScope.mode), { grants: applicable, entity }) !== scope
     ) {
       error(issues, 'P2_NEEDS_ACCESS_GRANT_INVALID', 'Cited grants must exist, apply to a page actor and entity, and authorize the read scope.', path);
     }

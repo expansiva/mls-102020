@@ -1,0 +1,172 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "ordenServicio",
+  "userLanguage": "es",
+  "device": "web",
+  "tree": [
+    {
+      "id": "inicio_taller",
+      "kind": "page",
+      "label": "Inicio del taller",
+      "organisms": [
+        {
+          "kind": "inbox",
+          "text": "Órdenes que esperan tu paso: abrir y pasar al técnico, diagnosticar y presupuestar, reparar aprobadas o entregar las que están listas."
+        },
+        {
+          "kind": "highlights",
+          "text": "Órdenes disponibles para retiro y costo interno de piezas por orden."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "clientes",
+      "kind": "page",
+      "label": "Clientes",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Busca al cliente por nombre o identificación."
+        },
+        {
+          "kind": "detail",
+          "text": "Datos del cliente y sus órdenes de servicio."
+        },
+        {
+          "kind": "form",
+          "text": "Registra un cliente nuevo cuando no aparece en la búsqueda."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "ordenes_servicio",
+      "kind": "page",
+      "label": "Órdenes de servicio",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Órdenes por estado: abiertas, presupuestadas, aprobadas, listas, finalizadas o rechazadas."
+        },
+        {
+          "kind": "detail",
+          "text": "Aparato, defecto informado, fotos, diagnóstico, presupuesto, trabajo realizado y si está disponible para retiro."
+        },
+        {
+          "kind": "form",
+          "text": "Abre la orden con el aparato, el defecto y las fotos; registra el diagnóstico y el valor del presupuesto; anota el trabajo realizado."
+        },
+        {
+          "kind": "list",
+          "text": "Piezas de la orden con su costo interno; agrega o corrige piezas durante el diagnóstico."
+        },
+        {
+          "kind": "summary",
+          "text": "Costo interno total de las piezas de la orden."
+        },
+        {
+          "kind": "actions",
+          "text": "Pasar al técnico, emitir presupuesto al cliente, marcar como lista o entregar y finalizar la orden."
+        },
+        {
+          "kind": "timeline",
+          "text": "Historial de la orden: apertura, presupuesto, respuesta del cliente, reparación y entrega."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "portal_cliente",
+      "kind": "hub",
+      "label": "Mi portal",
+      "context": "Cliente",
+      "text": "Se abre con tu propio registro de cliente ya seleccionado para ver y responder tus órdenes.",
+      "children": [
+        {
+          "id": "mis_ordenes",
+          "kind": "page",
+          "label": "Mis órdenes",
+          "organisms": [
+            {
+              "kind": "inbox",
+              "text": "Presupuestos que esperan tu aprobación o rechazo."
+            },
+            {
+              "kind": "highlights",
+              "text": "Tus aparatos disponibles para retiro."
+            },
+            {
+              "kind": "list",
+              "text": "Tus órdenes de servicio con su estado."
+            },
+            {
+              "kind": "detail",
+              "text": "Estado, diagnóstico y valor del presupuesto de la orden."
+            },
+            {
+              "kind": "actions",
+              "text": "Aprobar o rechazar el presupuesto."
+            },
+            {
+              "kind": "timeline",
+              "text": "Lo que pasó con tu orden: recepción, presupuesto, tu respuesta, reparación y entrega."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:recepcionista": [
+      "inicio_taller",
+      "ordenes_servicio",
+      "clientes"
+    ],
+    "actor:tecnico": [
+      "inicio_taller",
+      "ordenes_servicio"
+    ],
+    "actor:cliente": [
+      "portal_cliente"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "abrirOrdenServicio": [
+        "clientes",
+        "ordenes_servicio",
+        "inicio_taller"
+      ],
+      "diagnosticarYpresupuestar": [
+        "inicio_taller",
+        "ordenes_servicio"
+      ],
+      "responderPresupuesto": [
+        "mis_ordenes"
+      ],
+      "realizarReparacion": [
+        "inicio_taller",
+        "ordenes_servicio"
+      ],
+      "entregarYfinalizar": [
+        "inicio_taller",
+        "ordenes_servicio"
+      ],
+      "consultarMisOrdenes": [
+        "mis_ordenes"
+      ]
+    },
+    "processes": {
+      "cicloOrdenServicio": [
+        "inicio_taller",
+        "ordenes_servicio",
+        "mis_ordenes"
+      ]
+    },
+    "records": {},
+    "removed": []
+  }
+}
