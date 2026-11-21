@@ -24,10 +24,12 @@ export interface D2ExternalCallSources {
   catalogGaps?: Record<string, D2CatalogGap>;
 }
 
-/** Top-level required names of a connection `call` input, plus whether the call asks for `expectVersion`. */
+/** Top-level required names of a connection `call` input, whether the call asks for `expectVersion`, and whether its `outputType` has a required `version`. */
 export interface D2ExternalCallAsk {
   names: string[];
   expectsVersion: boolean;
+  /** The write operation's `outputType` declares a required field named `version` (d2_208). */
+  returnsVersion: boolean;
   /** `operationId` of the call, for the gate message that names it. */
   operationId: string;
 }
@@ -187,10 +189,14 @@ export function explainD2ExternalCall(input: D2ExternalCallInput): { ask: D2Exte
   const catalog = rec(declarationObjectOf(input.catalogText));
   const operationRow = rows(catalog.operations).find(row => text(row.operationId) === text(line.operationId) && text(row.direction) === 'call');
   if (!operationRow) return { ask: null, gap: 'catalog' };
+  const catalogTypes = parseContractSource(input.catalogText).types;
   const inputType = text(operationRow.inputType);
-  const node = inputType ? parseContractSource(input.catalogText).types[inputType] : undefined;
+  const node = inputType ? catalogTypes[inputType] : undefined;
   const names = node?.kind === 'object' ? node.fields.filter(field => !field.optional).map(field => field.name) : [];
-  return { ask: { names, expectsVersion: operationRow.expectsVersion === true, operationId: text(operationRow.operationId) }, gap: null };
+  const outputType = text(operationRow.outputType);
+  const outputNode = outputType ? catalogTypes[outputType] : undefined;
+  const returnsVersion = outputNode?.kind === 'object' && outputNode.fields.some(field => field.name === 'version' && !field.optional);
+  return { ask: { names, expectsVersion: operationRow.expectsVersion === true, operationId: text(operationRow.operationId), returnsVersion }, gap: null };
 }
 
 function ruleMap(value: unknown): Map<string, string> {

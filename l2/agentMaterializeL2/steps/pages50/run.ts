@@ -58,6 +58,11 @@ export interface M4PageContext {
    * `movimentadoEm`, in every run and every repair (controleEstoque, 02/10/2026).
    */
   rowTypes: string;
+  /**
+   * What each route returns, copied from the contract. The declaration only names `Output<'route'>`;
+   * this is the shape (`{ items, page, pageSize, hasMore }` and the rest). '' when the contract has no route.
+   */
+  routeOutputs: string;
   /** The platform types (MDM ontology of 102034) the contract uses, with the meaning of each field; '' when none. */
   platformTypes: string;
   /** The Studio edit history of the page11: how many entries the generation was given, and which were dropped. Absent = none. */
@@ -336,6 +341,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
   const pageOnlyRequests = m4PageOnlyRequests(shared, sharedText, Object.values(page.methods ?? {}));
   const contractSource = await port.read(m4DefsInfo(identity, 'contract', pageId));
   const rowTypes = m4RowTypes(contractSource);
+  const routeOutputs = m4RouteOutputs(contractSource);
   const platformTypes = await m4PlatformTypes(contractSource, port);
   const template = templateInfo(page11.template.category);
   const templateText = template && port.exists(template) ? await port.read(template) : '';
@@ -411,6 +417,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
     `# Row types — web/contracts/${pageId}.defs.ts (the only fields a row has)`,
     '```ts', rowTypes, '```',
     '',
+    ...m4RouteOutputsSection(pageId, routeOutputs),
     ...m4PlatformTypesSection(platformTypes),
     `# Page definition — web/${device}/${genome}/${pageId}.defs.ts`,
     '```ts', page11Source.trim(), '```',
@@ -447,7 +454,7 @@ export async function buildM4PageContext(identity: M4RunIdentity, pageId: string
   const unitHash = (variant ? variant.units : page.units).find(item => item.kind === device)?.inputHash ?? '';
   const dataHash = await sha256Text([unitHash, await storedHash(declaration)].join('\n'));
   return {
-    identity, pageId, device, genome, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), dataHash, declaration, rowTypes, platformTypes,
+    identity, pageId, device, genome, prompt, target, humanPrompt, contextHash: await sha256Text(`${prompt}\n---\n${humanPrompt}`), dataHash, declaration, rowTypes, routeOutputs, platformTypes,
     ...(fileHistory.length ? { history: { given: history.kept.length, dropped: history.dropped } } : {}),
   };
 }
@@ -518,6 +525,22 @@ export function m4RowTypes(contractSource: string): string {
   return definition.projections.map(item => `export interface ${item.name} {\n${item.body.replace(/\n$/u, '')}\n}`).join('\n\n') || '(the contract declares no row type)';
 }
 
+/** One block per route: a comment naming `Output<'route'>` and the output type as written in the contract. '' when there is no route. */
+export function m4RouteOutputs(contractSource: string): string {
+  const { definition } = parseL2Contract(contractSource);
+  if (!definition.routes.length) return '';
+  return definition.routes.map(route => `// Output<'${route.route}'> (${route.kind})\n${route.output}`).join('\n\n');
+}
+
+function m4RouteOutputsSection(pageId: string, routeOutputs: string): string[] {
+  if (!routeOutputs) return [];
+  return [
+    `# Route outputs — web/contracts/${pageId}.defs.ts (what each request returns; the declaration's Output<…> types are these)`,
+    '```ts', routeOutputs, '```',
+    '',
+  ];
+}
+
 export function buildM4PagePrompt(context: M4PageContext): { systemPrompt: string; humanPrompt: string } {
   return { systemPrompt: context.prompt, humanPrompt: context.humanPrompt };
 }
@@ -549,6 +572,7 @@ export async function buildM4PageRepairPrompt(context: M4PageContext, repair: { 
     '',
     `# Row types — web/contracts/${target.pageId}.defs.ts (the only fields a row has)`,
     '```ts', context.rowTypes, '```',
+    ...(context.routeOutputs ? ['', ...m4RouteOutputsSection(target.pageId, context.routeOutputs).slice(0, -1)] : []),
     ...(context.platformTypes ? ['', ...m4PlatformTypesSection(context.platformTypes).slice(0, -1)] : []),
   ];
   return { systemPrompt: await port.read(pageRepairPromptInfo), humanPrompt: parts.join('\n') };

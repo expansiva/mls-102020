@@ -404,3 +404,106 @@ test('cleanVersionDenials drops only a denied version, and only on the route tha
   const moduleOut = normalizeD2BffDesign(stored, entities, '', facts);
   assert.equal(moduleOut.endpoints.find(item => item.id === 'estornar')?.jsdoc.input, 'Recebimento declares no version, so none is asked.');
 });
+
+const versionLeaf = { name: 'version', type: 'number', origin: { kind: 'context' as const, paths: [] } };
+const versionNote = ' version: the version of the record read, sent back as expectVersion.';
+
+function viewType(name: string, fields: D2BffLeaf[], description = name): D2BffDesign['types'][number] {
+  return { name, description, fields };
+}
+
+/** A command view, a query that returns it, and a list the query returns. Bindings stay empty. */
+function versionDesign(commandOutput: D2BffLeaf[], queryOutput: D2BffLeaf[], writes = 'Agent.update', when = 'requestChange'): D2BffDesign {
+  const built = externalDesign([{ id: 'mudar', when, writes, input: ['agentId'] }]);
+  const query = built.endpoints.find(item => item.id === 'listar');
+  const command = built.endpoints.find(item => item.id === 'mudar');
+  if (!query || !command) throw new Error('missing endpoint');
+  query.output = queryOutput;
+  command.output = commandOutput;
+  const names = new Set([...commandOutput, ...queryOutput].flatMap(leaf => {
+    const base = leaf.type.replace(/\[\]$/, '');
+    return base === leaf.type || leaf.type.endsWith('[]') ? [base] : [];
+  }));
+  built.types = [...names].map(name => viewType(name, name === 'Already'
+    ? [versionLeaf]
+    : [{ name: 'label', type: 'string', origin: { kind: 'context', paths: [] } }]));
+  return built;
+}
+
+test('the saved agent_behavior view gains version when the write returns it', async () => {
+  await withProjectFiles(async () => {
+    const envelope = JSON.parse(readFileSync(new URL('./fixtures/d2_207/agent_behavior-2.json', import.meta.url), 'utf8')) as { raw: { result: { arguments: unknown } } };
+    const context = await loadD2BffContext({ project: 102047, module: 'agents' }, 'agent_behavior');
+    const design = normalizeD2BffDesign(buildD2BffDesign(envelope.raw.result.arguments), context.entities, '', { writes: context.need.writes, external: context.external });
+    const view = design.types.find(item => item.name === 'AgentBehaviorDetail');
+    assert.deepEqual(view?.fields.at(-1), versionLeaf);
+    assert.equal(view?.fields.filter(item => item.name === 'version').length, 1);
+    assert.equal(view?.description.endsWith(versionNote), true);
+    assert.equal(design.types.find(item => item.name === 'BehaviorChange')?.fields.some(item => item.name === 'version'), false);
+  });
+});
+
+test('a type the page read does not return stays without version', () => {
+  const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
+  const catalog = `
+export interface CmUpdateAgentInput { agentId: string; }
+export interface CmUpdateAgentOutput { version: string; }
+export const cm = { "operations": [ { "operationId": "updateAgent", "direction": "call", "inputType": "CmUpdateAgentInput", "outputType": "CmUpdateAgentOutput", "expectsVersion": true } ] };
+`;
+  context.external = { ...externalSources, catalogs: { cm: catalog } };
+  const raw = versionDesign(
+    [{ name: 'seen', type: 'Seen' }, { name: 'aside', type: 'Aside' }, { name: 'rows', type: 'Listed[]' }],
+    [{ name: 'seen', type: 'Seen' }, { name: 'rows', type: 'Listed[]' }],
+  );
+  const out = normalizeD2BffDesign(raw, context.entities, '', { writes: context.need.writes, external: context.external });
+  assert.deepEqual(out.types.find(item => item.name === 'Seen')?.fields.at(-1), versionLeaf);
+  assert.equal(out.types.find(item => item.name === 'Aside')?.fields.some(item => item.name === 'version'), false);
+  assert.equal(out.types.find(item => item.name === 'Listed')?.fields.some(item => item.name === 'version'), false);
+});
+
+test('a type that already has version does not gain another', () => {
+  const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
+  const catalog = `
+export interface CmUpdateAgentInput { agentId: string; }
+export interface CmUpdateAgentOutput { version: string; }
+export const cm = { "operations": [ { "operationId": "updateAgent", "direction": "call", "inputType": "CmUpdateAgentInput", "outputType": "CmUpdateAgentOutput", "expectsVersion": true } ] };
+`;
+  context.external = { ...externalSources, catalogs: { cm: catalog } };
+  const raw = versionDesign([{ name: 'already', type: 'Already' }], [{ name: 'already', type: 'Already' }]);
+  const before = raw.types.find(item => item.name === 'Already');
+  const out = normalizeD2BffDesign(raw, context.entities, '', { writes: context.need.writes, external: context.external });
+  assert.deepEqual(out.types.find(item => item.name === 'Already'), before);
+});
+
+test('a command that does not gain expectVersion leaves the design unchanged', () => {
+  const context = externalContext(
+    [{ entity: 'AgentDraft', operation: 'transition', transitionRef: 'discardDraft' }],
+    { discardDraft: { write: 'AgentDraft.discardDraft' } },
+  );
+  const raw = versionDesign(
+    [{ name: 'seen', type: 'Seen' }],
+    [{ name: 'seen', type: 'Seen' }],
+    'AgentDraft.discardDraft',
+    'discardDraft',
+  );
+  const out = normalizeD2BffDesign(raw, context.entities, '', { writes: context.need.writes, external: context.external });
+  assert.equal(out.endpoints.some(item => item.input.some(leaf => leaf.name === 'expectVersion')), false);
+  assert.deepEqual(out.types, raw.types);
+  assert.deepEqual(out.endpoints.map(item => item.output), raw.endpoints.map(item => item.output));
+});
+
+test('a write whose output has no required version does not add one to the view', () => {
+  const context = externalContext([{ entity: 'Agent', operation: 'update' }], { requestChange: { write: 'Agent.update' } });
+  const without = (output: string) => `
+export interface CmUpdateAgentInput { agentId: string; }
+export interface CmUpdateAgentOutput { ${output} }
+export const cm = { "operations": [ { "operationId": "updateAgent", "direction": "call", "inputType": "CmUpdateAgentInput", "outputType": "CmUpdateAgentOutput", "expectsVersion": true } ] };
+`;
+  for (const output of ['changeId: string;', 'version?: string;']) {
+    context.external = { ...externalSources, catalogs: { cm: without(output) } };
+    const raw = versionDesign([{ name: 'seen', type: 'Seen' }], [{ name: 'seen', type: 'Seen' }]);
+    const out = normalizeD2BffDesign(raw, context.entities, '', { writes: context.need.writes, external: context.external });
+    assert.equal(out.endpoints.find(item => item.id === 'mudar')?.input.some(item => item.name === 'expectVersion'), true);
+    assert.equal(out.types.find(item => item.name === 'Seen')?.fields.some(item => item.name === 'version'), false);
+  }
+});

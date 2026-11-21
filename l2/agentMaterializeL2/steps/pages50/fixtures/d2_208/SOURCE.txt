@@ -1,0 +1,1 @@
+Copied from mls-102047 l2/agents/web/contracts/agents.defs.ts at 74f17ca378cd8c5fe2cf7a47732f0e8be63bbe0b (2026-11-21).

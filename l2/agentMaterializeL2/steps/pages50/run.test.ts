@@ -9,7 +9,7 @@ import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js
 import { approveM4Shared, buildM4SharedContext } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 import {
-  M4_CONNECTION_REFUSED_LINE, M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4ConnectionCallsSection, m4MoveI18nBeforeClass, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, m4ServedJourneySteps, productLocales, reusableM4Page, studioPagePort, type M4PagePort,
+  M4_CONNECTION_REFUSED_LINE, M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4ConnectionCallsSection, m4MoveI18nBeforeClass, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, m4RouteOutputs, m4ServedJourneySteps, productLocales, reusableM4Page, studioPagePort, type M4PagePort,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { createAgent as createPageAgent } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4PagesPage.js';
 import { gateM4PageSource, m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
@@ -540,4 +540,33 @@ test('approval records the move, and the saved pages of 102047, 102039 and 10205
   }
   assert.equal(refused, 2);
   assert.ok(accepted >= 84);
+});
+
+test('the page prompt shows what each route returns, under the Output type the declaration names (d2_208)', async () => {
+  const agentsContract = readFileSync(new URL('./fixtures/d2_208/agents.defs.ts', import.meta.url), 'utf8');
+  const outputs = m4RouteOutputs(agentsContract);
+  const shape = 'agents: { items: AgentsCollectionEntry[]; page: number; pageSize: number; hasMore: boolean }';
+  const routeLine = "// Output<'agents.agents.loadAgentsPage'> (qry)";
+  assert.ok(outputs.includes(`${routeLine}\n{ inbox: DraftInboxItem[]; ${shape};`), 'the load route output is copied as written');
+  const empty = `/// <mls fileReference="_102047_/l2/controleEstoque/web/contracts/produtos.defs.ts" enhancement="_blank"/>\n\nexport {};\n`;
+  assert.equal(m4RouteOutputs(empty), '');
+
+  const port = await studio();
+  const contractKey = key({ project: identity.project, level: 2, folder: `${identity.module}/web/contracts`, shortName: 'produtos', extension: '.defs.ts' });
+  port.files.set(contractKey, agentsContract);
+  const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
+  const heading = `# Route outputs — web/contracts/produtos.defs.ts (what each request returns; the declaration's Output<…> types are these)`;
+  const block = `${heading}\n\`\`\`ts\n${outputs}\n\`\`\``;
+  assert.ok(context.humanPrompt.includes(block), 'the generation prompt carries the route outputs after the row types');
+  assert.ok(context.humanPrompt.indexOf('# Row types') < context.humanPrompt.indexOf(heading));
+  const repair = await buildM4PageRepairPrompt(context, { diagnostic: 'x', previous: 'y' }, port);
+  const repairHeading = heading.replace('produtos.defs.ts', `${context.pageId}.defs.ts`);
+  assert.ok(repair.humanPrompt.includes(repairHeading) && repair.humanPrompt.includes(routeLine) && repair.humanPrompt.includes(shape), 'the repair prompt carries the same outputs');
+
+  port.files.set(contractKey, empty);
+  const bare = await buildM4PageContext(identity, 'produtos', 'desktop', port);
+  assert.equal(bare.routeOutputs, '');
+  assert.ok(!bare.humanPrompt.includes('# Route outputs'), 'a contract with no route adds no section');
+  const bareRepair = await buildM4PageRepairPrompt(bare, { diagnostic: 'x', previous: 'y' }, port);
+  assert.ok(!bareRepair.humanPrompt.includes('# Route outputs'));
 });

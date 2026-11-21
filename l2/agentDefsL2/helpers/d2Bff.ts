@@ -293,6 +293,8 @@ export interface D2BffNormalizeFacts {
 }
 
 const expectVersionLeaf = (): D2BffLeaf => ({ name: 'expectVersion', type: 'number', origin: { kind: 'context', paths: [] } });
+const recordVersionLeaf = (): D2BffLeaf => ({ name: 'version', type: 'number', origin: { kind: 'context', paths: [] } });
+const RECORD_VERSION_NOTE = ' version: the version of the record read, sent back as expectVersion.';
 
 const VERSION_WORD = /\bversion\b/;
 const VERSION_DENIAL = /\bno\b|\bnot\b|\bnone\b|\bnever\b|\bwithout\b/;
@@ -427,6 +429,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
   };
   const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`, '', true, false, chainsOf(type.name), true).rows }));
   const outputs = new Map<string, Map<string, string>>();
+  const versionOn = new Set<string>();
   const endpoints = design.endpoints.map(endpoint => {
     const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`, '', false);
     outputs.set(endpoint.id, output.renamed);
@@ -437,6 +440,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     const versionAsk = pageWrite && keepCallNames && facts?.external && !input.rows.some(row => row.name === 'expectVersion')
       ? externalAsk(pageWrite, entitiesOf, facts.external) : undefined;
     const versionLeaf = versionAsk?.expectsVersion === true;
+    if (versionLeaf && versionAsk?.returnsVersion) versionOn.add(endpoint.id);
     const inputDoc = replaceNames(endpoint.jsdoc.input, input.renamed);
     return {
       ...endpoint,
@@ -449,6 +453,16 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
       },
     };
   });
+  const directRef = (leaf: D2BffLeaf): string => {
+    const parsed = parseD2BffType(leaf.type);
+    return parsed?.base === 'ref' && !parsed.list ? parsed.ref : '';
+  };
+  const readViews = new Set(endpoints.filter(item => item.kind === 'qry').flatMap(item => item.output.map(directRef)).filter(Boolean));
+  const versionTypes = new Set(endpoints.filter(item => versionOn.has(item.id)).flatMap(item => item.output.map(directRef)).filter(name => readViews.has(name)));
+  const typesWithVersion = types.map(type => {
+    if (!versionTypes.has(type.name) || type.fields.some(field => field.name === 'version')) return type;
+    return { ...type, description: `${type.description}${RECORD_VERSION_NOTE}`, fields: [...type.fields, recordVersionLeaf()] };
+  });
   const ref = (value: string): string => {
     const dot = value.indexOf('.');
     if (dot <= 0) return value;
@@ -456,9 +470,8 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string
     return `${value.slice(0, dot)}.${outputs.get(value.slice(0, dot))?.get(key) ?? key}`;
   };
   const bindings = design.bindings;
-  const withPlatformTypes = addMdmTypes(types, platformTypes);
   return {
-    types: withPlatformTypes, endpoints,
+    types: addMdmTypes(typesWithVersion, platformTypes), endpoints,
     bindings: {
       ...bindings,
       organisms: bindings.organisms.map(row => ({ ...row, reads: ref(row.reads) })),
