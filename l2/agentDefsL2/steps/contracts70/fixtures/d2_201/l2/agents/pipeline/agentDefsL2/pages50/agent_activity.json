@@ -5,7 +5,7 @@
   "module": "agents",
   "pageId": "agent_activity",
   "inputHash": "sha256:9d34795e8d215f10e58bcd84d276e77e82c2f4230a4750c810781dcd1c3bb137",
-  "unitInputHash": "sha256:36a122f518515a0b94db78f8183f2af2fee420ca6eb7539189e81282352d4523",
+  "unitInputHash": "sha256:1cb534a927c6860d3c4e0343eda4a95986468dac4e98f60faad73198c8d3ecf1",
   "template": {
     "category": "auditTrail",
     "experience": "chronologicalLog",

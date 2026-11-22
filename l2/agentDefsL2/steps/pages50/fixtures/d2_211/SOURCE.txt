@@ -1,0 +1,5 @@
+before: mls-102047@dc67062d (git archive of l2/agents l4/agents; receipts of 142)
+after:  mls-102047@f92fd235
+extracted: /tmp/d2_211/{before,after}
+command: git -C mls-base/mls-102047 archive dc67062d l2/agents l4/agents
+         git -C mls-base/mls-102047 archive f92fd235 l2/agents l4/agents

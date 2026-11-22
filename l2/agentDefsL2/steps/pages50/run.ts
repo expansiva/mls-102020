@@ -76,14 +76,34 @@ function owned(identity: D2RunIdentity, pageId: string): Ns5FileInfo { return { 
 export function sourceInfo(identity: D2RunIdentity, pageId: string, device: D2Page11Device): Ns5FileInfo { return { project: identity.project, level: 2, folder: `${identity.module}/web/${device}/page11`, shortName: pageId, extension: '.defs.ts' }; }
 export function needsInfo(identity: D2RunIdentity, pageId: string, device: D2Page11Device): Ns5FileInfo { return { project: identity.project, level: 2, folder: `${identity.module}/pipeline/agentDefsL2/page11Needs`, shortName: `${pageId}${device === 'desktop' ? 'Desktop' : 'Mobile'}`, extension: '.json' }; }
 
+/** The `page` object of the pages50 decision prompt. Prompt and unit hash share this. */
+export function d2PagesPromptPage(context: D2PagesContext): Record<string, unknown> {
+  const { page, artifacts } = context;
+  return { pageId: page.pageId, label: page.label, actors: page.actors, authorityRefs: page.authorityRefs,
+    ancestors: page.ancestors, organisms: menuOrigins(page), reads: page.reads, writes: page.writes, writeKeys: d2PageWriteKeys(page),
+    journeys: Object.fromEntries(page.journeyRefs.map(id => [id, artifacts.journeys[id]])),
+    userLanguage: text(record(artifacts.menu).userLanguage) || 'en' };
+}
+
+/** The `ontology` object of the pages50 decision prompt. Prompt and unit hash share this. */
+export function d2PagesPromptOntology(context: D2PagesContext): Record<string, unknown> {
+  const { page, artifacts } = context;
+  return d2BffL4Slice(
+    Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))) as Record<string, Ns5OntologyAnyEntity>,
+    (artifacts.rules ?? {}) as Record<string, string>,
+    page as D2NeedPage,
+    [],
+  ).entities;
+}
+
 /** A page fingerprint avoids invalidating its receipt when another page changes. */
 export async function pageUnitInputHash(context: D2PagesContext): Promise<string> {
   const { page, artifacts } = context;
   const needsPage = (record(artifacts.needs).pages as unknown[] | undefined)?.find(item => text(record(item).pageId) === page.pageId) ?? null;
-  const contextText = JSON.stringify({ page, needsPage });
-  const entities = Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => contextText.includes(id)));
+  const promptPage = d2PagesPromptPage(context);
+  const ontology = d2PagesPromptOntology(context);
   const journeys = Object.fromEntries(page.journeyRefs.map(id => [id, artifacts.journeys[id]]));
-  const entityIds = new Set(Object.keys(entities));
+  const entityIds = new Set(Object.keys(ontology));
   for (const row of [...page.reads, ...page.writes, ...((record(needsPage).reads as unknown[] | undefined) ?? []), ...((record(needsPage).writes as unknown[] | undefined) ?? [])]) {
     const entity = text(record(row).entity);
     if (entity) entityIds.add(entity);
@@ -104,7 +124,7 @@ export async function pageUnitInputHash(context: D2PagesContext): Promise<string
       });
     })
     .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
-  return sha256Text(JSON.stringify(canonicalValue({ page, needsPage, entities, journeys,
+  return sha256Text(JSON.stringify(canonicalValue({ page: promptPage, needsPage, entities: ontology, journeys,
     userLanguage: text(record(artifacts.menu).userLanguage) || 'en', grants })));
 }
 
@@ -210,22 +230,14 @@ export function normalizeNeedsPaths(needs: unknown, page: D2PagesContext['page']
 export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { diagnostic: string; previous: unknown }, approved?: D2ApprovedPage11 | null): { prompt: string; chars: number } {
   const { page, artifacts } = context;
   const payload = {
-    page: { pageId: page.pageId, label: page.label, actors: page.actors, authorityRefs: page.authorityRefs,
-      ancestors: page.ancestors, organisms: menuOrigins(page), reads: page.reads, writes: page.writes, writeKeys: d2PageWriteKeys(page),
-      journeys: Object.fromEntries(page.journeyRefs.map(id => [id, artifacts.journeys[id]])),
-      userLanguage: text(record(artifacts.menu).userLanguage) || 'en' },
+    page: d2PagesPromptPage(context),
     menu: artifacts.menu,
     // Other pages only matter for the writes a navigate may cover; this page keeps its full needs.
     needs: { pages: ((record(artifacts.needs).pages as unknown[] | undefined) ?? []).map(raw => {
       const row = record(raw);
       return text(row.pageId) === page.pageId ? row : { pageId: row.pageId, writes: row.writes };
     }) },
-    ontology: d2BffL4Slice(
-      Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))) as Record<string, Ns5OntologyAnyEntity>,
-      (artifacts.rules ?? {}) as Record<string, string>,
-      page as D2NeedPage,
-      [],
-    ).entities,
+    ontology: d2PagesPromptOntology(context),
     // Disclosure is checked against the page actors' grants only.
     access: { grants: ((record(artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => page.actors.includes(text(record(raw).actorRef))) },
     categories: context.template.categories.map(item => {

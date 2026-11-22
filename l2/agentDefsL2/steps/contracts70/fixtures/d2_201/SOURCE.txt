@@ -61,3 +61,4 @@ mls-102047 9e8b640a l4/ordenServicio/integration.defs.ts -> l4/ordenServicio/int
 mls-102047 9e8b640a l4/reembolsoDespesas/integration.defs.ts -> l4/reembolsoDespesas/integration.defs.ts
 mls-102047 9e8b640a l4/repoHost/integration.defs.ts -> l4/repoHost/integration.defs.ts
 mls-102047 9e8b640a l4/tarefas/integration.defs.ts -> l4/tarefas/integration.defs.ts
+22/11/2026 d2_211: `unitInputHash` do pages50 recalculado com a chave que cobre só o prompt (`pageUnitInputHash`)
