@@ -32,7 +32,7 @@ export function buildD2ContractFromBff(input: {
   const routes: D2ContractV2Route[] = design.endpoints.map(endpoint => ({
     route: `${input.module}.${input.pageId}.${endpoint.id}`,
     kind: endpoint.kind,
-    ...(endpoint.writes ? { writes: endpoint.writes } : {}),
+    ...(endpoint.writes ? { writes: contractWriteKey(endpoint.writes) } : {}),
     input: inline(endpoint.input, entities, false),
     output: inline(endpoint.output, entities, true),
     meta: { output: {}, lists: {}, params: {} },
@@ -41,6 +41,12 @@ export function buildD2ContractFromBff(input: {
     jsdoc: { raw: keys.map((key, index) => `${labels[index]}: ${d2JsdocText(endpoint.jsdoc[key])}`).join('\n'), ...Object.fromEntries(keys.map(key => [key, d2JsdocText(endpoint.jsdoc[key])])) },
   }));
   return { module: input.module, pageId: input.pageId, projections, routes };
+}
+
+/** The L1 reader accepts `Entity.operation` or `Entity.<transitionRef>`. A call suffix stays in the L2 pipeline. */
+function contractWriteKey(key: string): string {
+  const plus = key.indexOf('+');
+  return plus < 0 ? key : key.slice(0, plus);
 }
 
 const LABELS: Record<string, [string, string, string, string]> = {
