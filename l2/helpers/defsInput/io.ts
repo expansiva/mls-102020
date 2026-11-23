@@ -10,6 +10,7 @@ import {
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
 import { externalCatalogTexts } from '/_102020_/l2/helpers/defsInput/externalCatalog.js';
+import { d2ArtifactsWithCurrentNeeds } from '/_102020_/l2/helpers/needs/fromBundle.js';
 import {
   D2_INPUT_REPORT_VERSION,
   type D2InputArtifacts,
@@ -30,6 +31,8 @@ interface ReadSource {
 export interface D2ReadBundle {
   artifacts: D2InputArtifacts;
   files: Array<{ info: Ns5FileInfo; digest: D2SourceDigest }>;
+  /** Page ids whose needs30 row differs from the pool file. The pool file is not written. */
+  changedPageIds: readonly string[];
 }
 
 export function d2InputFile(identity: D2RunIdentity): Ns5FileInfo {
@@ -125,7 +128,12 @@ export async function readD2InputBundle(identity: D2RunIdentity): Promise<D2Read
     artifacts.catalogs = loaded.texts;
     artifacts.catalogGaps = loaded.unresolved;
   }
-  return { artifacts, files: all.map(source => ({ info: source.info, digest: source.digest })) };
+  const current = d2ArtifactsWithCurrentNeeds(artifacts);
+  return {
+    artifacts: current.artifacts,
+    files: all.map(source => ({ info: source.info, digest: source.digest })),
+    changedPageIds: current.changedPageIds,
+  };
 }
 
 /** `_<project>_/lN/folder/name.ext` as the Studio file the bff already reads. Null only when that file is absent. */

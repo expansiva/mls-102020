@@ -29,7 +29,7 @@ void test('finalize compiles page11 only, preserves existing shared/contracts an
   let available = true;
   const port: D2PagesFinalizePort = {
     readInput: async () => snapshot,
-    readBundle: async () => ({ artifacts: {} as never, files: [] }),
+    readBundle: async () => ({ artifacts: {} as never, files: [], changedPageIds: [] }),
     assertStable: async () => undefined,
     readPipeline: async () => pipeline,
     reusable: async () => true,
@@ -83,7 +83,7 @@ void test('missing shared and contract files are named pending, not a raw read e
   const receipt = { project: identity.project, module: identity.module, pageId: 'leftPage', sourceHashes: { desktop: await sha256Text(desktop), mobile: await sha256Text(mobile) } } as D2PagesReceipt;
   const report = await finalizeD2Pages(identity, {
     readInput: async () => snapshot,
-    readBundle: async () => ({ artifacts: {} as never, files: [] }),
+    readBundle: async () => ({ artifacts: {} as never, files: [], changedPageIds: [] }),
     assertStable: async () => undefined,
     readPipeline: async () => pipeline,
     reusable: async () => true,
@@ -144,7 +144,7 @@ void test('full finalize compiles four artifacts per page and names a hand-edite
   let completed = 0;
   const port: D2PagesFinalizePort = {
     readInput: async () => snapshot,
-    readBundle: async () => ({ artifacts: {} as never, files: [] }),
+    readBundle: async () => ({ artifacts: {} as never, files: [], changedPageIds: [] }),
     assertStable: async () => undefined,
     readPipeline: async () => pipeline,
     reusable: async () => true,

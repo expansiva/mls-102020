@@ -118,7 +118,7 @@ async function bundleOf(): Promise<D2ReadBundle> {
     artifacts.catalogs = loaded.texts;
     artifacts.catalogGaps = loaded.unresolved;
   }
-  return { artifacts, files: [] };
+  return { artifacts, files: [], changedPageIds: [] };
 }
 
 function page11Path(pageId: string, device: D2Page11Device): string {

@@ -9,6 +9,7 @@ import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { addD2RecordVersion, buildD2BffDesign, checkD2Bff, cleanVersionDenials, normalizeD2BffDesign, type D2BffCheckContext, type D2BffDesign, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { loadD2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { resolveD2OperationBindings } from '/_102020_/l2/helpers/defsInput/operationSemantics.js';
+import { d2WriteKey, type D2Write } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type { D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 
@@ -338,13 +339,48 @@ function withProjectFiles(run: () => Promise<void>): Promise<void> {
   return run().finally(() => { stor.files = previous.files; stor.getKeyToFile = previous.getKey; });
 }
 
+/** The saved answer still says `AgentBehavior.update`. The page line is now split by its calls. */
+function alignSavedAgentBehaviorWrites<T extends D2BffDesign>(design: T, writes: readonly D2Write[]): T {
+  const lines = writes.filter(write => write.entity === 'AgentBehavior' && write.operation === 'update');
+  return {
+    ...design,
+    endpoints: design.endpoints.map(endpoint => {
+      if (endpoint.writes !== 'AgentBehavior.update') return endpoint;
+      const served = lines.find(write => ((write as D2Write & { from?: readonly string[] }).from ?? []).some(from => from.endsWith(`/${endpoint.when}`)))
+        ?? lines.find(write => (write.calls ?? []).includes('updateAgent'));
+      if (!served) throw new Error('D2_TEST_WRITE_MISSING: AgentBehavior.update');
+      return { ...endpoint, writes: d2WriteKey(served) };
+    }),
+  };
+}
+
+/**
+ * The saved answer has one command. A split line it does not serve would demand a second command.
+ * The draft still names the bare key; the command now names the line it serves.
+ */
+function agreeDraftWithSavedWrite(context: D2BffCheckContext, design: D2BffDesign): void {
+  const used = new Set(design.endpoints.flatMap(item => item.writes ? [item.writes] : []));
+  for (const write of context.need.writes) {
+    if (write.entity === 'AgentBehavior' && write.operation === 'update' && !used.has(d2WriteKey(write))) delete write.calls;
+  }
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const row of Object.values(context.drafts[device].organisms)) {
+      for (const submit of row.submits) {
+        if (submit.write !== 'AgentBehavior.update') continue;
+        const command = design.endpoints.find(item => item.kind === 'cmd' && item.when === submit.intentId);
+        if (command?.writes) submit.write = command.writes;
+      }
+    }
+  }
+}
+
 test('the two saved external answers pass the gate once expectVersion is added', async () => {
   await withProjectFiles(async () => {
   for (const pageId of ['agent_behavior', 'my_conduct'] as const) {
     const commandId = pageId === 'agent_behavior' ? 'requestBehaviorChange' : 'sendConductChange';
     const envelope = JSON.parse(readFileSync(new URL(`./fixtures/d2_207/${pageId}-2.json`, import.meta.url), 'utf8')) as { raw: { result: { arguments: unknown } } };
     const context = await loadD2BffContext({ project: 102047, module: 'agents' }, pageId);
-    const design = normalizeD2BffDesign(buildD2BffDesign(envelope.raw.result.arguments), context.entities, '', { writes: context.need.writes, external: context.external });
+    const design = normalizeD2BffDesign(alignSavedAgentBehaviorWrites(buildD2BffDesign(envelope.raw.result.arguments), context.need.writes), context.entities, '', { writes: context.need.writes, external: context.external });
     const command = design.endpoints.find(item => item.id === commandId);
     const leaf = command?.input.find(item => item.name === 'expectVersion');
     assert.deepEqual(leaf, { name: 'expectVersion', type: 'string', origin: { kind: 'context', paths: [] } });
@@ -355,6 +391,7 @@ test('the two saved external answers pass the gate once expectVersion is added',
       assert.equal(input, 'agentId: the agent whose conduct changes. changeRequest: what the person wrote should change. The conduct is identified by the agent and the signed-in person. expectVersion: the version of the record, asked by updateAgent.');
     }
     assert.equal(command?.jsdoc.output, JSON.parse(readFileSync(new URL(`./fixtures/d2_207/${pageId}-2.json`, import.meta.url), 'utf8')).raw.result.arguments.endpoints.find((item: { id: string }) => item.id === commandId).jsdoc.output);
+    if (pageId === 'agent_behavior') agreeDraftWithSavedWrite(context, design);
     assert.deepEqual(checkD2Bff(design, context).map(item => `${item.code}: ${item.message}`), []);
   }
   });
@@ -435,7 +472,7 @@ test('the saved agent_behavior view gains version when the write returns it', as
   await withProjectFiles(async () => {
     const envelope = JSON.parse(readFileSync(new URL('./fixtures/d2_207/agent_behavior-2.json', import.meta.url), 'utf8')) as { raw: { result: { arguments: unknown } } };
     const context = await loadD2BffContext({ project: 102047, module: 'agents' }, 'agent_behavior');
-    const design = normalizeD2BffDesign(buildD2BffDesign(envelope.raw.result.arguments), context.entities, '', { writes: context.need.writes, external: context.external });
+    const design = normalizeD2BffDesign(alignSavedAgentBehaviorWrites(buildD2BffDesign(envelope.raw.result.arguments), context.need.writes), context.entities, '', { writes: context.need.writes, external: context.external });
     const view = design.types.find(item => item.name === 'AgentBehaviorDetail');
     assert.deepEqual(view?.fields.at(-1), stringVersionLeaf);
     assert.equal(view?.fields.filter(item => item.name === 'version').length, 1);
@@ -525,7 +562,7 @@ test('a saved agent_behavior design gains version on the view the page already r
   await withProjectFiles(async () => {
     const envelope = JSON.parse(readFileSync(new URL('./fixtures/d2_207/agent_behavior-2.json', import.meta.url), 'utf8')) as { raw: { result: { arguments: unknown } } };
     const context = await loadD2BffContext({ project: 102047, module: 'agents' }, 'agent_behavior');
-    const saved = withExpectVersion(buildD2BffDesign(envelope.raw.result.arguments));
+    const saved = withExpectVersion(alignSavedAgentBehaviorWrites(buildD2BffDesign(envelope.raw.result.arguments), context.need.writes));
     const facts = { writes: context.need.writes, external: context.external };
     assert.equal(saved.types.find(item => item.name === 'AgentBehaviorDetail')?.fields.some(item => item.name === 'version'), false);
     const once = addD2RecordVersion(saved, context.entities, facts);

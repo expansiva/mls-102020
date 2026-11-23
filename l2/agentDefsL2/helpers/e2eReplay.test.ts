@@ -766,7 +766,7 @@ async function runDiningStage(answers: Record<string, unknown[]>): Promise<{
   let blocked = '';
   const { report } = await finalizeD2Pages({ ...identity, scope: 'all' }, {
     readInput: async () => ({ ...identity, snapshotHash: 'sha256:input', selection: { writePageIds: ids } }) as unknown as D2InputSnapshot,
-    readBundle: async () => ({ artifacts: {} as never, files: [] }), assertStable: async () => undefined,
+    readBundle: async () => ({ artifacts: {} as never, files: [], changedPageIds: [] }), assertStable: async () => undefined,
     readPipeline: async () => ({ ...identity, steps: Object.fromEntries(['entry10', 'input20', 'pages50', 'bff55', 'shared60', 'contracts70'].map(step => [step, { status: 'approved', snapshotHash: 'sha256:input' }])) }) as never,
     reusable: async () => true, readReceipt: (_identity, pageId) => pageReceipt(pageId), indexed: () => true,
     readSource: async info => (page11Source.get(displayPath(info)) ?? files.get(displayPath(info)) ?? '') as string,
