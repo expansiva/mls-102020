@@ -75,7 +75,9 @@ import {
 import { getClassPickerMode, onDockedClassPickerChange, type IClassPickerSink } from '/_102020_/l2/aura/studio/classPickerDock.js';
 import {
   buildPageTree,
+  cutText,
   findNode,
+  moleculeShortName,
   treeDropRefusal,
   type IPageTree,
   type IPageTreeAccess,
@@ -89,6 +91,8 @@ import {
   type IAdvancedPrefs,
 } from '/_102020_/l2/aura/studio/studioAdvancedMode.js';
 import { LayoutLines } from '/_102020_/l2/aura/studio/studioLayoutLines.js';
+import { StudioAnnotate } from '/_102020_/l2/aura/studio/studioAnnotate.js';
+import { setAnnotHandler, type IAnnotElement } from '/_102020_/l2/aura/studio/studioAnnotateStore.js';
 import {
   onPageTreeDockChange,
   TREE_HOVER,
@@ -797,6 +801,8 @@ export class StudioEditor {
   /** The layout lines (advanced mode): exists only while armed AND some line is on. */
   private layoutLines: LayoutLines | null = null;
   private unsubAdvanced: (() => void) | null = null;
+  /** Annotating the page (AI tab): exists while armed; the marks it holds go to agentEditPage. */
+  private annotate: StudioAnnotate | null = null;
   private classPanel: IClassPanelState | null = null;
   /** The Molecules tab's answer; null once it was asked and nothing candidates. */
   private adopt: IAdoptState | null = null;
@@ -890,8 +896,9 @@ export class StudioEditor {
       this.hideClassPanel();
       this.publishSelection(null);
       void this.refreshTarget();
-      // Another page: the old tree's handles point at elements that are gone.
+      // Another page: the old tree's handles point at elements that are gone, and the marks belong to the old one.
       this.scheduleTree();
+      this.annotate?.pageChanged();
     });
     this.hostObserver.observe(host, { childList: true });
 
@@ -1019,10 +1026,15 @@ export class StudioEditor {
       this.unsubAdvanced = null;
       this.layoutLines?.destroy();
       this.layoutLines = null;
+      // The marks die with the editor: the panel hears an empty, unavailable state.
+      setAnnotHandler(null);
+      this.annotate?.destroy();
+      this.annotate = null;
       return;
     }
 
     if (wasOff) {
+      this.armAnnotate();
       this.addListeners();
       void this.refreshTarget();
       this.syncTreeWatch();
@@ -1345,6 +1357,13 @@ export class StudioEditor {
    */
   private onEditorKey = (e: KeyboardEvent): void => {
     if (this.currentMode() === 'off') return;
+
+    // While annotating, Esc and Ctrl+Z are the annotation's (leave / undo the last mark), before anything else.
+    if (this.annotate?.handleKey(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
 
     // Esc has THREE possible owners and the order is the whole guarantee (see the task's risk 1):
     //
@@ -3754,6 +3773,70 @@ export class StudioEditor {
     // Reaching those is the SAVE's job (see saveTarget, which the editor does not call).
     this.setStatus(`${what} ${where} — ${live.message}${note} ${t('status.localOnly')}`);
     this.publishEdited(file);
+  }
+
+  // --- Annotating the page (AI tab) ---
+
+  /**
+   * Creates the annotation and takes the AI tab's commands. Every element it marks is described exactly as the
+   * selection describes one for agentEditPage (tag, organism, path in the organism, anchor path, class), so a mark
+   * and a selected element are the same thing to the agent.
+   */
+  private armAnnotate(): void {
+    const host = this.host;
+    if (!host || this.annotate) return;
+    let tree: { source: string; tree: ITemplateTree } | null = null;
+    const templateTree = (): ITemplateTree | null => {
+      const source = this.target?.model.model.getValue() ?? '';
+      if (!source) return null;
+      if (tree?.source !== source) tree = { source, tree: scanTemplateTree(source) };
+      return tree.tree;
+    };
+    this.annotate = new StudioAnnotate({
+      host,
+      controlClass: CONTROL_CLASS,
+      candidates: () => {
+        const page = this.host ? findPageElement(this.host) : null;
+        if (!this.host) return [];
+        return Array.from(this.host.querySelectorAll<HTMLElement>('*')).filter((el) => el !== page
+          && !this.isControl(el) && el !== this.editSpan && !this.isSlotSource(el)
+          && el.getClientRects().length > 0 && this.resolveSelectableElement(el) === el);
+      },
+      describe: (el) => {
+        const path = this.domPathOf(el);
+        const templ = path.length ? templateTree() : null;
+        const resolved = templ ? resolveStructuralAnchor(templ, path) : null;
+        const element: IAnnotElement = {
+          tag: el.tagName.toLowerCase(),
+          organism: organismOf(el),
+          organismPath: pathWithinOrganism(el),
+          anchorPath: path.length ? [...path] : null,
+          literal: el.getAttribute('class') ?? '',
+          label: this.annotLabel(el),
+        };
+        return { ...element, repeated: Boolean(resolved?.ok && resolved.renders > 1) };
+      },
+      parentOf: (el) => {
+        const levels = this.selectionLevels(el);
+        const parent = levels.length >= 2 ? levels[levels.length - 2] : null;
+        const page = this.host ? findPageElement(this.host) : null;
+        return parent && parent !== page ? parent : null;
+      },
+      pageKey: () => this.pageTag() ?? '',
+      page: () => (this.host ? findPageElement(this.host) as HTMLElement | null : null),
+      pageFile: () => (this.target ? { project: this.target.project, folder: this.target.folder, shortName: this.target.shortName } : null),
+    });
+    setAnnotHandler((command) => this.annotate?.command(command));
+  }
+
+  /** What the AI tab shows for a marked element: organism id, molecule or tag, with a bit of its text. */
+  private annotLabel(el: HTMLElement): string {
+    const organism = el.getAttribute('data-organism-id');
+    if (organism) return organism;
+    const tag = el.tagName.toLowerCase();
+    const name = tag.includes('--') ? moleculeShortName(tag) : tag;
+    const text = cutText(el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '', 32);
+    return text ? `${name} “${text}”` : name;
   }
 
   // --- The layout lines (advanced mode) ---

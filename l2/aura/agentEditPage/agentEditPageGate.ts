@@ -26,7 +26,7 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     const page = await loadEditPageContext(args.project, args);
     const humanPrompt = editPageGatePrompt({
       request: args.request, pageLabel: page.label, definition: page.definition, outline: page.outline,
-      sharedDeclaration: page.sharedDeclaration, history: page.history, selected: page.selected,
+      sharedDeclaration: page.sharedDeclaration, history: page.history, selected: page.selected, marks: page.marks,
     });
     return [promptReady(context, parentStep, step, hookSequential, EDIT_PAGE_GATE_SYSTEM_PROMPT, humanPrompt, {
       name: EDIT_PAGE_GATE_TOOL, description: 'Apply (with the operations) or refuse (with the reason) the requested change', parameters: editPageGateSchema(page.organisms),
@@ -46,7 +46,7 @@ async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCon
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', reason)];
     }
     const page = await loadEditPageContext(args.project, args);
-    const { valid, dropped } = normalizeOperations(answer.operations, new Set(page.organisms));
+    const { valid, dropped } = normalizeOperations(answer.operations, new Set(page.organisms), page.marks.length);
     // An organism no method wraps literally cannot be patched: dropped here, not discovered in the patch.
     const operations = valid.filter(op => methodsForOperation(page.outline, op).length);
     if (!operations.length) {

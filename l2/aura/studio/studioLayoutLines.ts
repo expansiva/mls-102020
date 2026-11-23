@@ -248,31 +248,47 @@ export class LayoutLines {
     layer.innerHTML = rects.map((rect) => renderRect(rect, region)).join('');
   }
 
-  /**
-   * The part of the region on screen, in viewport coordinates; null when nothing of it shows.
-   *
-   * The host's own box is not enough: in the Studio it scrolls INSIDE the nav3 panel, so its top goes
-   * above the panel and, clamped only to the window, the lines would cover the Studio's header and tabs.
-   * Every ancestor that clips its content (overflow other than visible) cuts the region too.
-   */
   private visibleRegion(): IBox | null {
-    const r = this.ctx.host.getBoundingClientRect();
-    let left = Math.max(r.left, 0);
-    let top = Math.max(r.top, 0);
-    let right = Math.min(r.right, window.innerWidth);
-    let bottom = Math.min(r.bottom, window.innerHeight);
-    for (let node = this.ctx.host.parentElement; node && node !== document.body; node = node.parentElement) {
-      const cs = getComputedStyle(node);
-      if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
-      const clip = node.getBoundingClientRect();
-      left = Math.max(left, clip.left);
-      top = Math.max(top, clip.top);
-      right = Math.min(right, clip.right);
-      bottom = Math.min(bottom, clip.bottom);
-    }
-    if (right <= left || bottom <= top) return null;
-    return { x: left, y: top, w: right - left, h: bottom - top };
+    return visibleRegionOf(this.ctx.host);
   }
+}
+
+/**
+ * The part of the region on screen, in viewport coordinates; null when nothing of it shows.
+ *
+ * The host's own box is not enough: in the Studio it scrolls INSIDE the nav3 panel, so its top goes
+ * above the panel and, clamped only to the window, the lines would cover the Studio's header and tabs.
+ * Every ancestor that clips its content (overflow other than visible) cuts the region too.
+ */
+export function visibleRegionOf(host: HTMLElement, clips: readonly Element[] = clippingAncestors(host)): IBox | null {
+  const r = host.getBoundingClientRect();
+  let left = Math.max(r.left, 0);
+  let top = Math.max(r.top, 0);
+  let right = Math.min(r.right, window.innerWidth);
+  let bottom = Math.min(r.bottom, window.innerHeight);
+  for (const node of clips) {
+    const clip = node.getBoundingClientRect();
+    left = Math.max(left, clip.left);
+    top = Math.max(top, clip.top);
+    right = Math.min(right, clip.right);
+    bottom = Math.min(bottom, clip.bottom);
+  }
+  if (right <= left || bottom <= top) return null;
+  return { x: left, y: top, w: right - left, h: bottom - top };
+}
+
+/**
+ * The ancestors of `host` that clip their content (overflow other than visible). Reading styles is what costs; a
+ * caller that asks for the region every frame computes this once and passes it in.
+ */
+export function clippingAncestors(host: HTMLElement): Element[] {
+  const clips: Element[] = [];
+  for (let node = host.parentElement; node && node !== document.body; node = node.parentElement) {
+    const cs = getComputedStyle(node);
+    if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+    clips.push(node);
+  }
+  return clips;
 }
 
 function num(value: string): number {

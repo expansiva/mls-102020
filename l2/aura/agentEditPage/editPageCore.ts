@@ -32,7 +32,24 @@ export interface EditPageEntry {
   operations: EditOperation[] | null;
   /** The element selected in the Studio when the person asked (TASK-102020-agent-edit-page-selection); null = none. */
   element: EditElement | null;
+  /**
+   * What the person marked on the page (Studio annotation): each mark is the elements a stroke enclosed, with an
+   * optional note. A lone `element` arrives here as one mark without a note, so the rest of the agent reads one
+   * shape. Empty = nothing pointed at.
+   */
+  marks: EditMark[];
 }
+
+/** One annotation of the page: the elements a stroke enclosed, and what the person wrote about them. */
+export interface EditMark {
+  n: number;
+  note: string | null;
+  elements: EditElement[];
+}
+
+/** At most this many marks per request, and elements across them: a bigger patch is a riskier one. */
+export const EDIT_PAGE_MAX_MARKS = 5;
+export const EDIT_PAGE_MAX_MARKED_ELEMENTS = 10;
 
 /**
  * The selected element, as the Studio editor publishes it (`aura.edit.selection`, auraState IAuraEditSelection),
@@ -61,6 +78,8 @@ export interface EditOperation {
   summary: string;
   /** "Back to how it was": the patch undoes the earlier change and the history entry is removed. */
   revert: boolean;
+  /** The mark it answers, when the request had marks; null = the request as a whole. */
+  mark?: number | null;
 }
 
 /** The arguments of the gate and patch steps. */
@@ -78,7 +97,7 @@ const MODULE = /^[a-z][A-Za-z0-9]*$/u;
 const PAGE_ID = /^[a-z][A-Za-z0-9_]*$/u;
 const GENOME = /^page\d\d$/u;
 
-export const EDIT_PAGE_USAGE = 'Entry (JSON): { "module", "page", "device"?: "desktop"|"mobile", "genome"?: "page11", "request", "operations"?, "element"? }';
+export const EDIT_PAGE_USAGE = 'Entry (JSON): { "module", "page", "device"?: "desktop"|"mobile", "genome"?: "page11", "request", "operations"?, "element"?, "marks"? }';
 
 /** The Studio entry, validated. A refusal says what is wrong; nothing is guessed. */
 export function parseEditPageEntry(raw: string): { kind: 'entry'; entry: EditPageEntry } | { kind: 'refusal'; diagnostic: string } {
@@ -94,17 +113,24 @@ export function parseEditPageEntry(raw: string): { kind: 'entry'; entry: EditPag
   if (device !== 'desktop' && device !== 'mobile') return { kind: 'refusal', diagnostic: `EDIT_PAGE_ENTRY: device. ${EDIT_PAGE_USAGE}` };
   if (typeof genome !== 'string' || !GENOME.test(genome)) return { kind: 'refusal', diagnostic: `EDIT_PAGE_ENTRY: genome. ${EDIT_PAGE_USAGE}` };
   if (typeof row.request !== 'string' || !row.request.trim()) return { kind: 'refusal', diagnostic: `EDIT_PAGE_ENTRY: request. ${EDIT_PAGE_USAGE}` };
-  let operations: EditOperation[] | null = null;
-  if (row.operations !== undefined && row.operations !== null) {
-    operations = normalizeOperations(row.operations).valid;
-    if (!operations.length) return { kind: 'refusal', diagnostic: 'EDIT_PAGE_ENTRY: operations were given but none is valid' };
-  }
   let element: EditElement | null = null;
   if (row.element !== undefined && row.element !== null) {
     element = normalizeEditElement(row.element);
     if (!element) return { kind: 'refusal', diagnostic: 'EDIT_PAGE_ENTRY: element is malformed' };
   }
-  return { kind: 'entry', entry: { module: row.module, page: row.page, device, genome, request: row.request.trim(), operations, element } };
+  let marks: EditMark[] = element ? [{ n: 1, note: null, elements: [element] }] : [];
+  if (row.marks !== undefined && row.marks !== null) {
+    const parsed = normalizeEditMarks(row.marks);
+    if (!parsed.ok) return { kind: 'refusal', diagnostic: `EDIT_PAGE_ENTRY: marks ${parsed.reason}` };
+    if (parsed.value.length) marks = parsed.value;
+  }
+  // After the marks: an approved operation keeps the mark it answers only when that mark exists.
+  let operations: EditOperation[] | null = null;
+  if (row.operations !== undefined && row.operations !== null) {
+    operations = normalizeOperations(row.operations, undefined, marks.length).valid;
+    if (!operations.length) return { kind: 'refusal', diagnostic: 'EDIT_PAGE_ENTRY: operations were given but none is valid' };
+  }
+  return { kind: 'entry', entry: { module: row.module, page: row.page, device, genome, request: row.request.trim(), operations, element, marks } };
 }
 
 export function parseEditPageStepArgs(raw: string): EditPageStepArgs {
@@ -114,8 +140,34 @@ export function parseEditPageStepArgs(raw: string): EditPageStepArgs {
   if (!args || !Number.isSafeInteger(args.project) || args.project <= 0 || !MODULE.test(args.module) || !PAGE_ID.test(args.page)
     || (args.device !== 'desktop' && args.device !== 'mobile') || !GENOME.test(args.genome) || typeof args.request !== 'string'
     || !Number.isSafeInteger(args.attempt) || args.attempt < 1 || args.attempt > EDIT_PAGE_MAX_ATTEMPTS) throw new Error('EDIT_PAGE_ARGS: invalid');
-  // The element travels between steps as data: shaped again, never trusted.
-  return { ...args, element: args.element ? normalizeEditElement(args.element) : null };
+  // The element and the marks travel between steps as data: shaped again, never trusted.
+  const element = args.element ? normalizeEditElement(args.element) : null;
+  const parsed = normalizeEditMarks(args.marks ?? []);
+  const marks = parsed.ok && parsed.value.length ? parsed.value : element ? [{ n: 1, note: null, elements: [element] }] : [];
+  return { ...args, element, marks };
+}
+
+/**
+ * The marks in their declared shape, renumbered 1…n in the order given. Refused (with the reason) when malformed or
+ * over the limits: nothing is guessed and nothing is silently cut — a dropped mark would be a change the person
+ * asked for and never sees applied.
+ */
+export function normalizeEditMarks(raw: unknown): Guard<EditMark[]> {
+  if (!Array.isArray(raw)) return { ok: false, reason: 'is not a list' };
+  if (raw.length > EDIT_PAGE_MAX_MARKS) return { ok: false, reason: `are ${raw.length}; at most ${EDIT_PAGE_MAX_MARKS}` };
+  const marks: EditMark[] = [];
+  let total = 0;
+  for (const item of raw) {
+    const row = item && typeof item === 'object' && !Array.isArray(item) ? item as Record<string, unknown> : null;
+    if (!row || !Array.isArray(row.elements) || !row.elements.length) return { ok: false, reason: `#${marks.length + 1} has no element` };
+    const elements = row.elements.map(normalizeEditElement);
+    if (elements.some(element => !element)) return { ok: false, reason: `#${marks.length + 1} has a malformed element` };
+    total += elements.length;
+    const note = typeof row.note === 'string' && row.note.trim() ? row.note.trim().slice(0, 500) : null;
+    marks.push({ n: marks.length + 1, note, elements: elements as EditElement[] });
+  }
+  if (total > EDIT_PAGE_MAX_MARKED_ELEMENTS) return { ok: false, reason: `enclose ${total} elements; at most ${EDIT_PAGE_MAX_MARKED_ELEMENTS}` };
+  return { ok: true, value: marks };
 }
 
 /** `<module>/web/<device>/<genome>`: the folder of the page `.ts` and its `.defs.ts`. */
@@ -129,7 +181,7 @@ export function editPageFolder(entry: Pick<EditPageEntry, 'module' | 'device' | 
  * Keeps only well-formed operations, numbered op1…; with `organisms`, also only those whose organism is on the page
  * (null, the page shell, always is). Never trusts the model to name something that exists.
  */
-export function normalizeOperations(raw: unknown, organisms?: ReadonlySet<string>): { valid: EditOperation[]; dropped: string[] } {
+export function normalizeOperations(raw: unknown, organisms?: ReadonlySet<string>, marks = 0): { valid: EditOperation[]; dropped: string[] } {
   const valid: EditOperation[] = [];
   const dropped: string[] = [];
   for (const item of Array.isArray(raw) ? raw : []) {
@@ -143,7 +195,9 @@ export function normalizeOperations(raw: unknown, organisms?: ReadonlySet<string
     if (!change) { dropped.push(`${label}: no change`); continue; }
     if (organisms && organism !== null && !organisms.has(organism)) { dropped.push(`${label}: organism is not on this page`); continue; }
     if (valid.some(op => op.organism === organism && op.aspect === aspect)) { dropped.push(`${label}: repeated`); continue; }
-    valid.push({ id: `op${valid.length + 1}`, organism, aspect, change, summary, revert: row.revert === true });
+    // A mark number is kept only when it names a mark the request had.
+    const mark = Number.isInteger(row.mark) && (row.mark as number) >= 1 && (row.mark as number) <= marks ? row.mark as number : null;
+    valid.push({ id: `op${valid.length + 1}`, organism, aspect, change, summary, revert: row.revert === true, mark });
   }
   return { valid, dropped };
 }
@@ -629,8 +683,8 @@ export interface PatchContext {
   operations: readonly EditOperation[];
   /** Color token names of the project design system (empty = not checked). */
   tokens: readonly string[];
-  /** The selected element: narrows the methods and protects a selected molecule's behavior. */
-  focus?: EditFocus | null;
+  /** The selected or marked elements: narrow the methods and protect each marked molecule's behavior. */
+  focus?: EditFocus | readonly EditFocus[] | null;
 }
 
 /**
@@ -658,8 +712,8 @@ export function applyPagePatch(src: string, patch: PagePatch, ctx: PatchContext)
   if (color.length) return { ok: false, reason: `the patch uses ${color.join(' and ')}: color comes only from the design tokens, as bg-[var(--token,transparent)]` };
   const tokens = unknownTokens(before, after, ctx.tokens);
   if (tokens.length) return { ok: false, reason: `the patch uses tokens the design system does not have: ${tokens.map(name => `--${name}`).join(', ')}` };
-  if (ctx.focus?.molecule) {
-    const kept = guardMoleculeBehavior(before, after, ctx.focus.molecule);
+  for (const molecule of new Set(focusList(ctx.focus ?? null).map(focus => focus.molecule).filter((tag): tag is string => Boolean(tag)))) {
+    const kept = guardMoleculeBehavior(before, after, molecule);
     if (!kept.ok) return kept;
   }
 
@@ -747,9 +801,17 @@ export interface EditFocus {
  * only the method that holds the element (plus new helpers, always allowed); any other operation keeps the rule of
  * `methodsForOperation`.
  */
-export function methodsForOperationFocused(outline: readonly MethodOutline[], op: Pick<EditOperation, 'organism'>, focus: EditFocus | null): string[] {
-  if (focus?.method && op.organism === focus.organism) return [focus.method];
+export function methodsForOperationFocused(outline: readonly MethodOutline[], op: Pick<EditOperation, 'organism'>, focus: EditFocus | readonly EditFocus[] | null): string[] {
+  // Several marks on the same organism: the operation may touch the method of each of them.
+  const methods = [...new Set(focusList(focus).filter(item => item.method && op.organism === item.organism).map(item => item.method as string))];
+  if (methods.length) return methods;
   return methodsForOperation(outline, op);
+}
+
+/** One focus or many, as a list. */
+export function focusList(focus: EditFocus | readonly EditFocus[] | null): EditFocus[] {
+  if (!focus) return [];
+  return Array.isArray(focus) ? [...focus] : [focus as EditFocus];
 }
 
 /** Index after the `>` that closes the open tag starting at `from` (`<tag …>`), skipping quotes and `${…}`. */

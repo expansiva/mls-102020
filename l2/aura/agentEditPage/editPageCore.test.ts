@@ -211,7 +211,7 @@ test('design system color tokens', () => {
 
 test('the Studio entry', () => {
   const parsed = parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":" centralize "}');
-  assert.deepEqual(parsed, { kind: 'entry', entry: { module: 'sampleModule', page: 'pessoas', device: 'desktop', genome: 'page11', request: 'centralize', operations: null, element: null } });
+  assert.deepEqual(parsed, { kind: 'entry', entry: { module: 'sampleModule', page: 'pessoas', device: 'desktop', genome: 'page11', request: 'centralize', operations: null, element: null, marks: [] } });
   assert.equal(parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":"x","device":"tv"}').kind, 'refusal');
   assert.equal(parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":"x","operations":[{"aspect":"nope"}]}').kind, 'refusal');
 });

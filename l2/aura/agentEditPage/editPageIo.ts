@@ -22,7 +22,7 @@ import { currentEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 import { resolveStructuralAnchor, scanTemplateTree, type IDomPathStep } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import {
   catalogueLocales, designSystemColorTokens, editPageFolder, methodAtOffset, moleculeOfElement, organismAnchors, pageOutline, readPageDefinition, slotInDocs,
-  type EditElement, type EditFocus, type EditPageEntry, type MethodOutline, type PageDefinitionDigest,
+  type EditElement, type EditFocus, type EditMark, type EditPageEntry, type MethodOutline, type PageDefinitionDigest,
 } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
 
 export interface EditPageContext {
@@ -39,8 +39,22 @@ export interface EditPageContext {
   sharedDeclaration: string;
   tokens: string[];
   locales: string[];
-  /** The element the person selected, located in the source when its anchor resolves; null without one. */
+  /**
+   * The element the person selected, located in the source when its anchor resolves — set only when the request
+   * points at ONE element with no note (the selection of before marks existed). Otherwise null and `marks` says it.
+   */
   selected: SelectedElementContext | null;
+  /** What the person marked on the page, each element located; empty without marks. */
+  marks: MarkContext[];
+  /** Where the patch may act: the focus of every located element, selected or marked. */
+  foci: EditFocus[];
+}
+
+/** One mark of the page, with its elements located (an element this page does not have is left out). */
+export interface MarkContext {
+  n: number;
+  note: string | null;
+  elements: SelectedElementContext[];
 }
 
 export interface SelectedElementContext {
@@ -85,7 +99,7 @@ async function readText(project: number, folder: string, shortName: string, exte
 }
 
 /** Everything the gate and the patch read. Throws `EDIT_PAGE_NOT_FOUND` when the page `.ts` is not in the project. */
-export async function loadEditPageContext(project: number, entry: Pick<EditPageEntry, 'module' | 'page' | 'device' | 'genome'> & { element?: EditElement | null }): Promise<EditPageContext> {
+export async function loadEditPageContext(project: number, entry: Pick<EditPageEntry, 'module' | 'page' | 'device' | 'genome'> & { element?: EditElement | null; marks?: EditMark[] }): Promise<EditPageContext> {
   const folder = editPageFolder(entry);
   const page = await editorModel(project, folder, entry.page, '.ts');
   if (!page) throw new Error(`EDIT_PAGE_NOT_FOUND: _${project}_/l2/${folder}/${entry.page}.ts`);
@@ -104,6 +118,19 @@ export async function loadEditPageContext(project: number, entry: Pick<EditPageE
     }
   }
   const digest = definition ?? { intent: '', organisms: anchors.map(id => ({ id, kind: '', text: '', section: '', purpose: '' })) };
+  const known = new Set([...digest.organisms.map(item => item.id), ...anchors]);
+  const requested: EditMark[] = entry.marks?.length ? entry.marks : entry.element ? [{ n: 1, note: null, elements: [entry.element] }] : [];
+  const marks: MarkContext[] = [];
+  for (const mark of requested) {
+    const elements: SelectedElementContext[] = [];
+    for (const element of mark.elements) {
+      const located = await selectedElementContext(source, element, known);
+      if (located) elements.push(located);
+    }
+    if (elements.length) marks.push({ n: mark.n, note: mark.note, elements });
+  }
+  // One element and no note is the plain selection: shown as before, so its prompt does not change.
+  const single = marks.length === 1 && marks[0].elements.length === 1 && !marks[0].note ? marks[0].elements[0] : null;
   return {
     folder,
     label: `${entry.module}/${entry.page} (${entry.device}, ${entry.genome})`,
@@ -117,7 +144,9 @@ export async function loadEditPageContext(project: number, entry: Pick<EditPageE
     sharedDeclaration: await readText(project, `${entry.module}/web/shared`, `${entry.page}Dts`, '.txt'),
     tokens: designSystemColorTokens(await readText(project, '', 'designSystem', '.ts')),
     locales: catalogueLocales(source),
-    selected: entry.element ? await selectedElementContext(source, entry.element, new Set([...digest.organisms.map(item => item.id), ...anchors])) : null,
+    selected: single,
+    marks: single ? [] : marks,
+    foci: marks.flatMap(mark => mark.elements.map(item => item.focus)),
   };
 }
 
@@ -222,6 +251,50 @@ async function compileDiagnosis(file: IStudioEditTarget): Promise<string> {
   return `version ${results.cacheVersion || '(none)'}, js ${results.prodJS?.length ?? 0} chars, errors ${results.errors?.length ?? 0}, `
     + `in cache now: ${cached}, same model as the app: ${file.model === (mls.editor.getModels(file.project, file.shortName, file.folder, 2)?.ts ?? null)}, `
     + `trace: ${(results.trace ?? []).slice(-6).join(' / ')}`;
+}
+
+/**
+ * The page as it is now: its `.ts` text and the history of its defs (null = no defs, or a history that does not
+ * parse). Taken before an apply, it is what a discard puts back; taken after, it says whether the page is still
+ * the one the apply left.
+ */
+export interface EditPageSnapshot {
+  project: number;
+  folder: string;
+  page: string;
+  source: string;
+  history: DefsHistoryEntry[] | null;
+}
+
+export async function snapshotEditPage(project: number, entry: Pick<EditPageEntry, 'module' | 'page' | 'device' | 'genome'>): Promise<EditPageSnapshot | null> {
+  return snapshotPageFile(project, editPageFolder(entry), entry.page);
+}
+
+/** The same, for a page already located (a snapshot's own `folder` and `page`). */
+export async function snapshotPageFile(project: number, folder: string, shortName: string): Promise<EditPageSnapshot | null> {
+  const page = await editorModel(project, folder, shortName, '.ts');
+  if (!page) return null;
+  let history: DefsHistoryEntry[] | null = null;
+  const defs = await editorModel(project, folder, shortName, '.defs.ts');
+  if (defs) {
+    try {
+      history = splitDefsHistory(defs.model.model.getValue()).history;
+    } catch {
+      history = null;
+    }
+  }
+  return { project, folder, page: shortName, source: page.model.model.getValue(), history };
+}
+
+/**
+ * Puts the page back as `snapshot` holds it, through the same writes the apply used: the `.ts` (model, local copy,
+ * compile + live update) and the defs history. Local only, like the apply: nothing reaches the project before a save.
+ */
+export async function restoreEditPage(snapshot: EditPageSnapshot): Promise<CommitResult> {
+  const result = await commitPageSource(snapshot.project, snapshot.folder, snapshot.page, snapshot.source);
+  const history = snapshot.history;
+  if (history) await recordInDefsHistory(snapshot.project, snapshot.folder, snapshot.page, () => history);
+  return result;
 }
 
 /** Records the applied requests in the page defs history (enabled projects only). */

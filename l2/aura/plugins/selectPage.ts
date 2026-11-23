@@ -23,6 +23,8 @@ import {
     type IAdvancedPrefs,
     type LayoutLine,
 } from '/_102020_/l2/aura/studio/studioAdvancedMode.js';
+import { annotCommand, getAnnotState, onAnnotStateChange, type IAnnotState } from '/_102020_/l2/aura/studio/studioAnnotateStore.js';
+import { restoreEditPage, snapshotEditPage, snapshotPageFile, type EditPageSnapshot } from '/_102020_/l2/aura/agentEditPage/editPageIo.js';
 import type { StudioTheme } from '/_102033_/l2/cbe/studioTheme.js';
 import type { StudioDevice } from '/_102033_/l2/cbe/studioDevice.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
@@ -63,6 +65,22 @@ const message_en = {
     generatePage: 'Generate page',
     notGenerated: 'Not generated',
     editPage: 'Change this page',
+    annotate: 'Annotate',
+    annotating: 'Annotating…',
+    annotateOff: 'Turn on Studio editing on this page to annotate it.',
+    annotateHint: 'No marks. Use “Annotate” to circle on the page what you want to change.',
+    marksCount: '{n} mark(s) — sent with the request',
+    markNoNote: 'no note',
+    markNotePlaceholder: 'note (optional)',
+    markRemove: 'Remove this mark',
+    markRepeated: 'list item: applies to every row',
+    planMark: 'mark {n}',
+    drawingTitle: 'Drawing',
+    drawingNotSent: 'Not sent to the AI for now — it cannot receive images yet.',
+    drawingCapturing: 'creating the image…',
+    drawingPending: 'the image is created when you finish drawing (Done)',
+    drawingFailed: 'the image could not be created: {error}',
+    drawingRemove: 'Remove the drawing',
     editUnavailable: 'This page is not in a generated page folder (web/<device>/pageNN), so the AI cannot change it.',
     editPlaceholder: 'Describe the change (e.g. center the buttons of the list)…',
     editReview: 'Review',
@@ -78,6 +96,10 @@ const message_en = {
     editNotRecorded: 'Not recorded in this project: "Regenerate page" undoes this change. Save to keep it in the project.',
     editLiveNotApplied: 'The screen was not refreshed ({reason}): reload to see the change.',
     editNoAnswer: 'The agent ended without an answer (the task failed). Open the task to see why.',
+    editDiscard: 'Discard change',
+    editDiscarding: 'Discarding…',
+    editDiscarded: 'Change discarded: the page is back as it was before.',
+    editDiscardStale: 'The page changed after this change; discarding now would undo those edits too. Use undo (Ctrl+Z) instead.',
     editElement: 'Element',
     editElementIn: 'in',
     editElementRemove: 'Do not send this element',
@@ -152,6 +174,22 @@ const messages: Record<string, MessageType> = {
         generatePage: 'Gerar página',
         notGenerated: 'Não gerada',
         editPage: 'Alterar esta página',
+        annotate: 'Anotar',
+        annotating: 'Anotando…',
+        annotateOff: 'Ative a edição do Studio nesta página para anotá-la.',
+        annotateHint: 'Sem marcações. Use “Anotar” para circular na página o que quer mudar.',
+        marksCount: '{n} marcação(ões) — vão junto com o pedido',
+        markNoNote: 'sem nota',
+        markNotePlaceholder: 'nota (opcional)',
+        markRemove: 'Remover esta marcação',
+        markRepeated: 'item de lista: vale para todas as linhas',
+        planMark: 'marcação {n}',
+        drawingTitle: 'Desenho',
+        drawingNotSent: 'Não vai para a IA por enquanto — ela ainda não recebe imagens.',
+        drawingCapturing: 'gerando a imagem…',
+        drawingPending: 'a imagem é gerada ao concluir o desenho (Concluir)',
+        drawingFailed: 'não foi possível gerar a imagem: {error}',
+        drawingRemove: 'Remover o desenho',
         editUnavailable: 'Esta página não está numa pasta de página gerada (web/<dispositivo>/pageNN), então a IA não consegue alterá-la.',
         editPlaceholder: 'Descreva a mudança (ex.: centralize os botões da lista)…',
         editReview: 'Revisar',
@@ -167,6 +205,10 @@ const messages: Record<string, MessageType> = {
         editNotRecorded: 'Não registrado neste projeto: o "Refazer página" desfaz esta mudança. Salve para gravar no projeto.',
         editLiveNotApplied: 'A tela não foi atualizada ({reason}): recarregue para ver a mudança.',
         editNoAnswer: 'O agente terminou sem resposta (a task falhou). Abra a task para ver o motivo.',
+        editDiscard: 'Descartar alteração',
+        editDiscarding: 'Descartando…',
+        editDiscarded: 'Alteração descartada: a página voltou a ser como era antes.',
+        editDiscardStale: 'A página mudou depois desta alteração; descartar agora desfaria essas edições também. Use o desfazer (Ctrl+Z).',
         editElement: 'Elemento',
         editElementIn: 'em',
         editElementRemove: 'Não enviar este elemento',
@@ -238,6 +280,22 @@ const messages: Record<string, MessageType> = {
         generatePage: 'Generar página',
         notGenerated: 'No generada',
         editPage: 'Cambiar esta página',
+        annotate: 'Anotar',
+        annotating: 'Anotando…',
+        annotateOff: 'Activa la edición del Studio en esta página para anotarla.',
+        annotateHint: 'Sin marcas. Usa “Anotar” para marcar en la página lo que quieres cambiar.',
+        marksCount: '{n} marca(s) — van con el pedido',
+        markNoNote: 'sin nota',
+        markNotePlaceholder: 'nota (opcional)',
+        markRemove: 'Quitar esta marca',
+        markRepeated: 'elemento de lista: vale para todas las filas',
+        planMark: 'marca {n}',
+        drawingTitle: 'Dibujo',
+        drawingNotSent: 'No se envía a la IA por ahora — todavía no recibe imágenes.',
+        drawingCapturing: 'generando la imagen…',
+        drawingPending: 'la imagen se genera al terminar el dibujo (Concluir)',
+        drawingFailed: 'no se pudo generar la imagen: {error}',
+        drawingRemove: 'Quitar el dibujo',
         editUnavailable: 'Esta página no está en una carpeta de página generada (web/<dispositivo>/pageNN), así que la IA no puede cambiarla.',
         editPlaceholder: 'Describa el cambio (p. ej. centre los botones de la lista)…',
         editReview: 'Revisar',
@@ -253,6 +311,10 @@ const messages: Record<string, MessageType> = {
         editNotRecorded: 'No registrado en este proyecto: "Regenerar página" deshace este cambio. Guarde para conservarlo en el proyecto.',
         editLiveNotApplied: 'La pantalla no se actualizó ({reason}): recargue para ver el cambio.',
         editNoAnswer: 'El agente terminó sin respuesta (la tarea falló). Abra la tarea para ver el motivo.',
+        editDiscard: 'Descartar cambio',
+        editDiscarding: 'Descartando…',
+        editDiscarded: 'Cambio descartado: la página volvió a ser como era antes.',
+        editDiscardStale: 'La página cambió después de este cambio; descartar ahora desharía esas ediciones también. Use deshacer (Ctrl+Z).',
         editElement: 'Elemento',
         editElementIn: 'en',
         editElementRemove: 'No enviar este elemento',
@@ -317,6 +379,14 @@ interface IEditOperation {
     change: string;
     summary: string;
     revert: boolean;
+    /** The mark this operation answers (agentEditPage), when the request had marks. */
+    mark?: number | null;
+}
+
+// A mark of the page sent with the request (agentEditPage `marks`), from the Studio annotation.
+interface IEditMark {
+    note: string | null;
+    elements: IEditElement[];
 }
 
 // The selected element sent with the request (agentEditPage `element`): what locates it, from `aura.edit.selection`.
@@ -376,8 +446,12 @@ export class PluginSelectPage extends StateLitElement {
     // the last error and the last result.
     @state() private _editDraft: Record<string, string> = {};
     @state() private _editDevice: Record<string, string> = {};
-    @state() private _editPlan: Record<string, { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null }> = {};
-    @state() private _editBusy: Record<string, 'plan' | 'apply'> = {};
+    @state() private _editPlan: Record<string, { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null; marks: IEditMark[] }> = {};
+    @state() private _editBusy: Record<string, 'plan' | 'apply' | 'discard'> = {};
+    // The applied change that can still be discarded, per page: the page before it and the page it left.
+    private _editUndo: Record<string, { before: EditPageSnapshot; after: EditPageSnapshot }> = {};
+    // The last change was discarded (the panel says so until the next request).
+    @state() private _editDiscarded: Record<string, boolean> = {};
     @state() private _editError: Record<string, string> = {};
     @state() private _editNotes: Record<string, IEditNotes> = {};
     // The element selected in the Studio. `_selectionOff` = the person removed
@@ -393,6 +467,9 @@ export class PluginSelectPage extends StateLitElement {
     // The advanced mode (studioAdvancedMode): the switch in the Page tab, the layout lines in the Visual tab.
     @state() private _advanced: IAdvancedPrefs = getAdvancedPrefs();
     private _unsubAdvanced: (() => void) | null = null;
+    // The page annotation (studioAnnotateStore): the marks the editor holds, as data.
+    @state() private _annot: IAnnotState = getAnnotState();
+    private _unsubAnnot: (() => void) | null = null;
     // The page variant the studio shows (Desktop | Mobile); null = not in the client's studio mode.
     @state() private _contentDevice: StudioDevice | null = null;
     @state() private _deviceBusy = false;
@@ -410,6 +487,7 @@ export class PluginSelectPage extends StateLitElement {
         this._unsubTasks = subscribeTaskManager(() => this.requestUpdate());
         // Followed, not only read: the shortcut (Ctrl+Alt+G) changes the chips from the editor.
         this._unsubAdvanced = onAdvancedPrefsChange(prefs => { this._advanced = prefs; });
+        this._unsubAnnot = onAnnotStateChange(next => { this._annot = next; });
         this._selection = getAuraEdit()?.selection ?? null;
         subscribe('aura.edit.selection', this);
         subscribe('aura.actualDevice', this);
@@ -483,6 +561,8 @@ export class PluginSelectPage extends StateLitElement {
         this._unsubTasks?.();
         this._unsubAdvanced?.();
         this._unsubAdvanced = null;
+        this._unsubAnnot?.();
+        this._unsubAnnot = null;
         unsubscribe('aura.edit.selection', this);
         unsubscribe('aura.actualDevice', this);
     }
@@ -1076,6 +1156,7 @@ export class PluginSelectPage extends StateLitElement {
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
                 <div class="flex items-center gap-2">
                     <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
+                    ${this._renderAnnotateButton(page, !!busy)}
                     ${devices.length > 1 ? html`
                         <select class="ml-auto text-[10px] px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300"
                             .value=${target.device}
@@ -1086,6 +1167,7 @@ export class PluginSelectPage extends StateLitElement {
                     ` : nothing}
                 </div>
                 ${this._renderElementChip(page, !!busy)}
+                ${this._renderMarks(page, !!busy)}
                 <textarea
                     rows="2"
                     class="${inputCls} resize-y"
@@ -1096,7 +1178,7 @@ export class PluginSelectPage extends StateLitElement {
                 ></textarea>
                 <button
                     class="self-start text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                    ?disabled=${!!busy || !(this._editDraft[page.name] ?? '').trim()}
+                    ?disabled=${!!busy || !this._editRequest(page)}
                     @click=${() => this._onPlanEdit(page)}
                 >${busy === 'plan' ? this.msg.editPlanning : busy === 'apply' ? this.msg.editApplying : this.msg.editReview}</button>
                 ${done ? html`
@@ -1104,7 +1186,17 @@ export class PluginSelectPage extends StateLitElement {
                         <span><span class="font-semibold">${this.msg.editWhatChanged}:</span> ${done.notes}</span>
                         <span class="text-[10px] text-gray-500 dark:text-gray-400">${done.history === 'written' || done.history === 'unchanged' ? this.msg.editRecorded : this.msg.editNotRecorded}</span>
                         ${done.live ? html`<span class="text-[10px] text-amber-600 dark:text-amber-400">${this.msg.editLiveNotApplied.replace('{reason}', done.live)}</span>` : nothing}
+                        ${this._editUndo[page.name] ? html`
+                            <button type="button"
+                                class="self-start mt-0.5 text-xs px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                                ?disabled=${!!busy}
+                                @click=${() => this._onDiscardEdit(page)}
+                            >${busy === 'discard' ? this.msg.editDiscarding : this.msg.editDiscard}</button>
+                        ` : nothing}
                     </div>
+                ` : nothing}
+                ${this._editDiscarded[page.name] && !done ? html`
+                    <div class="text-xs text-gray-600 dark:text-gray-300 rounded bg-gray-100 dark:bg-gray-800/60 px-2 py-1.5">${this.msg.editDiscarded}</div>
                 ` : nothing}
                 ${error ? html`
                     <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${error}</div>
@@ -1117,8 +1209,113 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
+    /** Whether the annotation was made on THIS page (file and device). */
+    private _annotOnPage(page: IPageEntry): boolean {
+        const target = this._editTarget(page);
+        const folder = page.file?.folder ?? '';
+        const base = folder.slice(0, folder.lastIndexOf('/web/'));
+        const file = this._annot.file;
+        if (!target || !base || !file) return false;
+        return file.project === page.file.project && file.shortName === page.file.shortName
+            && file.folder === `${base}/web/${target.device}/${target.genome}`;
+    }
+
+    /**
+     * The marks of the annotation, when they are about THIS page (file and device), as agentEditPage takes them.
+     * Only the ELEMENT marks: the pen's drawing is an image, and the agents cannot receive images yet.
+     */
+    private _marksFor(page: IPageEntry): IEditMark[] {
+        const annot = this._annot;
+        if (!annot.marks.length || !this._annotOnPage(page)) return [];
+        return annot.marks.map(mark => ({
+            note: mark.note.trim() || null,
+            elements: mark.elements.map(({ label: _label, ...element }) => element),
+        }));
+    }
+
+    // The way into the annotation: on the page on screen, with the editor armed.
+    private _renderAnnotateButton(page: IPageEntry, busy: boolean) {
+        const annot = this._annot;
+        const usable = annot.available && !busy;
+        return html`
+            <button type="button"
+                class="ml-auto text-[11px] px-2 py-0.5 rounded-md cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+                    ${annot.active ? 'bg-pink-500 text-white' : 'border border-pink-400 text-pink-600 dark:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-900/20'}"
+                title=${annot.available ? '' : this.msg.annotateOff}
+                ?disabled=${!usable}
+                @click=${() => annotCommand({ kind: annot.active ? 'stop' : 'start' })}
+            >✎ ${annot.active ? this.msg.annotating : this.msg.annotate}</button>
+        `;
+    }
+
+    // The marks of the page, numbered, each with its note (editable here too) and a way to remove it.
+    // A free drawing of the pen: its image, its note, and the plain statement that it does not go to the AI yet.
+    private _renderDrawing(drawing: IAnnotState['drawings'][number], busy: boolean) {
+        return html`
+            <div class="flex flex-col gap-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-medium text-gray-700 dark:text-gray-200">✎ ${this.msg.drawingTitle} ${drawing.id}</span>
+                    <button type="button" class="ml-auto text-gray-400 hover:text-red-500 cursor-pointer" title=${this.msg.drawingRemove}
+                        ?disabled=${busy}
+                        @click=${() => annotCommand({ kind: 'removeDrawing', id: drawing.id })}>×</button>
+                </div>
+                ${drawing.image
+                    ? html`<img src=${drawing.image} alt=${this.msg.drawingTitle} class="w-full max-h-48 object-contain rounded border border-gray-100 dark:border-gray-800 bg-white">`
+                    : nothing}
+                ${drawing.capturing ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.drawingCapturing}</span>` : nothing}
+                ${drawing.pending && !drawing.capturing ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.drawingPending}</span>` : nothing}
+                ${drawing.failed ? html`<span class="text-[10px] text-red-600 dark:text-red-400 wrap-break-word">${this.msg.drawingFailed.replace('{error}', drawing.error)}</span>` : nothing}
+                <input type="text" class="text-[11px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-transparent text-gray-600 dark:text-gray-300 placeholder-gray-400"
+                    placeholder=${this.msg.markNotePlaceholder}
+                    ?disabled=${busy}
+                    .value=${drawing.note}
+                    @input=${(e: Event) => annotCommand({ kind: 'drawingNote', id: drawing.id, note: (e.target as HTMLInputElement).value })}>
+                <span class="text-[10px] text-amber-600 dark:text-amber-400">${this.msg.drawingNotSent}</span>
+            </div>
+        `;
+    }
+
+    private _renderMarks(page: IPageEntry, busy: boolean) {
+        const annot = this._annot;
+        if (!annot.available) return nothing;
+        // The drawings are shown on the page they were made on, like the marks.
+        const drawings = annot.drawings.length && this._annotOnPage(page)
+            ? html`${annot.drawings.map(each => this._renderDrawing(each, busy))}`
+            : nothing;
+        if (!this._marksFor(page).length) {
+            if (drawings !== nothing) return drawings;
+            return annot.active ? nothing : html`<span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.annotateHint}</span>`;
+        }
+        return html`
+            ${drawings}
+            <div class="flex flex-col gap-1">
+                <span class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.marksCount.replace('{n}', String(annot.marks.length))}</span>
+                ${annot.marks.map(mark => html`
+                    <div class="flex items-start gap-2 rounded-md border px-2 py-1.5
+                        ${annot.focused === mark.n ? 'border-pink-400' : 'border-gray-200 dark:border-gray-700'} bg-white dark:bg-gray-900">
+                        <button type="button" class="shrink-0 w-5 h-5 rounded-full bg-pink-500 text-white text-[10px] font-bold cursor-pointer"
+                            @click=${() => annotCommand({ kind: 'focus', n: mark.n })}>${mark.n}</button>
+                        <div class="min-w-0 flex-1 flex flex-col gap-0.5">
+                            <span class="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate"
+                                title=${mark.elements.map(item => item.label).join(' + ')}>${mark.elements.map(item => item.label).join(' + ')}</span>
+                            ${mark.repeated ? html`<span class="text-[10px] text-amber-600 dark:text-amber-400">${this.msg.markRepeated}</span>` : nothing}
+                            <input type="text" class="text-[11px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-transparent text-gray-600 dark:text-gray-300 placeholder-gray-400"
+                                placeholder=${this.msg.markNotePlaceholder}
+                                ?disabled=${busy}
+                                .value=${mark.note}
+                                @input=${(e: Event) => annotCommand({ kind: 'note', n: mark.n, note: (e.target as HTMLInputElement).value })}>
+                        </div>
+                        <button type="button" class="shrink-0 text-gray-400 hover:text-red-500 cursor-pointer" title=${this.msg.markRemove}
+                            ?disabled=${busy}
+                            @click=${() => annotCommand({ kind: 'remove', n: mark.n })}>×</button>
+                    </div>
+                `)}
+            </div>
+        `;
+    }
+
     // The gate's plan, shown for confirmation before anything is written.
-    private _renderEditConfirm(page: IPageEntry, plan: { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null }) {
+    private _renderEditConfirm(page: IPageEntry, plan: { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null; marks: IEditMark[] }) {
         const busy = this._editBusy[page.name];
         return html`
             <div class="rounded-lg border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-3 py-2.5 flex flex-col gap-2">
@@ -1127,9 +1324,11 @@ export class PluginSelectPage extends StateLitElement {
                 ${plan.element ? html`
                     <span class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.editElement}: <span class="font-mono">${plan.element.tag}</span>${plan.element.organism ? ` ${this.msg.editElementIn} ${plan.element.organism}` : ''}</span>
                 ` : nothing}
+                ${plan.marks.length ? html`<span class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.marksCount.replace('{n}', String(plan.marks.length))}</span>` : nothing}
                 <div class="flex flex-col gap-1">
                     ${plan.operations.map(op => html`
                         <div class="flex items-baseline gap-1.5 text-xs text-gray-700 dark:text-gray-200">
+                            ${op.mark ? html`<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 bg-pink-500 text-white" title=${this.msg.planMark.replace('{n}', String(op.mark))}>${op.mark}</span>` : nothing}
                             <span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 shrink-0">${op.organism ?? this.msg.editPageShell}</span>
                             <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">${op.aspect}</span>
                             ${op.revert ? html`<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">${this.msg.editRevert}</span>` : nothing}
@@ -1160,13 +1359,13 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
-    private _editEntry(page: IPageEntry, request: string, device: string, element: IEditElement | null, operations?: IEditOperation[]): string | null {
+    private _editEntry(page: IPageEntry, request: string, device: string, element: IEditElement | null, operations?: IEditOperation[], marks: IEditMark[] = []): string | null {
         const target = this._editTarget(page);
         const module = this._moduleName ?? this._modulePath;
         if (!target || !module) return null;
         return JSON.stringify({
             module, page: page.file?.shortName ?? page.name, device, genome: target.genome, request,
-            ...(element ? { element } : {}), ...(operations ? { operations } : {}),
+            ...(element ? { element } : {}), ...(operations ? { operations } : {}), ...(marks.length ? { marks } : {}),
         });
     }
 
@@ -1179,20 +1378,44 @@ export class PluginSelectPage extends StateLitElement {
     }
 
     // Phase PLAN: only the gate runs; the operations come back for confirmation and nothing is written.
+    /**
+     * What is asked: the text written, or — with nothing written — the notes of the marks, numbered. Marks with notes
+     * are a request on their own; marks without notes only say where, so with no text they ask nothing.
+     */
+    private _editRequest(page: IPageEntry): string {
+        const written = (this._editDraft[page.name] ?? '').trim();
+        if (written) return written;
+        return this._marksFor(page)
+            .map((mark, i) => (mark.note ? `${i + 1}: ${mark.note}` : ''))
+            .filter(Boolean)
+            .join('; ');
+    }
+
     private async _onPlanEdit(page: IPageEntry) {
-        const request = (this._editDraft[page.name] ?? '').trim();
+        const request = this._editRequest(page);
         const device = this._editTarget(page)?.device;
         if (!request || !device || this._editBusy[page.name]) return;
-        const { element } = this._selectedElement(page);
-        const entry = this._editEntry(page, request, device, element);
+        const { element: selected } = this._selectedElement(page);
+        // With marks, the selected element is one more mark without a note (one shape for the agent), when it fits.
+        const marks = this._marksFor(page);
+        if (marks.length && selected && marks.length < 5 && !marks.some(mark => mark.elements.some(item => JSON.stringify(item.anchorPath) === JSON.stringify(selected.anchorPath)))) {
+            marks.push({ note: null, elements: [selected] });
+        }
+        const element = marks.length ? null : selected;
+        const entry = this._editEntry(page, request, device, element, undefined, marks);
         if (!entry) return;
+        // The request is out: the drawing pointer gives the page back (the marks stay, they are part of it).
+        if (this._annot.active) annotCommand({ kind: 'stop' });
+        // A new request: the previous change is kept for good.
+        delete this._editUndo[page.name];
+        this._editDiscarded = { ...this._editDiscarded, [page.name]: false };
         this._setEdit('_editError', page.name, undefined);
         this._setEdit('_editNotes', page.name, undefined);
         this._setEdit('_editBusy', page.name, 'plan');
         try {
             const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set(`edit:${page.name}`, data); this.requestUpdate(); });
             if (result.failure) this._setEdit('_editError', page.name, result.failure);
-            else if (result.plan?.length) this._setEdit('_editPlan', page.name, { request, device, operations: result.plan, element });
+            else if (result.plan?.length) this._setEdit('_editPlan', page.name, { request, device, operations: result.plan, element, marks });
             // A task the system failed (an LLM call that never came back right) emits nothing of ours: say so.
             else this._setEdit('_editError', page.name, this.msg.editNoAnswer);
         } catch (e: any) {
@@ -1207,22 +1430,68 @@ export class PluginSelectPage extends StateLitElement {
         const plan = this._editPlan[page.name];
         if (!plan || this._editBusy[page.name]) return;
         // The element the plan was made with goes back with it, even if the selection moved since.
-        const entry = this._editEntry(page, plan.request, plan.device, plan.element, plan.operations);
+        const entry = this._editEntry(page, plan.request, plan.device, plan.element, plan.operations, plan.marks);
         if (!entry) return;
+        if (this._annot.active) annotCommand({ kind: 'stop' });
         this._setEdit('_editError', page.name, undefined);
         this._setEdit('_editBusy', page.name, 'apply');
         try {
+            // The page before the change, for a discard. Without it the change is still applied, just not discardable.
+            const before = await this._snapshotPage(entry);
             const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set(`edit:${page.name}`, data); this.requestUpdate(); });
             if (result.failure) this._setEdit('_editError', page.name, result.failure);
             // No notes = the apply never finished (the plan stays, to try again).
             else if (!result.notes) this._setEdit('_editError', page.name, this.msg.editNoAnswer);
             else {
+                const after = before ? await this._snapshotPage(entry) : null;
+                if (before && after && after.source !== before.source) this._editUndo[page.name] = { before, after };
                 this._setEdit('_editPlan', page.name, undefined);
                 this._editDraft = { ...this._editDraft, [page.name]: '' };
+                // The marks were for this request: applied, they are done (the page they circled has changed).
+                if (plan.marks.length) annotCommand({ kind: 'clear' });
                 if (result.notes) this._setEdit('_editNotes', page.name, result.notes);
                 // The remount rebuilt the page: the selection that was sent points at nodes that are gone.
                 if (plan.element) this._selectionUsed = this._selection;
             }
+        } catch (e: any) {
+            this._setEdit('_editError', page.name, e?.message ?? String(e));
+        } finally {
+            this._setEdit('_editBusy', page.name, undefined);
+        }
+    }
+
+    /** The page the entry aims at, as it is now; null when it cannot be read (the change is then not discardable). */
+    private async _snapshotPage(entry: string): Promise<EditPageSnapshot | null> {
+        try {
+            const project = Number(mls.actualProject || 0);
+            if (!Number.isSafeInteger(project) || project <= 0) return null;
+            return await snapshotEditPage(project, JSON.parse(entry));
+        } catch (error) {
+            console.warn('[selectPage] the page could not be read for a discard:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Discard: the page and its defs history go back to what they were before the change. Only while the page is
+     * still the one the change left — a later edit (class picker, move, another request) would be lost with it.
+     */
+    private async _onDiscardEdit(page: IPageEntry) {
+        const undo = this._editUndo[page.name];
+        if (!undo || this._editBusy[page.name]) return;
+        this._setEdit('_editError', page.name, undefined);
+        this._setEdit('_editBusy', page.name, 'discard');
+        try {
+            const now = await snapshotPageFile(undo.after.project, undo.after.folder, undo.after.page);
+            if (!now || now.source !== undo.after.source) {
+                this._setEdit('_editError', page.name, this.msg.editDiscardStale);
+                return;
+            }
+            const result = await restoreEditPage(undo.before);
+            delete this._editUndo[page.name];
+            this._setEdit('_editNotes', page.name, undefined);
+            this._editDiscarded = { ...this._editDiscarded, [page.name]: true };
+            if (result.live) this._setEdit('_editError', page.name, this.msg.editLiveNotApplied.replace('{reason}', result.live));
         } catch (e: any) {
             this._setEdit('_editError', page.name, e?.message ?? String(e));
         } finally {

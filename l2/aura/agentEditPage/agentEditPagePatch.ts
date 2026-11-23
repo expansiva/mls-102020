@@ -32,7 +32,7 @@ function operationsOf(args: EditPageStepArgs) {
 }
 
 function methodsByOperation(page: EditPageContext, args: EditPageStepArgs): Record<string, string[]> {
-  return Object.fromEntries(operationsOf(args).map(op => [op.id, methodsForOperationFocused(page.outline, op, page.selected?.focus ?? null)]));
+  return Object.fromEntries(operationsOf(args).map(op => [op.id, methodsForOperationFocused(page.outline, op, page.foci)]));
 }
 
 async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, rawArgs?: string): Promise<mls.msg.AgentIntent[]> {
@@ -42,7 +42,7 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     const humanPrompt = editPagePatchPrompt({
       pageLabel: page.label, operations: operationsOf(args), methodsByOperation: methodsByOperation(page, args), source: page.source,
       sharedDeclaration: page.sharedDeclaration, tokens: page.tokens, locales: page.locales, history: page.history,
-      definition: page.hasDefs ? page.definition : null, selected: page.selected,
+      definition: page.hasDefs ? page.definition : null, selected: page.selected, marks: page.marks,
       repair: args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous ?? '' } : undefined,
     });
     return [promptReady(context, parentStep, step, hookSequential, EDIT_PAGE_PATCH_SYSTEM_PROMPT, humanPrompt, {
@@ -78,7 +78,7 @@ async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCon
     if (!patch) return fail('EDIT_PAGE_PATCH_EMPTY: no method was returned', true);
     page = await loadEditPageContext(args.project, args);
     original = page.source;
-    const applied = applyPagePatch(original, patch, { operations, tokens: page.tokens, focus: page.selected?.focus ?? null });
+    const applied = applyPagePatch(original, patch, { operations, tokens: page.tokens, focus: page.foci });
     if (!applied.ok) return fail(`EDIT_PAGE_PATCH_REFUSED: ${applied.reason}`, true);
     written = true;
     // Compiles and, when the page is on screen, swaps it (the live update refuses code with errors).
@@ -91,7 +91,7 @@ async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCon
     }, entries));
     try {
       await writeEditPageTrace(args.project, args, editPageStamp(at), {
-        at: at.toISOString(), request: args.request, operations, attempt: args.attempt, touched: applied.value.touched,
+        at: at.toISOString(), request: args.request, marks: args.marks, operations, attempt: args.attempt, touched: applied.value.touched,
         messages: patch.messages.map(message => message.key), warnings: applied.value.warnings, notes: patch.notes, history,
         live: live ?? 'applied', before: original, after: applied.value.code,
       });

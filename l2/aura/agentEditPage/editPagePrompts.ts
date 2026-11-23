@@ -28,6 +28,9 @@ own file, and you turn it into operations. Answer with \`${EDIT_PAGE_GATE_TOOL}\
   normal request.
 - **The selected element** (when there is one): what the person pointed at on screen; "this", "isto", "esse" in
   the request mean it. Its markup in the page file is given when it could be located.
+- **Marks on the page** (when there are any): what the person circled on screen, numbered, each with the elements
+  it encloses and, sometimes, a note saying what to do there. "Here", "this", "aqui", "isto" mean the marks. Every
+  mark with a note asks for something; a mark without a note says WHERE the request applies.
 
 ## In scope: what the page file alone can do with what the shared already offers
 
@@ -54,7 +57,8 @@ One per organism and aspect touched. \`organism\` is an id of the page's organis
 \`change\` is the instruction in English, precise and self-contained: it will also be given to the generator that
 rebuilds the page later, which will not see this request nor the current markup. \`summary\` is the same change in
 the person's language, short, for them to confirm. \`revert\` is true only when the person asks to undo an earlier
-user edit of that organism and aspect (then \`change\` says what to bring back). With \`verdict: "refuse"\`,
+user edit of that organism and aspect (then \`change\` says what to bring back). \`mark\` is the number of the
+mark the operation answers, or null when it answers the request as a whole (always null without marks). With \`verdict: "refuse"\`,
 \`operations\` is empty; with \`verdict: "apply"\`, \`reason\` is empty.`;
 
 export const EDIT_PAGE_PATCH_SYSTEM_PROMPT = `<!-- modelType: code -->
@@ -103,13 +107,14 @@ export function editPageGateSchema(organisms: readonly string[]): Record<string,
       operations: {
         type: 'array',
         items: {
-          type: 'object', additionalProperties: false, required: ['organism', 'aspect', 'change', 'summary', 'revert'],
+          type: 'object', additionalProperties: false, required: ['organism', 'aspect', 'change', 'summary', 'revert', 'mark'],
           properties: {
             organism: { type: ['string', 'null'], enum: [...organisms, null], description: 'Organism id; null for the page shell.' },
             aspect: { type: 'string', enum: [...DEFS_HISTORY_ASPECTS] },
             change: { type: 'string', description: 'The instruction in English, self-contained.' },
             summary: { type: 'string', description: 'The same change, short, in the person\'s language.' },
             revert: { type: 'boolean' },
+            mark: { type: ['integer', 'null'], description: 'The mark this operation answers; null for the request as a whole.' },
           },
         },
       },
@@ -160,6 +165,13 @@ export interface SelectedElementPrompt {
   molecule: { tag: string; slot: string | null; skill: string; usage: string } | null;
 }
 
+/** A mark of the page, as the prompts show it (editPageIo MarkContext has this shape). */
+export interface MarkPrompt {
+  n: number;
+  note: string | null;
+  elements: SelectedElementPrompt[];
+}
+
 export interface EditPageGateInput {
   request: string;
   pageLabel: string;
@@ -168,6 +180,7 @@ export interface EditPageGateInput {
   sharedDeclaration: string;
   history: readonly DefsHistoryEntry[];
   selected?: SelectedElementPrompt | null;
+  marks?: readonly MarkPrompt[];
 }
 
 function historyLines(history: readonly DefsHistoryEntry[]): string[] {
@@ -178,9 +191,25 @@ function historyLines(history: readonly DefsHistoryEntry[]): string[] {
 /** What the person pointed at: the element, where it is in the file, and the molecule's documentation. */
 export function selectedElementLines(selected: SelectedElementPrompt | null | undefined): string[] {
   if (!selected) return [];
+  return ['# The selected element — what the person pointed at on screen', ...elementLines(selected, '##')];
+}
+
+/** What the person circled: each mark, its note, and its elements as the selection shows one. */
+export function markedLines(marks: readonly MarkPrompt[] | null | undefined): string[] {
+  if (!marks?.length) return [];
+  return [
+    '# Marked on the page — what the person circled on screen',
+    '',
+    ...marks.flatMap(mark => [
+      `## Mark ${mark.n}${mark.note ? ` — note: "${mark.note}"` : ' — no note (it says where)'}`,
+      ...mark.elements.flatMap(element => elementLines(element, '###')),
+    ]),
+  ];
+}
+
+function elementLines(selected: SelectedElementPrompt, heading: string): string[] {
   const { element, located, molecule } = selected;
   return [
-    '# The selected element — what the person pointed at on screen',
     `- tag: ${element.tag}; organism: ${element.organism ?? '(page shell)'}; path in the organism: ${element.organismPath || '(none)'}`
       + `${element.literal ? `; class: "${element.literal}"` : ''}`,
     ...(located
@@ -188,10 +217,10 @@ export function selectedElementLines(selected: SelectedElementPrompt | null | un
         '```html', located.snippet.trim(), '```']
       : ['- it could not be located in the page file: identify it by tag, organism and class']),
     ...(molecule
-      ? ['', `## The selected molecule <${molecule.tag}>${molecule.slot ? ` — slot <${molecule.slot}>` : ''}`,
+      ? ['', `${heading} The selected molecule <${molecule.tag}>${molecule.slot ? ` — slot <${molecule.slot}>` : ''}`,
         'Only its appearance may change, through what this documentation offers (class and data-class on the tag and on its slots, configuration attributes).',
-        '', '### Its skill', molecule.skill || '(not found)',
-        '', '### The usage contract of its group', molecule.usage.trim() || '(not found)']
+        '', `${heading}# Its skill`, molecule.skill || '(not found)',
+        '', `${heading}# The usage contract of its group`, molecule.usage.trim() || '(not found)']
       : []),
     '',
   ];
@@ -214,6 +243,7 @@ export function editPageGatePrompt(input: EditPageGateInput): string {
       + `${method.calls.length ? `; calls ${method.calls.join(', ')}` : ''}`),
     '',
     ...selectedElementLines(input.selected),
+    ...markedLines(input.marks),
     ...historyLines(input.history),
     '# Shared declaration — what the page can read and call',
     '```ts', input.sharedDeclaration.trim() || '(not found)', '```',
@@ -232,13 +262,14 @@ export interface EditPagePatchInput {
   history: readonly DefsHistoryEntry[];
   definition: PageDefinitionDigest | null;
   selected?: SelectedElementPrompt | null;
+  marks?: readonly MarkPrompt[];
   repair?: { diagnostic: string; previous: string };
 }
 
 export function editPagePatchPrompt(input: EditPagePatchInput): string {
   return [
     `# Approved operations — ${input.pageLabel}`,
-    ...input.operations.map(op => `- ${op.id} ${op.organism ?? '(page shell)'} / ${op.aspect}${op.revert ? ' (revert)' : ''}: ${op.change}`
+    ...input.operations.map(op => `- ${op.id} ${op.organism ?? '(page shell)'} / ${op.aspect}${op.revert ? ' (revert)' : ''}${op.mark ? ` (mark ${op.mark})` : ''}: ${op.change}`
       + ` → methods: ${(input.methodsByOperation[op.id] ?? []).join(', ') || '(none)'}`),
     '',
     ...(input.definition ? [
@@ -247,6 +278,7 @@ export function editPagePatchPrompt(input: EditPagePatchInput): string {
       '',
     ] : []),
     ...selectedElementLines(input.selected),
+    ...markedLines(input.marks),
     ...historyLines(input.history),
     `# Locales of the catalogue (default first): ${input.locales.join(', ') || '(no catalogue)'}`,
     '',

@@ -63,8 +63,9 @@ test('the layer is the visible part of the region and clips — nothing is paint
   for (const side of ['left', 'top', 'width', 'height']) assert.match(draw, new RegExp(`layer\\.style\\.${side} = `, 'u'));
   assert.match(draw, /renderRect\(rect, region\)/u);
   // The region is cut by every ancestor that clips (the nav3 panel scrolls the host inside it).
-  const region = member(LINES, 'private visibleRegion(');
-  assert.match(region, /cs\.overflowX === 'visible' && cs\.overflowY === 'visible'/u);
+  const clips = LINES.slice(LINES.indexOf('export function clippingAncestors('));
+  assert.match(clips, /cs\.overflowX === 'visible' && cs\.overflowY === 'visible'/u);
+  assert.ok(LINES.includes('clips: readonly Element[] = clippingAncestors(host)'), 'the region is cut by them');
 });
 
 test('an auto margin (mx-auto) is centring, not spacing: it is not painted', () => {
