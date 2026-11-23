@@ -1,0 +1,122 @@
+[
+  {
+    "step": "executarTarefa/abrirTarefa",
+    "organisms": [
+      "pendenciasAgora"
+    ],
+    "endpoints": [
+      "carregarInicio"
+    ],
+    "continuesIn": "minhas_tarefas"
+  },
+  {
+    "step": "executarTarefa/verTarefa",
+    "organisms": [],
+    "endpoints": [],
+    "continuesIn": "minhas_tarefas"
+  },
+  {
+    "step": "executarTarefa/iniciarTarefa",
+    "organisms": [
+      "pendenciasAgora"
+    ],
+    "endpoints": [
+      "iniciarTarefa"
+    ]
+  },
+  {
+    "step": "executarTarefa/marcarItem",
+    "organisms": [],
+    "endpoints": [],
+    "continuesIn": "minhas_tarefas"
+  },
+  {
+    "step": "executarTarefa/enviarRevisao",
+    "organisms": [
+      "pendenciasAgora"
+    ],
+    "endpoints": [
+      "enviarRevisao"
+    ]
+  },
+  {
+    "step": "retomarTarefa/lerMotivo",
+    "organisms": [
+      "pendenciasAgora"
+    ],
+    "endpoints": [
+      "carregarInicio"
+    ]
+  },
+  {
+    "step": "retomarTarefa/retomar",
+    "organisms": [
+      "pendenciasAgora"
+    ],
+    "endpoints": [
+      "retomarTarefa"
+    ]
+  },
+  {
+    "step": "retomarTarefa/reenviarRevisao",
+    "organisms": [
+      "pendenciasAgora"
+    ],
+    "endpoints": [
+      "enviarRevisao"
+    ]
+  },
+  {
+    "step": "revisarTarefa/abrirRevisao",
+    "organisms": [
+      "pendenciasAgora"
+    ],
+    "endpoints": [
+      "carregarInicio"
+    ]
+  },
+  {
+    "step": "revisarTarefa/conferirTarefa",
+    "organisms": [],
+    "endpoints": [],
+    "continuesIn": "minhas_tarefas"
+  },
+  {
+    "step": "revisarTarefa/aceitarTarefa",
+    "organisms": [
+      "pendenciasAgora"
+    ],
+    "endpoints": [
+      "aceitarTarefa"
+    ]
+  },
+  {
+    "step": "revisarTarefa/devolverTarefa",
+    "organisms": [
+      "pendenciasAgora"
+    ],
+    "endpoints": [
+      "devolverTarefa"
+    ]
+  },
+  {
+    "step": "resumoDiario/lerResumo",
+    "organisms": [
+      "alertasPrazo",
+      "indicadoresTarefas"
+    ],
+    "endpoints": [
+      "carregarInicio"
+    ]
+  },
+  {
+    "step": "resumoDiario/verVencendo",
+    "organisms": [
+      "alertasPrazo"
+    ],
+    "endpoints": [
+      "carregarInicio"
+    ],
+    "continuesIn": "minhas_tarefas"
+  }
+]

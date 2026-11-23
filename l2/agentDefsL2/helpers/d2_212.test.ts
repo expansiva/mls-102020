@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { checkD2Bff, type D2BffDesign, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { checkD2Bff, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { gateD2Page11, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage, type D2Page11Write } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { collectP2NeedsPages } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
@@ -170,4 +170,38 @@ test('d2_212 a split call line must bind its step to its command', () => {
     },
   };
   assert.deepEqual(stepIssues(checkD2Bff(accepted, drafted)), []);
+});
+
+type JourneyRow = { step: string; organisms: string[]; endpoints: string[]; continuesIn?: string };
+
+/** The gate only needs the journey rows and the menu. The rest of the bff stays out of the fixture. */
+function pageIssues(pageId: string, journeys: JourneyRow[], menuName: string): string[] {
+  const blank = { template: { category: 'bespoke', experience: 'none' }, intent: 'd2_212', sections: [], organisms: {}, molecules: {} };
+  const design = {
+    types: [],
+    endpoints: [],
+    bindings: { organisms: [], commands: [], selections: [], journeys, updates: [] },
+  } as D2BffDesign;
+  const context = {
+    page11: { desktop: blank, mobile: blank },
+    drafts: { desktop: { organisms: {} }, mobile: { organisms: {} } },
+    need: { pageId, actors: [], reads: [], writes: [] },
+    menu: json<D2Menu>(menuName),
+    entities: {},
+    grants: [],
+    rules: {},
+  };
+  return checkD2Bff(design, context)
+    .filter(issue => issue.code === 'D2_BFF_BINDING_PAGE')
+    .map(issue => issue.message);
+}
+
+test('d2_212 continuesIn of suggestTools must be a page of adjustAgentTools', () => {
+  const journeys = json<Record<string, JourneyRow[]>>('agents-bff-journeys.json');
+  const refused = pageIssues('agent_tools', journeys.agent_tools, 'menu.json');
+  assert.equal(refused.some(message => message.includes('suggestTools') && message.includes('agent_configuration') && message.includes('agents, agent_tools')), true, refused.join('\n'));
+  const others = Object.entries(journeys).filter(([pageId]) => pageId !== 'agent_tools');
+  assert.equal(others.length, 10);
+  for (const [pageId, rows] of others) assert.deepEqual(pageIssues(pageId, rows, 'menu.json'), [], pageId);
+  assert.deepEqual(pageIssues('inicio', json<JourneyRow[]>('tarefas-inicio-journeys.json'), 'tarefas-menu.json'), []);
 });

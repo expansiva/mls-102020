@@ -1059,13 +1059,17 @@ function checkD2BffBindings(design: D2BffDesign, context: D2BffCheckContext): D2
   });
   for (const id of selectors) if (!selecting.has(id)) add('D2_BFF_BINDING_SELECTION', `bindings.selections.${id}`, `organism ${id} selects and has no row in bindings.selections.`);
   const steps = new Set(d2PageJourneySteps(context.need, context.menu));
-  const pages = new Set(d2MenuPages(context.menu));
   design.bindings.journeys.forEach((row, index) => {
     const at = `bindings.journeys.${index}`;
     if (!steps.has(row.step)) add('D2_BFF_BINDING_STEP', at, `${row.step} is not a journey step of this page (${[...steps].join(', ') || 'none'}).`);
     for (const id of row.organisms) if (!organisms.has(id)) add('D2_BFF_BINDING_ORGANISM', `${at}.organisms`, `organism ${id} is not on the page.`);
     for (const id of row.endpoints) if (!endpoint(id)) add('D2_BFF_BINDING_REF', `${at}.endpoints`, `${id} is not an endpoint of the page.`);
-    if (row.continuesIn && !pages.has(row.continuesIn)) add('D2_BFF_BINDING_PAGE', `${at}.continuesIn`, `${row.continuesIn} is not a page of the menu.`);
+    // continuesIn names a page the menu links to this step's journey. Any other page of the menu is refused.
+    if (row.continuesIn) {
+      const journeyId = row.step.split('/')[0];
+      const accepted = context.menu.meta?.journeys?.[journeyId] ?? [];
+      if (!accepted.includes(row.continuesIn)) add('D2_BFF_BINDING_PAGE', `${at}.continuesIn`, `${row.step} continues in ${row.continuesIn}, which is not a page of journey ${journeyId} (${accepted.join(', ') || 'none'}).`);
+    }
   });
   // A write line split by its calls is its own action: each of its steps lists the command of that line.
   const submitByWrite = new Map([...d2PageSubmits(context)].map(([intent, write]) => [write, intent]));
