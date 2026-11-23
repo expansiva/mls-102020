@@ -31,6 +31,7 @@ import type {
   PoolNeedsWrite,
 } from '/_102035_/l2/solution/poolPlan.js';
 import { POOL_NEEDS_FAMILIES, POOL_NEEDS_OPERATIONS, POOL_NEEDS_SCHEMA_VERSION, POOL_NEEDS_SCOPES } from '/_102035_/l2/solution/poolPlan.js';
+import { d2CallSetsByStep, d2CallSignature, d2CallsForFrom, type D2CallConnection } from '/_102020_/l2/helpers/defsInput/writeCalls.js';
 
 // Lists and version of needs.json come from the pool's one type (p2_34).
 export const P2_NEEDS_SCHEMA_VERSION = POOL_NEEDS_SCHEMA_VERSION;
@@ -59,6 +60,8 @@ export interface P2BuildNeedsInput {
   grants: readonly P2GrantView[];
   processes: readonly P2ProcessView[];
   now: Date;
+  /** `call` rows of integration.defs. Absent means no step has a call, which is how needs30 joined writes before d2_212. */
+  connections?: readonly D2CallConnection[];
 }
 
 export function journeyStepOf(
@@ -171,6 +174,7 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): PoolNeedsPage[] {
   const homeIds = homePageIds(menu, pages, journeysOfPage);
   const processById = new Map(processes.map(process => [process.processId, process]));
 
+  const callSets = d2CallSetsByStep(input.connections ?? []);
   const out: PoolNeedsPage[] = [];
   for (const page of pages) {
     const actors = actorsOfPage.get(page.id) || [];
@@ -180,12 +184,12 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): PoolNeedsPage[] {
     }
 
     const reads = new Map<string, PoolNeedsRead>();
-    const writes = new Map<string, PoolNeedsWrite>();
+    const writes = new Map<string, PoolNeedsWrite & { calls?: string[] }>();
     const addRead = (entityId: string, from: string) => {
       pushRead(reads, entityId, from, entityById, grants, actors, sources);
     };
     const addWrite = (entityId: string, operation: P2NeedsOperation, transitionRef: string, from: string) => {
-      pushWrite(writes, entityId, operation, transitionRef, from);
+      pushWrite(writes, entityId, operation, transitionRef, from, d2CallsForFrom(from, callSets));
     };
 
     for (const journeyId of journeysOfPage.get(page.id) || []) {
@@ -244,7 +248,12 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): PoolNeedsPage[] {
       }
     }
 
-    out.push(finishPage(page.id, actors, [...reads.values()], [...writes.values()]));
+    const pageWrites = [...writes.values()];
+    // A call set only changes the line when it separates two steps. One line keeps the bare write.
+    const twins = new Map<string, number>();
+    for (const write of pageWrites) twins.set(`${write.entity}\0${write.operation}\0${write.transitionRef}`, (twins.get(`${write.entity}\0${write.operation}\0${write.transitionRef}`) ?? 0) + 1);
+    for (const write of pageWrites) if ((twins.get(`${write.entity}\0${write.operation}\0${write.transitionRef}`) ?? 0) < 2) delete write.calls;
+    out.push(finishPage(page.id, actors, [...reads.values()], pageWrites));
   }
   if (issues.length) throw new Error([...new Set(issues)].join(' | '));
   return out;
@@ -464,16 +473,24 @@ function normalizeTokens(value: string): string[] {
 }
 
 function pushWrite(
-  writes: Map<string, PoolNeedsWrite>,
+  writes: Map<string, PoolNeedsWrite & { calls?: string[] }>,
   entityId: string,
   operation: P2NeedsOperation,
   transitionRef: string,
   from: string,
+  calls: readonly string[],
 ): void {
-  const key = `${entityId}\0${operation}\0${transitionRef}`;
+  const key = `${entityId}\0${operation}\0${transitionRef}\0${d2CallSignature(calls)}`;
   const current = writes.get(key);
   if (!current) {
-    writes.set(key, { entity: entityId, operation, transitionRef, from: mergeFrom([from]) });
+    const sorted = [...calls].sort();
+    writes.set(key, {
+      entity: entityId,
+      operation,
+      transitionRef,
+      from: mergeFrom([from]),
+      ...(sorted.length ? { calls: sorted } : {}),
+    });
     return;
   }
   current.from = mergeFrom([...current.from, from]);
@@ -493,7 +510,10 @@ function finishPage(
       const entity = left.entity.localeCompare(right.entity);
       if (entity !== 0) return entity;
       const operation = left.operation.localeCompare(right.operation);
-      return operation !== 0 ? operation : left.transitionRef.localeCompare(right.transitionRef);
+      if (operation !== 0) return operation;
+      const transition = left.transitionRef.localeCompare(right.transitionRef);
+      if (transition !== 0) return transition;
+      return d2CallSignature((left as { calls?: string[] }).calls ?? []).localeCompare(d2CallSignature((right as { calls?: string[] }).calls ?? []));
     }),
   };
 }

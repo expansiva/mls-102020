@@ -1,0 +1,52 @@
+{
+  "organisms": {
+    "agentToolTree": {
+      "reads": [
+        "Agent.name",
+        "Tool.moduleName",
+        "Tool.subject",
+        "Tool.name",
+        "Tool.status",
+        "Tool.details.moduleTitle",
+        "Tool.details.subjectTitle",
+        "Tool.details.description",
+        "Tool.details.removedAt",
+        "AgentTool.enabled",
+        "AgentTool.choiceSource",
+        "AgentTool.details.decidedAt",
+        "AgentTool.details.decidedBy",
+        "AgentTool.details.toolName",
+        "AgentTool.details.toolRemoved"
+      ],
+      "edits": [
+        "AgentTool.toolId",
+        "AgentTool.enabled"
+      ],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "enableUnchosenTool",
+          "write": "AgentTool.create"
+        },
+        {
+          "intentId": "toggleToolChoice",
+          "write": "AgentTool.update"
+        }
+      ]
+    },
+    "automaticToolChoices": {
+      "reads": [
+        "AgentTool.details.toolName",
+        "AgentTool.details.automaticOrigin",
+        "AgentTool.details.decidedAt",
+        "AgentTool.details.toolRemoved",
+        "AgentTool.enabled",
+        "AgentTool.choiceSource",
+        "Tool.details.releaseLabel"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    }
+  }
+}

@@ -1,0 +1,511 @@
+{
+  "moduleName": "agents",
+  "userLanguage": "en",
+  "journeys": [
+    {
+      "journeyId": "createVirtualEmployee",
+      "actorRef": "companyAdmin",
+      "title": "Create a virtual employee",
+      "goal": "Ask for a new agent by describing it and its functions in plain words.",
+      "steps": [
+        {
+          "stepId": "openAgentList",
+          "kind": "locate",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "describeAgent",
+          "kind": "act",
+          "entity": "AgentDraft",
+          "effect": "create"
+        },
+        {
+          "stepId": "followDraftSituation",
+          "kind": "inspect",
+          "entity": "AgentDraft"
+        }
+      ]
+    },
+    {
+      "journeyId": "reviewAndActivateDraft",
+      "actorRef": "companyAdmin",
+      "title": "Review and activate a draft",
+      "goal": "Check a ready draft, adjust its tools, simulate it and put it to work or discard it.",
+      "steps": [
+        {
+          "stepId": "openReadyDraft",
+          "kind": "locate",
+          "entity": "AgentDraft"
+        },
+        {
+          "stepId": "reviewDraft",
+          "kind": "inspect",
+          "entity": "AgentDraft"
+        },
+        {
+          "stepId": "adjustDraftTools",
+          "kind": "act",
+          "entity": "AgentTool",
+          "effect": "update"
+        },
+        {
+          "stepId": "simulateDraft",
+          "kind": "inspect",
+          "entity": "AgentSimulation"
+        },
+        {
+          "stepId": "chooseDraftOutcome",
+          "kind": "decide",
+          "entity": "AgentDraft"
+        },
+        {
+          "stepId": "activateDraft",
+          "kind": "act",
+          "entity": "AgentDraft",
+          "effect": "transition",
+          "transitionRef": "activate"
+        },
+        {
+          "stepId": "discardDraft",
+          "kind": "act",
+          "entity": "AgentDraft",
+          "effect": "transition",
+          "transitionRef": "discard"
+        }
+      ]
+    },
+    {
+      "journeyId": "changeAgentBehavior",
+      "actorRef": "companyAdmin",
+      "title": "Change an agent's behavior",
+      "goal": "Tell an agent in plain words how it should behave differently, or undo a past change.",
+      "steps": [
+        {
+          "stepId": "findAgentForBehavior",
+          "kind": "locate",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "readBehavior",
+          "kind": "inspect",
+          "entity": "AgentBehavior"
+        },
+        {
+          "stepId": "requestBehaviorChange",
+          "kind": "act",
+          "entity": "AgentBehavior",
+          "effect": "update"
+        },
+        {
+          "stepId": "undoBehaviorChange",
+          "kind": "act",
+          "entity": "AgentBehavior",
+          "effect": "update"
+        }
+      ]
+    },
+    {
+      "journeyId": "adjustAgentTools",
+      "actorRef": "companyAdmin",
+      "title": "Adjust an agent's tools",
+      "goal": "Decide which actions an agent may use.",
+      "steps": [
+        {
+          "stepId": "findAgentForTools",
+          "kind": "locate",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "browseToolTree",
+          "kind": "inspect",
+          "entity": "Tool"
+        },
+        {
+          "stepId": "suggestTools",
+          "kind": "act",
+          "entity": "AgentTool",
+          "effect": "create"
+        },
+        {
+          "stepId": "enableUnchosenTool",
+          "kind": "act",
+          "entity": "AgentTool",
+          "effect": "create"
+        },
+        {
+          "stepId": "toggleTools",
+          "kind": "act",
+          "entity": "AgentTool",
+          "effect": "update"
+        }
+      ]
+    },
+    {
+      "journeyId": "configureAgent",
+      "actorRef": "companyAdmin",
+      "title": "Configure an agent",
+      "goal": "Set how people call the agent, whether it is on and who is responsible for it.",
+      "steps": [
+        {
+          "stepId": "findAgentForConfig",
+          "kind": "locate",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "readConfiguration",
+          "kind": "inspect",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "saveConfiguration",
+          "kind": "act",
+          "entity": "Agent",
+          "effect": "update"
+        }
+      ]
+    },
+    {
+      "journeyId": "simulateAgentByRole",
+      "actorRef": "companyAdmin",
+      "title": "Simulate an agent by role",
+      "goal": "See what an agent can do for a person or role and how it reads a sentence.",
+      "steps": [
+        {
+          "stepId": "findAgentToSimulate",
+          "kind": "locate",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "simulateWhatItCan",
+          "kind": "inspect",
+          "entity": "AgentSimulation"
+        },
+        {
+          "stepId": "simulateWhatItUnderstands",
+          "kind": "inspect",
+          "entity": "AgentSimulation"
+        }
+      ]
+    },
+    {
+      "journeyId": "restrictPersonTools",
+      "actorRef": "companyAdmin",
+      "title": "Restrict a person's tools",
+      "goal": "Mark the tools a person may not use through any agent.",
+      "steps": [
+        {
+          "stepId": "choosePerson",
+          "kind": "locate",
+          "entity": "PersonToolRestriction"
+        },
+        {
+          "stepId": "reviewRestrictions",
+          "kind": "inspect",
+          "entity": "PersonToolRestriction"
+        },
+        {
+          "stepId": "markRestrictions",
+          "kind": "act",
+          "entity": "PersonToolRestriction",
+          "effect": "update"
+        }
+      ]
+    },
+    {
+      "journeyId": "followAgentActivity",
+      "actorRef": "organizationMember",
+      "title": "See agents and their activity",
+      "goal": "Know which agents exist, what they are for and what they did.",
+      "steps": [
+        {
+          "stepId": "browseAgents",
+          "kind": "locate",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "readOverview",
+          "kind": "inspect",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "readActivity",
+          "kind": "inspect",
+          "entity": "ExecutionSummary"
+        }
+      ]
+    },
+    {
+      "journeyId": "simulateAsMyself",
+      "actorRef": "organizationMember",
+      "title": "Simulate an agent as myself",
+      "goal": "Check what an agent can do for me and how it reads my request.",
+      "steps": [
+        {
+          "stepId": "findAgentForMe",
+          "kind": "locate",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "seeWhatItCanForMe",
+          "kind": "inspect",
+          "entity": "AgentSimulation"
+        },
+        {
+          "stepId": "seeWhatItUnderstandsForMe",
+          "kind": "inspect",
+          "entity": "AgentSimulation"
+        }
+      ]
+    },
+    {
+      "journeyId": "changeMyConduct",
+      "actorRef": "organizationMember",
+      "title": "Change my conduct with an agent",
+      "goal": "Adjust how an agent that has a personal conduct for me behaves for me.",
+      "steps": [
+        {
+          "stepId": "findMyAgent",
+          "kind": "locate",
+          "entity": "Agent"
+        },
+        {
+          "stepId": "readMyConduct",
+          "kind": "inspect",
+          "entity": "PersonalConduct"
+        },
+        {
+          "stepId": "changeConduct",
+          "kind": "act",
+          "entity": "PersonalConduct",
+          "effect": "update"
+        },
+        {
+          "stepId": "readMyConductHistory",
+          "kind": "inspect",
+          "entity": "ConductChange"
+        }
+      ]
+    }
+  ],
+  "actors": [],
+  "entities": [
+    {
+      "entityId": "Agent",
+      "title": "Agent",
+      "kind": "external",
+      "capabilities": [],
+      "transitions": []
+    },
+    {
+      "entityId": "AgentDraft",
+      "title": "Agent draft",
+      "kind": "entity",
+      "capabilities": [
+        "create",
+        "read.byId",
+        "locate.byColumn",
+        "update",
+        "read.mdmRecord"
+      ],
+      "transitions": [
+        {
+          "transitionId": "activate",
+          "from": [
+            "ready"
+          ],
+          "to": "activated",
+          "by": [
+            "companyAdmin"
+          ]
+        },
+        {
+          "transitionId": "discard",
+          "from": [
+            "ready"
+          ],
+          "to": "discarded",
+          "by": [
+            "companyAdmin"
+          ]
+        },
+        {
+          "transitionId": "markReady",
+          "from": [
+            "preparing"
+          ],
+          "to": "ready",
+          "by": []
+        },
+        {
+          "transitionId": "markRefused",
+          "from": [
+            "preparing"
+          ],
+          "to": "refused",
+          "by": []
+        }
+      ],
+      "idField": "id",
+      "storageKind": "relational"
+    },
+    {
+      "entityId": "AgentBehavior",
+      "title": "Agent behavior",
+      "kind": "external",
+      "capabilities": [],
+      "transitions": []
+    },
+    {
+      "entityId": "PersonalConduct",
+      "title": "Personal conduct",
+      "kind": "external",
+      "capabilities": [],
+      "transitions": []
+    },
+    {
+      "entityId": "AgentSimulation",
+      "title": "Agent simulation",
+      "kind": "external",
+      "capabilities": [],
+      "transitions": []
+    },
+    {
+      "entityId": "Tool",
+      "title": "Tool",
+      "kind": "entity",
+      "capabilities": [
+        "read.byId",
+        "locate.byColumn",
+        "locate.byText",
+        "count",
+        "create",
+        "update",
+        "transition",
+        "uniqueKey",
+        "transaction",
+        "agents.rebuildCatalog",
+        "agents.toolTree"
+      ],
+      "transitions": [
+        {
+          "transitionId": "removeFromRelease",
+          "from": [
+            "available"
+          ],
+          "to": "removed",
+          "by": []
+        },
+        {
+          "transitionId": "restoreToRelease",
+          "from": [
+            "removed"
+          ],
+          "to": "available",
+          "by": []
+        }
+      ],
+      "idField": "id",
+      "storageKind": "relational"
+    },
+    {
+      "entityId": "AgentTool",
+      "title": "Agent tool",
+      "kind": "entity",
+      "capabilities": [
+        "read.byId",
+        "locate.byColumn",
+        "listByForeignKey",
+        "count",
+        "create",
+        "update",
+        "uniqueKey",
+        "transaction",
+        "read.mdmRecord",
+        "agents.toolsForRequest"
+      ],
+      "transitions": [],
+      "idField": "id",
+      "storageKind": "relational"
+    },
+    {
+      "entityId": "PersonToolRestriction",
+      "title": "Person tool restriction",
+      "kind": "entity",
+      "capabilities": [
+        "read.byId",
+        "locate.byColumn",
+        "listByForeignKey",
+        "count",
+        "create",
+        "delete",
+        "uniqueKey",
+        "transaction",
+        "read.mdmRecord",
+        "agents.availableToolsForPerson"
+      ],
+      "transitions": [],
+      "idField": "id",
+      "storageKind": "relational"
+    },
+    {
+      "entityId": "ExecutionSummary",
+      "title": "Execution summary",
+      "kind": "entity",
+      "capabilities": [
+        "create",
+        "uniqueKey",
+        "locate.byColumn",
+        "listByForeignKey",
+        "read.byId",
+        "count",
+        "read.mdmRecord",
+        "agents.openConversation"
+      ],
+      "transitions": [],
+      "idField": "id",
+      "storageKind": "relational"
+    },
+    {
+      "entityId": "ConductChange",
+      "title": "Conduct change",
+      "kind": "entity",
+      "capabilities": [
+        "create",
+        "locate.byColumn",
+        "read.mdmRecord"
+      ],
+      "transitions": [],
+      "idField": "id",
+      "storageKind": "relational"
+    },
+    {
+      "entityId": "OrganizationUser",
+      "title": "Organization user",
+      "kind": "role",
+      "capabilities": [
+        "locate.users",
+        "read.byId",
+        "locate.byName",
+        "listLinks"
+      ],
+      "transitions": [],
+      "idField": "id"
+    },
+    {
+      "entityId": "AgentConfigurationMark",
+      "title": "Agent configuration mark",
+      "kind": "entity",
+      "capabilities": [
+        "create",
+        "locate.byColumn",
+        "transaction",
+        "uniqueKey",
+        "read.mdmRecord"
+      ],
+      "transitions": [],
+      "idField": "id",
+      "storageKind": "relational"
+    }
+  ],
+  "ontologyEntities": []
+}

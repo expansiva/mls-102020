@@ -19,7 +19,7 @@ import { d2RequiredRelationTargets, d2TransitionPayload } from '/_102020_/l2/age
  */
 
 export interface D2NeedRead { entity: string; derived: string[]; from: string[]; family?: string; scope?: string }
-export interface D2NeedWrite { entity: string; operation: string; transitionRef?: string }
+export interface D2NeedWrite { entity: string; operation: string; transitionRef?: string; calls?: readonly string[]; from?: readonly string[] }
 export interface D2NeedPage { pageId: string; actors: string[]; reads: D2NeedRead[]; writes: D2NeedWrite[] }
 export interface D2MenuNode { id: string; kind: string; children?: D2MenuNode[] }
 export interface D2Menu {
@@ -647,7 +647,7 @@ export function d2BffTypeRoot(name: string, design: Pick<D2BffDesign, 'types'>):
  * An update or a transition still asks for every read, because the current value comes from the backend.
  */
 export function d2FedReads(row: D2Page11OrganismNeeds): string[] {
-  const createOnly = row.submits.length > 0 && row.submits.every(submit => /^[A-Za-z]\w*\.create$/u.test(submit.write));
+  const createOnly = row.submits.length > 0 && row.submits.every(submit => /^[A-Za-z]\w*\.create(?:\+[A-Za-z][A-Za-z0-9]*)*$/u.test(submit.write));
   if (!createOnly) return row.reads;
   const edits = new Set(row.edits);
   return row.reads.filter(path => !edits.has(path));
@@ -1067,6 +1067,22 @@ function checkD2BffBindings(design: D2BffDesign, context: D2BffCheckContext): D2
     for (const id of row.endpoints) if (!endpoint(id)) add('D2_BFF_BINDING_REF', `${at}.endpoints`, `${id} is not an endpoint of the page.`);
     if (row.continuesIn && !pages.has(row.continuesIn)) add('D2_BFF_BINDING_PAGE', `${at}.continuesIn`, `${row.continuesIn} is not a page of the menu.`);
   });
+  // A write line split by its calls is its own action: each of its steps lists the command of that line.
+  const submitByWrite = new Map([...d2PageSubmits(context)].map(([intent, write]) => [write, intent]));
+  for (const write of context.need.writes) {
+    if (!(write.calls ?? []).length) continue;
+    let key = '';
+    try { key = d2WriteKey(write); } catch { continue; }
+    const intent = submitByWrite.get(key) ?? '';
+    const command = design.endpoints.find(item => item.kind === 'cmd' && item.when === intent);
+    const stepIds = (write.from ?? []).flatMap(item => item.startsWith('journey:') ? [item.slice('journey:'.length)] : []);
+    for (const step of stepIds) {
+      const bound = design.bindings.journeys.find(item => item.step === step);
+      if (!command || !bound?.endpoints.includes(command.id)) {
+        add('D2_BFF_BINDING_STEP', `bindings.journeys.${step}`, `${step} is the step of write ${key} and must list its command${command ? ` ${command.id}` : ''} in endpoints.`);
+      }
+    }
+  }
   // d2_78: every endpoint has a destination, declared, never deduced by key or type.
   const sources = new Set(design.bindings.organisms.map(row => row.reads));
   design.bindings.updates.forEach((row, index) => {

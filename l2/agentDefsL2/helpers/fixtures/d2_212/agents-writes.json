@@ -1,0 +1,161 @@
+{
+  "agent_activity": [],
+  "agent_behavior": [
+    {
+      "entity": "AgentBehavior",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange"
+      ]
+    }
+  ],
+  "agent_configuration": [
+    {
+      "entity": "Agent",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:configureAgent/saveConfiguration"
+      ]
+    }
+  ],
+  "agent_overview": [],
+  "agent_simulation": [],
+  "agent_tools": [
+    {
+      "entity": "AgentTool",
+      "operation": "create",
+      "transitionRef": "",
+      "from": [
+        "journey:adjustAgentTools/enableUnchosenTool",
+        "journey:adjustAgentTools/suggestTools"
+      ]
+    },
+    {
+      "entity": "AgentTool",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:adjustAgentTools/toggleTools"
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "entity": "Agent",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:configureAgent/saveConfiguration"
+      ]
+    },
+    {
+      "entity": "AgentBehavior",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:changeAgentBehavior/requestBehaviorChange",
+        "journey:changeAgentBehavior/undoBehaviorChange"
+      ]
+    },
+    {
+      "entity": "AgentDraft",
+      "operation": "create",
+      "transitionRef": "",
+      "from": [
+        "journey:createVirtualEmployee/describeAgent"
+      ]
+    },
+    {
+      "entity": "AgentDraft",
+      "operation": "transition",
+      "transitionRef": "activate",
+      "from": [
+        "journey:reviewAndActivateDraft/activateDraft"
+      ]
+    },
+    {
+      "entity": "AgentDraft",
+      "operation": "transition",
+      "transitionRef": "discard",
+      "from": [
+        "journey:reviewAndActivateDraft/discardDraft"
+      ]
+    },
+    {
+      "entity": "AgentTool",
+      "operation": "create",
+      "transitionRef": "",
+      "from": [
+        "journey:adjustAgentTools/enableUnchosenTool",
+        "journey:adjustAgentTools/suggestTools"
+      ]
+    },
+    {
+      "entity": "AgentTool",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:adjustAgentTools/toggleTools",
+        "journey:reviewAndActivateDraft/adjustDraftTools"
+      ]
+    },
+    {
+      "entity": "PersonalConduct",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:changeMyConduct/changeConduct"
+      ]
+    }
+  ],
+  "draft_review": [
+    {
+      "entity": "AgentDraft",
+      "operation": "transition",
+      "transitionRef": "activate",
+      "from": [
+        "journey:reviewAndActivateDraft/activateDraft"
+      ]
+    },
+    {
+      "entity": "AgentDraft",
+      "operation": "transition",
+      "transitionRef": "discard",
+      "from": [
+        "journey:reviewAndActivateDraft/discardDraft"
+      ]
+    },
+    {
+      "entity": "AgentTool",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:reviewAndActivateDraft/adjustDraftTools"
+      ]
+    }
+  ],
+  "my_conduct": [
+    {
+      "entity": "PersonalConduct",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:changeMyConduct/changeConduct"
+      ]
+    }
+  ],
+  "person_restrictions": [
+    {
+      "entity": "PersonToolRestriction",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:restrictPersonTools/markRestrictions"
+      ]
+    }
+  ],
+  "tool_catalog": []
+}

@@ -1,0 +1,202 @@
+{
+  "inicio": [
+    {
+      "entity": "ItemChecklist",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:executarTarefa/marcarItem"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "aceitar",
+      "from": [
+        "journey:revisarTarefa/aceitarTarefa"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "cancelar",
+      "from": [
+        "journey:revisarTarefa/decidirRevisao"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "devolver",
+      "from": [
+        "journey:revisarTarefa/devolverTarefa"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "enviarParaRevisao",
+      "from": [
+        "journey:executarTarefa/enviarRevisao",
+        "journey:retomarTarefa/reenviarRevisao"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "iniciar",
+      "from": [
+        "journey:executarTarefa/iniciarTarefa"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "retomar",
+      "from": [
+        "journey:retomarTarefa/retomar"
+      ]
+    }
+  ],
+  "listas_tarefas": [
+    {
+      "entity": "ListaTarefas",
+      "operation": "create",
+      "transitionRef": "",
+      "from": [
+        "journey:manterListas/criarLista"
+      ]
+    },
+    {
+      "entity": "ListaTarefas",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:manterListas/editarLista"
+      ]
+    }
+  ],
+  "minhas_tarefas": [
+    {
+      "entity": "ItemChecklist",
+      "operation": "create",
+      "transitionRef": "",
+      "from": [
+        "journey:criarTarefa/adicionarChecklist"
+      ]
+    },
+    {
+      "entity": "ItemChecklist",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:editarTarefa/ajustarChecklist",
+        "journey:executarTarefa/marcarItem"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "create",
+      "transitionRef": "",
+      "from": [
+        "journey:criarTarefa/preencherTarefa"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "aceitar",
+      "from": [
+        "journey:revisarTarefa/aceitarTarefa"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "cancelar",
+      "from": [
+        "journey:cancelarTarefaCriada/cancelarCriada",
+        "journey:revisarTarefa/decidirRevisao"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "devolver",
+      "from": [
+        "journey:revisarTarefa/devolverTarefa"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "enviarParaRevisao",
+      "from": [
+        "journey:executarTarefa/enviarRevisao",
+        "journey:retomarTarefa/reenviarRevisao"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "iniciar",
+      "from": [
+        "journey:executarTarefa/iniciarTarefa"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "retomar",
+      "from": [
+        "journey:retomarTarefa/retomar"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:editarTarefa/alterarCampos",
+        "journey:reatribuirTarefaCriada/trocarResponsavelCriada"
+      ]
+    }
+  ],
+  "painel_tarefas": [],
+  "participantes": [
+    {
+      "entity": "Participante",
+      "operation": "create",
+      "transitionRef": "",
+      "from": [
+        "journey:configurarParticipantes/incluirParticipante"
+      ]
+    },
+    {
+      "entity": "Participante",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:configurarParticipantes/marcarPermissoes"
+      ]
+    }
+  ],
+  "tarefas_equipe": [
+    {
+      "entity": "Tarefa",
+      "operation": "transition",
+      "transitionRef": "cancelar",
+      "from": [
+        "journey:cancelarTarefa/cancelar"
+      ]
+    },
+    {
+      "entity": "Tarefa",
+      "operation": "update",
+      "transitionRef": "",
+      "from": [
+        "journey:reatribuirTarefa/trocarResponsavel"
+      ]
+    }
+  ]
+}

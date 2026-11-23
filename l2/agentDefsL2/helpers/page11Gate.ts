@@ -11,7 +11,7 @@ import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.j
 export interface D2Page11Category { categoryId: string; experiences?: { page11?: string; page21?: string } }
 export interface D2Page11MenuNode { id: string; kind: string; organisms?: Array<{ kind: string; text: string }>; children?: D2Page11MenuNode[] }
 export interface D2Page11Menu { tree: D2Page11MenuNode[]; authorities: Record<string, string[]> }
-export interface D2Page11Write { entity: string; operation: string; transitionRef?: string }
+export interface D2Page11Write { entity: string; operation: string; transitionRef?: string; calls?: readonly string[]; from?: readonly string[] }
 export interface D2Page11NeedPage { pageId: string; actors: string[]; writes: D2Page11Write[] }
 export interface D2Page11AccessGrant { actorRef: string; entityRefs: string[]; disclosure: { mode: string; allowedFields?: string[]; deniedFields?: string[] } }
 export interface D2Page11GateSources {
@@ -160,7 +160,13 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
       return [];
     }
   });
-  const pageWrites = new Set(keysOf(currentNeeds?.writes ?? [], 'page11Needs.writes'));
+  const pageWriteRows = new Map<string, D2Page11Write>();
+  for (const write of currentNeeds?.writes ?? []) {
+    try { pageWriteRows.set(d2WriteKey(write), write); } catch (error) {
+      add('D2_PAGE11_TRANSITION_WITHOUT_REF', 'page11Needs.writes', error instanceof Error ? error.message : String(error));
+    }
+  }
+  const pageWrites = new Set(pageWriteRows.keys());
   const coveredWrites = new Set<string>();
   const intentIds = new Set<string>();
   for (const [id, organism] of Object.entries(definition.organisms)) {
@@ -200,7 +206,14 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
   }
   issues.push(...d2Page11WriteDuplicates(draft));
   issues.push(...d2Page11InputNotEdited(draft, currentNeeds?.writes ?? [], sources.entities));
-  for (const write of pageWrites) if (!coveredWrites.has(write)) add('D2_PAGE11_WRITE_UNCOVERED', 'page11Needs.writes', `Write ${write} needs a submit or accessible navigate target declaring the write.`);
+  for (const write of pageWrites) if (!coveredWrites.has(write)) {
+    const steps = (pageWriteRows.get(write)?.from ?? []).flatMap(item => {
+      const match = /^journey:[^/]+\/([^/\s]+)$/u.exec(item);
+      return match ? [match[1]] : [];
+    });
+    const named = steps.length ? ` (${steps.join(', ')})` : '';
+    add('D2_PAGE11_WRITE_UNCOVERED', 'page11Needs.writes', `Write ${write}${named} needs a submit or accessible navigate target declaring the write.`);
+  }
   for (const [id, choices] of Object.entries(definition.molecules)) {
     if (!definition.organisms[id]) add('D2_PAGE11_MOLECULE_ORGANISM', `molecules.${id}`, `Molecule target ${id} is absent.`);
     for (const choice of choices) for (const tag of [choice.preferred, choice.alternative].filter((item): item is string => !!item)) {

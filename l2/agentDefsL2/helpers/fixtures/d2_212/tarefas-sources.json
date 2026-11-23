@@ -1,0 +1,496 @@
+{
+  "moduleName": "tarefas",
+  "userLanguage": "pt",
+  "journeys": [
+    {
+      "journeyId": "configurarParticipantes",
+      "actorRef": "gestor",
+      "title": "Configurar participantes",
+      "goal": "Escolher, entre os usuários da organização, quem participa do módulo e marcar quem aceita tarefas e quem pode criar tarefas.",
+      "steps": [
+        {
+          "stepId": "localizarUsuario",
+          "kind": "locate",
+          "entity": "Participante"
+        },
+        {
+          "stepId": "incluirParticipante",
+          "kind": "act",
+          "entity": "Participante",
+          "effect": "create"
+        },
+        {
+          "stepId": "marcarPermissoes",
+          "kind": "act",
+          "entity": "Participante",
+          "effect": "update"
+        }
+      ]
+    },
+    {
+      "journeyId": "manterListas",
+      "actorRef": "gestor",
+      "title": "Manter listas de tarefas",
+      "goal": "Cadastrar e ajustar as listas que agrupam tarefas por projeto ou área.",
+      "steps": [
+        {
+          "stepId": "localizarLista",
+          "kind": "locate",
+          "entity": "ListaTarefas"
+        },
+        {
+          "stepId": "criarLista",
+          "kind": "act",
+          "entity": "ListaTarefas",
+          "effect": "create"
+        },
+        {
+          "stepId": "editarLista",
+          "kind": "act",
+          "entity": "ListaTarefas",
+          "effect": "update"
+        }
+      ]
+    },
+    {
+      "journeyId": "criarTarefa",
+      "actorRef": "membroEquipe",
+      "title": "Criar tarefa",
+      "goal": "Registrar uma tarefa com responsável, prazo e prioridade para que seja executada.",
+      "steps": [
+        {
+          "stepId": "preencherTarefa",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "create"
+        },
+        {
+          "stepId": "adicionarChecklist",
+          "kind": "act",
+          "entity": "ItemChecklist",
+          "effect": "create"
+        }
+      ]
+    },
+    {
+      "journeyId": "executarTarefa",
+      "actorRef": "membroEquipe",
+      "title": "Executar tarefa e enviar para revisão",
+      "goal": "Iniciar a tarefa de que é responsável e enviá-la para revisão de quem criou.",
+      "steps": [
+        {
+          "stepId": "abrirTarefa",
+          "kind": "locate",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "verTarefa",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "iniciarTarefa",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "transition",
+          "transitionRef": "iniciar"
+        },
+        {
+          "stepId": "marcarItem",
+          "kind": "act",
+          "entity": "ItemChecklist",
+          "effect": "update"
+        },
+        {
+          "stepId": "enviarRevisao",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "transition",
+          "transitionRef": "enviarParaRevisao"
+        }
+      ]
+    },
+    {
+      "journeyId": "revisarTarefa",
+      "actorRef": "membroEquipe",
+      "title": "Revisar tarefa",
+      "goal": "Aceitar ou devolver com motivo uma tarefa que criou e que está em revisão.",
+      "steps": [
+        {
+          "stepId": "abrirRevisao",
+          "kind": "locate",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "conferirTarefa",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "decidirRevisao",
+          "kind": "decide",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "aceitarTarefa",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "transition",
+          "transitionRef": "aceitar"
+        },
+        {
+          "stepId": "devolverTarefa",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "transition",
+          "transitionRef": "devolver"
+        }
+      ]
+    },
+    {
+      "journeyId": "retomarTarefa",
+      "actorRef": "membroEquipe",
+      "title": "Retomar tarefa devolvida",
+      "goal": "Retomar a tarefa devolvida, corrigir e enviar novamente para revisão.",
+      "steps": [
+        {
+          "stepId": "lerMotivo",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "retomar",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "transition",
+          "transitionRef": "retomar"
+        },
+        {
+          "stepId": "reenviarRevisao",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "transition",
+          "transitionRef": "enviarParaRevisao"
+        }
+      ]
+    },
+    {
+      "journeyId": "editarTarefa",
+      "actorRef": "membroEquipe",
+      "title": "Editar campos da tarefa",
+      "goal": "Ajustar campos de uma tarefa que vê sem mudar sua situação.",
+      "steps": [
+        {
+          "stepId": "localizarTarefaEdicao",
+          "kind": "locate",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "alterarCampos",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "update"
+        },
+        {
+          "stepId": "ajustarChecklist",
+          "kind": "act",
+          "entity": "ItemChecklist",
+          "effect": "update"
+        }
+      ]
+    },
+    {
+      "journeyId": "reatribuirTarefa",
+      "actorRef": "gestor",
+      "title": "Reatribuir tarefa",
+      "goal": "Trocar o responsável de uma tarefa.",
+      "steps": [
+        {
+          "stepId": "localizarTarefaReatribuir",
+          "kind": "locate",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "verResponsavelAtual",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "trocarResponsavel",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "update"
+        }
+      ]
+    },
+    {
+      "journeyId": "reatribuirTarefaCriada",
+      "actorRef": "membroEquipe",
+      "title": "Reatribuir tarefa que criei",
+      "goal": "Trocar o responsável de uma tarefa que o membro criou.",
+      "steps": [
+        {
+          "stepId": "localizarCriada",
+          "kind": "locate",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "verResponsavelCriada",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "trocarResponsavelCriada",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "update"
+        }
+      ]
+    },
+    {
+      "journeyId": "cancelarTarefa",
+      "actorRef": "gestor",
+      "title": "Cancelar tarefa",
+      "goal": "Cancelar uma tarefa que não deve mais ser feita.",
+      "steps": [
+        {
+          "stepId": "localizarTarefaCancelar",
+          "kind": "locate",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "cancelar",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "transition",
+          "transitionRef": "cancelar"
+        }
+      ]
+    },
+    {
+      "journeyId": "cancelarTarefaCriada",
+      "actorRef": "membroEquipe",
+      "title": "Cancelar tarefa que criei",
+      "goal": "Cancelar uma tarefa que o membro criou.",
+      "steps": [
+        {
+          "stepId": "localizarCriadaCancelar",
+          "kind": "locate",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "cancelarCriada",
+          "kind": "act",
+          "entity": "Tarefa",
+          "effect": "transition",
+          "transitionRef": "cancelar"
+        }
+      ]
+    },
+    {
+      "journeyId": "minhasTarefas",
+      "actorRef": "membroEquipe",
+      "title": "Ver minhas tarefas",
+      "goal": "Ver as tarefas de que é responsável, as que criou e o que depende dele agora.",
+      "steps": [
+        {
+          "stepId": "listarMinhas",
+          "kind": "locate",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "verDetalhe",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        }
+      ]
+    },
+    {
+      "journeyId": "resumoDiario",
+      "actorRef": "membroEquipe",
+      "title": "Receber resumo das 8h",
+      "goal": "Ver as tarefas abertas que vencem hoje ou estão atrasadas.",
+      "steps": [
+        {
+          "stepId": "lerResumo",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "verVencendo",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        }
+      ]
+    },
+    {
+      "journeyId": "acompanharTarefas",
+      "actorRef": "gestor",
+      "title": "Acompanhar todas as tarefas",
+      "goal": "Acompanhar todas as tarefas por lista, responsável, prioridade, prazo e situação, em lista e em quadro.",
+      "steps": [
+        {
+          "stepId": "filtrarTarefas",
+          "kind": "locate",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "verQuadro",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        },
+        {
+          "stepId": "abrirTarefaGestor",
+          "kind": "inspect",
+          "entity": "Tarefa"
+        }
+      ]
+    }
+  ],
+  "actors": [],
+  "entities": [
+    {
+      "entityId": "Participante",
+      "title": "Participante",
+      "kind": "role",
+      "capabilities": [
+        "register.createOrAttach",
+        "locate.users",
+        "locate.byName",
+        "read.byId",
+        "locate.byTag",
+        "edit.moduleNamespace",
+        "inactivate",
+        "listLinks",
+        "audit",
+        "tarefas.filtrarAceitaTarefas",
+        "tarefas.verificarPodeCriar"
+      ],
+      "transitions": [],
+      "idField": "id"
+    },
+    {
+      "entityId": "ListaTarefas",
+      "title": "Lista de tarefas",
+      "kind": "entity",
+      "capabilities": [
+        "read.byId",
+        "locate.byColumn",
+        "locate.byText",
+        "count",
+        "create",
+        "update",
+        "uniqueKey"
+      ],
+      "transitions": [],
+      "idField": "id",
+      "storageKind": "relational"
+    },
+    {
+      "entityId": "Tarefa",
+      "title": "Tarefa",
+      "kind": "entity",
+      "capabilities": [
+        "read.byId",
+        "locate.byColumn",
+        "locate.byText",
+        "count",
+        "listByForeignKey",
+        "create",
+        "update",
+        "transition",
+        "transaction",
+        "read.mdmRecord",
+        "tarefas.processoTarefa",
+        "tarefas.conversaTarefa",
+        "tarefas.resumoDiario"
+      ],
+      "transitions": [
+        {
+          "transitionId": "iniciar",
+          "from": [
+            "aFazer"
+          ],
+          "to": "emAndamento",
+          "by": [
+            "membroEquipe"
+          ]
+        },
+        {
+          "transitionId": "enviarParaRevisao",
+          "from": [
+            "emAndamento"
+          ],
+          "to": "emRevisao",
+          "by": [
+            "membroEquipe"
+          ]
+        },
+        {
+          "transitionId": "aceitar",
+          "from": [
+            "emRevisao"
+          ],
+          "to": "concluida",
+          "by": [
+            "membroEquipe"
+          ]
+        },
+        {
+          "transitionId": "devolver",
+          "from": [
+            "emRevisao"
+          ],
+          "to": "emAndamento",
+          "by": [
+            "membroEquipe"
+          ]
+        },
+        {
+          "transitionId": "retomar",
+          "from": [
+            "emAndamento"
+          ],
+          "to": "emAndamento",
+          "by": [
+            "membroEquipe"
+          ]
+        },
+        {
+          "transitionId": "cancelar",
+          "from": [
+            "aFazer",
+            "emAndamento",
+            "emRevisao"
+          ],
+          "to": "cancelada",
+          "by": [
+            "gestor",
+            "membroEquipe"
+          ]
+        }
+      ],
+      "idField": "id",
+      "storageKind": "relational"
+    },
+    {
+      "entityId": "ItemChecklist",
+      "title": "Item da checklist",
+      "kind": "entity",
+      "capabilities": [
+        "read.byId",
+        "listByForeignKey",
+        "locate.byColumn",
+        "count",
+        "create",
+        "update",
+        "delete",
+        "transaction"
+      ],
+      "transitions": [],
+      "idField": "id",
+      "storageKind": "relational"
+    }
+  ],
+  "ontologyEntities": []
+}

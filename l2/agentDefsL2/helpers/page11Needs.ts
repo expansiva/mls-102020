@@ -32,7 +32,7 @@ export function buildD2Page11Needs(value: unknown): D2Page11Needs {
     const submits = row.submits.map((rawSubmit, index) => {
       const submit = exact(rawSubmit, ['intentId', 'write'], `D2_PAGE11_NEEDS_SUBMIT_KEYS: ${id}/${index}`);
       if (typeof submit.intentId !== 'string' || !/^[a-z][A-Za-z0-9]*$/u.test(submit.intentId)) throw new Error(`D2_PAGE11_NEEDS_SUBMIT_ID: ${id}/${index}`);
-      if (typeof submit.write !== 'string' || !/^[A-Z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*$/u.test(submit.write)) throw new Error(`D2_PAGE11_NEEDS_WRITE: ${id}/${index}`);
+      if (typeof submit.write !== 'string' || !/^[A-Z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*(?:\+[A-Za-z][A-Za-z0-9]*)*$/u.test(submit.write)) throw new Error(`D2_PAGE11_NEEDS_WRITE: ${id}/${index}`);
       return { intentId: submit.intentId, write: submit.write };
     });
     organisms[id] = { reads, edits, selects: row.selects, submits };
