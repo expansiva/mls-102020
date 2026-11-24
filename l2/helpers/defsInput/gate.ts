@@ -60,6 +60,7 @@ export async function buildD2InputSnapshot(
   identity: D2RunIdentity,
   artifacts: D2InputArtifacts,
   previous: D2InputSnapshot | null = null,
+  extraProblems: readonly D2InputProblem[] = [],
 ): Promise<D2InputSnapshot> {
   const state: GateState = { errors: [], problems: [], normalizations: [] };
   const module = rec(artifacts.module);
@@ -202,6 +203,7 @@ export async function buildD2InputSnapshot(
     file: 'input20',
     message: 'Sources have content hashes and structural consistency checks, but no shared release identity exists across all planners.',
   });
+  state.problems.push(...extraProblems);
   if (hasMenuActions(menu)) state.normalizations.push({ code: 'menu-action-ignored', detail: 'effort.screens is the only selection authority' });
   if (authority.deduplicated > 0) state.normalizations.push({ code: 'authority-descendants-deduplicated', detail: `${authority.deduplicated} duplicate page grant(s) collapsed` });
 

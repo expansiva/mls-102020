@@ -6,6 +6,8 @@ Run `@@agentDefsL2 <module>` for the full flow, or `@@agentDefsL2 <module> /page
 
 Depois de um conserto de código do How num passo do defs L2, rodar @@agentDefsL2 <módulo>, sem /pages; não apagar arquivo do pipeline à mão.
 
+Conserto de código do `needs30`: rodar `@@agentDefsL2 <módulo>`; o input20 recalcula as necessidades; o pool não muda.
+
 `/pages` compiles only the page11 pair and leaves shared and contract files untouched. The old `contracts30` remains frozen solely because L1 regeneration tests still import it; this flow does not execute it.
 
 `steps/contracts30/` is frozen solely for the L1 regeneration test. Its remaining compatibility dependencies are `helpers/d2Core.ts`, `helpers/d2Intents.ts`, `helpers/d2Header.ts`, `steps/input20/{gate,io,contracts}.ts` and `steps/finalize60/{compile,io,contracts}.ts`. The input20 gate and IO only re-export shared snapshot code from `l2/helpers/defsInput/`.

@@ -157,16 +157,20 @@ export function d2PageChoiceEnums(context: D2PagesContext): D2PageChoiceEnums {
   };
 }
 
+/** One page write, calls included, so the schema enum and the gate name the same key. */
+function pageWrite(raw: unknown): D2Write {
+  const row = record(raw);
+  const calls = Array.isArray(row.calls) ? row.calls.map(text).filter(Boolean) : [];
+  return { entity: text(row.entity), operation: text(row.operation), transitionRef: text(row.transitionRef), ...(calls.length ? { calls } : {}) };
+}
+
 /** The exact write keys of the page; a submit writes one of them (schema enum and prompt list). */
 export function d2PageWriteKeys(page: D2SelectedPage): string[] {
-  return [...new Set((page.writes as unknown[]).map(raw => {
-    const row = record(raw);
-    return d2WriteKey({ entity: text(row.entity), operation: text(row.operation), transitionRef: text(row.transitionRef) });
-  }))];
+  return [...new Set((page.writes as unknown[]).map(raw => d2WriteKey(pageWrite(raw))))];
 }
 
 function pageWrites(page: D2SelectedPage): D2Write[] {
-  return (page.writes as unknown[]).map(raw => { const row = record(raw); return { entity: text(row.entity), operation: text(row.operation), transitionRef: text(row.transitionRef) }; });
+  return (page.writes as unknown[]).map(pageWrite);
 }
 
 /** `Entity.transition` from the answer resolves to the page's only transition of that entity, or is refused naming the keys. */

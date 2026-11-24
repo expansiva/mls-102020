@@ -1,0 +1,3 @@
+Commit 102047@0b6790f1. The d2_213 test reads the agents and tarefas L4 sources,
+pool menu/needs/backend/effort, and the page11 pair of each agents page with
+`git -C mls-base/mls-102047 show 0b6790f1:<path>`. It does not write that tree.

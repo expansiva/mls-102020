@@ -1,0 +1,16 @@
+Commit 102047@0b6790f1 (HEAD of mls-102047 on 23/11/2026).
+git -C mls-base/mls-102047 show 0b6790f1:l2/agents/pipeline/agentDefsL2/input.json
+git -C mls-base/mls-102047 show 0b6790f1:l2/agents/pipeline/agentDefsL2/page11Needs/agent_toolsDesktop.json
+git -C mls-base/mls-102047 show 0b6790f1:l2/agents/pipeline/agentDefsL2/page11Needs/agent_behaviorDesktop.json
+git -C mls-base/mls-102047 show 0b6790f1:l4/agents/integration.defs.ts
+git -C mls-base/mls-102047 show 0b6790f1:l4/agents/pool/l2/web/menu.json
+git -C mls-base/mls-102047 show 0b6790f1:l2/tarefas/pipeline/agentDefsL2/input.json
+agents-writes.json and tarefas-writes.json keep selection.pages[].writes only.
+git -C mls-base/mls-102047 show 0b6790f1:l4/tarefas/integration.defs.ts
+agents-sources.json and tarefas-sources.json are the journeys and entity transitions
+needs30 reads, taken from l4/<module>/journeys/*.defs.ts and l4/<module>/ontology/*.defs.ts
+at the same commit (steps keep stepId, kind, entity, effect, transitionRef).
+git -C mls-base/mls-102047 show 0b6790f1:l4/tarefas/pool/l2/web/menu.json
+agents-bff-journeys.json is bindings.journeys of each l2/agents/pipeline/agentDefsL2/bff/*.json
+at the same commit (11 pages). tarefas-inicio-journeys.json is bindings.journeys of
+l2/tarefas/pipeline/agentDefsL2/bff/inicio.json.

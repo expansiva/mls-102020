@@ -6,6 +6,7 @@ import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/he
 import { buildD2InputSnapshot } from '/_102020_/l2/helpers/defsInput/gate.js';
 import { assertD2InputSourcesStable, readD2Input, readD2InputBundle, writeAcceptedD2Input, writeRefusedD2Input } from '/_102020_/l2/helpers/defsInput/io.js';
 import { D2InputValidationError, type D2InputProblem } from '/_102020_/l2/helpers/defsInput/contracts.js';
+import { d2NeedsRecalcProblem } from '/_102020_/l2/helpers/needs/fromBundle.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: D2_INPUT_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2/steps/input20', agentDescription: 'Validate and freeze page11 input without an LLM call', visibility: 'private', beforePromptStep };
@@ -18,7 +19,12 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
   try {
     const previous = await readD2Input(identity);
     const bundle = await readD2InputBundle(identity);
-    const snapshot = await buildD2InputSnapshot(identity, bundle.artifacts, previous);
+    const snapshot = await buildD2InputSnapshot(
+      identity,
+      bundle.artifacts,
+      previous,
+      bundle.changedPageIds.length ? [d2NeedsRecalcProblem(bundle.changedPageIds)] : [],
+    );
     await assertD2InputSourcesStable(bundle);
     const persisted = await writeAcceptedD2Input(identity, snapshot);
     await markD2StepApproved(identity, 'input20', [`l2/${identity.module}/pipeline/agentDefsL2/input.json`], snapshot.snapshotHash);

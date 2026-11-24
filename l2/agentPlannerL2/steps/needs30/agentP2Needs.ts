@@ -1,7 +1,8 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/needs30/agentP2Needs.ts" enhancement="_blank"/>
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { displayPath, readJson, writeJson } from '/_102035_/l2/solution/fs.js';
+import { displayPath, integrationFile, readDefsJson, readJson, writeJson } from '/_102035_/l2/solution/fs.js';
+import type { Ns5IntegrationArtifact } from '/_102035_/l2/solution/types.js';
 import {
   readPoolMessage,
   writePoolMessage,
@@ -26,10 +27,8 @@ import {
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import { loadP2MenuSources } from '/_102020_/l2/agentPlannerL2/steps/menu20/agentP2Menu.js';
 import { receivedPoolFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
-import {
-  buildP2NeedsFile,
-  buildP2NeedsMessage,
-} from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
+import { buildP2NeedsFile } from '/_102020_/l2/helpers/needs/build.js';
+import { buildP2NeedsMessage } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import {
   formatP2NeedsGate,
   validateP2Needs,
@@ -85,11 +84,13 @@ export async function executeP2Needs(moduleName: string, now: Date): Promise<P2D
     const menu = await readJson<PoolMenuFile>(p2MenuFile(moduleName, pipeline.device || P2_MENU_DEVICE));
     if (!menu) throw new Error(`pool/l2/${pipeline.device || P2_MENU_DEVICE}/menu.json is missing; menu20 must run first.`);
     const menuSources = await loadP2MenuSources(moduleName);
+    const integration = await readDefsJson<Ns5IntegrationArtifact>(integrationFile(moduleName));
     needs = buildP2NeedsFile({
       menu,
       sources: menuSources.sources,
       grants: menuSources.grants,
       processes: menuSources.processes,
+      connections: integration?.connections ?? [],
       now,
     });
     const gate = validateP2Needs(needs, menu, menuSources.sources, menuSources.grants);

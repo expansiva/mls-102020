@@ -1,0 +1,608 @@
+{
+  "agent_activity": [
+    {
+      "step": "followAgentActivity/browseAgents",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "followAgentActivity/readOverview",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_overview"
+    },
+    {
+      "step": "followAgentActivity/readActivity",
+      "organisms": [
+        "executionTimeline"
+      ],
+      "endpoints": [
+        "getAgentActivity",
+        "listAgentExecutions"
+      ]
+    }
+  ],
+  "agent_behavior": [
+    {
+      "step": "changeAgentBehavior/findAgentForBehavior",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "changeAgentBehavior/readBehavior",
+      "organisms": [
+        "currentBehavior",
+        "behaviorHistory"
+      ],
+      "endpoints": [
+        "getAgentBehavior",
+        "listBehaviorChanges"
+      ]
+    },
+    {
+      "step": "changeAgentBehavior/requestBehaviorChange",
+      "organisms": [
+        "behaviorChangeRequest",
+        "currentBehavior"
+      ],
+      "endpoints": [
+        "requestBehaviorChange"
+      ]
+    },
+    {
+      "step": "changeAgentBehavior/undoBehaviorChange",
+      "organisms": [
+        "behaviorHistory",
+        "behaviorChangeRequest"
+      ],
+      "endpoints": [
+        "listBehaviorChanges",
+        "requestBehaviorChange"
+      ]
+    }
+  ],
+  "agent_configuration": [
+    {
+      "step": "configureAgent/findAgentForConfig",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "configureAgent/readConfiguration",
+      "organisms": [
+        "agentConfigurationForm",
+        "agentLimits"
+      ],
+      "endpoints": [
+        "getAgentConfiguration"
+      ]
+    },
+    {
+      "step": "configureAgent/saveConfiguration",
+      "organisms": [
+        "agentConfigurationForm"
+      ],
+      "endpoints": [
+        "searchResponsibleCandidates",
+        "saveAgentConfiguration"
+      ]
+    }
+  ],
+  "agent_overview": [
+    {
+      "step": "followAgentActivity/browseAgents",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "followAgentActivity/readOverview",
+      "organisms": [
+        "agentOverviewDetail"
+      ],
+      "endpoints": [
+        "getAgentOverview"
+      ]
+    },
+    {
+      "step": "followAgentActivity/readActivity",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_activity"
+    }
+  ],
+  "agent_simulation": [
+    {
+      "step": "simulateAgentByRole/findAgentToSimulate",
+      "organisms": [],
+      "endpoints": [
+        "getSimulationPage"
+      ],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "simulateAgentByRole/simulateWhatItCan",
+      "organisms": [
+        "whatItCan"
+      ],
+      "endpoints": [
+        "getSimulationPage",
+        "findPeopleToSimulate",
+        "simulateWhatItCan"
+      ]
+    },
+    {
+      "step": "simulateAgentByRole/simulateWhatItUnderstands",
+      "organisms": [
+        "whatItUnderstands"
+      ],
+      "endpoints": [
+        "simulateWhatItUnderstands"
+      ]
+    },
+    {
+      "step": "simulateAsMyself/findAgentForMe",
+      "organisms": [],
+      "endpoints": [
+        "getSimulationPage"
+      ],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "simulateAsMyself/seeWhatItCanForMe",
+      "organisms": [
+        "whatItCan"
+      ],
+      "endpoints": [
+        "getSimulationPage"
+      ]
+    },
+    {
+      "step": "simulateAsMyself/seeWhatItUnderstandsForMe",
+      "organisms": [
+        "whatItUnderstands"
+      ],
+      "endpoints": [
+        "simulateWhatItUnderstands"
+      ]
+    }
+  ],
+  "agent_tools": [
+    {
+      "step": "adjustAgentTools/findAgentForTools",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "adjustAgentTools/browseToolTree",
+      "organisms": [
+        "agentToolTree",
+        "automaticToolChoices"
+      ],
+      "endpoints": [
+        "getAgentToolTree",
+        "listAutomaticToolChoices"
+      ]
+    },
+    {
+      "step": "adjustAgentTools/suggestTools",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_configuration"
+    },
+    {
+      "step": "adjustAgentTools/enableUnchosenTool",
+      "organisms": [
+        "agentToolTree"
+      ],
+      "endpoints": [
+        "enableUnchosenTool"
+      ]
+    },
+    {
+      "step": "adjustAgentTools/toggleTools",
+      "organisms": [
+        "agentToolTree"
+      ],
+      "endpoints": [
+        "toggleToolChoice"
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "step": "createVirtualEmployee/openAgentList",
+      "organisms": [
+        "agentsList",
+        "newAgentForm"
+      ],
+      "endpoints": [
+        "loadAgentsPage"
+      ]
+    },
+    {
+      "step": "createVirtualEmployee/describeAgent",
+      "organisms": [
+        "newAgentForm"
+      ],
+      "endpoints": [
+        "sendNewAgentRequest"
+      ]
+    },
+    {
+      "step": "createVirtualEmployee/followDraftSituation",
+      "organisms": [
+        "agentsList",
+        "requestTimeline",
+        "draftsInbox"
+      ],
+      "endpoints": [
+        "loadAgentsPage",
+        "listRequestHistory",
+        "listAgentsCollection"
+      ]
+    },
+    {
+      "step": "followAgentActivity/browseAgents",
+      "organisms": [
+        "agentsList",
+        "configuredHighlights"
+      ],
+      "endpoints": [
+        "loadAgentsPage",
+        "listAgentsCollection",
+        "listConfiguredAgents"
+      ]
+    },
+    {
+      "step": "followAgentActivity/readOverview",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_overview"
+    },
+    {
+      "step": "followAgentActivity/readActivity",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_activity"
+    },
+    {
+      "step": "reviewAndActivateDraft/openReadyDraft",
+      "organisms": [
+        "draftsInbox",
+        "agentsList",
+        "requestTimeline"
+      ],
+      "endpoints": [
+        "loadAgentsPage"
+      ],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/reviewDraft",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/adjustDraftTools",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/simulateDraft",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/activateDraft",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "reviewAndActivateDraft/discardDraft",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "draft_review"
+    },
+    {
+      "step": "adjustAgentTools/findAgentForTools",
+      "organisms": [
+        "agentsList",
+        "configuredHighlights"
+      ],
+      "endpoints": [
+        "loadAgentsPage",
+        "listAgentsCollection",
+        "listConfiguredAgents"
+      ],
+      "continuesIn": "agent_tools"
+    },
+    {
+      "step": "adjustAgentTools/browseToolTree",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_tools"
+    },
+    {
+      "step": "adjustAgentTools/suggestTools",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_tools"
+    },
+    {
+      "step": "adjustAgentTools/enableUnchosenTool",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_tools"
+    },
+    {
+      "step": "adjustAgentTools/toggleTools",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_tools"
+    },
+    {
+      "step": "changeAgentBehavior/findAgentForBehavior",
+      "organisms": [
+        "agentsList"
+      ],
+      "endpoints": [
+        "loadAgentsPage",
+        "listAgentsCollection"
+      ],
+      "continuesIn": "agent_behavior"
+    },
+    {
+      "step": "changeAgentBehavior/readBehavior",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_behavior"
+    },
+    {
+      "step": "changeAgentBehavior/requestBehaviorChange",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_behavior"
+    },
+    {
+      "step": "changeAgentBehavior/undoBehaviorChange",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_behavior"
+    },
+    {
+      "step": "changeMyConduct/findMyAgent",
+      "organisms": [
+        "agentsList"
+      ],
+      "endpoints": [
+        "loadAgentsPage",
+        "listAgentsCollection"
+      ],
+      "continuesIn": "my_conduct"
+    },
+    {
+      "step": "changeMyConduct/readMyConduct",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "my_conduct"
+    },
+    {
+      "step": "changeMyConduct/changeConduct",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "my_conduct"
+    },
+    {
+      "step": "changeMyConduct/readMyConductHistory",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "my_conduct"
+    },
+    {
+      "step": "configureAgent/findAgentForConfig",
+      "organisms": [
+        "agentsList",
+        "configuredHighlights"
+      ],
+      "endpoints": [
+        "loadAgentsPage",
+        "listAgentsCollection",
+        "listConfiguredAgents"
+      ],
+      "continuesIn": "agent_configuration"
+    },
+    {
+      "step": "configureAgent/readConfiguration",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_configuration"
+    },
+    {
+      "step": "configureAgent/saveConfiguration",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_configuration"
+    },
+    {
+      "step": "simulateAgentByRole/findAgentToSimulate",
+      "organisms": [
+        "agentsList"
+      ],
+      "endpoints": [
+        "loadAgentsPage",
+        "listAgentsCollection"
+      ],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAgentByRole/simulateWhatItCan",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAgentByRole/simulateWhatItUnderstands",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAsMyself/findAgentForMe",
+      "organisms": [
+        "agentsList"
+      ],
+      "endpoints": [
+        "loadAgentsPage",
+        "listAgentsCollection"
+      ],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAsMyself/seeWhatItCanForMe",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_simulation"
+    },
+    {
+      "step": "simulateAsMyself/seeWhatItUnderstandsForMe",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agent_simulation"
+    }
+  ],
+  "draft_review": [
+    {
+      "step": "reviewAndActivateDraft/openReadyDraft",
+      "organisms": [
+        "draftSummary",
+        "draftDecision"
+      ],
+      "endpoints": [
+        "getDraftReview"
+      ]
+    },
+    {
+      "step": "reviewAndActivateDraft/reviewDraft",
+      "organisms": [
+        "draftSummary"
+      ],
+      "endpoints": [
+        "getDraftReview"
+      ]
+    },
+    {
+      "step": "reviewAndActivateDraft/adjustDraftTools",
+      "organisms": [
+        "draftTools"
+      ],
+      "endpoints": [
+        "getDraftReview",
+        "saveDraftTools"
+      ]
+    },
+    {
+      "step": "reviewAndActivateDraft/simulateDraft",
+      "organisms": [
+        "draftSimulation"
+      ],
+      "endpoints": [
+        "searchSimulationPeople",
+        "simulateDraft"
+      ]
+    },
+    {
+      "step": "reviewAndActivateDraft/activateDraft",
+      "organisms": [
+        "draftDecision"
+      ],
+      "endpoints": [
+        "activateDraft"
+      ],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "reviewAndActivateDraft/discardDraft",
+      "organisms": [
+        "draftDecision"
+      ],
+      "endpoints": [
+        "discardDraft"
+      ],
+      "continuesIn": "agents"
+    }
+  ],
+  "my_conduct": [
+    {
+      "step": "changeMyConduct/findMyAgent",
+      "organisms": [],
+      "endpoints": [],
+      "continuesIn": "agents"
+    },
+    {
+      "step": "changeMyConduct/readMyConduct",
+      "organisms": [
+        "conductSummary"
+      ],
+      "endpoints": [
+        "getMyConduct"
+      ]
+    },
+    {
+      "step": "changeMyConduct/changeConduct",
+      "organisms": [
+        "conductChange"
+      ],
+      "endpoints": [
+        "sendConductChange"
+      ]
+    },
+    {
+      "step": "changeMyConduct/readMyConductHistory",
+      "organisms": [
+        "conductHistory"
+      ],
+      "endpoints": [
+        "listMyConductChanges"
+      ]
+    }
+  ],
+  "person_restrictions": [
+    {
+      "step": "restrictPersonTools/choosePerson",
+      "organisms": [
+        "personPicker"
+      ],
+      "endpoints": [
+        "listPeople"
+      ]
+    },
+    {
+      "step": "restrictPersonTools/reviewRestrictions",
+      "organisms": [
+        "blockedToolsChecklist"
+      ],
+      "endpoints": [
+        "getPersonRestrictions"
+      ]
+    },
+    {
+      "step": "restrictPersonTools/markRestrictions",
+      "organisms": [
+        "blockedToolsChecklist"
+      ],
+      "endpoints": [
+        "saveRestrictions"
+      ]
+    }
+  ],
+  "tool_catalog": []
+}
