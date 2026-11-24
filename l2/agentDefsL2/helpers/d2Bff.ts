@@ -1078,6 +1078,8 @@ function checkD2BffBindings(design: D2BffDesign, context: D2BffCheckContext): D2
     let key = '';
     try { key = d2WriteKey(write); } catch { continue; }
     const intent = submitByWrite.get(key) ?? '';
+    // d2_217: a call line this page does not submit belongs to the page that sends it.
+    if (!intent) continue;
     const command = design.endpoints.find(item => item.kind === 'cmd' && item.when === intent);
     const stepIds = (write.from ?? []).flatMap(item => item.startsWith('journey:') ? [item.slice('journey:'.length)] : []);
     for (const step of stepIds) {

@@ -150,14 +150,7 @@ test('d2_212 a split call line must bind its step to its command', () => {
     bindings: { organisms: [], commands: [], selections: [], journeys: [{ step: 'adjustAgentTools/suggestTools', organisms: [], endpoints: [] }], updates: [] },
   } as D2BffDesign;
   const stepIssues = (issues: { code: string; message: string }[]) => issues.filter(issue => issue.code === 'D2_BFF_BINDING_STEP' && issue.message.includes('must list its command'));
-  const refused = stepIssues(checkD2Bff(design, context));
-  assert.equal(refused.some(issue => issue.message.includes('suggestTools')), true, refused.map(issue => issue.message).join('\n'));
   const key = d2WriteKey(suggest);
-  const accepted: D2BffDesign = {
-    ...design,
-    endpoints: [{ id: 'suggestTools', kind: 'cmd', when: 'suggestTools', writes: key, input: [], output: [], rules: [], jsdoc: { purpose: '', input: '', processing: '', output: '' } }],
-    bindings: { ...design.bindings, journeys: [{ step: 'adjustAgentTools/suggestTools', organisms: [], endpoints: ['suggestTools'] }] },
-  };
   const drafted = {
     ...context,
     page11: {
@@ -168,6 +161,13 @@ test('d2_212 a split call line must bind its step to its command', () => {
       desktop: { organisms: { tools: { reads: [], edits: [], selects: '', submits: [{ intentId: 'suggestTools', write: key }] } } },
       mobile: { organisms: {} },
     },
+  };
+  const refused = stepIssues(checkD2Bff(design, drafted));
+  assert.equal(refused.some(issue => issue.message.includes('suggestTools')), true, refused.map(issue => issue.message).join('\n'));
+  const accepted: D2BffDesign = {
+    ...design,
+    endpoints: [{ id: 'suggestTools', kind: 'cmd', when: 'suggestTools', writes: key, input: [], output: [], rules: [], jsdoc: { purpose: '', input: '', processing: '', output: '' } }],
+    bindings: { ...design.bindings, journeys: [{ step: 'adjustAgentTools/suggestTools', organisms: [], endpoints: ['suggestTools'] }] },
   };
   assert.deepEqual(stepIssues(checkD2Bff(accepted, drafted)), []);
 });
