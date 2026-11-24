@@ -16,6 +16,7 @@ import { navigateAppToPage } from '/_102020_/l2/aura/helpers/pageNavigation.js';
 import { compileAndApplyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
 import { compileAfterEdit, findPageElement, persistLocalEdit, resolveEditTarget, targetForFile, type IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
 import { recordEditInDefs } from '/_102020_/l2/aura/studio/studioDefsHistory.js';
+import { ensurePageVersion, notePageEdit, versionedPage } from '/_102020_/l2/aura/studio/pageVersions.js';
 import { t as tStudio, tr } from '/_102020_/l2/aura/studio/studioMessages.js';
 import { resolveStructuralAnchor, scanTemplateTree } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { currentEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
@@ -574,6 +575,10 @@ export class ServiceGenome102020 extends ServiceBase {
 
         const newSource = result.newSource || source;
 
+        // The page timeline: the page before the swap (if it has no version yet), then the swap itself.
+        const versioned = versionedPage({ ...file, project: Number(file.project) });
+        void ensurePageVersion(versioned, source);
+
         tsModel.model.pushEditOperations(
             [],
             [{ range: tsModel.model.getFullModelRange(), text: newSource }],
@@ -592,6 +597,8 @@ export class ServiceGenome102020 extends ServiceBase {
             at: new Date().toISOString(),
             scope: all ? 'all' : 'one',
         });
+
+        notePageEdit(versioned, 'me', tStudio('versions.moleculeSwap', { from: this._oldSelectedTag, to: newTag }));
 
         this._oldSelectedTag = newTag;
         // No reselect key is written: the in-place editor restores its own selection by POSITION

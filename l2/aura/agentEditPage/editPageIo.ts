@@ -254,15 +254,16 @@ async function compileDiagnosis(file: IStudioEditTarget): Promise<string> {
 }
 
 /**
- * The page as it is now: its `.ts` text and the history of its defs (null = no defs, or a history that does not
- * parse). Taken before an apply, it is what a discard puts back; taken after, it says whether the page is still
- * the one the apply left.
+ * The page as it is now: its `.ts` text, its whole `.defs.ts` text (null = no defs) and the history of that defs
+ * (null = no defs, or a history that does not parse). Taken before an apply, it is what a discard puts back; taken
+ * after, it says whether the page is still the one the apply left. The page timeline (pageVersions) keeps these.
  */
 export interface EditPageSnapshot {
   project: number;
   folder: string;
   page: string;
   source: string;
+  defs: string | null;
   history: DefsHistoryEntry[] | null;
 }
 
@@ -275,26 +276,43 @@ export async function snapshotPageFile(project: number, folder: string, shortNam
   const page = await editorModel(project, folder, shortName, '.ts');
   if (!page) return null;
   let history: DefsHistoryEntry[] | null = null;
-  const defs = await editorModel(project, folder, shortName, '.defs.ts');
-  if (defs) {
+  const defsFile = await editorModel(project, folder, shortName, '.defs.ts');
+  const defs = defsFile ? defsFile.model.model.getValue() : null;
+  if (defs !== null) {
     try {
-      history = splitDefsHistory(defs.model.model.getValue()).history;
+      history = splitDefsHistory(defs).history;
     } catch {
       history = null;
     }
   }
-  return { project, folder, page: shortName, source: page.model.model.getValue(), history };
+  return { project, folder, page: shortName, source: page.model.model.getValue(), defs, history };
 }
 
 /**
  * Puts the page back as `snapshot` holds it, through the same writes the apply used: the `.ts` (model, local copy,
- * compile + live update) and the defs history. Local only, like the apply: nothing reaches the project before a save.
+ * compile + live update) and the defs — WHOLE when the snapshot has it (definition and history together: a
+ * regeneration may have rewritten the definition since), else only its history. Local only, like the apply: nothing
+ * reaches the project before a save.
  */
-export async function restoreEditPage(snapshot: EditPageSnapshot): Promise<CommitResult> {
+export async function restoreEditPage(snapshot: Pick<EditPageSnapshot, 'project' | 'folder' | 'page' | 'source' | 'history'> & { defs?: string | null }): Promise<CommitResult> {
   const result = await commitPageSource(snapshot.project, snapshot.folder, snapshot.page, snapshot.source);
+  if (typeof snapshot.defs === 'string') {
+    await writeDefsText(snapshot.project, snapshot.folder, snapshot.page, snapshot.defs);
+    return result;
+  }
   const history = snapshot.history;
   if (history) await recordInDefsHistory(snapshot.project, snapshot.folder, snapshot.page, () => history);
   return result;
+}
+
+/** The page `.defs.ts` replaced whole: model + local copy, as studioDefsHistory writes it. No-op when unchanged. */
+async function writeDefsText(project: number, folder: string, shortName: string, text: string): Promise<void> {
+  const file = await editorModel(project, folder, shortName, '.defs.ts');
+  if (!file) return;
+  const model = file.model.model;
+  if (model.getValue() === text) return;
+  model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
+  await persistLocalEdit(file, text);
 }
 
 /** Records the applied requests in the page defs history (enabled projects only). */

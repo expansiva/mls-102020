@@ -194,6 +194,7 @@ import {
   tagToFileInfo,
   type IStudioEditTarget,
 } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import { ensurePageVersion, notePageEdit, versionedPage } from '/_102020_/l2/aura/studio/pageVersions.js';
 import {
   organismOf,
   pathWithinOrganism,
@@ -1117,6 +1118,8 @@ export class StudioEditor {
     this.candidates = null;
     if (result.ok) {
       this.target = result.target;
+      // The page timeline starts (or catches up) with the page as it is when it comes on screen.
+      void ensurePageVersion(versionedPage(result.target));
       this.targetFailure = null;
       this.statusText = '';
       this.publishSelection(this.classPanel?.el ?? null);
@@ -2076,6 +2079,7 @@ export class StudioEditor {
     }
 
     const model = editTargetFile.model.model;
+    void ensurePageVersion(versionedPage(editTargetFile), model.getValue());
     model.pushEditOperations(
       [],
       [{ range: model.getFullModelRange(), text: result.newSource }],
@@ -2092,6 +2096,7 @@ export class StudioEditor {
       ? ` (${locales.join(', ')})`
       : '';
     const what = origin.type === 'i18n' ? `i18n "${origin.key}"${localeNote}` : t('status.textLabel');
+    notePageEdit(versionedPage(editTargetFile), 'me', what);
     const where = editTargetFile === this.target
       ? t('status.onThisPage')
       : t('status.onFile', { file: editTargetFile.shortName, folder: editTargetFile.folder });
@@ -4149,6 +4154,8 @@ export class StudioEditor {
     warning?: IMessageRef,
   ): Promise<void> {
     const model = file.model.model;
+    const page = versionedPage(file);
+    void ensurePageVersion(page, model.getValue());
     model.pushEditOperations(
       [],
       [{ range: model.getFullModelRange(), text: newSource }],
@@ -4157,6 +4164,7 @@ export class StudioEditor {
 
     // Straight to the local store, ahead of libModel's own debounced listener (see persistLocalEdit).
     await persistLocalEdit(file, newSource);
+    notePageEdit(page, 'me', what);
 
     const where = file === this.target
       ? t('status.onThisPage')

@@ -29,15 +29,24 @@ test('the page is read BEFORE the agent writes, and the change is discardable on
   const before = apply.indexOf('const before = await this._snapshotPage(entry);');
   const run = apply.indexOf("this._executeAgent('agentEditPage'");
   assert.ok(before >= 0 && before < run, 'snapshot first');
-  assert.ok(apply.includes('if (before && after && after.source !== before.source) this._editUndo[page.name] = { before, after };'));
+  assert.ok(apply.includes('if (before && after && after.source !== before.source) this._editUndo[page.name] = { before, after, appliedAt: Date.now() };'));
+  // The page timeline: the page before the agent writes, then the applied request as a version of its own.
+  const ensure = apply.indexOf('await ensurePageVersion(versioned);');
+  assert.ok(ensure >= 0 && ensure < run, 'timeline before the write');
+  assert.ok(apply.indexOf("await recordPageVersion(versioned, 'ai', plan.request);") > run);
 });
 
-test('a discard refuses when the page changed since — later edits are never lost', () => {
+test('a discard of a changed page asks first, goes through the timeline, and refuses only without it', () => {
   const discard = member('private async _onDiscardEdit(');
   const check = discard.indexOf('now.source !== undo.after.source');
-  const restore = discard.indexOf('await restoreEditPage(undo.before)');
-  assert.ok(check >= 0 && check < restore);
-  assert.ok(discard.includes('this.msg.editDiscardStale'));
+  const confirm = discard.indexOf('this.msg.editDiscardConfirm');
+  const restore = discard.indexOf('await restorePageVersion(versioned,');
+  assert.ok(check >= 0 && check < confirm && confirm < restore, 'check, then ask, then restore');
+  // Without the timeline nothing could bring the later edits back: refused, as before.
+  assert.ok(discard.indexOf('!pageVersionsAvailable()') < discard.indexOf('this.msg.editDiscardStale'));
+  assert.ok(discard.includes('if (!undo.confirmed) {'));
+  // The page without a timeline (not a generated page folder) still discards by the snapshot.
+  assert.ok(discard.includes('await restoreEditPage(undo.before)'));
 });
 
 test('a new request keeps the previous change for good', () => {
@@ -47,12 +56,14 @@ test('a new request keeps the previous change for good', () => {
 test('the restore goes through the same writes as the apply: the page source and the defs history', () => {
   const restore = IO.slice(IO.indexOf('export async function restoreEditPage('));
   assert.ok(restore.includes('commitPageSource(snapshot.project, snapshot.folder, snapshot.page, snapshot.source)'));
+  // A snapshot with the whole defs puts the whole defs back (definition + history); else only its history.
+  assert.ok(restore.indexOf('writeDefsText(snapshot.project, snapshot.folder, snapshot.page, snapshot.defs)') < restore.indexOf('recordInDefsHistory('));
   assert.ok(restore.includes('recordInDefsHistory(snapshot.project, snapshot.folder, snapshot.page, () => history)'));
 });
 
 test('the discard button and its messages exist in the three languages', () => {
   assert.ok(SELECT_PAGE.includes('@click=${() => this._onDiscardEdit(page)}'));
-  for (const key of ['editDiscard', 'editDiscarding', 'editDiscarded', 'editDiscardStale']) {
+  for (const key of ['editDiscard', 'editDiscarding', 'editDiscarded', 'editDiscardStale', 'editDiscardConfirm']) {
     assert.equal(SELECT_PAGE.match(new RegExp(`^ +${key}: '`, 'gmu'))?.length ?? 0, 3, key);
   }
 });

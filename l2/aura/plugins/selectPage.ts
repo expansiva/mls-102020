@@ -25,6 +25,10 @@ import {
 } from '/_102020_/l2/aura/studio/studioAdvancedMode.js';
 import { annotCommand, getAnnotState, onAnnotStateChange, type IAnnotState } from '/_102020_/l2/aura/studio/studioAnnotateStore.js';
 import { restoreEditPage, snapshotEditPage, snapshotPageFile, type EditPageSnapshot } from '/_102020_/l2/aura/agentEditPage/editPageIo.js';
+import {
+    ensurePageVersion, listPageVersions, pageVersionsAvailable, recordPageVersion, restorePageVersion, versionedPage,
+} from '/_102020_/l2/aura/studio/pageVersions.js';
+import '/_102020_/l2/aura/studio/pageVersionsPanel.js';
 import type { StudioTheme } from '/_102033_/l2/cbe/studioTheme.js';
 import type { StudioDevice } from '/_102033_/l2/cbe/studioDevice.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
@@ -99,7 +103,8 @@ const message_en = {
     editDiscard: 'Discard change',
     editDiscarding: 'Discarding…',
     editDiscarded: 'Change discarded: the page is back as it was before.',
-    editDiscardStale: 'The page changed after this change; discarding now would undo those edits too. Use undo (Ctrl+Z) instead.',
+    editDiscardStale: 'The page changed after this change and the version history is not available in this browser: discarding now would lose those edits.',
+    editDiscardConfirm: '{n} edit(s) made after this request will be undone too. Click Discard again to confirm — the Versions list, in the Page tab, can bring them back.',
     editElement: 'Element',
     editElementIn: 'in',
     editElementRemove: 'Do not send this element',
@@ -208,7 +213,8 @@ const messages: Record<string, MessageType> = {
         editDiscard: 'Descartar alteração',
         editDiscarding: 'Descartando…',
         editDiscarded: 'Alteração descartada: a página voltou a ser como era antes.',
-        editDiscardStale: 'A página mudou depois desta alteração; descartar agora desfaria essas edições também. Use o desfazer (Ctrl+Z).',
+        editDiscardStale: 'A página mudou depois desta alteração e o histórico de versões não está disponível neste navegador: descartar agora perderia essas edições.',
+        editDiscardConfirm: '{n} edição(ões) feita(s) depois deste pedido também voltam. Clique em Descartar de novo para confirmar — a lista Versões, na aba Página, traz de volta.',
         editElement: 'Elemento',
         editElementIn: 'em',
         editElementRemove: 'Não enviar este elemento',
@@ -314,7 +320,8 @@ const messages: Record<string, MessageType> = {
         editDiscard: 'Descartar cambio',
         editDiscarding: 'Descartando…',
         editDiscarded: 'Cambio descartado: la página volvió a ser como era antes.',
-        editDiscardStale: 'La página cambió después de este cambio; descartar ahora desharía esas ediciones también. Use deshacer (Ctrl+Z).',
+        editDiscardStale: 'La página cambió después de este cambio y el historial de versiones no está disponible en este navegador: descartar ahora perdería esas ediciones.',
+        editDiscardConfirm: '{n} edición(es) hecha(s) después de este pedido también se deshacen. Haga clic en Descartar de nuevo para confirmar — la lista Versiones, en la pestaña Página, las recupera.',
         editElement: 'Elemento',
         editElementIn: 'en',
         editElementRemove: 'No enviar este elemento',
@@ -449,7 +456,9 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _editPlan: Record<string, { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null; marks: IEditMark[] }> = {};
     @state() private _editBusy: Record<string, 'plan' | 'apply' | 'discard'> = {};
     // The applied change that can still be discarded, per page: the page before it and the page it left.
-    private _editUndo: Record<string, { before: EditPageSnapshot; after: EditPageSnapshot }> = {};
+    // `appliedAt` = when it was applied (the versions after it are the later edits a discard also takes back);
+    // `confirmed` = the person was told those edits go back too, and the next click discards.
+    private _editUndo: Record<string, { before: EditPageSnapshot; after: EditPageSnapshot; appliedAt: number; confirmed?: boolean }> = {};
     // The last change was discarded (the panel says so until the next request).
     @state() private _editDiscarded: Record<string, boolean> = {};
     @state() private _editError: Record<string, string> = {};
@@ -890,7 +899,7 @@ export class PluginSelectPage extends StateLitElement {
                 ? this._renderEditPanel(page)
                 : html`<p class="text-xs text-gray-500 dark:text-gray-400 px-1">${this.msg.editUnavailable}</p>`)}
             ${this._renderTabPanel('states', this._renderPageStates())}
-            ${this._renderTabPanel('page', html`${this._renderPageInfo(page)}${this._renderDeviceSwitch(page)}${this._renderThemeSwitch()}${this._renderAdvancedSwitch()}`)}
+            ${this._renderTabPanel('page', html`${this._renderPageInfo(page)}${this._renderDeviceSwitch(page)}${this._renderThemeSwitch()}${this._renderAdvancedSwitch()}${this._renderVersions(page)}`)}
         `;
     }
 
@@ -1063,6 +1072,13 @@ export class PluginSelectPage extends StateLitElement {
     // editor hands the editing back to the floating picker, which then pops over the app.
     private _renderTabPanel(id: DetailTab, content: unknown) {
         return html`<div role="tabpanel" class="${this._tab === id ? 'flex' : 'hidden'} flex-col gap-3">${content}</div>`;
+    }
+
+    // The page timeline (pageVersionsPanel): the page file on screen, the one the edits write.
+    private _renderVersions(page: IPageEntry) {
+        const file = page.file;
+        const ref = file ? { project: Number(file.project), folder: file.folder, shortName: file.shortName } : null;
+        return html`<aura--studio--page-versions-102020 .page=${ref}></aura--studio--page-versions-102020>`;
     }
 
     private _renderPageInfo(page: IPageEntry) {
@@ -1438,13 +1454,17 @@ export class PluginSelectPage extends StateLitElement {
         try {
             // The page before the change, for a discard. Without it the change is still applied, just not discardable.
             const before = await this._snapshotPage(entry);
+            const versioned = before ? versionedPage({ project: before.project, folder: before.folder, shortName: before.page }) : null;
+            // The page timeline holds the page as it is before the agent writes (a version only if it is missing).
+            await ensurePageVersion(versioned);
             const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set(`edit:${page.name}`, data); this.requestUpdate(); });
             if (result.failure) this._setEdit('_editError', page.name, result.failure);
             // No notes = the apply never finished (the plan stays, to try again).
             else if (!result.notes) this._setEdit('_editError', page.name, this.msg.editNoAnswer);
             else {
                 const after = before ? await this._snapshotPage(entry) : null;
-                if (before && after && after.source !== before.source) this._editUndo[page.name] = { before, after };
+                await recordPageVersion(versioned, 'ai', plan.request);
+                if (before && after && after.source !== before.source) this._editUndo[page.name] = { before, after, appliedAt: Date.now() };
                 this._setEdit('_editPlan', page.name, undefined);
                 this._editDraft = { ...this._editDraft, [page.name]: '' };
                 // The marks were for this request: applied, they are done (the page they circled has changed).
@@ -1473,8 +1493,10 @@ export class PluginSelectPage extends StateLitElement {
     }
 
     /**
-     * Discard: the page and its defs history go back to what they were before the change. Only while the page is
-     * still the one the change left — a later edit (class picker, move, another request) would be lost with it.
+     * Discard: the page and its defs go back to what they were before the change — a "back to this version" of the
+     * page timeline, so the discard itself is a version and can be undone from the Versions list. When the page
+     * changed after the change, the later edits go back too: the first click says how many, the second confirms.
+     * Without the timeline (the browser store failed) a changed page is refused, as nothing could bring them back.
      */
     private async _onDiscardEdit(page: IPageEntry) {
         const undo = this._editUndo[page.name];
@@ -1482,12 +1504,26 @@ export class PluginSelectPage extends StateLitElement {
         this._setEdit('_editError', page.name, undefined);
         this._setEdit('_editBusy', page.name, 'discard');
         try {
-            const now = await snapshotPageFile(undo.after.project, undo.after.folder, undo.after.page);
-            if (!now || now.source !== undo.after.source) {
-                this._setEdit('_editError', page.name, this.msg.editDiscardStale);
-                return;
+            const ref = { project: undo.after.project, folder: undo.after.folder, shortName: undo.after.page };
+            const now = await snapshotPageFile(ref.project, ref.folder, ref.shortName);
+            const changedSince = !now || now.source !== undo.after.source || (now.defs ?? null) !== (undo.after.defs ?? null);
+            const versioned = versionedPage(ref);
+            if (changedSince) {
+                if (!versioned || !pageVersionsAvailable()) {
+                    this._setEdit('_editError', page.name, this.msg.editDiscardStale);
+                    return;
+                }
+                if (!undo.confirmed) {
+                    const later = (await listPageVersions(versioned)).filter(v => v.at > undo.appliedAt).length;
+                    undo.confirmed = true;
+                    this._setEdit('_editError', page.name, this.msg.editDiscardConfirm.replace('{n}', String(Math.max(1, later))));
+                    return;
+                }
             }
-            const result = await restoreEditPage(undo.before);
+            const before = { ts: undo.before.source, defs: undo.before.defs };
+            const result = versioned
+                ? await restorePageVersion(versioned, { id: 0, at: undo.appliedAt, who: 'ai', what: '', ...before })
+                : await restoreEditPage(undo.before);
             delete this._editUndo[page.name];
             this._setEdit('_editNotes', page.name, undefined);
             this._editDiscarded = { ...this._editDiscarded, [page.name]: true };
@@ -1664,7 +1700,10 @@ export class PluginSelectPage extends StateLitElement {
             this._taskInfoByName.set(page.name, data);
             this.requestUpdate(); // surface "Follow task" as soon as the task exists
         };
+        // The page timeline: the regeneration rewrites the page, so the page before it must be a version.
+        const versioned = versionedPage(page.file ? { project: Number(page.file.project), folder: page.file.folder, shortName: page.file.shortName } : null);
         try {
+            await ensurePageVersion(versioned);
             let result: { failure?: string };
             const project = Number(page.file?.project ?? getAuraState().actualProject ?? 0);
             const baseChoice = !genomeUx && project ? await readGenomeUxBaseChoice(project, module, pageShort) : null;
@@ -1681,6 +1720,7 @@ export class PluginSelectPage extends StateLitElement {
                 result = await this._executeAgent('agentMaterializeL2', `${module} --page ${pageShort} --genome page11 --force`, trackTask);
             }
             if (result.failure) throw new Error(result.failure);
+            await recordPageVersion(versioned, 'regen', '');
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {
             setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
