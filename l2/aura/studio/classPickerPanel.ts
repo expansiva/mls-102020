@@ -31,6 +31,8 @@ export type {
   IPickerApply,
   IPickerInner,
   IPickerLevel,
+  IPickerMediaSet,
+  IPickerMediaWrite,
   IPickerPreview,
   IPickerPropEdit,
   IPickerPaste,

@@ -27,6 +27,8 @@ import { getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { getActualLanguage, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { combinationName } from '/_102020_/l2/aura/helpers/pageCombination.js';
 import { currentLanguage, describePageFolder } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import { categoriesFor, mediaFileLabel, type MediaKind } from '/_102020_/l2/aura/studio/studioMediaSrc.js';
+import { assetUrl, categoryOf, isProjectMediaFile } from '/_102020_/l2/aura/plugins/helpers/assetsMediaCore.js';
 import {
   ANIMATION_GROUPS,
   CASCADE_MAX_CHILDREN,
@@ -198,6 +200,48 @@ export interface IPickerText {
 }
 
 /** What the panel asks the editor to write into an attribute. */
+/** The media row: the project file an `<img>` / `<video>` / `<audio>` shows. */
+export interface IPickerMedia {
+  kind: MediaKind;
+  /** The final url (`/_<p>_/l3/assets/<file>`, or whatever the markup says); empty when absent. */
+  value: string;
+  editable: boolean;
+  reason?: IMessageRef;
+}
+
+/** One file of a media molecule: a `<Source>` slot the page wrote. */
+export interface IPickerMediaItem {
+  /** The final url (never the studio's `blob:`). */
+  value: string;
+  editable: boolean;
+  reason?: IMessageRef;
+  /** False for the last one: a player with no source has nothing to play. */
+  removable: boolean;
+}
+
+/**
+ * The files of a media molecule (gallery, video, audio, PDF): its `<Source>` slots and, for a video,
+ * the cover picture. Shown for the molecule and for anything inside it — the picture on screen is the
+ * molecule's own markup, so the page file only reaches it through these slots.
+ */
+export interface IPickerMediaSet {
+  kind: MediaKind;
+  /** The project whose assets are offered (the page's). */
+  project: number | null;
+  items: IPickerMediaItem[];
+  poster?: IPickerMedia;
+  /** A new source copies the last one; with none (or none located) there is nothing to copy. */
+  canAdd: boolean;
+  /** Why nothing here can be edited — the molecule itself could not be located. */
+  reason?: IMessageRef;
+}
+
+/** What the panel asks the editor to write: the single row (no item), one source, or the poster. */
+export interface IPickerMediaWrite {
+  url: string;
+  item?: number | 'poster';
+}
+
 export interface IPickerTextEdit {
   attribute: string;
   /** The key the user is editing — chosen when the text matched more than one. */
@@ -292,6 +336,10 @@ export interface IPickerTarget {
   levels: IPickerLevel[];
   /** Text this element carries in an attribute — empty for most elements. */
   texts: IPickerText[];
+  /** The media row, for an `<img>` / `<video>` / `<audio>`; absent for anything else. */
+  media?: IPickerMedia;
+  /** The files of the media molecule the selection is (or is inside of); absent otherwise. */
+  mediaSet?: IPickerMediaSet;
   /** File that receives the edit, already formatted for display. */
   fileLabel: string;
   /**
@@ -546,6 +594,8 @@ export abstract class ClassPickerBase extends StateLitElement {
   @state() private slotGroupsOpen: string[] = [];
   /** The ⋯ menu of the chrome is open. */
   @state() private menuOpen = false;
+  /** Which media gallery is open: `single`, `item:<n>`, `poster`, `add` — or none. */
+  @state() private mediaOpen: string | null = null;
   /** Token index whose typed-value input is open. */
   @state() private typedEditing: string | null = null;
   /** State keys the scenario panel is currently simulating — see renderScenarioBadge. */
@@ -638,6 +688,8 @@ export abstract class ClassPickerBase extends StateLitElement {
     if (changed.has('target')) this.confirmRemove = false;
     // Nor does the menu: every action in it ends in a write, and the write answers with a new target.
     if (changed.has('target')) this.menuOpen = false;
+    // The media gallery belongs to the element it was opened for: another selection, another gallery.
+    if (changed.has('target')) this.mediaOpen = null;
     // A slot that is no longer there (the page was rebuilt) is not a part to stay on.
     if (typeof this.editPart === 'number' && !this.target?.slots[this.editPart]) this.editPart = 'inner';
     // The page tree picked a slot: open the Slots section on it. After the reset above, which a new
@@ -720,6 +772,8 @@ export abstract class ClassPickerBase extends StateLitElement {
       ${this.renderChrome(target)}
       ${this.renderChain(target)}
       ${this.renderTexts(target)}
+      ${this.renderMedia(target)}
+      ${this.renderMediaSet(target)}
       ${this.renderClipboardBar()}
       <div class="acp-tabs">
         ${this.tabButton('classes', 'panel.tabStyle')}
@@ -811,6 +865,135 @@ export abstract class ClassPickerBase extends StateLitElement {
     return html`<div class="acp-texts">
       ${target.texts.map((text) => this.renderText(text))}
     </div>`;
+  }
+
+  /**
+   * The media row: which project file the element shows, and a gallery to change it.
+   *
+   * Thumbnails use the FINAL url on purpose: the studio swaps it for the local bytes when the file
+   * was uploaded and not published yet (studioAssets), and the server serves it otherwise — the same
+   * thing the page itself will do.
+   */
+  protected renderMedia(target: IPickerTarget) {
+    const media = target.media;
+    if (!media) return nothing;
+    return html`<div class="acp-texts">${this.renderMediaRow({
+      key: 'single', label: t(`panel.media.${media.kind}`), media, project: target.file?.project ?? null,
+      pick: (url) => this.emitMedia({ url }),
+    })}</div>`;
+  }
+
+  /**
+   * One media file: what it shows now, and the gallery that replaces it. The single row of an
+   * `<img>`, each source of a molecule and its poster are all this row.
+   */
+  protected renderMediaRow(row: {
+    key: string;
+    label: string;
+    media: IPickerMedia;
+    project: number | null;
+    pick: (url: string) => void;
+    extra?: unknown;
+  }) {
+    const { key, media } = row;
+    const head = html`<span class="acp-text-label">${row.label}</span>`;
+    const current = media.value
+      ? html`<span class="acp-media-current" title=${media.value}>
+          ${media.kind === 'image' ? html`<img class="acp-media-thumb" src=${media.value} alt="">` : nothing}
+          <span class="acp-media-name">${mediaFileLabel(media.value)}</span></span>`
+      : html`<span class="acp-reason">${t('panel.mediaNone')}</span>`;
+
+    if (!media.editable) {
+      return html`<div class="acp-text acp-readonly">${head}${current}
+        <span class="acp-reason">${tr(media.reason)}</span>${row.extra ?? nothing}</div>`;
+    }
+    const open = this.mediaOpen === key;
+    return html`<div class="acp-text">${head}${current}
+        <button type="button" class="acp-link" @click=${() => { this.mediaOpen = open ? null : key; }}
+        >${open ? t('panel.mediaClose') : t('panel.mediaChange')}</button>${row.extra ?? nothing}</div>
+      ${open ? this.renderMediaGallery(row.project, media.kind, media.value, row.pick) : nothing}`;
+  }
+
+  /** The files of a media molecule: each source, the poster, and a way to add one more. */
+  protected renderMediaSet(target: IPickerTarget) {
+    const set = target.mediaSet;
+    if (!set) return nothing;
+    const title = html`<div class="acp-text-label acp-media-set-title">${t(`panel.mediaSet.${set.kind}`)}</div>`;
+    if (set.reason) {
+      return html`<div class="acp-texts">${title}<div class="acp-text acp-readonly">
+        <span class="acp-reason">${tr(set.reason)}</span></div></div>`;
+    }
+    const many = set.items.length > 1;
+    const addOpen = this.mediaOpen === 'add';
+    return html`<div class="acp-texts acp-media-set">
+      ${title}
+      ${set.items.map((item, index) => this.renderMediaRow({
+        key: `item:${index}`,
+        label: many ? t('panel.mediaItem', { n: index + 1 }) : t(`panel.media.${set.kind}`),
+        media: { kind: set.kind, value: item.value, editable: item.editable, reason: item.reason },
+        project: set.project,
+        pick: (url) => this.emitMedia({ url, item: index }),
+        extra: item.removable && item.editable
+          ? html`<button type="button" class="acp-link acp-media-remove"
+              @click=${() => this.emitMediaRemove(index)}>${t('panel.mediaRemove')}</button>`
+          : nothing,
+      }))}
+      ${set.poster ? this.renderMediaRow({
+        key: 'poster', label: t('panel.mediaPoster'), media: set.poster, project: set.project,
+        pick: (url) => this.emitMedia({ url, item: 'poster' }),
+      }) : nothing}
+      ${set.canAdd
+    ? html`<div class="acp-text"><button type="button" class="acp-link" @click=${() => { this.mediaOpen = addOpen ? null : 'add'; }}
+        >${addOpen ? t('panel.mediaClose') : t('panel.mediaAdd')}</button></div>
+        ${addOpen ? this.renderMediaGallery(set.project, set.kind, '', (url) => this.emitMediaAdd(url)) : nothing}`
+    : nothing}
+    </div>`;
+  }
+
+  /** The project's media of the categories a kind can show (Assets → Media, l3/assets). */
+  protected mediaChoices(project: number | null, kind: MediaKind): { url: string; name: string }[] {
+    if (!project) return [];
+    const wanted = categoriesFor(kind);
+    const files = (globalThis as { mls?: typeof mls }).mls?.stor.files ?? {};
+    return Object.values(files)
+      .filter((file) => isProjectMediaFile(file, project) && wanted.includes(categoryOf(file.extension)))
+      .map((file) => ({
+        url: assetUrl(project, file.folder, file.shortName, file.extension.toLowerCase()),
+        name: `${file.shortName}${file.extension.toLowerCase()}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  protected renderMediaGallery(project: number | null, kind: MediaKind, value: string, pick: (url: string) => void) {
+    const choices = this.mediaChoices(project, kind);
+    if (!choices.length) return html`<div class="acp-reason">${t('panel.mediaEmpty')}</div>`;
+    const icon = kind === 'video' ? '▶' : kind === 'audio' ? '♪' : '▤';
+    return html`<div class="acp-media-grid">
+      ${choices.map((choice) => html`<button type="button"
+        class="acp-media-choice ${choice.url === value ? 'acp-current' : ''}"
+        title=${choice.url} ?disabled=${choice.url === value}
+        @click=${() => { this.mediaOpen = null; pick(choice.url); }}>
+        ${kind === 'image'
+    ? html`<img class="acp-media-choice-img" src=${choice.url} alt="" loading="lazy">`
+    : html`<span class="acp-media-choice-icon">${icon}</span>`}
+        <span class="acp-media-name">${choice.name}</span>
+      </button>`)}
+    </div>`;
+  }
+
+  protected emitMedia(detail: IPickerMediaWrite): void {
+    this.mediaOpen = null;
+    this.dispatchEvent(new CustomEvent<IPickerMediaWrite>('picker-media', { detail, bubbles: true, composed: true }));
+  }
+
+  protected emitMediaAdd(url: string): void {
+    this.mediaOpen = null;
+    this.dispatchEvent(new CustomEvent<{ url: string }>('picker-media-add', { detail: { url }, bubbles: true, composed: true }));
+  }
+
+  protected emitMediaRemove(item: number): void {
+    this.mediaOpen = null;
+    this.dispatchEvent(new CustomEvent<{ item: number }>('picker-media-remove', { detail: { item }, bubbles: true, composed: true }));
   }
 
   protected renderText(text: IPickerText) {

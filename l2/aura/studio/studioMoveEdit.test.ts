@@ -477,13 +477,21 @@ test('nothing else in the file moves — the rest of the tree is identical', () 
 });
 
 test('duplicate and remove are one write each, through the same path as every other edit', () => {
-  for (const name of ['public async duplicateSelected', 'public async removeSelected']) {
-    const write = EDITOR.slice(EDITOR.indexOf(name), EDITOR.indexOf('\n  }\n', EDITOR.indexOf(name)));
-    assert.ok(write.includes('await this.commitSource('), `${name}: model + local copy + compile + live`);
-    assert.equal((write.match(/commitSource\(/gu) ?? []).length, 1, `${name}: exactly one write`);
+  // The gesture guards the selection; the element-level helper (shared with a media molecule's
+  // sources) does the one write.
+  const gestures: Array<[string, string]> = [
+    ['public async duplicateSelected', 'private async duplicateElement'],
+    ['public async removeSelected', 'private async removeElement'],
+  ];
+  for (const [name, helper] of gestures) {
+    const gesture = EDITOR.slice(EDITOR.indexOf(name), EDITOR.indexOf('\n  }\n', EDITOR.indexOf(name)));
+    const write = EDITOR.slice(EDITOR.indexOf(helper), EDITOR.indexOf('\n  }\n', EDITOR.indexOf(helper)));
+    assert.ok(gesture.includes(helper.replace('private async ', 'await this.')), `${name}: goes through ${helper}`);
+    assert.ok(write.includes('await this.commitSource('), `${helper}: model + local copy + compile + live`);
+    assert.equal((write.match(/commitSource\(/gu) ?? []).length, 1, `${helper}: exactly one write`);
     // One at a time, and never onto an element that already left the screen.
-    assert.ok(write.includes('if (this.applying)'), `${name}: serialised`);
-    assert.ok(write.includes("t('status.gone')"), `${name}: a stale selection is reported`);
+    assert.ok(gesture.includes('if (this.applying)'), `${name}: serialised`);
+    assert.ok(gesture.includes("t('status.gone')"), `${name}: a stale selection is reported`);
   }
   // The model is written in TWO places in this editor and no more: `commitSource` (the class, the
   // move, and these two) and the text path, which predates it and builds its own per-locale status.
@@ -509,7 +517,7 @@ test('the slice step replays through the planners, and each revalidates on what 
   assert.match(EDITOR, /kind: 'slice';[\s\S]*?node: HTMLElement;/u);
   assert.match(EDITOR, /parent: WeakRef<HTMLElement>;\s*\n\s*next: WeakRef<ChildNode> \| null;/u);
   // And the position is captured BEFORE the node leaves the DOM, or there is nowhere to put it back.
-  const remove = EDITOR.slice(EDITOR.indexOf('public async removeSelected'));
+  const remove = EDITOR.slice(EDITOR.indexOf('private async removeElement'));
   const body = remove.slice(0, remove.indexOf('\n  }\n'));
   assert.ok(body.indexOf('const next = el.nextSibling;') < body.indexOf('el.remove();'));
 });

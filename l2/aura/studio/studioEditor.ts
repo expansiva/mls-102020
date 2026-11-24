@@ -43,6 +43,8 @@ import {
   type ClassPickerPanel,
   type IPickerAdopt,
   type IPickerApply,
+  type IPickerMediaSet,
+  type IPickerMediaWrite,
   type IPickerPreview,
   type IPickerPropEdit,
   type IPickerPaste,
@@ -155,6 +157,11 @@ import {
   type IUtilityToken,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { builtCssClassNames, isStudioTailwindLive } from '/_102033_/l2/cbe/studioTailwind.js';
+import {
+  ASSET_STASH_PREFIX, MEDIA_POSTER_ATTRIBUTE, MEDIA_SOURCE_SLOT, MEDIA_SRC_ATTRIBUTE, MEDIA_TYPE_ATTRIBUTE, hasPoster, liveMediaSrc,
+  mediaFileLabel, mediaKindOf, moleculeMediaKind, readMediaSrc, sourceChanges, spliceMediaAttributes,
+  type IMediaAttrChange, type MediaKind,
+} from '/_102020_/l2/aura/studio/studioMediaSrc.js';
 import { compileAndApplyLiveUpdate, onLiveUpdateApplied } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
 import {
   CONTEXT_CHARS,
@@ -343,6 +350,12 @@ function mainChannel(state: IClassPanelState): ClassChannel {
  * The slot tags a molecule declares (`slotTags` of moleculeBase), upper-cased like `tagName`; null for
  * anything that declares none. Read from the instance: it is runtime data, protected only in TS.
  */
+/** The slot a media molecule reads its files from, as `tagName` spells it. */
+const MEDIA_SOURCE_TAG = MEDIA_SOURCE_SLOT.toUpperCase();
+
+/** Long enough for a molecule's debounced slot re-render to land before its player reloads. */
+const MEDIA_RELOAD_DELAY_MS = 120;
+
 function slotTagsOf(el: Element): Set<string> | null {
   const tags = (el as unknown as { slotTags?: unknown }).slotTags;
   if (!Array.isArray(tags) || !tags.length) return null;
@@ -518,6 +531,21 @@ type EditStep =
     defs: IDefsHistoryMark | null;
   }
   | {
+    /**
+     * The file a media element shows: `src` of an `<img>` / `<video>` / `<audio>`, `src` + `type` of a
+     * molecule's `<Source>`, or a molecule's `poster` — attributes of ONE open tag. `null` = the
+     * attribute was absent (the forward write inserted it). Same revalidation as a property: the undo
+     * only runs when the open tag still says what the forward write left.
+     */
+    kind: 'media';
+    file: IStudioEditTarget;
+    path: IDomPathStep[];
+    tag: string;
+    attrs: Array<{ name: string; before: string | null; after: string | null }>;
+    what: string;
+    el: WeakRef<HTMLElement>;
+  }
+  | {
     kind: 'move';
     file: IStudioEditTarget;
     /**
@@ -672,6 +700,39 @@ interface ISlotSide extends IChannelSide {
   order: IMoleculeSlotOrder | null;
 }
 
+/** The media row of the picker (see resolveMediaSrc). */
+interface IMediaSrcState {
+  kind: MediaKind;
+  /** The final url on screen (never the studio's `blob:`). */
+  value: string;
+  file: IStudioEditTarget | null;
+  path: IDomPathStep[];
+  reason?: IMessageRef;
+}
+
+/** One `<Source>` slot of a media molecule (see resolveMediaSet). */
+interface IMediaItemState {
+  el: HTMLElement;
+  /** The final url on screen (never the studio's `blob:`). */
+  value: string;
+  type: string | null;
+  path: IDomPathStep[];
+  reason?: IMessageRef;
+}
+
+/** The files of a media molecule: its `<Source>` slots in the page and, for a video, the poster. */
+interface IMediaSetState {
+  molecule: HTMLElement;
+  kind: MediaKind;
+  tag: string;
+  /** The page file the molecule is written in, and where; null while it could not be located. */
+  file: IStudioEditTarget | null;
+  path: IDomPathStep[];
+  items: IMediaItemState[];
+  poster: { value: string; reason?: IMessageRef } | null;
+  reason?: IMessageRef;
+}
+
 interface IClassPanelState {
   el: HTMLElement;
   /**
@@ -697,6 +758,10 @@ interface IClassPanelState {
   slots: ISlotSide[];
   /** Text attributes of the selection, resolved against this screen's catalogs. */
   texts: IAttrText[];
+  /** The media row (`<img>` / `<video>` / `<audio>`); null for any other element. */
+  media: IMediaSrcState | null;
+  /** The files of the media molecule the selection is, or is inside of; null otherwise. */
+  mediaSet: IMediaSetState | null;
   tokens: IUtilityToken[];
   /** File that receives the edit, or null when nothing was resolved. */
   file: IStudioEditTarget | null;
@@ -2169,6 +2234,9 @@ export class StudioEditor {
     method('picker-adopt', this.onPickerAdopt);
     method('picker-props-open', this.onPickerPropsOpen);
     method('picker-prop', this.onPickerProp as EventListener);
+    method('picker-media', this.onPickerMedia as EventListener);
+    method('picker-media-add', this.onPickerMediaAdd as EventListener);
+    method('picker-media-remove', this.onPickerMediaRemove as EventListener);
     method('picker-paste', this.onPickerPaste as EventListener);
   }
 
@@ -2302,6 +2370,20 @@ export class StudioEditor {
     void this.applyProp(e.detail.attribute, e.detail.value);
   };
 
+  private onPickerMedia = (e: CustomEvent<IPickerMediaWrite>): void => {
+    const { url, item } = e.detail;
+    if (item === undefined) void this.applyMediaSrc(url);
+    else void this.applyMediaSetWrite(item, url);
+  };
+
+  private onPickerMediaAdd = (e: CustomEvent<{ url: string }>): void => {
+    void this.addMediaSource(e.detail.url);
+  };
+
+  private onPickerMediaRemove = (e: CustomEvent<{ item: number }>): void => {
+    void this.removeMediaSource(e.detail.item);
+  };
+
   private onPickerPaste = (e: CustomEvent<IPickerPaste>): void => {
     void this.pasteComposite(e.detail);
   };
@@ -2366,6 +2448,8 @@ export class StudioEditor {
       inner,
       slots: [],
       texts: [],
+      media: null,
+      mediaSet: null,
       tokens: splitUtilities(literal),
       file: null,
       anchor: null,
@@ -2399,6 +2483,10 @@ export class StudioEditor {
       return;
     }
 
+    // The files of a media molecule live in the PAGE's `<Source>` slots, so they are resolved before
+    // the refusal below: the picture on screen is the molecule's own markup, the file it shows is not.
+    state.mediaSet = await this.resolveMediaSet(el);
+
     // A molecule ANCESTOR means this markup lives in the molecule's own file — shared by every
     // project that renders it, and with no undo anywhere in the chain.
     const ancestorProject = this.foreignProjectOfAncestor(el);
@@ -2422,6 +2510,10 @@ export class StudioEditor {
     // resolved here too — and it does NOT depend on the class anchor: an element whose class literal
     // could not be located can still have a `title` that is perfectly editable.
     state.texts = await this.resolveTextAttributes(el, state);
+    // `src` is addressed by position like a molecule property, so it does not depend on the class
+    // anchor either.
+    // Inside a media molecule the set already says it — a second row would only say "not found".
+    state.media = state.mediaSet ? null : await this.resolveMediaSrc(el);
     this.traceAnchor(el, literal, state);
     show();
   }
@@ -3032,6 +3124,15 @@ export class StudioEditor {
       })),
       // Plain data already — attribute, value and keys are strings.
       texts: state.texts.map((entry) => ({ ...entry, keys: [...entry.keys] })),
+      media: state.media
+        ? {
+          kind: state.media.kind,
+          value: state.media.value,
+          editable: !state.media.reason && Boolean(state.media.file),
+          reason: state.media.reason,
+        }
+        : undefined,
+      mediaSet: state.mediaSet ? this.projectMediaSet(state.mediaSet) : undefined,
       fileLabel: state.file ? `${state.file.shortName} (${state.file.folder})` : '',
       file: state.file
         ? { project: state.file.project, shortName: state.file.shortName, folder: state.file.folder }
@@ -3222,6 +3323,306 @@ export class StudioEditor {
   }
 
   /** The molecule's element in a file, by position, and only when the tag there is the same tag. */
+  /**
+   * The media row of an `<img>` / `<video>` / `<audio>`: the file it shows and whether the source lets
+   * the picker change it. Located by position (`domPathOf`), exactly like a molecule's properties.
+   */
+  private async resolveMediaSrc(el: HTMLElement): Promise<IMediaSrcState | null> {
+    const kind = mediaKindOf(el.tagName);
+    if (!kind) return null;
+    const base: IMediaSrcState = { kind, value: liveMediaSrc(el), file: null, path: [] };
+    if (!this.target) return { ...base, reason: this.targetFailure ?? { id: 'reason.noTargetFile' } };
+    const ancestorProject = this.foreignProjectOfAncestor(el);
+    if (ancestorProject !== null) return { ...base, reason: editScope(`${ancestorProject}`, ancestorProject).refusal };
+    const path = this.domPathOf(el);
+    const tag = el.tagName.toLowerCase();
+    for (const candidate of path.length ? await this.resolveCandidates() : []) {
+      const source = candidate.model.model.getValue();
+      const resolved = resolveStructuralAnchor(scanTemplateTree(source), path);
+      if (!resolved.ok || resolved.element.tag.toLowerCase() !== tag) continue;
+      const plan = readMediaSrc(source, resolved.element.openStart);
+      return plan.ok ? { ...base, file: candidate, path } : { ...base, file: candidate, path, reason: { id: plan.reason } };
+    }
+    return { ...base, reason: NOT_LOCATED };
+  }
+
+  /** The picker chose a project file for the selected media element. */
+  private async applyMediaSrc(url: string): Promise<void> {
+    const state = this.classPanel;
+    const media = state?.media;
+    if (!state || !media || !media.file || media.reason || url === media.value) return;
+    const el = state.el;
+    if (!el.isConnected) {
+      this.hideClassPanel();
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+    const tag = el.tagName.toLowerCase();
+    const what = t('status.mediaSrc', { file: mediaFileLabel(url) });
+    this.applying = true;
+    try {
+      const result = await this.writeMediaAttrs({
+        file: media.file, path: media.path, tag, el, changes: [{ name: MEDIA_SRC_ATTRIBUTE, to: url }], what,
+      });
+      if (result.ok) {
+        this.history.push({
+          kind: 'media', file: media.file, path: [...media.path], tag, attrs: result.attrs, what, el: new WeakRef(el),
+        });
+      }
+    } finally {
+      this.applying = false;
+    }
+    await this.showClassPanel(el);
+  }
+
+  /**
+   * The ONE place a media attribute is written — for a gesture and for an undo: `src` of an `<img>`,
+   * `src` + `type` of a `<Source>`, the `poster` of a molecule. Each change may carry `from`, what the
+   * open tag must say right now (`null` = absent); the befores come back so the write can be undone.
+   */
+  private async writeMediaAttrs(write: {
+    file: IStudioEditTarget;
+    path: IDomPathStep[];
+    tag: string;
+    el: HTMLElement | null;
+    changes: IMediaAttrChange[];
+    what: string;
+  }): Promise<
+    { ok: true; attrs: Array<{ name: string; before: string | null; after: string | null }> } | { ok: false }
+  > {
+    const { file, path, tag, changes, what } = write;
+    const el = write.el?.isConnected ? write.el : null;
+    const source = file.model.model.getValue();
+    const element = this.resolvePropElement(file, path, tag);
+    const spliced = element ? spliceMediaAttributes(source, element.openStart, changes) : null;
+    if (!spliced || (!spliced.ok && spliced.reason !== 'reason.mediaSrcBadUrl')) {
+      if (el) this.flashError(el);
+      this.setStatus(t('status.stale'));
+      return { ok: false };
+    }
+    if (!spliced.ok) {
+      this.setStatus(t(spliced.reason));
+      return { ok: false };
+    }
+    if (el) {
+      for (const change of changes) {
+        // The studio's stash names the OLD file; the observer stashes the new one if it swaps it again.
+        el.removeAttribute(`${ASSET_STASH_PREFIX}${change.name}`);
+        if (change.to === null) el.removeAttribute(change.name);
+        else el.setAttribute(change.name, change.to);
+      }
+      const molecule = this.mediaMoleculeOf(el);
+      if (molecule) this.reloadMoleculeMedia(molecule);
+    }
+    await this.commitSource(file, spliced.source, what);
+    return {
+      ok: true,
+      attrs: changes.map((change, at) => ({ name: change.name, before: spliced.before[at]?.value ?? null, after: change.to })),
+    };
+  }
+
+  /** The media molecule `el` is, or is inside of: the host whose `<Source>` slots hold its files. */
+  private mediaMoleculeOf(el: HTMLElement): HTMLElement | null {
+    for (let node: HTMLElement | null = el; node && node !== this.host; node = node.parentElement) {
+      if (slotTagsOf(node)?.has(MEDIA_SOURCE_TAG)) return node;
+    }
+    return null;
+  }
+
+  /**
+   * A `<video>` / `<audio>` keeps playing the file it loaded when only its `<source>` changed. The
+   * molecule re-renders on its own (its slot observer, debounced); the player is asked to load again
+   * once that had time to land.
+   */
+  private reloadMoleculeMedia(molecule: HTMLElement): void {
+    window.setTimeout(() => {
+      for (const player of Array.from(molecule.querySelectorAll('video, audio'))) (player as HTMLMediaElement).load();
+    }, MEDIA_RELOAD_DELAY_MS);
+  }
+
+  /**
+   * The files of the media molecule `el` is, or is inside of — null for anything else.
+   *
+   * Located by position like a molecule's properties: the molecule's open tag for the poster, each
+   * `<Source>` for its own file. A source written by a `.map()` is one line of code drawing several
+   * files, so it is data, not markup to rewrite.
+   */
+  private async resolveMediaSet(el: HTMLElement): Promise<IMediaSetState | null> {
+    const molecule = this.mediaMoleculeOf(el);
+    if (!molecule) return null;
+    const sources = this.slotElementsOf(molecule).filter((slot) => slot.tagName === MEDIA_SOURCE_TAG && slot.parentElement === molecule);
+    const kind = moleculeMediaKind(molecule.tagName, sources.map((slot) => slot.getAttribute(MEDIA_TYPE_ATTRIBUTE) ?? ''));
+    if (!kind) return null;
+    const tag = molecule.tagName.toLowerCase();
+    const state: IMediaSetState = {
+      molecule, kind, tag, file: null, path: [], items: [],
+      poster: hasPoster(kind) ? { value: liveMediaSrc(molecule, MEDIA_POSTER_ATTRIBUTE) } : null,
+    };
+    const items = (reason: IMessageRef): IMediaItemState[] => sources.map((slot) => ({
+      el: slot, value: liveMediaSrc(slot), type: slot.getAttribute(MEDIA_TYPE_ATTRIBUTE), path: [], reason,
+    }));
+
+    if (!this.target) return { ...state, reason: this.targetFailure ?? { id: 'reason.noTargetFile' } };
+    const ancestorProject = this.foreignProjectOfAncestor(molecule);
+    if (ancestorProject !== null) return { ...state, reason: editScope(`${ancestorProject}`, ancestorProject).refusal };
+
+    const path = this.domPathOf(molecule);
+    for (const candidate of path.length ? await this.resolveCandidates() : []) {
+      if (this.resolvePropElement(candidate, path, tag)) {
+        state.file = candidate;
+        state.path = path;
+        break;
+      }
+    }
+    if (!state.file) return { ...state, items: items(NOT_LOCATED), reason: NOT_LOCATED };
+
+    const source = state.file.model.model.getValue();
+    const tree = scanTemplateTree(source);
+    for (const slot of sources) {
+      const itemPath = this.domPathOf(slot);
+      const item: IMediaItemState = {
+        el: slot, value: liveMediaSrc(slot), type: slot.getAttribute(MEDIA_TYPE_ATTRIBUTE), path: itemPath,
+      };
+      const resolved = itemPath.length ? resolveStructuralAnchor(tree, itemPath) : null;
+      if (!resolved?.ok || resolved.element.tag.toLowerCase() !== MEDIA_SOURCE_TAG.toLowerCase()) item.reason = NOT_LOCATED;
+      else if (resolved.renders > 1) item.reason = { id: 'reason.mediaSourceRepeated' };
+      else {
+        const plan = readMediaSrc(source, resolved.element.openStart);
+        if (!plan.ok) item.reason = { id: plan.reason };
+      }
+      state.items.push(item);
+    }
+    if (state.poster) {
+      const element = this.resolvePropElement(state.file, path, tag);
+      const plan = element ? readMediaSrc(source, element.openStart, MEDIA_POSTER_ATTRIBUTE) : null;
+      if (!plan) state.poster.reason = NOT_LOCATED;
+      else if (!plan.ok) state.poster.reason = { id: plan.reason };
+    }
+    return state;
+  }
+
+  /** The set, as data for the panel: never the nodes. */
+  private projectMediaSet(set: IMediaSetState): IPickerMediaSet {
+    const editable = set.items.filter((item) => !item.reason).length;
+    return {
+      kind: set.kind,
+      project: set.file?.project ?? this.target?.project ?? null,
+      items: set.items.map((item) => ({
+        value: item.value,
+        editable: !item.reason && Boolean(set.file),
+        reason: item.reason,
+        removable: editable > 1,
+      })),
+      poster: set.poster
+        ? { kind: 'image', value: set.poster.value, editable: !set.poster.reason && Boolean(set.file), reason: set.poster.reason }
+        : undefined,
+      canAdd: Boolean(set.file) && !set.reason && set.items.length > 0 && !set.items[set.items.length - 1].reason,
+      reason: set.reason,
+    };
+  }
+
+  /** The current set, when the panel still describes a connected selection; reports why not. */
+  private liveMediaSet(): IMediaSetState | null {
+    const set = this.classPanel?.mediaSet ?? null;
+    if (!set || !set.file || set.reason) return null;
+    if (!set.molecule.isConnected) {
+      this.hideClassPanel();
+      this.setStatus(t('status.gone'));
+      return null;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return null;
+    }
+    return set;
+  }
+
+  /** The picker chose a file for one source of the molecule, or for its poster. */
+  private async applyMediaSetWrite(item: number | 'poster', url: string): Promise<void> {
+    const set = this.liveMediaSet();
+    const panelEl = this.classPanel?.el;
+    if (!set || !set.file || !panelEl) return;
+    const what = t('status.mediaSrc', { file: mediaFileLabel(url) });
+
+    let target: { el: HTMLElement; path: IDomPathStep[]; tag: string; changes: IMediaAttrChange[] } | null = null;
+    if (item === 'poster') {
+      if (!set.poster || set.poster.reason || url === set.poster.value) return;
+      target = { el: set.molecule, path: set.path, tag: set.tag, changes: [{ name: MEDIA_POSTER_ATTRIBUTE, to: url }] };
+    } else {
+      const source = set.items[item];
+      if (!source || source.reason || url === source.value) return;
+      target = { el: source.el, path: source.path, tag: MEDIA_SOURCE_TAG.toLowerCase(), changes: sourceChanges(url, source.type) };
+    }
+
+    this.applying = true;
+    try {
+      const result = await this.writeMediaAttrs({ file: set.file, ...target, what });
+      if (result.ok) {
+        this.history.push({
+          kind: 'media', file: set.file, path: [...target.path], tag: target.tag, attrs: result.attrs, what,
+          el: new WeakRef(target.el),
+        });
+      }
+    } finally {
+      this.applying = false;
+    }
+    await this.showClassPanel(panelEl);
+  }
+
+  /**
+   * One more file: a copy of the last `<Source>` right after it, pointed at the chosen file — two
+   * writes recorded as ONE step, so a single undo takes the whole addition back.
+   */
+  private async addMediaSource(url: string): Promise<void> {
+    const set = this.liveMediaSet();
+    const panelEl = this.classPanel?.el;
+    const last = set?.items[set.items.length - 1];
+    if (!set || !set.file || !panelEl || !last || last.reason) return;
+    const what = t('status.mediaAdded', { file: mediaFileLabel(url) });
+
+    this.history.beginCapture();
+    try {
+      const copy = await this.duplicateElement(last.el);
+      if (copy) {
+        const path = this.domPathOf(copy);
+        const tag = MEDIA_SOURCE_TAG.toLowerCase();
+        this.applying = true;
+        try {
+          const result = await this.writeMediaAttrs({
+            file: set.file, path, tag, el: copy, changes: sourceChanges(url, last.type), what,
+          });
+          if (result.ok) {
+            this.history.push({ kind: 'media', file: set.file, path, tag, attrs: result.attrs, what, el: new WeakRef(copy) });
+          }
+        } finally {
+          this.applying = false;
+        }
+      }
+    } finally {
+      const steps = this.history.endCapture();
+      if (steps.length === 1) this.history.push(steps[0]);
+      else if (steps.length > 1) this.history.push({ kind: 'group', steps, what, el: new WeakRef(set.molecule) });
+    }
+    this.setStatus(what);
+    await this.showClassPanel(panelEl);
+  }
+
+  /** Takes one `<Source>` out — never the last one: a player with no file has nothing to play. */
+  private async removeMediaSource(item: number): Promise<void> {
+    const set = this.liveMediaSet();
+    const panelEl = this.classPanel?.el;
+    const source = set?.items[item];
+    if (!set || !panelEl || !source || source.reason) return;
+    if (set.items.filter((entry) => !entry.reason).length < 2) return;
+    if (await this.removeElement(source.el)) this.setStatus(t('status.mediaRemoved', { file: mediaFileLabel(source.value) }));
+    // The selection may have been the removed source's picture: fall back to the molecule.
+    await this.showClassPanel(panelEl.isConnected ? panelEl : set.molecule);
+  }
+
   private resolvePropElement(file: IStudioEditTarget, path: IDomPathStep[], tag: string): ITemplateElement | null {
     const resolved = resolveStructuralAnchor(scanTemplateTree(file.model.model.getValue()), path);
     return resolved.ok && resolved.element.tag.toLowerCase() === tag ? resolved.element : null;
@@ -4598,25 +4999,31 @@ export class StudioEditor {
       this.setStatus(t('status.busy'));
       return;
     }
+    await this.duplicateElement(el);
+    await this.showClassPanel(el);
+  }
 
+  /** An identical copy of `el`, right after it, on screen and in the source; null when refused. */
+  private async duplicateElement(el: HTMLElement): Promise<HTMLElement | null> {
     const resolved = this.resolveSlice(el);
     if (!resolved.ok) {
       this.setStatus(tr(resolved.reason));
-      return;
+      return null;
     }
     const source = resolved.file.model.model.getValue();
     const plan = planDuplicate(source, resolved.tree, resolved.index);
     if (!plan.ok) {
       this.setStatus(tr(plan.reason));
-      return;
+      return null;
     }
 
     const text = source.slice(plan.slice.start, plan.slice.end);
     const result = applyInsert(source, { ok: true, at: plan.insertAt, text });
     if (!result.ok) {
       this.setStatus(tr(result.reason));
-      return;
+      return null;
     }
+    let copy: HTMLElement | null = null;
 
     this.applying = true;
     try {
@@ -4624,7 +5031,7 @@ export class StudioEditor {
       // the move — inside a `${...}` the next re-render owns that DOM again, and the source is what
       // is true either way.
       const parent = el.parentElement;
-      const copy = el.cloneNode(true) as HTMLElement;
+      copy = el.cloneNode(true) as HTMLElement;
       parent?.insertBefore(copy, el.nextSibling);
 
       const what = t('status.duplicated', { tag: el.tagName.toLowerCase() });
@@ -4658,8 +5065,7 @@ export class StudioEditor {
     } finally {
       this.applying = false;
     }
-
-    await this.showClassPanel(el);
+    return copy;
   }
 
   /**
@@ -4680,22 +5086,33 @@ export class StudioEditor {
       this.setStatus(t('status.busy'));
       return;
     }
+    if (!(await this.removeElement(el))) return;
 
+    // Nothing is selected any more: the element the panel was describing is gone from the screen.
+    this.selectedEl = null;
+    this.lastHoveredEl = null;
+    this.hideClassPanel();
+    this.clearOverlay();
+    this.publishSelection(null);
+  }
+
+  /** Takes `el` out of the screen and of the source, as one undoable step; false when refused. */
+  private async removeElement(el: HTMLElement): Promise<boolean> {
     const resolved = this.resolveSlice(el);
     if (!resolved.ok) {
       this.setStatus(tr(resolved.reason));
-      return;
+      return false;
     }
     const source = resolved.file.model.model.getValue();
     const plan = planRemove(source, resolved.tree, resolved.index);
     if (!plan.ok) {
       this.setStatus(tr(plan.reason));
-      return;
+      return false;
     }
     const result = applyRemove(source, plan);
     if (!result.ok) {
       this.setStatus(tr(result.reason));
-      return;
+      return false;
     }
 
     this.applying = true;
@@ -4728,13 +5145,7 @@ export class StudioEditor {
     } finally {
       this.applying = false;
     }
-
-    // Nothing is selected any more: the element the panel was describing is gone from the screen.
-    this.selectedEl = null;
-    this.lastHoveredEl = null;
-    this.hideClassPanel();
-    this.clearOverlay();
-    this.publishSelection(null);
+    return true;
   }
 
   // --- Adopting a molecule ---
@@ -5224,6 +5635,24 @@ export class StudioEditor {
     if (step.kind === 'slice') return this.applySliceStep(step, direction);
 
     if (step.kind === 'adopt') return this.applyAdoptStep(step, direction);
+
+    if (step.kind === 'media') {
+      const el = step.el.deref() ?? null;
+      const result = await this.writeMediaAttrs({
+        file: step.file,
+        path: step.path,
+        tag: step.tag,
+        el,
+        changes: step.attrs.map((attr) => ({
+          name: attr.name,
+          from: undoing ? attr.after : attr.before,
+          to: undoing ? attr.before : attr.after,
+        })),
+        what,
+      });
+      if (result.ok && !el?.isConnected) this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
+      return result.ok;
+    }
 
     if (step.kind === 'prop') {
       // The same writer, the other way round — and only when the open tag still says what the step
