@@ -4,7 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { IDesignSystemTokens, DsFont, isMandatoryToken, defaultTokensTemplate, tokensCssFromTheme } from '/_102029_/l2/designSystemBase.js';
+import { IDesignSystemTokens, DsFont, DsFontFace, isMandatoryToken, defaultTokensTemplate, tokensCssFromTheme } from '/_102029_/l2/designSystemBase.js';
 import { readThemes, writeTheme, themeDsIndex } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 import { expandRoleStates, normalizeHex } from '/_102020_/l2/aura/helpers/dsMatch/generateDsCore.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
@@ -18,6 +18,8 @@ import { holdAppDesignSystem } from '/_102033_/l2/cbe/studioDesignSystem.js';
 import { collectUsedTokens, pageRegion } from '/_102020_/l2/aura/plugins/helpers/dsUsedTokens.js';
 import { NAV3_TAB_CHANGE_EVENT } from '/_102033_/l2/shared/nav3ActiveTab.js';
 import { siteProjectFromBoot } from '/_102033_/l2/shared/siteProject.js';
+import { assetUrl, categoryOf, isProjectMediaFile } from '/_102020_/l2/aura/plugins/helpers/assetsMediaCore.js';
+import { fontFromFileName, roleFromFamily } from '/_102020_/l2/aura/plugins/helpers/fontFileName.js';
 import { readConfig, writeConfig } from '/_102020_/l2/aura/plugins/helpers/configIo.js';
 import { designSystemNames, withModuleDesignSystems } from '/_102020_/l2/aura/plugins/helpers/dsConfigList.js';
 import { groupColorRows, splitState, type ColorGroup } from '/_102020_/l2/aura/plugins/helpers/dsColorGroups.js';
@@ -79,7 +81,15 @@ const message_en = {
     fontWeights: 'Weights',
     fontUrl: 'Font URL',
     fontUrlPlaceholder: 'https://…/font.css',
-    fontUrlHint: 'Stylesheet URL (@import) or a font file. External domains must be reachable.',
+    fontUrlHint: 'Stylesheet URL (@import). For a font file of the project, use Files below.',
+    fontFiles: 'Files',
+    fontFilesHint: 'Font files of the project (Assets → Media). One per weight / style.',
+    fontFilesEmpty: 'No font in Assets → Media yet: upload a .woff2, .woff, .ttf or .otf there.',
+    fontFileAdd: '+ Add file',
+    fontFileWeight: 'Weight',
+    fontFileStyle: 'Style',
+    fontIncomplete: 'Fill in the role and the family — without them this font is not saved.',
+    fontFillFromFile: 'Fill from the file',
     globalTitle: 'Global',
     globalTag: 'spacing · misc',
     save: 'Save design system',
@@ -238,7 +248,15 @@ const messages: Record<string, MessageType> = {
         fontWeights: 'Pesos',
         fontUrl: 'URL da fonte',
         fontUrlPlaceholder: 'https://…/font.css',
-        fontUrlHint: 'URL de stylesheet (@import) ou arquivo de fonte. O domínio externo precisa estar acessível.',
+        fontUrlHint: 'URL de stylesheet (@import). Para um arquivo de fonte do projeto, use Arquivos abaixo.',
+        fontFiles: 'Arquivos',
+        fontFilesHint: 'Arquivos de fonte do projeto (Assets → Mídia). Um por peso / estilo.',
+        fontFilesEmpty: 'Nenhuma fonte em Assets → Mídia ainda: envie um .woff2, .woff, .ttf ou .otf lá.',
+        fontFileAdd: '+ Adicionar arquivo',
+        fontFileWeight: 'Peso',
+        fontFileStyle: 'Estilo',
+        fontIncomplete: 'Preencha o papel e a família — sem eles esta fonte não é salva.',
+        fontFillFromFile: 'Preencher pelo arquivo',
         globalTitle: 'Global',
         globalTag: 'espaçamento · outros',
         save: 'Salvar design system',
@@ -394,7 +412,15 @@ const messages: Record<string, MessageType> = {
         fontWeights: 'Pesos',
         fontUrl: 'URL de la fuente',
         fontUrlPlaceholder: 'https://…/font.css',
-        fontUrlHint: 'URL de stylesheet (@import) o archivo de fuente. El dominio externo debe ser accesible.',
+        fontUrlHint: 'URL de stylesheet (@import). Para un archivo de fuente del proyecto, use Archivos abajo.',
+        fontFiles: 'Archivos',
+        fontFilesHint: 'Archivos de fuente del proyecto (Assets → Medios). Uno por peso / estilo.',
+        fontFilesEmpty: 'Todavía no hay fuentes en Assets → Medios: suba un .woff2, .woff, .ttf u .otf allí.',
+        fontFileAdd: '+ Agregar archivo',
+        fontFileWeight: 'Peso',
+        fontFileStyle: 'Estilo',
+        fontIncomplete: 'Complete el papel y la familia — sin ellos esta fuente no se guarda.',
+        fontFillFromFile: 'Completar desde el archivo',
         globalTitle: 'Global',
         globalTag: 'espaciado · otros',
         save: 'Guardar design system',
@@ -1317,7 +1343,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
             colors: this._colors.map(r => ({ ...r })),
             typo: this._typo.map(r => ({ ...r })),
             global: this._global.map(r => ({ ...r })),
-            fonts: this._fonts.map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined })),
+            fonts: this._fonts.map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined, faces: f.faces?.map(face => ({ ...face })) })),
             mlColors: this._mlColors.map(r => ({ ...r })),
             mlValues: this._mlValues.map(r => ({ ...r })),
             components: this._components.map(r => ({ ...r })),
@@ -1331,7 +1357,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._colors = cache.colors.map(r => ({ ...r }));
         this._typo = cache.typo.map(r => ({ ...r }));
         this._global = cache.global.map(r => ({ ...r }));
-        this._fonts = cache.fonts.map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined }));
+        this._fonts = cache.fonts.map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined, faces: f.faces?.map(face => ({ ...face })) }));
         this._mlColors = (cache.mlColors ?? []).map(r => ({ ...r }));
         this._mlValues = (cache.mlValues ?? []).map(r => ({ ...r }));
         this._components = (cache.components ?? []).map(r => ({ ...r }));
@@ -1441,7 +1467,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._setColorAndGlobalRows({ ...template.color, ...(t.color ?? {}) }, { ...template.global, ...(t.global ?? {}) });
         this._components = componentMapToRows(t.components);
         this._typo = this._valueRowsFrom({ ...template.typography, ...(t.typography ?? {}) });
-        this._fonts = (t.fonts ?? []).map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined }));
+        this._fonts = (t.fonts ?? []).map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined, faces: f.faces?.map(face => ({ ...face })) }));
         if (this._mlValues.length || this._mlColors.length || this._components.length) this._ensureMlCatalog();
         this._palette = [];
         this._aiBrief = ''; this._genError = ''; this._generating = false;
@@ -2490,6 +2516,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                     <button class="text-gray-400 hover:text-red-500 text-base leading-none cursor-pointer"
                         @click=${() => { this._fonts = this._fonts.filter((_, j) => j !== i); this._touch(); }}>×</button>
                 </div>
+                ${!font.name.trim() || !font.family.trim() ? this._renderFontIncomplete(font) : nothing}
 
                 ${this._renderSegField(this.msg.fontSource, FONT_SOURCES, source, v => { font.source = v as DsFont['source']; this._touch(); this.requestUpdate(); })}
 
@@ -2524,9 +2551,85 @@ export class PluginSelectDesignSystem extends StateLitElement {
                             .value=${font.url ?? ''} placeholder=${this.msg.fontUrlPlaceholder}
                             @input=${(e: Event) => { font.url = (e.target as HTMLInputElement).value.trim() || undefined; this._touch(true); }} />
                         <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${this.msg.fontUrlHint}</span>
-                    </div>` : nothing}
+                    </div>
+                    ${this._renderFontFiles(font)}` : nothing}
 
                 ${this._renderUseFont(font)}
+            </div>
+        `;
+    }
+
+    // ── custom font files: @font-face sources from the project's media (l3/assets) ──
+    /** Font files of the project, by final url (the one the published app serves). */
+    private _projectFontFiles(): { url: string; name: string }[] {
+        const project = this.projectId;
+        if (!project) return [];
+        const files = (globalThis as { mls?: typeof mls }).mls?.stor.files ?? {};
+        return Object.values(files)
+            .filter(f => isProjectMediaFile(f, project) && categoryOf(f.extension) === 'font')
+            .map(f => ({ url: assetUrl(project, f.folder, f.shortName, f.extension.toLowerCase()), name: `${f.shortName}${f.extension.toLowerCase()}` }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    /**
+     * A file was chosen for a face: its weight / style come from the file name, and an empty family or
+     * role is filled from it too — without both the card is dropped on save, and nothing on screen
+     * would tell the user why.
+     */
+    private _fillFromFile(font: DsFont, face: DsFontFace, url: string): void {
+        const guess = fontFromFileName(url);
+        face.src = url;
+        face.weight = guess.weight;
+        face.style = guess.style;
+        if (!font.family.trim()) font.family = guess.family;
+        if (!font.name.trim()) font.name = roleFromFamily(font.family);
+    }
+
+    /** The card would be dropped on save: say so, and offer the file's own name when there is a file. */
+    private _renderFontIncomplete(font: DsFont) {
+        const face = font.source === 'custom' ? (font.faces ?? []).find(f => f.src) : undefined;
+        return html`
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-[10px] leading-snug text-amber-600 dark:text-amber-400">${this.msg.fontIncomplete}</span>
+                ${face ? html`<button class="text-[11px] font-semibold text-indigo-500 hover:text-indigo-600 cursor-pointer"
+                    @click=${() => { this._fillFromFile(font, face, face.src); this._touch(); this.requestUpdate(); }}>${this.msg.fontFillFromFile}</button>` : nothing}
+            </div>
+        `;
+    }
+
+    private _renderFontFiles(font: DsFont) {
+        const files = this._projectFontFiles();
+        const faces = font.faces ?? [];
+        const field = 'text-[11px]! px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400';
+        const update = () => { this._touch(); this.requestUpdate(); };
+        return html`
+            <div class="flex flex-col gap-1">
+                <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontFiles}</label>
+                ${faces.map((face, i) => {
+                    // A src not in the list (typed by hand, or a file since removed) stays selectable.
+                    const options = files.some(f => f.url === face.src) || !face.src ? files : [{ url: face.src, name: face.src }, ...files];
+                    return html`
+                    <div class="flex items-center gap-1.5">
+                        <select class="min-w-0 flex-1 ${field}" .value=${face.src}
+                            @change=${(e: Event) => { this._fillFromFile(font, face, (e.target as HTMLSelectElement).value); update(); }}>
+                            ${options.map(o => html`<option value=${o.url} ?selected=${o.url === face.src}>${o.name}</option>`)}
+                        </select>
+                        <input class="w-16 ${field}" type="number" min="100" max="900" step="100"
+                            title=${this.msg.fontFileWeight} .value=${String(face.weight ?? 400)}
+                            @change=${(e: Event) => { const w = Number((e.target as HTMLInputElement).value); face.weight = Number.isFinite(w) && w > 0 ? w : undefined; update(); }} />
+                        <select class="w-20 ${field}" title=${this.msg.fontFileStyle} .value=${face.style ?? 'normal'}
+                            @change=${(e: Event) => { const v = (e.target as HTMLSelectElement).value; face.style = v === 'normal' ? undefined : v; update(); }}>
+                            ${['normal', 'italic'].map(v => html`<option value=${v} ?selected=${(face.style ?? 'normal') === v}>${v}</option>`)}
+                        </select>
+                        <button class="text-gray-400 hover:text-red-500 text-base leading-none cursor-pointer"
+                            @click=${() => { font.faces = faces.filter((_, j) => j !== i); update(); }}>×</button>
+                    </div>`;
+                })}
+                ${files.length
+                    ? html`<button class="self-start text-[11px] text-indigo-500 hover:text-indigo-600 cursor-pointer"
+                        @click=${() => { const face: DsFontFace = { src: '' }; this._fillFromFile(font, face, files[0].url); font.faces = [...faces, face]; update(); }}>${this.msg.fontFileAdd}</button>`
+                    : html`<span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${this.msg.fontFilesEmpty}</span>`}
+                ${files.length ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${this.msg.fontFilesHint}</span>` : nothing}
             </div>
         `;
     }
@@ -2768,7 +2871,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 if (f.fallback) out.fallback = f.fallback;
                 if (f.source !== 'system' && f.weights?.length) out.weights = [...f.weights];
                 if (f.source === 'custom' && f.url) out.url = f.url;
-                if (f.source === 'custom' && f.faces?.length) out.faces = f.faces;
+                const faces = f.source === 'custom' ? (f.faces ?? []).filter(face => face.src) : [];
+                if (faces.length) out.faces = faces.map(face => ({ ...face }));
                 return out;
             });
 

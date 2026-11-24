@@ -38,7 +38,7 @@ interface IModule {
     path: string;
 }
 
-const MY_SLOT = 2;
+const MY_SLOT = 3;
 const ASSETS_MIN = 1;
 const ASSETS_MAX = 3;
 

@@ -93,7 +93,7 @@ const ASSETS_CONFIG: IKnobConfig = {
     key: 'assets',
     min: 1,
     max: 3,
-    labels: { 1: 'Components', 2: 'Plugins', 3: 'Media' },
+    labels: { 1: 'Media', 2: 'Components', 3: 'Plugins' },
 };
 
 const DISABLED_CONFIG = (key: string): IKnobConfig => ({
@@ -614,24 +614,24 @@ export class ServiceProject102020 extends ServiceBase {
         switch (this._assetsValue) {
             case 1:
                 return html`
+                    <aura--plugins--select-assets-media-102020
+                        .selectedModule=${this._selectedModule}
+                        .device=${this._deviceValue}
+                    ></aura--plugins--select-assets-media-102020>
+                `;
+            case 2:
+                return html`
                     <aura--plugins--select-assets-components-102020
                         .selectedModule=${this._selectedModule}
                         .device=${this._deviceValue}
                     ></aura--plugins--select-assets-components-102020>
                 `;
-            case 2:
+            case 3:
                 return html`
                     <aura--plugins--select-assets-plugins-102020
                         .selectedModule=${this._selectedModule}
                         .device=${this._deviceValue}
                     ></aura--plugins--select-assets-plugins-102020>
-                `;
-            case 3:
-                return html`
-                    <aura--plugins--select-assets-media-102020
-                        .selectedModule=${this._selectedModule}
-                        .device=${this._deviceValue}
-                    ></aura--plugins--select-assets-media-102020>
                 `;
             default:
                 return nothing;

@@ -4,6 +4,13 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { deleteFile } from '/_102027_/l2/libStor.js';
+import { notifyAssetChanged } from '/_102033_/l2/cbe/studioAssets.js';
+import {
+    ACCEPT_ATTR, MAX_UPLOAD_BYTES, assetUrl, assetsLocation, categoryOf, checkUpload, formatSize,
+    hasImagePreview, isProjectMediaFile,
+    type IAssetsLocation, type MediaCategory,
+} from '/_102020_/l2/aura/plugins/helpers/assetsMediaCore.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -11,21 +18,34 @@ import '/_102020_/l2/aura/plugins/navHeader.js';
 const message_en = {
     category: 'Assets',
     title: 'Media',
-    desc: 'Browse and manage media assets stored in the module assets folder.',
+    desc: 'Images, icons, fonts, video and audio of the project, shared by every module.',
     searchPlaceholder: 'Search files…',
     addBtn: 'Add',
     uploadSelected: 'Selected file',
+    savedAs: 'Saved as',
     uploadBtn: 'Upload',
     clearBtn: 'Clear',
-    noFiles: 'No media files found in the assets folder.',
+    replaceAsk: 'A file with this name already exists. Replace it?',
+    replaceBtn: 'Replace',
+    errName: 'The file name has no usable letters or no extension.',
+    errExtension: 'This file type is not accepted here.',
+    errSize: 'The file is larger than {max}.',
+    errSave: 'Could not save the file.',
+    errDelete: 'Could not delete the file.',
+    noProject: 'Open a project to see its media.',
+    noFiles: 'No media files in this project yet.',
     noResults: 'No files match your search.',
     catAll: 'All',
     catImage: 'Images',
     catIcon: 'Icons',
     catVideo: 'Video',
     catAudio: 'Audio',
+    catFont: 'Fonts',
+    catDocument: 'Documents',
     catOther: 'Other',
-    loading: 'Loading…',
+    deleteConfirm: 'Click again to delete',
+    copyUrl: 'Copy URL',
+    copied: 'Copied',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -33,40 +53,66 @@ const messages: Record<string, MessageType> = {
     pt: {
         category: 'Assets',
         title: 'Mídia',
-        desc: 'Navegue e gerencie assets de mídia na pasta de assets do módulo.',
+        desc: 'Imagens, ícones, fontes, vídeo e áudio do projeto, comuns a todos os módulos.',
         searchPlaceholder: 'Buscar arquivos…',
         addBtn: 'Adicionar',
         uploadSelected: 'Arquivo selecionado',
+        savedAs: 'Salvo como',
         uploadBtn: 'Enviar',
         clearBtn: 'Limpar',
-        noFiles: 'Nenhum arquivo de mídia encontrado na pasta assets.',
+        replaceAsk: 'Já existe um arquivo com este nome. Substituir?',
+        replaceBtn: 'Substituir',
+        errName: 'O nome do arquivo não tem letras utilizáveis ou não tem extensão.',
+        errExtension: 'Este tipo de arquivo não é aceito aqui.',
+        errSize: 'O arquivo é maior que {max}.',
+        errSave: 'Não foi possível salvar o arquivo.',
+        errDelete: 'Não foi possível excluir o arquivo.',
+        noProject: 'Abra um projeto para ver a mídia dele.',
+        noFiles: 'Nenhum arquivo de mídia neste projeto ainda.',
         noResults: 'Nenhum arquivo corresponde à sua busca.',
         catAll: 'Todos',
         catImage: 'Imagens',
         catIcon: 'Ícones',
         catVideo: 'Vídeo',
         catAudio: 'Áudio',
+        catFont: 'Fontes',
+        catDocument: 'Documentos',
         catOther: 'Outros',
-        loading: 'Carregando…',
+        deleteConfirm: 'Clique de novo para excluir',
+        copyUrl: 'Copiar URL',
+        copied: 'Copiado',
     },
     es: {
         category: 'Assets',
         title: 'Medios',
-        desc: 'Explore y gestione archivos multimedia en la carpeta de assets del módulo.',
+        desc: 'Imágenes, iconos, fuentes, video y audio del proyecto, comunes a todos los módulos.',
         searchPlaceholder: 'Buscar archivos…',
         addBtn: 'Agregar',
         uploadSelected: 'Archivo seleccionado',
+        savedAs: 'Guardado como',
         uploadBtn: 'Subir',
         clearBtn: 'Limpiar',
-        noFiles: 'No se encontraron archivos multimedia en la carpeta assets.',
+        replaceAsk: 'Ya existe un archivo con este nombre. ¿Reemplazarlo?',
+        replaceBtn: 'Reemplazar',
+        errName: 'El nombre del archivo no tiene letras utilizables o no tiene extensión.',
+        errExtension: 'Este tipo de archivo no se acepta aquí.',
+        errSize: 'El archivo es mayor que {max}.',
+        errSave: 'No se pudo guardar el archivo.',
+        errDelete: 'No se pudo eliminar el archivo.',
+        noProject: 'Abra un proyecto para ver sus medios.',
+        noFiles: 'Todavía no hay archivos multimedia en este proyecto.',
         noResults: 'Ningún archivo coincide con su búsqueda.',
         catAll: 'Todos',
         catImage: 'Imágenes',
         catIcon: 'Iconos',
         catVideo: 'Video',
         catAudio: 'Audio',
+        catFont: 'Fuentes',
+        catDocument: 'Documentos',
         catOther: 'Otros',
-        loading: 'Cargando…',
+        deleteConfirm: 'Haga clic de nuevo para eliminar',
+        copyUrl: 'Copiar URL',
+        copied: 'Copiado',
     },
 };
 /// **collab_i18n_end**
@@ -78,7 +124,6 @@ interface IModule {
     path: string;
 }
 
-type MediaCategory = 'image' | 'icon' | 'video' | 'audio' | 'other';
 type ViewMode = 'list' | 'preview' | 'grid';
 
 interface IMediaFile {
@@ -87,22 +132,18 @@ interface IMediaFile {
     extension: string;
     folder: string;
     category: MediaCategory;
-    size?: number;
 }
 
-const EXTENSION_MAP: Record<string, MediaCategory> = {
-    '.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.gif': 'image',
-    '.webp': 'image', '.bmp': 'image', '.tiff': 'image', '.tif': 'image',
-    '.svg': 'icon', '.ico': 'icon',
-    '.mp4': 'video', '.webm': 'video', '.mov': 'video', '.avi': 'video',
-    '.mkv': 'video', '.wmv': 'video', '.m4v': 'video', '.flv': 'video',
-    '.mp3': 'audio', '.wav': 'audio', '.ogg': 'audio', '.flac': 'audio',
-    '.aac': 'audio', '.m4a': 'audio', '.opus': 'audio', '.wma': 'audio',
-};
+interface IPendingUpload {
+    file: File;
+    shortName: string;
+    extension: string;
+    category: MediaCategory;
+    /** Key of the stor file with the same name, when one exists: the upload asks before replacing it. */
+    existingKey: string | null;
+}
 
-const MEDIA_EXTENSIONS = new Set(Object.keys(EXTENSION_MAP));
-
-const MY_SLOT = 3;
+const MY_SLOT = 1;
 const ASSETS_MIN = 1;
 const ASSETS_MAX = 3;
 
@@ -111,68 +152,93 @@ const ASSETS_MAX = 3;
 @customElement('aura--plugins--select-assets-media-102020')
 export class PluginSelectAssetsMedia extends StateLitElement {
 
+    /** Passed by the Assets knob like its sibling tabs; media is per project, so it is not used here. */
     @property({ attribute: false }) selectedModule: IModule | null = null;
     @property({ attribute: false }) device: number | null = null;
 
     @state() private _files: IMediaFile[] = [];
-    @state() private _loading: boolean = false;
     @state() private _search: string = '';
     @state() private _viewMode: ViewMode = 'list';
     @state() private _activeCategory: MediaCategory | 'all' = 'all';
-    @state() private _uploadFile: File | null = null;
+    @state() private _pending: IPendingUpload | null = null;
     @state() private _uploadLoading: boolean = false;
     @state() private _uploadPreviewUrl: string | null = null;
+    @state() private _error: string | null = null;
     @state() private _deleteConfirm: string | null = null;
+    @state() private _copiedKey: string | null = null;
+    @state() private _thumbs: Map<string, string> = new Map();
 
-    willUpdate(changed: Map<string, unknown>) {
-        if (changed.has('selectedModule')) {
-            this._files = [];
-            this._search = '';
-            this._activeCategory = 'all';
-            this._clearUpload();
-            this._deleteConfirm = null;
-            if (this.selectedModule) this._loadFiles();
-        }
+    /** Bumped on every list load, so a slow thumbnail read of an older list never lands. */
+    private _loadToken = 0;
+
+    connectedCallback() {
+        super.connectedCallback();
+        this._loadFiles();
     }
 
     disconnectedCallback() {
         super.disconnectedCallback();
         this._revokePreview();
+        this._revokeThumbs();
     }
 
     private get msg(): MessageType {
         return messages[this.getMessageKey(messages)];
     }
 
-    private _loadFiles() {
-        if (!this.selectedModule) return;
-        this._loading = true;
-        this.requestUpdate();
-
+    /** Where the project's media lives, or null with no project open. */
+    private get _location(): IAssetsLocation | null {
         const project = getAuraState().actualProject;
-        const assetsFolder = `${this.selectedModule.path}/assets`;
+        return project ? assetsLocation(project) : null;
+    }
 
-        // @ts-ignore
-        const all: IMediaFile[] = Object.entries(mls.stor.files as Record<string, any>)
-            .filter(([_, f]) =>
-                f.project === project &&
-                (f.folder === assetsFolder || f.folder.startsWith(assetsFolder + '/')) &&
-                MEDIA_EXTENSIONS.has((f.extension ?? '').toLowerCase())
-            )
+    // ─── Listing ─────────────────────────────────────────────────────
+
+    private _loadFiles() {
+        this._revokeThumbs();
+        this._files = [];
+        const loc = this._location;
+        if (!loc) return;
+
+        const all: IMediaFile[] = Object.entries(mls.stor.files)
+            .filter(([_, f]) => isProjectMediaFile(f, loc.project))
             .map(([key, f]) => ({
                 key,
                 shortName: f.shortName ?? '',
                 extension: (f.extension ?? '').toLowerCase(),
                 folder: f.folder ?? '',
-                category: (EXTENSION_MAP[(f.extension ?? '').toLowerCase()] ?? 'other') as MediaCategory,
-                size: f.size as number | undefined,
+                category: categoryOf(f.extension ?? ''),
             }));
 
         this._files = all.sort((a, b) =>
             `${a.shortName}${a.extension}`.localeCompare(`${b.shortName}${b.extension}`)
         );
-        this._loading = false;
-        this.requestUpdate();
+        void this._loadThumbs(++this._loadToken);
+    }
+
+    /** Real thumbnails for images and svg, read from the stor (works before the file is published). */
+    private async _loadThumbs(token: number) {
+        for (const f of this._files) {
+            if (!hasImagePreview(f.category)) continue;
+            const sf = mls.stor.files[f.key];
+            if (!sf) continue;
+            let content: string | Blob | null = null;
+            try { content = await sf.getContent(); } catch { content = null; }
+            if (token !== this._loadToken) return;
+            const blob = typeof content === 'string'
+                ? (f.extension === '.svg' ? new Blob([content], { type: 'image/svg+xml' }) : null)
+                : content;
+            if (!blob) continue;
+            const next = new Map(this._thumbs);
+            next.set(f.key, URL.createObjectURL(blob));
+            this._thumbs = next;
+        }
+    }
+
+    private _revokeThumbs() {
+        for (const url of this._thumbs.values()) URL.revokeObjectURL(url);
+        this._thumbs = new Map();
+        this._loadToken++;
     }
 
     private get _filtered(): IMediaFile[] {
@@ -185,7 +251,7 @@ export class PluginSelectAssetsMedia extends StateLitElement {
     }
 
     private get _counts(): Record<MediaCategory | 'all', number> {
-        const c = { all: this._files.length, image: 0, icon: 0, video: 0, audio: 0, other: 0 };
+        const c = { all: this._files.length, image: 0, icon: 0, video: 0, audio: 0, font: 0, document: 0, other: 0 };
         for (const f of this._files) c[f.category]++;
         return c;
     }
@@ -205,10 +271,13 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></aura--plugins--nav-header-102020>
 
-                ${this._renderToolbar()}
-                ${this._uploadFile ? this._renderUploadArea() : nothing}
-                ${this._files.length > 0 ? this._renderCategoryTabs() : nothing}
-                ${this._renderContent()}
+                ${this._location ? html`
+                    ${this._renderToolbar()}
+                    ${this._error ? this._renderError() : nothing}
+                    ${this._pending ? this._renderUploadArea() : nothing}
+                    ${this._files.length > 0 ? this._renderCategoryTabs() : nothing}
+                    ${this._renderContent()}
+                ` : html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noProject}</span>`}
             </div>
         `;
     }
@@ -246,6 +315,7 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                     ${this.msg.addBtn}
                 </button>
                 <input type="file" style="display:none" id="_media_file_input"
+                    accept=${ACCEPT_ATTR}
                     @change=${(e: Event) => this._onFileSelected(e)}
                 />
             </div>
@@ -272,12 +342,25 @@ export class PluginSelectAssetsMedia extends StateLitElement {
         `;
     }
 
+    private _renderError() {
+        return html`
+            <div class="flex items-start gap-2 rounded-md border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 px-2.5 py-2">
+                <span class="flex-1 text-sm text-red-600 dark:text-red-300">${this._error}</span>
+                <button
+                    class="shrink-0 p-0.5 rounded text-red-400 hover:text-red-600 dark:hover:text-red-200 cursor-pointer"
+                    @click=${() => { this._error = null; }}
+                >${this._svgX()}</button>
+            </div>
+        `;
+    }
+
     // ─── Upload Area ─────────────────────────────────────────────────
 
     private _renderUploadArea() {
-        const file = this._uploadFile!;
-        const ext = (file.name.match(/\.[^.]+$/)?.[0] ?? '').toLowerCase();
-        const isImage = EXTENSION_MAP[ext] === 'image';
+        const p = this._pending!;
+        const finalName = `${p.shortName}${p.extension}`;
+        const renamed = finalName !== p.file.name;
+        const replacing = p.existingKey !== null;
         return html`
             <div class="
                 rounded-lg border border-indigo-200 dark:border-indigo-700/50
@@ -290,18 +373,23 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                         border border-indigo-100 dark:border-indigo-800
                         flex items-center justify-center
                     ">
-                        ${isImage && this._uploadPreviewUrl
-                            ? html`<img src=${this._uploadPreviewUrl} class="w-full h-full object-cover" />`
-                            : html`<span class="text-indigo-400 dark:text-indigo-500">${this._svgCategoryIcon(EXTENSION_MAP[ext] ?? 'other', 24)}</span>`}
+                        ${this._uploadPreviewUrl
+                            ? html`<img src=${this._uploadPreviewUrl} class="w-full h-full object-contain" />`
+                            : html`<span class="text-indigo-400 dark:text-indigo-500">${this._svgCategoryIcon(p.category, 24)}</span>`}
                     </div>
                     <div class="flex flex-col flex-1 min-w-0 gap-0.5">
                         <span class="text-xs font-semibold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">
                             ${this.msg.uploadSelected}
                         </span>
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">${file.name}</span>
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">${p.file.name}</span>
+                        ${renamed ? html`
+                            <span class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                ${this.msg.savedAs} <span class="font-mono">${finalName}</span>
+                            </span>
+                        ` : nothing}
                         <div class="flex items-center gap-1.5">
-                            ${this._renderExtBadge(ext)}
-                            <span class="text-xs text-gray-400 dark:text-gray-500">${this._formatSize(file.size)}</span>
+                            ${this._renderExtBadge(p.extension)}
+                            <span class="text-xs text-gray-400 dark:text-gray-500">${formatSize(p.file.size)}</span>
                         </div>
                     </div>
                     <button
@@ -309,6 +397,9 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                         @click=${() => this._clearUpload()}
                     >${this._svgX()}</button>
                 </div>
+                ${replacing ? html`
+                    <span class="text-sm text-amber-700 dark:text-amber-300">${this.msg.replaceAsk}</span>
+                ` : nothing}
                 <div class="flex justify-end gap-2">
                     <button
                         class="text-sm px-2.5 py-1 rounded-md text-gray-500 dark:text-gray-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors cursor-pointer"
@@ -319,13 +410,15 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                             flex items-center gap-1.5 text-sm px-3 py-1 rounded-md transition-colors
                             ${this._uploadLoading
                                 ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                                : 'bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 cursor-pointer'}
+                                : replacing
+                                    ? 'bg-amber-500 dark:bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-500 cursor-pointer'
+                                    : 'bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 cursor-pointer'}
                         "
                         ?disabled=${this._uploadLoading}
-                        @click=${() => this._handleUpload()}
+                        @click=${() => void this._handleUpload()}
                     >
                         ${this._uploadLoading ? this._svgSpinner() : ''}
-                        ${this.msg.uploadBtn}
+                        ${replacing ? this.msg.replaceBtn : this.msg.uploadBtn}
                     </button>
                 </div>
             </div>
@@ -342,6 +435,8 @@ export class PluginSelectAssetsMedia extends StateLitElement {
             { key: 'icon' as const,  label: this.msg.catIcon  },
             { key: 'video' as const, label: this.msg.catVideo },
             { key: 'audio' as const, label: this.msg.catAudio },
+            { key: 'font' as const,  label: this.msg.catFont  },
+            { key: 'document' as const, label: this.msg.catDocument },
             { key: 'other' as const, label: this.msg.catOther },
         ].filter(c => c.key === 'all' || counts[c.key as MediaCategory] > 0);
 
@@ -355,10 +450,10 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                                 ? 'bg-indigo-500 dark:bg-indigo-600 text-white'
                                 : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}
                         "
-                        @click=${() => { this._activeCategory = c.key as any; }}
+                        @click=${() => { this._activeCategory = c.key; }}
                     >
                         ${c.label}
-                        <span class="font-mono opacity-70">${counts[c.key as MediaCategory | 'all']}</span>
+                        <span class="font-mono opacity-70">${counts[c.key]}</span>
                     </button>
                 `)}
             </div>
@@ -368,9 +463,6 @@ export class PluginSelectAssetsMedia extends StateLitElement {
     // ─── Content ─────────────────────────────────────────────────────
 
     private _renderContent() {
-        if (this._loading) {
-            return html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.loading}</span>`;
-        }
         if (this._files.length === 0) {
             return html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noFiles}</span>`;
         }
@@ -383,6 +475,16 @@ export class PluginSelectAssetsMedia extends StateLitElement {
         return this._renderListShort(filtered);
     }
 
+    private _urlOf(f: IMediaFile): string {
+        return assetUrl(this._location?.project ?? 0, f.folder, f.shortName, f.extension);
+    }
+
+    private _renderThumb(f: IMediaFile, iconSize: number) {
+        const url = this._thumbs.get(f.key);
+        if (url) return html`<img src=${url} alt="" class="w-full h-full object-contain" />`;
+        return html`<span class="text-gray-400 dark:text-gray-500">${this._svgCategoryIcon(f.category, iconSize)}</span>`;
+    }
+
     private _renderListShort(files: IMediaFile[]) {
         return html`
             <div class="flex flex-col">
@@ -391,10 +493,11 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                         <span class="shrink-0 text-gray-400 dark:text-gray-500">
                             ${this._svgCategoryIcon(f.category, 14)}
                         </span>
-                        <span class="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
+                        <span class="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate" title=${this._urlOf(f)}>
                             ${f.shortName}${f.extension}
                         </span>
                         ${this._renderExtBadge(f.extension)}
+                        ${this._renderCopyBtn(f)}
                         ${this._renderDeleteBtn(f.key)}
                     </div>
                 `)}
@@ -413,25 +516,21 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                         hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors group
                     ">
                         <div class="
-                            shrink-0 w-10 h-10 rounded-md
+                            shrink-0 w-10 h-10 rounded-md overflow-hidden
                             bg-gray-200 dark:bg-gray-700
                             flex items-center justify-center
                         ">
-                            <span class="text-gray-500 dark:text-gray-400">
-                                ${this._svgCategoryIcon(f.category, 20)}
-                            </span>
+                            ${this._renderThumb(f, 20)}
                         </div>
                         <div class="flex flex-col flex-1 min-w-0">
-                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate" title=${this._urlOf(f)}>
                                 ${f.shortName}${f.extension}
                             </span>
                             <div class="flex items-center gap-1.5 mt-0.5">
                                 ${this._renderExtBadge(f.extension)}
-                                ${f.size !== undefined
-                                    ? html`<span class="text-xs text-gray-400 dark:text-gray-600">${this._formatSize(f.size)}</span>`
-                                    : nothing}
                             </div>
                         </div>
+                        ${this._renderCopyBtn(f)}
                         ${this._renderDeleteBtn(f.key)}
                     </div>
                 `)}
@@ -450,21 +549,17 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                         overflow-hidden
                         hover:shadow-md dark:hover:shadow-black/30 transition-shadow group
                     ">
-                        <div class="flex items-center justify-center bg-gray-100 dark:bg-gray-800/80 h-20">
-                            <span class="text-gray-400 dark:text-gray-500">
-                                ${this._svgCategoryIcon(f.category, 32)}
-                            </span>
+                        <div class="flex items-center justify-center bg-gray-100 dark:bg-gray-800/80 h-20 p-1">
+                            ${this._renderThumb(f, 32)}
                         </div>
                         <div class="flex items-start gap-1 px-2 py-1.5">
                             <div class="flex-1 min-w-0">
-                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate block">
+                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate block" title=${this._urlOf(f)}>
                                     ${f.shortName}${f.extension}
                                 </span>
-                                ${f.size !== undefined
-                                    ? html`<span class="text-[10px] text-gray-400 dark:text-gray-600">${this._formatSize(f.size)}</span>`
-                                    : nothing}
                             </div>
-                            ${this._renderDeleteBtn(f.key)}
+                            ${this._renderCopyBtn(f)}
+                        ${this._renderDeleteBtn(f.key)}
                         </div>
                     </div>
                 `)}
@@ -474,10 +569,47 @@ export class PluginSelectAssetsMedia extends StateLitElement {
 
     // ─── Shared pieces ────────────────────────────────────────────────
 
+    private _renderCopyBtn(f: IMediaFile) {
+        const copied = this._copiedKey === f.key;
+        return html`
+            <button
+                title=${copied ? this.msg.copied : this.msg.copyUrl}
+                aria-label=${this.msg.copyUrl}
+                class="
+                    shrink-0 p-1 rounded transition-all cursor-pointer
+                    ${copied
+                        ? 'text-emerald-500 dark:text-emerald-400'
+                        : 'opacity-0 group-hover:opacity-100 focus:opacity-100 text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400'}
+                "
+                @click=${(e: Event) => { e.stopPropagation(); void this._copyUrl(f); }}
+            >${copied ? this._svgCheck() : this._svgCopy()}</button>
+        `;
+    }
+
+    private async _copyUrl(f: IMediaFile) {
+        const url = this._urlOf(f);
+        try {
+            await navigator.clipboard.writeText(url);
+        } catch {
+            // Clipboard API refused (permissions / insecure context): the textarea fallback still works.
+            const area = document.createElement('textarea');
+            area.value = url;
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            document.execCommand('copy');
+            area.remove();
+        }
+        this._copiedKey = f.key;
+        setTimeout(() => { if (this._copiedKey === f.key) this._copiedKey = null; }, 1500);
+    }
+
     private _renderDeleteBtn(key: string) {
         const isPending = this._deleteConfirm === key;
         return html`
             <button
+                title=${isPending ? this.msg.deleteConfirm : ''}
                 class="
                     shrink-0 p-1 rounded transition-all cursor-pointer
                     ${isPending
@@ -498,7 +630,7 @@ export class PluginSelectAssetsMedia extends StateLitElement {
         `;
     }
 
-    // ─── Logic ───────────────────────────────────────────────────────
+    // ─── Upload ──────────────────────────────────────────────────────
 
     private _openFilePicker() {
         const input = this.querySelector<HTMLInputElement>('#_media_file_input');
@@ -508,58 +640,101 @@ export class PluginSelectAssetsMedia extends StateLitElement {
     private _onFileSelected(e: Event) {
         const input = e.target as HTMLInputElement;
         const file = input.files?.[0] ?? null;
-        if (!file) return;
-        this._revokePreview();
-        this._uploadFile = file;
-        const ext = (file.name.match(/\.[^.]+$/)?.[0] ?? '').toLowerCase();
-        if (EXTENSION_MAP[ext] === 'image') {
-            this._uploadPreviewUrl = URL.createObjectURL(file);
-        }
         input.value = '';
+        if (!file) return;
+        this._clearUpload();
+        this._error = null;
+
+        const check = checkUpload(file);
+        if (!check.ok) {
+            this._error = check.reason === 'name' ? this.msg.errName
+                : check.reason === 'extension' ? this.msg.errExtension
+                : this.msg.errSize.replace('{max}', formatSize(MAX_UPLOAD_BYTES));
+            return;
+        }
+
+        const loc = this._location;
+        if (!loc) return;
+        const key = mls.stor.getKeyToFiles(loc.project, loc.level, check.shortName, loc.folder, check.extension);
+        const existing = mls.stor.files[key];
+        this._pending = {
+            file,
+            shortName: check.shortName,
+            extension: check.extension,
+            category: check.category,
+            existingKey: existing && existing.status !== 'deleted' ? key : null,
+        };
+        if (hasImagePreview(check.category)) this._uploadPreviewUrl = URL.createObjectURL(file);
     }
 
+    /**
+     * Writes the bytes into the stor the way the local-folder sync does: a stor entry at
+     * l3/<module>/assets + the Blob in local storage. Saving / publishing then carries it like any
+     * other changed file (the VM driver sends Blobs as base64).
+     */
     private async _handleUpload() {
-        if (!this._uploadFile || !this.selectedModule) return;
+        const p = this._pending;
+        const loc = this._location;
+        if (!p || !loc || this._uploadLoading) return;
         this._uploadLoading = true;
-        this.requestUpdate();
-        this.dispatchEvent(new CustomEvent('media-upload', {
-            detail: {
-                file: this._uploadFile,
-                folder: `${this.selectedModule.path}/assets`,
-            },
-            bubbles: true,
-            composed: true,
-        }));
-        this._uploadLoading = false;
-        this._clearUpload();
+        this._error = null;
+        try {
+            const key = mls.stor.getKeyToFiles(loc.project, loc.level, p.shortName, loc.folder, p.extension);
+            let file: mls.stor.IFileInfo | undefined = mls.stor.files[key];
+            if (file) {
+                // Same name: replacing a file that exists only here keeps it 'new'; anything else
+                // (saved, or deleted and coming back) is a change to the saved file.
+                file.status = file.status === 'new' ? 'new' : 'changed';
+            } else {
+                file = await mls.stor.addOrUpdateFile({ ...loc, shortName: p.shortName, extension: p.extension, versionRef: '0' });
+                if (!file) throw new Error(`addOrUpdateFile returned nothing for ${key}`);
+                file.status = 'new';
+            }
+            file.updatedAt = new Date().toISOString();
+            await mls.stor.localStor.setContent(file, { content: p.file, contentType: 'blob' });
+            mls.events.fireFileAction('statusOrErrorChanged', file, 'left', 0);
+            mls.events.fireFileAction('statusOrErrorChanged', file, 'right', 0);
+            notifyAssetChanged(assetUrl(loc.project, loc.folder, p.shortName, p.extension));
+            this._clearUpload();
+            this._loadFiles();
+        } catch (err) {
+            console.error('[assets-media] upload failed', err);
+            this._error = this.msg.errSave;
+        } finally {
+            this._uploadLoading = false;
+        }
     }
+
+    // ─── Delete ──────────────────────────────────────────────────────
 
     private _handleDeleteClick(key: string) {
         if (this._deleteConfirm === key) {
-            this._handleDelete(key);
+            void this._handleDelete(key);
         } else {
             this._deleteConfirm = key;
             setTimeout(() => {
-                if (this._deleteConfirm === key) { this._deleteConfirm = null; this.requestUpdate(); }
+                if (this._deleteConfirm === key) this._deleteConfirm = null;
             }, 3000);
         }
     }
 
     private async _handleDelete(key: string) {
-        try {
-            // @ts-ignore
-            const f = mls.stor.files[key] as any;
-            if (f?.deleteFile) await f.deleteFile();
-            else if (f?.delete) await f.delete();
-            this._files = this._files.filter(x => x.key !== key);
-        } catch { /* ignore */ }
         this._deleteConfirm = null;
-        this.requestUpdate();
+        const file = mls.stor.files[key];
+        if (!file) { this._loadFiles(); return; }
+        try {
+            await deleteFile(file);
+            notifyAssetChanged(assetUrl(file.project, file.folder, file.shortName, file.extension));
+        } catch (err) {
+            console.error('[assets-media] delete failed', err);
+            this._error = this.msg.errDelete;
+        }
+        this._loadFiles();
     }
 
     private _clearUpload() {
         this._revokePreview();
-        this._uploadFile = null;
+        this._pending = null;
         this._uploadPreviewUrl = null;
         this._uploadLoading = false;
     }
@@ -568,26 +743,26 @@ export class PluginSelectAssetsMedia extends StateLitElement {
         if (this._uploadPreviewUrl) URL.revokeObjectURL(this._uploadPreviewUrl);
     }
 
-    private _formatSize(bytes?: number): string {
-        if (!bytes) return '';
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-
     // ─── SVG Icons ───────────────────────────────────────────────────
 
-    private _svgCategoryIcon(cat: MediaCategory | 'other', size = 16) {
+    private _svgCategoryIcon(cat: MediaCategory, size = 16) {
         const s = size;
         switch (cat) {
             case 'image': return html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
             case 'icon':  return html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`;
             case 'video': return html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="15" height="16" rx="2"/><path d="M17 8l5-4v16l-5-4V8z"/></svg>`;
             case 'audio': return html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+            case 'font':  return html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`;
             default:      return html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
         }
     }
 
+    private _svgCopy() {
+        return html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+    }
+    private _svgCheck() {
+        return html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    }
     private _svgPlus() {
         return html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
     }

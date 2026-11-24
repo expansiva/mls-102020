@@ -7,6 +7,7 @@ import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { mutationGroups, renderIcon, MutationGroupEntry, SkillCategory } from '/_102020_/l2/molecules/index.js';
 import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { convertFileToTag } from '/_102020_/l2/utils';
+import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
@@ -51,7 +52,7 @@ interface IModule {
 
 type ViewMode = 'list' | 'preview' | 'grid';
 
-const MY_SLOT = 1;
+const MY_SLOT = 2;
 const ASSETS_MIN = 1;
 const ASSETS_MAX = 3;
 
@@ -343,11 +344,23 @@ export class PluginSelectAssetsComponents extends StateLitElement {
         this.findIndex(group.name);
     }
 
+    /**
+     * The group's catalog page. Several molecule libraries carry one (102040 and its style variants), so
+     * the first match of the whole stor is a coin toss: the project's own page wins, then its
+     * dependencies in the order the project declares them, then anything else.
+     */
     private findIndex(groupName: string) {
         const folder = `molecules/${groupName.toLowerCase()}`;
-        // @ts-ignore
-        const storFileItem = Object.values(mls.stor.files as Record<string, any>)
-            .find((f: any) => f.folder === folder && f.shortName === 'index' && f.extension === '.ts');
+        const project = getAuraState().actualProject;
+        const dependencies = (project ? mls.stor.projects[project]?.projectDependencies : null) ?? [];
+        const rank = (p: number): number => {
+            if (p === project) return 0;
+            const at = dependencies.indexOf(p);
+            return at >= 0 ? 1 + at : 1_000_000 + p;
+        };
+        const storFileItem = Object.values(mls.stor.files)
+            .filter(f => f.folder === folder && f.shortName === 'index' && f.extension === '.ts' && f.status !== 'deleted')
+            .sort((a, b) => rank(a.project) - rank(b.project))[0];
 
         if (!storFileItem) return;
         const tag = convertFileToTag(storFileItem);

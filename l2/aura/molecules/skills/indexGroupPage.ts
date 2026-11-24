@@ -192,8 +192,10 @@ Every distinct component in the group must appear as a column.
   import { customElement, state } from 'lit/decorators.js';
   import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 - Import each component module from its canonical path before using it in the template:
-  import '/_actualProjectId_/l2/molecules/{groupname}/{component-name}';
-  (groupname is lowercase in the import path)
+  import '/_actualProjectId_/l2/molecules/{groupname}/{component-name}.js';
+  (groupname is lowercase in the import path; ALWAYS end with .js — the app pages import the same
+  molecule with .js, and a second spelling of the URL loads the module twice, so its custom element is
+  defined twice and the page throws "has already been used with this registry")
 - Declare one @state() property per showcase card with a sensible default for the value type:
   boolean → false, string → '', number → 0 (unless a non-empty default better illustrates the component)
 - Group all showcase state declarations under the comment: // ── Showcase card states ─────────────────────────────────────
