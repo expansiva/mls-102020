@@ -38,6 +38,10 @@ export interface IPageVersion {
   restoredFrom?: number;
   /** For `restore`: the version put back was a saved one (git), not one of this timeline. */
   restoredSaved?: boolean;
+  /** For `ai`: what the person asked (with the adjustments). `what` is what the AI says it changed. */
+  request?: string;
+  /** For `ai`: what the AI said it changed at each step — the change, then each adjustment — in order. */
+  steps?: string[];
 }
 
 export interface IPageVersionLimits {

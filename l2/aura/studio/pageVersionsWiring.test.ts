@@ -73,6 +73,25 @@ test('the difference opens in the details panel on the right, never inline in th
   assert.ok(read('pageVersionDiff.ts').includes('createDiffEditor'));
 });
 
+test('a page in AI review refuses the Studio edits: no target in the editor, no molecule swap', () => {
+  const refresh = between(EDITOR, 'public async refreshTarget(', 'this.drawStatusOnly();');
+  assert.ok(refresh.indexOf('if (result.ok && isPageInReview(result.target)) {') < refresh.indexOf('this.target = result.target;'));
+  assert.ok(refresh.includes("this.targetFailure = { id: 'reason.pageInReview' };"));
+  assert.ok(EDITOR.includes('this.unsubReview = onPageReviewChange(() => { void this.refreshTarget(); });'));
+  const swap = GENOME.indexOf('if (isPageInReview(file)) {');
+  assert.ok(swap >= 0 && swap < GENOME.indexOf('tsModel.model.pushEditOperations(', swap));
+});
+
+test('a version shows two lines; "see more" opens every AI step and the request', () => {
+  const panel = read('pageVersionsPanel.ts');
+  const title = between(panel, 'private _renderTitle(', 'private _groupTitle(');
+  assert.ok(title.includes('break-words line-clamp-2'), 'closed: two lines');
+  assert.ok(title.includes("t('versions.stepAdjust', { n: index })"), 'open: each adjustment');
+  assert.ok(title.includes("t('versions.aiRequestText', { request: v.request })"), 'open: the request');
+  // The request is not a line of its own any more.
+  assert.ok(!between(panel, 'private _subtitle(', 'private static readonly SHORT_TITLE').includes("v.who === 'ai'"));
+});
+
 test('the Page tab shows the versions panel', () => {
   assert.ok(SELECT_PAGE.includes("import '/_102020_/l2/aura/studio/pageVersionsPanel.js';"));
   assert.ok(SELECT_PAGE.includes('${this._renderVersions(page)}'));

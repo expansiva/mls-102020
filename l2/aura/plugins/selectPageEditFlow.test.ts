@@ -29,11 +29,20 @@ test('the page is read BEFORE the agent writes, and the change is discardable on
   const before = apply.indexOf('const before = await this._snapshotPage(entry);');
   const run = apply.indexOf("this._executeAgent('agentEditPage'");
   assert.ok(before >= 0 && before < run, 'snapshot first');
-  assert.ok(apply.includes('if (before && after && after.source !== before.source) this._editUndo[page.name] = { before, after, appliedAt: Date.now() };'));
-  // The page timeline: the page before the agent writes, then the applied request as a version of its own.
+  // A change goes into review (the page locked); only a change that changed nothing is finished at once.
+  assert.ok(apply.indexOf('if (before && after && after.source !== before.source) {') > run);
+  assert.ok(apply.includes('setPageInReview(this._reviewRef(before), true);'));
+  // The page timeline: the page before the agent writes; the version of the request only once it is applied.
   const ensure = apply.indexOf('await ensurePageVersion(versioned);');
   assert.ok(ensure >= 0 && ensure < run, 'timeline before the write');
-  assert.ok(apply.indexOf("await recordPageVersion(versioned, 'ai', plan.request);") > run);
+  assert.ok(!apply.includes('recordPageVersion('), 'no version for a preview');
+  const finish = member('private async _finishApplied(');
+  // The version says what the AI changed (its notes); the request goes with it.
+  // Every AI step is kept (the change, then each adjustment), the request too.
+  assert.ok(finish.includes('const steps = review.notesLog.map(text => text.trim()).filter(Boolean);'));
+  assert.ok(finish.includes("await recordPageVersion(versioned, 'ai', steps[0] ?? request, { request, steps });"));
+  assert.ok(member('private async _onReviewAdjust(').includes('notesLog: [...current.notesLog, result.notes.notes]'));
+  assert.ok(finish.includes('this._editUndo[page.name] = { before: review.before, after: review.after, appliedAt: Date.now() };'));
 });
 
 test('a discard of a changed page asks first, goes through the timeline, and refuses only without it', () => {
@@ -64,6 +73,39 @@ test('the restore goes through the same writes as the apply: the page source and
 test('the discard button and its messages exist in the three languages', () => {
   assert.ok(SELECT_PAGE.includes('@click=${() => this._onDiscardEdit(page)}'));
   for (const key of ['editDiscard', 'editDiscarding', 'editDiscarded', 'editDiscardStale', 'editDiscardConfirm']) {
+    assert.equal(SELECT_PAGE.match(new RegExp(`^ +${key}: '`, 'gmu'))?.length ?? 0, 3, key);
+  }
+});
+
+test('in review: apply shows the candidate first and unlocks; discard puts the whole page back and unlocks', () => {
+  const apply = member('private async _onReviewApply(');
+  assert.ok(apply.indexOf('await this._showCandidate(review);') < apply.indexOf('this._endReview(page, review);'));
+  assert.ok(apply.indexOf('this._endReview(page, review);') < apply.indexOf('await this._finishApplied(page, review, review.notes, review);'));
+  const discard = member('private async _onReviewDiscard(');
+  assert.ok(discard.indexOf('await restoreEditPage(review.before);') < discard.indexOf('this._endReview(page, review);'));
+  assert.ok(member('private _endReview(').includes('setPageInReview(this._reviewRef(review.before), false);'));
+});
+
+test('Before | After only puts a text on screen: no version and no defs history', () => {
+  const show = member('private async _onReviewShow(');
+  assert.ok(show.includes('await commitPageSource(snapshot.project, snapshot.folder, snapshot.page, snapshot.source);'));
+  assert.ok(!/recordPageVersion|recordInDefsHistory|restoreEditPage/u.test(show));
+});
+
+test('an adjustment patches the candidate: same operations, the list grows, Before never changes, at most three', () => {
+  const adjust = member('private async _onReviewAdjust(');
+  assert.ok(adjust.includes('review.adjust.length >= MAX_REVIEW_ADJUST'));
+  assert.ok(adjust.includes('this._editEntry(page, review.request, review.device, review.element, review.operations, review.marks, adjust)'));
+  assert.ok(adjust.indexOf('await this._showCandidate(review);') < adjust.indexOf("this._executeAgent('agentEditPage'"));
+  assert.ok(!adjust.includes('before:'), 'Before is never replaced');
+  assert.ok(SELECT_PAGE.includes('...(adjust.length ? { adjust } : {})'));
+});
+
+test('a page in review is not regenerated, and the AI tab shows the review first', () => {
+  assert.ok(member('private async _onRegenerate(').includes('if (this._editReview[page.name]) return;'));
+  const panel = member('private _renderEditPanel(');
+  assert.ok(panel.indexOf('this._renderEditReview(page, review)') < panel.indexOf('this._renderEditConfirm(page, plan)'));
+  for (const key of ['reviewTitle', 'reviewBefore', 'reviewAfter', 'reviewApply', 'reviewDiscard', 'reviewAdjust', 'reviewCode', 'reviewSaveNote']) {
     assert.equal(SELECT_PAGE.match(new RegExp(`^ +${key}: '`, 'gmu'))?.length ?? 0, 3, key);
   }
 });

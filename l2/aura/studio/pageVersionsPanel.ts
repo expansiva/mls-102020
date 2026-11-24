@@ -52,6 +52,8 @@ export class PageVersionsPanel extends StateLitElement {
   @state() private _diffRow: string | null = null;
   /** Folded runs the person opened (by the id of their newest version). */
   @state() private _openGroups: ReadonlySet<number> = new Set();
+  /** Versions whose full text (AI steps and request) the person opened, by id. */
+  @state() private _expanded: ReadonlySet<number> = new Set();
 
   private _unsub: (() => void) | null = null;
   private _loadedKey = '';
@@ -131,14 +133,60 @@ export class PageVersionsPanel extends StateLitElement {
     }
   }
 
-  /** The second line, only where it says something the colour and the title do not. */
+  /** The second line, only where it says something the colour and the title do not (the AI's request is on demand). */
   private _subtitle(v: IPageVersion): string {
-    if (v.who === 'ai') return t('versions.aiRequest');
     if (v.who === 'restore') {
       const time = v.restoredFrom ? this._time(v.restoredFrom) : '';
       return (v.restoredSaved ? t('versions.restoredFromSaved') : t('versions.restoredFrom')).replace('{time}', time);
     }
     return '';
+  }
+
+  /** Titles longer than this are cut to two lines until "see more". */
+  private static readonly SHORT_TITLE = 90;
+
+  /** The AI steps of a version: what it changed, then each adjustment (older versions have only `what`). */
+  private _steps(v: IPageVersion): string[] {
+    return v.who === 'ai' && v.steps?.length ? v.steps : [];
+  }
+
+  /** There is more than the two lines shown: several AI steps, the request, or a long title. */
+  private _hasMore(v: IPageVersion): boolean {
+    return this._steps(v).length > 1 || Boolean(v.who === 'ai' && v.request) || this._title(v).length > PageVersionsPanel.SHORT_TITLE;
+  }
+
+  private _toggleExpanded(v: IPageVersion): void {
+    const next = new Set(this._expanded);
+    if (next.has(v.id)) next.delete(v.id); else next.add(v.id);
+    this._expanded = next;
+  }
+
+  /**
+   * The title of a version: two lines and a "see more" when there is more; open, every AI step in full (the change,
+   * then each adjustment) and the request as it was asked.
+   */
+  private _renderTitle(v: IPageVersion, cls: string): TemplateResult {
+    const more = this._hasMore(v);
+    const open = more && this._expanded.has(v.id);
+    const steps = this._steps(v);
+    const extra = steps.length - 1;
+    const toggle = more ? html`
+      <button type="button" class="self-start text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer" aria-expanded=${open ? 'true' : 'false'}
+        @click=${() => this._toggleExpanded(v)}>${open ? t('versions.less') : extra > 0 ? t('versions.moreAdjust', { n: extra }) : t('versions.more')}</button>` : nothing;
+    if (!open) {
+      return html`<span class="${cls} break-words line-clamp-2">${this._title(v)}</span>${toggle}`;
+    }
+    return html`
+      ${steps.length > 1 ? html`
+        <ol class="flex flex-col gap-1">
+          ${steps.map((text, index) => html`
+            <li class="${cls} break-words">
+              <span class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">${index === 0 ? t('versions.stepChange') : t('versions.stepAdjust', { n: index })}</span><br>${text}
+            </li>`)}
+        </ol>` : html`<span class="${cls} break-words">${steps[0] ?? this._title(v)}</span>`}
+      ${v.who === 'ai' && v.request ? html`<span class="text-[11px] italic text-gray-500 dark:text-gray-400 break-words">${t('versions.aiRequestText', { request: v.request })}</span>` : nothing}
+      ${toggle}
+    `;
   }
 
   private _groupTitle(who: PageVersionWho, n: number): string {
@@ -328,12 +376,13 @@ export class PageVersionsPanel extends StateLitElement {
         <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400 text-right pt-0.5">${this._time(v.at, true)}</span>
         ${this._rail(v.who, edge, { current: latest })}
         <div class="flex flex-col gap-0.5 min-w-0 pb-1">
-          <div class="flex items-baseline gap-1.5 flex-wrap">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-200 break-words">${this._title(v)}</span>
-            ${latest ? html`<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">${t('versions.current')}</span>` : nothing}
-            ${saved ? html`<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">${t('versions.saved')}</span>` : nothing}
-          </div>
-          ${sub ? html`<span class="text-[11px] ${v.who === 'restore' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}">${sub}</span>` : nothing}
+          ${this._renderTitle(v, 'text-xs font-medium text-gray-700 dark:text-gray-200')}
+          ${latest || saved ? html`
+            <div class="flex items-center gap-1.5">
+              ${latest ? html`<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">${t('versions.current')}</span>` : nothing}
+              ${saved ? html`<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">${t('versions.saved')}</span>` : nothing}
+            </div>` : nothing}
+          ${sub ? html`<span class="text-[11px] line-clamp-2 ${v.who === 'restore' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}" title=${sub}>${sub}</span>` : nothing}
           ${this._renderActions(v, row, latest, pinned, busy, confirming)}
         </div>
       </li>
@@ -395,11 +444,9 @@ export class PageVersionsPanel extends StateLitElement {
     const sub = this._subtitle(v);
     return html`
       <li class="group flex flex-col gap-0.5 py-1">
-        <div class="flex items-baseline gap-1.5 min-w-0">
-          <span class="text-[11px] tabular-nums text-gray-500 dark:text-gray-400">${this._time(v.at, true)}</span>
-          <span class="text-xs text-gray-700 dark:text-gray-200 break-words">${this._title(v)}</span>
-        </div>
-        ${sub ? html`<span class="text-[11px] ${v.who === 'restore' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}">${sub}</span>` : nothing}
+        <span class="text-[11px] tabular-nums text-gray-500 dark:text-gray-400">${this._time(v.at, true)}</span>
+        ${this._renderTitle(v, 'text-xs text-gray-700 dark:text-gray-200')}
+        ${sub ? html`<span class="text-[11px] line-clamp-2 ${v.who === 'restore' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}" title=${sub}>${sub}</span>` : nothing}
         ${this._renderActions(v, row, false, pinned, busy, confirming)}
       </li>
     `;

@@ -149,11 +149,11 @@ export function flushPageEdit(page: IPageRef): Promise<void> {
 }
 
 /** Records the page as it is now, right away (after the AI applied a request, after a regeneration). */
-export async function recordPageVersion(page: IPageRef | null | undefined, who: PageVersionWho, what: string): Promise<void> {
+export async function recordPageVersion(page: IPageRef | null | undefined, who: PageVersionWho, what: string, extra: Partial<IPageVersion> = {}): Promise<void> {
   if (!isVersionedPage(page)) return;
   const ref = refOf(page);
   await flushPageEdit(ref);
-  await serial(ref, () => take(ref, who, what));
+  await serial(ref, () => take(ref, who, what, extra));
 }
 
 /** The page's versions, oldest first (a pending edit is taken first, so the list is current). */

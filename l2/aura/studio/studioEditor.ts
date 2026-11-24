@@ -195,6 +195,7 @@ import {
   type IStudioEditTarget,
 } from '/_102020_/l2/aura/studio/studioEditTarget.js';
 import { ensurePageVersion, notePageEdit, versionedPage } from '/_102020_/l2/aura/studio/pageVersions.js';
+import { isPageInReview, onPageReviewChange } from '/_102020_/l2/aura/studio/studioPageReview.js';
 import {
   organismOf,
   pathWithinOrganism,
@@ -867,6 +868,8 @@ export class StudioEditor {
   /** The layout lines (advanced mode): exists only while armed AND some line is on. */
   private layoutLines: LayoutLines | null = null;
   private unsubAdvanced: (() => void) | null = null;
+  /** A page entering or leaving AI review re-resolves the target (in review = no target, with the reason). */
+  private unsubReview: (() => void) | null = null;
   /** Annotating the page (AI tab): exists while armed; the marks it holds go to agentEditPage. */
   private annotate: StudioAnnotate | null = null;
   private classPanel: IClassPanelState | null = null;
@@ -1090,6 +1093,8 @@ export class StudioEditor {
       // And the layout lines give the page back (attribute, stylesheet, layer, listeners).
       this.unsubAdvanced?.();
       this.unsubAdvanced = null;
+      this.unsubReview?.();
+      this.unsubReview = null;
       this.layoutLines?.destroy();
       this.layoutLines = null;
       // The marks die with the editor: the panel hears an empty, unavailable state.
@@ -1105,6 +1110,7 @@ export class StudioEditor {
       void this.refreshTarget();
       this.syncTreeWatch();
       this.unsubAdvanced = onAdvancedPrefsChange((prefs) => this.applyAdvancedPrefs(prefs));
+      this.unsubReview = onPageReviewChange(() => { void this.refreshTarget(); });
     }
     this.applyCursor();
   }
@@ -1116,7 +1122,14 @@ export class StudioEditor {
     const result = await resolveEditTarget(this.host);
     // A new page means a new chain of candidate files.
     this.candidates = null;
-    if (result.ok) {
+    if (result.ok && isPageInReview(result.target)) {
+      // The AI change of this page is on screen waiting for Apply / Discard: no edit lands on top of it. Every
+      // write of this editor refuses on a missing target, with this reason; selecting and inspecting go on.
+      this.target = null;
+      this.targetFailure = { id: 'reason.pageInReview' };
+      this.statusText = tr(this.targetFailure);
+      this.publishSelection(this.classPanel?.el ?? null);
+    } else if (result.ok) {
       this.target = result.target;
       // The page timeline starts (or catches up) with the page as it is when it comes on screen.
       void ensurePageVersion(versionedPage(result.target));

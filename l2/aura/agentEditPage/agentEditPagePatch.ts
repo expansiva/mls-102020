@@ -12,7 +12,7 @@ import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { defsHistoryKey, recordDefsHistory, removeDefsHistory } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 import {
   EDIT_PAGE_FOLDER, EDIT_PAGE_MAX_ATTEMPTS, EDIT_PAGE_PATCH_AGENT_NAME, applyPagePatch, methodsForOperationFocused, normalizePatch,
-  operationHistoryEntry, parseEditPageStepArgs, type EditPageStepArgs, type PagePatch,
+  operationHistoryEntry, parseEditPageStepArgs, requestWithAdjustments, type EditPageStepArgs, type PagePatch,
 } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
 import { EDIT_PAGE_PATCH_SYSTEM_PROMPT, EDIT_PAGE_PATCH_TOOL, editPagePatchPrompt, editPagePatchSchema, editPageToolArguments } from '/_102020_/l2/aura/agentEditPage/editPagePrompts.js';
 import { addStep, patchStep, promptReady, updateStatus } from '/_102020_/l2/aura/agentEditPage/editPageIntents.js';
@@ -42,7 +42,7 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     const humanPrompt = editPagePatchPrompt({
       pageLabel: page.label, operations: operationsOf(args), methodsByOperation: methodsByOperation(page, args), source: page.source,
       sharedDeclaration: page.sharedDeclaration, tokens: page.tokens, locales: page.locales, history: page.history,
-      definition: page.hasDefs ? page.definition : null, selected: page.selected, marks: page.marks,
+      definition: page.hasDefs ? page.definition : null, selected: page.selected, marks: page.marks, adjust: args.adjust,
       repair: args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous ?? '' } : undefined,
     });
     return [promptReady(context, parentStep, step, hookSequential, EDIT_PAGE_PATCH_SYSTEM_PROMPT, humanPrompt, {
@@ -85,13 +85,15 @@ async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCon
     const { errors, live } = await commitPageSource(args.project, page.folder, args.page, applied.value.code);
     if (errors.length) return fail(`EDIT_PAGE_COMPILE: ${errors.slice(0, 12).join(' | ')}`, true);
     const at = new Date();
+    // With adjustments, the entry says the whole accepted request: a regeneration redoes the adjusted result.
+    const request = requestWithAdjustments(args.request, args.adjust ?? []);
     const history = await recordInDefsHistory(args.project, page.folder, args.page, entries => operations.reduce((list, op) => {
-      const entry = operationHistoryEntry(op, args.request, at.toISOString());
+      const entry = operationHistoryEntry(op, request, at.toISOString());
       return op.revert ? removeDefsHistory(list, defsHistoryKey(entry)) : recordDefsHistory(list, entry);
     }, entries));
     try {
       await writeEditPageTrace(args.project, args, editPageStamp(at), {
-        at: at.toISOString(), request: args.request, marks: args.marks, operations, attempt: args.attempt, touched: applied.value.touched,
+        at: at.toISOString(), request: args.request, adjust: args.adjust ?? [], marks: args.marks, operations, attempt: args.attempt, touched: applied.value.touched,
         messages: patch.messages.map(message => message.key), warnings: applied.value.warnings, notes: patch.notes, history,
         live: live ?? 'applied', before: original, after: applied.value.code,
       });

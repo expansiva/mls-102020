@@ -36,7 +36,8 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   const { entry } = parsed;
   const args: EditPageStepArgs = { project, ...entry, attempt: 1 };
   const apply = Boolean(entry.operations?.length);
-  const title = `${apply ? 'Change' : 'Plan a change of'} ${entry.module}/${entry.page}: ${entry.request.slice(0, 60)}`;
+  const adjusting = entry.adjust.length > 0;
+  const title = `${apply ? (adjusting ? 'Adjust' : 'Change') : 'Plan a change of'} ${entry.module}/${entry.page}: ${(adjusting ? entry.adjust[entry.adjust.length - 1] : entry.request).slice(0, 60)}`;
   const task: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai', skipRootLLM: true,
     request: {

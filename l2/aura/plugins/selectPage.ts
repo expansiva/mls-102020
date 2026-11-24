@@ -24,7 +24,10 @@ import {
     type LayoutLine,
 } from '/_102020_/l2/aura/studio/studioAdvancedMode.js';
 import { annotCommand, getAnnotState, onAnnotStateChange, type IAnnotState } from '/_102020_/l2/aura/studio/studioAnnotateStore.js';
-import { restoreEditPage, snapshotEditPage, snapshotPageFile, type EditPageSnapshot } from '/_102020_/l2/aura/agentEditPage/editPageIo.js';
+import { commitPageSource, restoreEditPage, snapshotEditPage, snapshotPageFile, type EditPageSnapshot } from '/_102020_/l2/aura/agentEditPage/editPageIo.js';
+import { EDIT_PAGE_MAX_ADJUST, requestWithAdjustments } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
+import { setPageInReview } from '/_102020_/l2/aura/studio/studioPageReview.js';
+import { PAGE_VERSION_DIFF_TAG, type IPageVersionSide } from '/_102020_/l2/aura/studio/pageVersionDiff.js';
 import {
     ensurePageVersion, listPageVersions, pageVersionsAvailable, recordPageVersion, restorePageVersion, versionedPage,
 } from '/_102020_/l2/aura/studio/pageVersions.js';
@@ -90,9 +93,9 @@ const message_en = {
     editReview: 'Review',
     editPlanning: 'Analyzing…',
     editPlanTitle: 'Confirm the change',
-    editPlanApply: 'Apply',
+    editPlanApply: 'Generate preview',
     editPlanCancel: 'Cancel',
-    editApplying: 'Applying…',
+    editApplying: 'Generating the preview…',
     editWhatChanged: 'What changed',
     editPageShell: 'page',
     editRevert: 'undo',
@@ -104,7 +107,25 @@ const message_en = {
     editDiscarding: 'Discarding…',
     editDiscarded: 'Change discarded: the page is back as it was before.',
     editDiscardStale: 'The page changed after this change and the version history is not available in this browser: discarding now would lose those edits.',
-    editDiscardConfirm: '{n} edit(s) made after this request will be undone too. Click Discard again to confirm — the Versions list, in the Page tab, can bring them back.',
+    editDiscardConfirm: '{n} edit(s) made after this request will be undone too. Click Discard again to confirm — the Change history, in the Page tab, can bring them back.',
+    reviewTitle: 'In review: the change is on the page',
+    reviewHint: 'Look at the page, switch Before | After, then apply or discard. Meanwhile, other edits of this page are blocked.',
+    reviewBefore: 'Before',
+    reviewAfter: 'After',
+    reviewSwitching: 'Rebuilding the page… (the scroll goes back to the top)',
+    reviewCode: 'See the code',
+    reviewCodeLabel: 'before the request → preview',
+    reviewApply: 'Apply',
+    reviewApplying: 'Applying…',
+    reviewDiscard: 'Discard',
+    reviewDiscarding: 'Discarding…',
+    reviewAdjust: 'Ask for an adjustment',
+    reviewAdjustPlaceholder: 'E.g.: a bit less blue; keep the title on one line',
+    reviewAdjustSend: 'Send adjustment',
+    reviewAdjusting: 'Adjusting…',
+    reviewAdjustLimit: 'Limit of 3 adjustments reached: apply or discard.',
+    reviewAdjustments: 'Adjustments: {list}',
+    reviewSaveNote: 'Until you decide, the page holds the preview: a Save now would save it.',
     editElement: 'Element',
     editElementIn: 'in',
     editElementRemove: 'Do not send this element',
@@ -200,9 +221,9 @@ const messages: Record<string, MessageType> = {
         editReview: 'Revisar',
         editPlanning: 'Analisando…',
         editPlanTitle: 'Confirme a mudança',
-        editPlanApply: 'Aplicar',
+        editPlanApply: 'Gerar prévia',
         editPlanCancel: 'Cancelar',
-        editApplying: 'Aplicando…',
+        editApplying: 'Gerando a prévia…',
         editWhatChanged: 'O que mudou',
         editPageShell: 'página',
         editRevert: 'desfazer',
@@ -214,7 +235,25 @@ const messages: Record<string, MessageType> = {
         editDiscarding: 'Descartando…',
         editDiscarded: 'Alteração descartada: a página voltou a ser como era antes.',
         editDiscardStale: 'A página mudou depois desta alteração e o histórico de versões não está disponível neste navegador: descartar agora perderia essas edições.',
-        editDiscardConfirm: '{n} edição(ões) feita(s) depois deste pedido também voltam. Clique em Descartar de novo para confirmar — a lista Versões, na aba Página, traz de volta.',
+        editDiscardConfirm: '{n} edição(ões) feita(s) depois deste pedido também voltam. Clique em Descartar de novo para confirmar — o Histórico de alterações, na aba Página, traz de volta.',
+        reviewTitle: 'Em revisão: a mudança está na página',
+        reviewHint: 'Olhe a página, alterne Antes | Depois e então aplique ou descarte. Enquanto isso, as outras edições desta página ficam bloqueadas.',
+        reviewBefore: 'Antes',
+        reviewAfter: 'Depois',
+        reviewSwitching: 'Reconstruindo a página… (a rolagem volta ao topo)',
+        reviewCode: 'Ver código',
+        reviewCodeLabel: 'antes do pedido → prévia',
+        reviewApply: 'Aplicar',
+        reviewApplying: 'Aplicando…',
+        reviewDiscard: 'Descartar',
+        reviewDiscarding: 'Descartando…',
+        reviewAdjust: 'Pedir ajuste',
+        reviewAdjustPlaceholder: 'Ex.: um pouco menos azul; manter o título em uma linha',
+        reviewAdjustSend: 'Enviar ajuste',
+        reviewAdjusting: 'Ajustando…',
+        reviewAdjustLimit: 'Limite de 3 ajustes atingido: aplique ou descarte.',
+        reviewAdjustments: 'Ajustes: {list}',
+        reviewSaveNote: 'Até você decidir, a página fica com a prévia: um Salvar agora gravaria a prévia.',
         editElement: 'Elemento',
         editElementIn: 'em',
         editElementRemove: 'Não enviar este elemento',
@@ -307,9 +346,9 @@ const messages: Record<string, MessageType> = {
         editReview: 'Revisar',
         editPlanning: 'Analizando…',
         editPlanTitle: 'Confirme el cambio',
-        editPlanApply: 'Aplicar',
+        editPlanApply: 'Generar vista previa',
         editPlanCancel: 'Cancelar',
-        editApplying: 'Aplicando…',
+        editApplying: 'Generando la vista previa…',
         editWhatChanged: 'Qué cambió',
         editPageShell: 'página',
         editRevert: 'deshacer',
@@ -321,7 +360,25 @@ const messages: Record<string, MessageType> = {
         editDiscarding: 'Descartando…',
         editDiscarded: 'Cambio descartado: la página volvió a ser como era antes.',
         editDiscardStale: 'La página cambió después de este cambio y el historial de versiones no está disponible en este navegador: descartar ahora perdería esas ediciones.',
-        editDiscardConfirm: '{n} edición(es) hecha(s) después de este pedido también se deshacen. Haga clic en Descartar de nuevo para confirmar — la lista Versiones, en la pestaña Página, las recupera.',
+        editDiscardConfirm: '{n} edición(es) hecha(s) después de este pedido también se deshacen. Haga clic en Descartar de nuevo para confirmar — el Historial de cambios, en la pestaña Página, las recupera.',
+        reviewTitle: 'En revisión: el cambio está en la página',
+        reviewHint: 'Mire la página, alterne Antes | Después y luego aplique o descarte. Mientras tanto, las otras ediciones de esta página quedan bloqueadas.',
+        reviewBefore: 'Antes',
+        reviewAfter: 'Después',
+        reviewSwitching: 'Reconstruyendo la página… (el desplazamiento vuelve arriba)',
+        reviewCode: 'Ver código',
+        reviewCodeLabel: 'antes del pedido → vista previa',
+        reviewApply: 'Aplicar',
+        reviewApplying: 'Aplicando…',
+        reviewDiscard: 'Descartar',
+        reviewDiscarding: 'Descartando…',
+        reviewAdjust: 'Pedir ajuste',
+        reviewAdjustPlaceholder: 'Ej.: un poco menos azul; mantener el título en una línea',
+        reviewAdjustSend: 'Enviar ajuste',
+        reviewAdjusting: 'Ajustando…',
+        reviewAdjustLimit: 'Límite de 3 ajustes alcanzado: aplique o descarte.',
+        reviewAdjustments: 'Ajustes: {list}',
+        reviewSaveNote: 'Hasta que decida, la página tiene la vista previa: un Guardar ahora la guardaría.',
         editElement: 'Elemento',
         editElementIn: 'en',
         editElementRemove: 'No enviar este elemento',
@@ -414,6 +471,26 @@ interface IEditNotes {
     warnings: string[];
 }
 
+// A preview being reviewed: the approved plan, the page before and after it, and the adjustments asked on top.
+interface IEditReview {
+    request: string;
+    device: string;
+    operations: IEditOperation[];
+    element: IEditElement | null;
+    marks: IEditMark[];
+    before: EditPageSnapshot;
+    after: EditPageSnapshot;
+    notes: IEditNotes;
+    /** Which of the two is on screen. */
+    showing: 'before' | 'after';
+    adjust: string[];
+    /** What the AI said it changed: the first patch, then one entry per adjustment. */
+    notesLog: string[];
+}
+
+/** Adjustments per preview (the agent refuses more). */
+const MAX_REVIEW_ADJUST = EDIT_PAGE_MAX_ADJUST;
+
 type DetailTab = 'visual' | 'ai' | 'states' | 'page';
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -454,7 +531,10 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _editDraft: Record<string, string> = {};
     @state() private _editDevice: Record<string, string> = {};
     @state() private _editPlan: Record<string, { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null; marks: IEditMark[] }> = {};
-    @state() private _editBusy: Record<string, 'plan' | 'apply' | 'discard'> = {};
+    @state() private _editBusy: Record<string, 'plan' | 'apply' | 'discard' | 'switch' | 'reviewApply' | 'reviewDiscard' | 'adjust'> = {};
+    // The AI change on screen waiting for Apply / Discard, per page (the page is locked meanwhile: studioPageReview).
+    @state() private _editReview: Record<string, IEditReview> = {};
+    @state() private _adjustDraft: Record<string, string> = {};
     // The applied change that can still be discarded, per page: the page before it and the page it left.
     // `appliedAt` = when it was applied (the versions after it are the later edits a discard also takes back);
     // `confirmed` = the person was told those edits go back too, and the next click discards.
@@ -1159,6 +1239,8 @@ export class PluginSelectPage extends StateLitElement {
     private _renderEditPanel(page: IPageEntry) {
         const target = this._editTarget(page);
         if (!target) return nothing;
+        const review = this._editReview[page.name];
+        if (review) return this._renderEditReview(page, review);
         const plan = this._editPlan[page.name];
         if (plan) return this._renderEditConfirm(page, plan);
         const busy = this._editBusy[page.name];
@@ -1331,6 +1413,78 @@ export class PluginSelectPage extends StateLitElement {
     }
 
     // The gate's plan, shown for confirmation before anything is written.
+    // In review: the AI change is on screen; Before | After, the code, Apply / Discard, and an adjustment.
+    private _renderEditReview(page: IPageEntry, review: IEditReview) {
+        const busy = this._editBusy[page.name];
+        const error = this._editError[page.name];
+        const full = review.adjust.length >= MAX_REVIEW_ADJUST;
+        // A segmented pill: a quiet track, the side on screen as a raised chip (the preview side with an amber dot).
+        const seg = (which: 'before' | 'after', label: string) => {
+            const on = review.showing === which;
+            return html`
+            <button type="button"
+                class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full transition-all cursor-pointer disabled:cursor-wait ${on
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
+                aria-pressed=${on ? 'true' : 'false'}
+                ?disabled=${!!busy}
+                @click=${() => this._onReviewShow(page, which)}>
+                ${which === 'after' ? html`<span class="h-1.5 w-1.5 rounded-full ${on ? 'bg-amber-500' : 'bg-amber-500/50'}" aria-hidden="true"></span>` : nothing}
+                ${label}
+            </button>`;
+        };
+        const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
+        return html`
+            <div class="rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold text-amber-800 dark:text-amber-300">${this.msg.reviewTitle}</span>
+                    <span class="ml-auto inline-flex items-center gap-0.5 p-0.5 rounded-full bg-gray-200/80 dark:bg-gray-900 ring-1 ring-inset ring-gray-300/60 dark:ring-gray-700 ${busy === 'switch' ? 'animate-pulse' : ''}" role="group">
+                        ${seg('before', this.msg.reviewBefore)}${seg('after', this.msg.reviewAfter)}
+                    </span>
+                </div>
+                <span class="text-[11px] italic text-gray-500 dark:text-gray-400">“${review.request}”</span>
+                ${review.adjust.length ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400">${this.msg.reviewAdjustments.replace('{list}', review.adjust.join('; '))}</span>` : nothing}
+                <span class="text-xs text-gray-700 dark:text-gray-200"><span class="font-semibold">${this.msg.editWhatChanged}:</span> ${review.notes.notes}</span>
+                <span class="text-[10px] text-gray-500 dark:text-gray-400">${busy === 'switch' ? this.msg.reviewSwitching : this.msg.reviewHint}</span>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button type="button"
+                        class="text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        ?disabled=${!!busy}
+                        @click=${() => this._onReviewApply(page)}>${busy === 'reviewApply' ? this.msg.reviewApplying : this.msg.reviewApply}</button>
+                    <button type="button"
+                        class="text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        ?disabled=${!!busy}
+                        @click=${() => this._onReviewDiscard(page)}>${busy === 'reviewDiscard' ? this.msg.reviewDiscarding : this.msg.reviewDiscard}</button>
+                    <button type="button" class="ml-auto text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                        @click=${() => this._onReviewCode(page)}>${this.msg.reviewCode}</button>
+                </div>
+                <div class="flex flex-col gap-1 border-t border-amber-200 dark:border-amber-800/40 pt-2">
+                    <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">${this.msg.reviewAdjust}</span>
+                    ${full ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400">${this.msg.reviewAdjustLimit}</span>` : html`
+                        <textarea rows="2" class="${inputCls} resize-y"
+                            placeholder=${this.msg.reviewAdjustPlaceholder}
+                            ?disabled=${!!busy}
+                            .value=${this._adjustDraft[page.name] ?? ''}
+                            @input=${(e: Event) => { this._adjustDraft = { ...this._adjustDraft, [page.name]: (e.target as HTMLTextAreaElement).value }; }}
+                        ></textarea>
+                        <button type="button"
+                            class="self-start text-xs px-2.5 py-1 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                            ?disabled=${!!busy || !(this._adjustDraft[page.name] ?? '').trim()}
+                            @click=${() => this._onReviewAdjust(page)}>${busy === 'adjust' ? this.msg.reviewAdjusting : this.msg.reviewAdjustSend}</button>
+                    `}
+                </div>
+                <span class="text-[10px] text-amber-700 dark:text-amber-400">${this.msg.reviewSaveNote}</span>
+                ${error ? html`
+                    <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${error}</div>
+                ` : nothing}
+                ${this._taskInfoByName.get(`edit:${page.name}`)?.task ? html`
+                    <button class="self-end text-xs text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                        @click=${() => this._openTask(`edit:${page.name}`)}>${this.msg.followTask}</button>
+                ` : nothing}
+            </div>
+        `;
+    }
+
     private _renderEditConfirm(page: IPageEntry, plan: { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null; marks: IEditMark[] }) {
         const busy = this._editBusy[page.name];
         return html`
@@ -1375,13 +1529,13 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
-    private _editEntry(page: IPageEntry, request: string, device: string, element: IEditElement | null, operations?: IEditOperation[], marks: IEditMark[] = []): string | null {
+    private _editEntry(page: IPageEntry, request: string, device: string, element: IEditElement | null, operations?: IEditOperation[], marks: IEditMark[] = [], adjust: string[] = []): string | null {
         const target = this._editTarget(page);
         const module = this._moduleName ?? this._modulePath;
         if (!target || !module) return null;
         return JSON.stringify({
             module, page: page.file?.shortName ?? page.name, device, genome: target.genome, request,
-            ...(element ? { element } : {}), ...(operations ? { operations } : {}), ...(marks.length ? { marks } : {}),
+            ...(element ? { element } : {}), ...(operations ? { operations } : {}), ...(marks.length ? { marks } : {}), ...(adjust.length ? { adjust } : {}),
         });
     }
 
@@ -1441,7 +1595,8 @@ export class PluginSelectPage extends StateLitElement {
         }
     }
 
-    // Phase APPLY: the approved operations go back verbatim; the agent patches the .ts and records the history.
+    // Phase APPLY, as a PREVIEW: the approved operations go back verbatim and the agent patches the .ts, which goes on
+    // screen. The page then stays "in review" — its other edits refused — until the person applies or discards it.
     private async _onApplyPlan(page: IPageEntry) {
         const plan = this._editPlan[page.name];
         if (!plan || this._editBusy[page.name]) return;
@@ -1452,7 +1607,7 @@ export class PluginSelectPage extends StateLitElement {
         this._setEdit('_editError', page.name, undefined);
         this._setEdit('_editBusy', page.name, 'apply');
         try {
-            // The page before the change, for a discard. Without it the change is still applied, just not discardable.
+            // The page before the change: what Discard puts back. Without it there is no preview, the change is applied.
             const before = await this._snapshotPage(entry);
             const versioned = before ? versionedPage({ project: before.project, folder: before.folder, shortName: before.page }) : null;
             // The page timeline holds the page as it is before the agent writes (a version only if it is missing).
@@ -1463,13 +1618,14 @@ export class PluginSelectPage extends StateLitElement {
             else if (!result.notes) this._setEdit('_editError', page.name, this.msg.editNoAnswer);
             else {
                 const after = before ? await this._snapshotPage(entry) : null;
-                await recordPageVersion(versioned, 'ai', plan.request);
-                if (before && after && after.source !== before.source) this._editUndo[page.name] = { before, after, appliedAt: Date.now() };
                 this._setEdit('_editPlan', page.name, undefined);
-                this._editDraft = { ...this._editDraft, [page.name]: '' };
-                // The marks were for this request: applied, they are done (the page they circled has changed).
-                if (plan.marks.length) annotCommand({ kind: 'clear' });
-                if (result.notes) this._setEdit('_editNotes', page.name, result.notes);
+                if (before && after && after.source !== before.source) {
+                    this._editReview = { ...this._editReview, [page.name]: { ...plan, before, after, notes: result.notes, notesLog: [result.notes.notes], showing: 'after', adjust: [] } };
+                    setPageInReview(this._reviewRef(before), true);
+                } else {
+                    // Nothing to review (nothing changed, or the page could not be read): the result simply stays.
+                    await this._finishApplied(page, plan, result.notes, null);
+                }
                 // The remount rebuilt the page: the selection that was sent points at nodes that are gone.
                 if (plan.element) this._selectionUsed = this._selection;
             }
@@ -1478,6 +1634,135 @@ export class PluginSelectPage extends StateLitElement {
         } finally {
             this._setEdit('_editBusy', page.name, undefined);
         }
+    }
+
+    private _reviewRef(snapshot: EditPageSnapshot): { project: number; folder: string; shortName: string } {
+        return { project: snapshot.project, folder: snapshot.folder, shortName: snapshot.page };
+    }
+
+    /** The change is kept: a version of the timeline, the "What changed" panel, and the discard of today afterwards. */
+    private async _finishApplied(page: IPageEntry, plan: { request: string; marks: IEditMark[] }, notes: IEditNotes, review: IEditReview | null) {
+        if (review) {
+            const versioned = versionedPage(this._reviewRef(review.before));
+            // The timeline says what the AI CHANGED — its notes of the change and of every adjustment, in order — and
+            // keeps the request (with the adjustments) to be shown on demand.
+            const request = requestWithAdjustments(plan.request, review.adjust);
+            const steps = review.notesLog.map(text => text.trim()).filter(Boolean);
+            await recordPageVersion(versioned, 'ai', steps[0] ?? request, { request, steps });
+            this._editUndo[page.name] = { before: review.before, after: review.after, appliedAt: Date.now() };
+        }
+        this._editDraft = { ...this._editDraft, [page.name]: '' };
+        // The marks were for this request: applied, they are done (the page they circled has changed).
+        if (plan.marks.length) annotCommand({ kind: 'clear' });
+        this._setEdit('_editNotes', page.name, notes);
+    }
+
+    private _endReview(page: IPageEntry, review: IEditReview) {
+        const next = { ...this._editReview };
+        delete next[page.name];
+        this._editReview = next;
+        setPageInReview(this._reviewRef(review.before), false);
+    }
+
+    /** Before | After: puts one of the two texts on screen (the remount). Only a view: no version, no history. */
+    private async _onReviewShow(page: IPageEntry, which: 'before' | 'after') {
+        const review = this._editReview[page.name];
+        if (!review || review.showing === which || this._editBusy[page.name]) return;
+        this._setEdit('_editError', page.name, undefined);
+        this._setEdit('_editBusy', page.name, 'switch');
+        try {
+            const snapshot = which === 'before' ? review.before : review.after;
+            const result = await commitPageSource(snapshot.project, snapshot.folder, snapshot.page, snapshot.source);
+            this._editReview = { ...this._editReview, [page.name]: { ...review, showing: which } };
+            if (result.live) this._setEdit('_editError', page.name, this.msg.editLiveNotApplied.replace('{reason}', result.live));
+        } catch (e: any) {
+            this._setEdit('_editError', page.name, e?.message ?? String(e));
+        } finally {
+            this._setEdit('_editBusy', page.name, undefined);
+        }
+    }
+
+    /** Puts the candidate back on screen when the person was looking at Before (Apply and Adjust work on it). */
+    private async _showCandidate(review: IEditReview): Promise<void> {
+        if (review.showing === 'after') return;
+        await commitPageSource(review.after.project, review.after.folder, review.after.page, review.after.source);
+    }
+
+    private async _onReviewApply(page: IPageEntry) {
+        const review = this._editReview[page.name];
+        if (!review || this._editBusy[page.name]) return;
+        this._setEdit('_editError', page.name, undefined);
+        this._setEdit('_editBusy', page.name, 'reviewApply');
+        try {
+            await this._showCandidate(review);
+            this._endReview(page, review);
+            await this._finishApplied(page, review, review.notes, review);
+        } catch (e: any) {
+            this._setEdit('_editError', page.name, e?.message ?? String(e));
+        } finally {
+            this._setEdit('_editBusy', page.name, undefined);
+        }
+    }
+
+    /** Discard: the page and its defs, whole, as they were before the request. The request text stays, to refine. */
+    private async _onReviewDiscard(page: IPageEntry) {
+        const review = this._editReview[page.name];
+        if (!review || this._editBusy[page.name]) return;
+        this._setEdit('_editError', page.name, undefined);
+        this._setEdit('_editBusy', page.name, 'reviewDiscard');
+        try {
+            const result = await restoreEditPage(review.before);
+            this._endReview(page, review);
+            this._editDiscarded = { ...this._editDiscarded, [page.name]: true };
+            if (result.live) this._setEdit('_editError', page.name, this.msg.editLiveNotApplied.replace('{reason}', result.live));
+        } catch (e: any) {
+            this._setEdit('_editError', page.name, e?.message ?? String(e));
+        } finally {
+            this._setEdit('_editBusy', page.name, undefined);
+        }
+    }
+
+    /** Ask for an adjustment: a new patch ON the candidate, same operations; Before stays the page before the request. */
+    private async _onReviewAdjust(page: IPageEntry) {
+        const review = this._editReview[page.name];
+        const text = (this._adjustDraft[page.name] ?? '').trim();
+        if (!review || !text || review.adjust.length >= MAX_REVIEW_ADJUST || this._editBusy[page.name]) return;
+        const adjust = [...review.adjust, text];
+        const entry = this._editEntry(page, review.request, review.device, review.element, review.operations, review.marks, adjust);
+        if (!entry) return;
+        this._setEdit('_editError', page.name, undefined);
+        this._setEdit('_editBusy', page.name, 'adjust');
+        try {
+            await this._showCandidate(review);
+            const current: IEditReview = { ...review, showing: 'after' };
+            this._editReview = { ...this._editReview, [page.name]: current };
+            const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set(`edit:${page.name}`, data); this.requestUpdate(); });
+            if (result.failure) this._setEdit('_editError', page.name, result.failure);
+            else if (!result.notes) this._setEdit('_editError', page.name, this.msg.editNoAnswer);
+            else {
+                const after = await this._snapshotPage(entry);
+                this._editReview = { ...this._editReview, [page.name]: { ...current, after: after ?? current.after, notes: result.notes, notesLog: [...current.notesLog, result.notes.notes], adjust } };
+                this._adjustDraft = { ...this._adjustDraft, [page.name]: '' };
+            }
+        } catch (e: any) {
+            this._setEdit('_editError', page.name, e?.message ?? String(e));
+        } finally {
+            this._setEdit('_editBusy', page.name, undefined);
+        }
+    }
+
+    /** The code of Before against the candidate, in the details panel on the right (the page timeline's diff). */
+    private _onReviewCode(page: IPageEntry) {
+        const review = this._editReview[page.name];
+        if (!review) return;
+        const element = document.createElement(PAGE_VERSION_DIFF_TAG) as HTMLElement & {
+            pageName: string; label: string; original: IPageVersionSide; modified: IPageVersionSide;
+        };
+        element.pageName = `${this._moduleName ?? ''}/${review.before.page}`;
+        element.label = this.msg.reviewCodeLabel;
+        element.original = { ts: review.before.source, defs: review.before.defs };
+        element.modified = { ts: review.after.source, defs: review.after.defs };
+        void openElementInServiceDetails(element);
     }
 
     /** The page the entry aims at, as it is now; null when it cannot be read (the change is then not discardable). */
@@ -1689,6 +1974,8 @@ export class PluginSelectPage extends StateLitElement {
 
         const taskKey = `regenerate:${page.name}`;
         if (getTask(taskKey)?.status === 'running') return;
+        // A preview is waiting for Apply / Discard: the regeneration would rewrite it unseen.
+        if (this._editReview[page.name]) return;
 
         // The agents match on page ids (the defs shortName); page.name may be a pageId/path, so send the file shortName.
         const pageShort = page.file?.shortName ?? page.name;

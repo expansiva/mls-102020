@@ -263,7 +263,21 @@ export interface EditPagePatchInput {
   definition: PageDefinitionDigest | null;
   selected?: SelectedElementPrompt | null;
   marks?: readonly MarkPrompt[];
+  /** Adjustments asked after the person saw the result: the page file below already holds that result. */
+  adjust?: readonly string[];
   repair?: { diagnostic: string; previous: string };
+}
+
+/** The adjustment section: the result is already in the file, change it only as asked, the newest ask last. */
+function adjustLines(adjust: readonly string[] | undefined): string[] {
+  if (!adjust?.length) return [];
+  return [
+    '# Adjustment after the person saw the result',
+    'The page file below ALREADY contains the result of the approved operations. The person looked at it on screen and asked for an adjustment.',
+    'Change only what the adjustment asks, inside the same methods; keep everything else of the current result as it is.',
+    ...adjust.map((text, index) => `- ${index === adjust.length - 1 ? 'Now' : `Earlier (${index + 1})`}: ${text}`),
+    '',
+  ];
 }
 
 export function editPagePatchPrompt(input: EditPagePatchInput): string {
@@ -284,6 +298,7 @@ export function editPagePatchPrompt(input: EditPagePatchInput): string {
     '',
     `# Design tokens (color): ${input.tokens.join(', ') || '(none declared)'}`,
     '',
+    ...adjustLines(input.adjust),
     '# The page file',
     '```ts', input.source.trim(), '```',
     '',

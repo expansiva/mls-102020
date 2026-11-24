@@ -38,6 +38,20 @@ export interface EditPageEntry {
    * shape. Empty = nothing pointed at.
    */
   marks: EditMark[];
+  /**
+   * Adjustments asked after the person saw the result of the approved operations (the Studio preview), oldest first.
+   * Only with `operations`: the patch runs again ON the page as it is now (the candidate), with the same operations.
+   */
+  adjust: string[];
+}
+
+/** Adjustments per preview: after that, the person applies or discards (a patch on a patch drifts). */
+export const EDIT_PAGE_MAX_ADJUST = 3;
+const MAX_ADJUST_CHARS = 500;
+
+/** The request as the defs history keeps it: with the adjustments, so a regeneration redoes what was accepted. */
+export function requestWithAdjustments(request: string, adjust: readonly string[]): string {
+  return adjust.length ? `${request} (ajuste: ${adjust.join('; ')})` : request;
 }
 
 /** One annotation of the page: the elements a stroke enclosed, and what the person wrote about them. */
@@ -97,7 +111,7 @@ const MODULE = /^[a-z][A-Za-z0-9]*$/u;
 const PAGE_ID = /^[a-z][A-Za-z0-9_]*$/u;
 const GENOME = /^page\d\d$/u;
 
-export const EDIT_PAGE_USAGE = 'Entry (JSON): { "module", "page", "device"?: "desktop"|"mobile", "genome"?: "page11", "request", "operations"?, "element"?, "marks"? }';
+export const EDIT_PAGE_USAGE = 'Entry (JSON): { "module", "page", "device"?: "desktop"|"mobile", "genome"?: "page11", "request", "operations"?, "element"?, "marks"?, "adjust"?: string[] }';
 
 /** The Studio entry, validated. A refusal says what is wrong; nothing is guessed. */
 export function parseEditPageEntry(raw: string): { kind: 'entry'; entry: EditPageEntry } | { kind: 'refusal'; diagnostic: string } {
@@ -130,7 +144,21 @@ export function parseEditPageEntry(raw: string): { kind: 'entry'; entry: EditPag
     operations = normalizeOperations(row.operations, undefined, marks.length).valid;
     if (!operations.length) return { kind: 'refusal', diagnostic: 'EDIT_PAGE_ENTRY: operations were given but none is valid' };
   }
-  return { kind: 'entry', entry: { module: row.module, page: row.page, device, genome, request: row.request.trim(), operations, element, marks } };
+  const adjust = normalizeAdjust(row.adjust);
+  if (!adjust.ok) return { kind: 'refusal', diagnostic: `EDIT_PAGE_ENTRY: adjust ${adjust.reason}` };
+  if (adjust.value.length && !operations) return { kind: 'refusal', diagnostic: 'EDIT_PAGE_ENTRY: adjust needs the approved operations' };
+  return { kind: 'entry', entry: { module: row.module, page: row.page, device, genome, request: row.request.trim(), operations, element, marks, adjust: adjust.value } };
+}
+
+/** The adjustments as given: a list of non-empty texts, at most EDIT_PAGE_MAX_ADJUST. Absent = none. */
+function normalizeAdjust(value: unknown): Guard<string[]> {
+  if (value === undefined || value === null) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false, reason: 'is not a list' };
+  const texts = value.map(item => typeof item === 'string' ? item.trim() : '');
+  if (texts.some(text => !text)) return { ok: false, reason: 'has an empty item' };
+  if (texts.length > EDIT_PAGE_MAX_ADJUST) return { ok: false, reason: `has more than ${EDIT_PAGE_MAX_ADJUST} items` };
+  if (texts.some(text => text.length > MAX_ADJUST_CHARS)) return { ok: false, reason: `has an item over ${MAX_ADJUST_CHARS} characters` };
+  return { ok: true, value: texts };
 }
 
 export function parseEditPageStepArgs(raw: string): EditPageStepArgs {
@@ -144,7 +172,8 @@ export function parseEditPageStepArgs(raw: string): EditPageStepArgs {
   const element = args.element ? normalizeEditElement(args.element) : null;
   const parsed = normalizeEditMarks(args.marks ?? []);
   const marks = parsed.ok && parsed.value.length ? parsed.value : element ? [{ n: 1, note: null, elements: [element] }] : [];
-  return { ...args, element, marks };
+  const adjust = normalizeAdjust(args.adjust);
+  return { ...args, element, marks, adjust: adjust.ok ? adjust.value : [] };
 }
 
 /**

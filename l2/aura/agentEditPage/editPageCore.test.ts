@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   applyMessages, applyPagePatch, catalogueKeys, catalogueLocales, designSystemColorTokens, listMethods, methodsForOperation,
-  normalizeOperations, operationHistoryEntry, pageOutline, parseEditPageEntry, readPageDefinition, type EditOperation, type PagePatch,
+  normalizeOperations, operationHistoryEntry, pageOutline, parseEditPageEntry, requestWithAdjustments, readPageDefinition, type EditOperation, type PagePatch,
 } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
 import {
   EDIT_PAGE_GATE_SYSTEM_PROMPT, EDIT_PAGE_PATCH_SYSTEM_PROMPT, editPageGatePrompt, editPageGateSchema, editPagePatchPrompt, editPageToolArguments,
@@ -211,9 +211,34 @@ test('design system color tokens', () => {
 
 test('the Studio entry', () => {
   const parsed = parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":" centralize "}');
-  assert.deepEqual(parsed, { kind: 'entry', entry: { module: 'sampleModule', page: 'pessoas', device: 'desktop', genome: 'page11', request: 'centralize', operations: null, element: null, marks: [] } });
+  assert.deepEqual(parsed, { kind: 'entry', entry: { module: 'sampleModule', page: 'pessoas', device: 'desktop', genome: 'page11', request: 'centralize', operations: null, element: null, marks: [], adjust: [] } });
   assert.equal(parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":"x","device":"tv"}').kind, 'refusal');
   assert.equal(parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":"x","operations":[{"aspect":"nope"}]}').kind, 'refusal');
+});
+
+test('the Studio entry: adjustments come only with approved operations, at most three, never empty', () => {
+  const ops = '"operations":[{"id":"op1","organism":"listaPessoas","aspect":"style.emphasis","change":"maior","summary":"maior"}]';
+  const base = `{"module":"sampleModule","page":"pessoas","request":"titulo maior",${ops}`;
+  const ok = parseEditPageEntry(`${base},"adjust":[" menos azul "]}`);
+  assert.equal(ok.kind, 'entry');
+  assert.deepEqual(ok.kind === 'entry' ? ok.entry.adjust : null, ['menos azul']);
+  assert.equal(parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":"x","adjust":["y"]}').kind, 'refusal', 'no operations');
+  assert.equal(parseEditPageEntry(`${base},"adjust":["a","b","c","d"]}`).kind, 'refusal', 'over the limit');
+  assert.equal(parseEditPageEntry(`${base},"adjust":["  "]}`).kind, 'refusal', 'empty item');
+  assert.equal(parseEditPageEntry(`${base},"adjust":"y"}`).kind, 'refusal', 'not a list');
+  assert.equal(requestWithAdjustments('titulo maior', []), 'titulo maior');
+  assert.equal(requestWithAdjustments('titulo maior', ['menos azul', 'mais espaco']), 'titulo maior (ajuste: menos azul; mais espaco)');
+});
+
+test('prompts: the adjustment says the file already holds the result, the newest ask last', () => {
+  const definition = readPageDefinition('export const definition = {"intent":"Ver","sections":[],"organisms":{"listaPessoas":{"kind":"list","text":"Lista"}}} as const;')!;
+  const input = { pageLabel: 'p', operations: [op('listaPessoas')], methodsByOperation: { op1: ['renderLista'] }, source: PAGE, sharedDeclaration: '', tokens: [], locales: [], history: [], definition };
+  assert.ok(!editPagePatchPrompt(input).includes('# Adjustment'));
+  const prompt = editPagePatchPrompt({ ...input, adjust: ['menos azul', 'mais espaco'] });
+  const section = prompt.indexOf('# Adjustment after the person saw the result');
+  assert.ok(section >= 0 && section < prompt.indexOf('# The page file'));
+  assert.ok(prompt.includes('ALREADY contains the result'));
+  assert.ok(prompt.includes('- Earlier (1): menos azul') && prompt.includes('- Now: mais espaco'));
 });
 
 test('prompts: model type markers, strict tool, content', () => {

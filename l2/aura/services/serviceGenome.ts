@@ -17,6 +17,7 @@ import { compileAndApplyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUp
 import { compileAfterEdit, findPageElement, persistLocalEdit, resolveEditTarget, targetForFile, type IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
 import { recordEditInDefs } from '/_102020_/l2/aura/studio/studioDefsHistory.js';
 import { ensurePageVersion, notePageEdit, versionedPage } from '/_102020_/l2/aura/studio/pageVersions.js';
+import { isPageInReview } from '/_102020_/l2/aura/studio/studioPageReview.js';
 import { t as tStudio, tr } from '/_102020_/l2/aura/studio/studioMessages.js';
 import { resolveStructuralAnchor, scanTemplateTree } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { currentEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
@@ -574,6 +575,14 @@ export class ServiceGenome102020 extends ServiceBase {
         }
 
         const newSource = result.newSource || source;
+
+        // The AI change of this page is waiting for Apply / Discard in the AI tab: no swap lands on top of it.
+        if (isPageInReview(file)) {
+            this._moleculeError = tStudio('reason.pageInReview');
+            // @ts-ignore
+            this.requestUpdate();
+            return;
+        }
 
         // The page timeline: the page before the swap (if it has no version yet), then the swap itself.
         const versioned = versionedPage({ ...file, project: Number(file.project) });
