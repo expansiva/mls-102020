@@ -408,8 +408,7 @@ test('d2_215 a schema-only answer of de566c90 passes every production gate', asy
   assert.ok(read, 'L1 readContractV2');
   for (const route of read.routes) {
     if (route.kind !== 'cmd' || !route.writes) continue;
-    const written = route.writes.slice(route.writes.indexOf('.') + 1);
-    assert.equal(route.writes.includes('+'), false, route.writes);
+    const written = route.writes.slice(route.writes.indexOf('.') + 1).split('+')[0];
     assert.ok(OPERATIONS.has(written), route.writes);
   }
 
@@ -472,7 +471,7 @@ test('d2_215 a schema-only answer of de566c90 passes every production gate', asy
   const behaviorRead = readContractV2({ agent_behavior: behaviorContractSource }).get('agent_behavior');
   assert.ok(behaviorRead, 'L1 readContractV2 agent_behavior');
   const behaviorWrites = behaviorRead.routes.filter(route => route.kind === 'cmd' && route.writes).map(route => route.writes);
-  assert.deepEqual(behaviorWrites, ['AgentBehavior.update', 'AgentBehavior.update']);
+  assert.deepEqual(behaviorWrites, [updateKey, undoKey]);
 
   const tarefas = await opened(await artifactsAt(TAREFAS_ROOT, 'tarefas'), 'tarefas', true);
   const tarefasPage = pageOf(tarefas.snapshot, tarefas.snapshot.selection.pages[0].pageId);

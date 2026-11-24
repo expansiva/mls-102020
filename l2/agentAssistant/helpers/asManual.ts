@@ -13,6 +13,7 @@
 // reaches the command whose contract `writes` `<Entity>.<operation>` (catalog), and that command's
 // route belongs to one screen (controllers defs).
 
+import { d2WriteBaseKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type { AsCatalog, AsCommand, AsManualSelection } from '/_102020_/l2/helpers/assistantCatalog/asTypes.js';
 import { asArray, asRecord, asString } from '/_102020_/l2/helpers/assistantCatalog/asCatalog.js';
 import { extractExportedObject } from '/_102020_/l2/helpers/assistantCatalog/asSource.js';
@@ -243,7 +244,7 @@ export function pagesOfJourney(manual: AsManual, journey: AsManualJourney, catal
     if (!step.entity || !operation) continue;
     const writes = `${step.entity}.${operation}`;
     for (const command of catalog.commands) {
-      if (command.module === journey.module && command.writes === writes) routes.add(command.route);
+      if (command.module === journey.module && command.writes && d2WriteBaseKey(command.writes) === writes) routes.add(command.route);
     }
   }
   return module.pages.filter(page => page.routes.some(route => routes.has(route)));

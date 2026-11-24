@@ -24,6 +24,27 @@ export function d2WriteKey(write: D2Write): string {
   return `${write.entity}.${write.operation}${suffix}`;
 }
 
+/**
+ * Inverse of `d2WriteKey`. A transition key is `Entity.<transitionRef>`: the reader puts that id in `operation`
+ * (the same shape `d2WriteKey` emits). Call ids stay in `calls`, in key order.
+ */
+export function parseD2WriteKey(key: string): D2Write {
+  const parts = key.split('+').map(item => item.trim()).filter(Boolean);
+  const base = parts[0] ?? '';
+  const dot = base.indexOf('.');
+  if (dot <= 0 || dot === base.length - 1) throw new Error(`D2_WRITE_KEY_SHAPE: ${key}`);
+  const entity = base.slice(0, dot);
+  const operation = base.slice(dot + 1);
+  const calls = parts.slice(1);
+  return calls.length ? { entity, operation, calls } : { entity, operation };
+}
+
+/** `Entity.operation` or `Entity.<transitionRef>`, without the call suffix. */
+export function d2WriteBaseKey(key: string): string {
+  const parsed = parseD2WriteKey(key);
+  return `${parsed.entity}.${parsed.operation}`;
+}
+
 export function d2WriteByKey(writes: readonly D2Write[], key: string): D2Write | undefined {
   return writes.find(write => { try { return d2WriteKey(write) === key; } catch { return false; } });
 }

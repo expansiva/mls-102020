@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/helpers/effort/describeEffort.ts" enhancement="_blank"/>
 
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
+import { d2WriteBaseKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { isTextOnlyChange, L4_TEXT_ATTRIBUTES, type EffortAgentRef, type EffortAnswer, type EffortInput, type EffortPromptRequest, type EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
 const MASTER = { project: '102020', kind: 'l2', device: 'web' } as const;
@@ -463,7 +464,7 @@ function pagesWritingTransition(contracts: Record<string, string>, entity: strin
   const pages: string[] = [];
   for (const pageId of Object.keys(contracts).sort()) {
     const parsed = parseD2ContractV2(contracts[pageId] ?? '');
-    if (parsed.routes.some(route => route.writes === writes)) pages.push(pageId);
+    if (parsed.routes.some(route => route.writes && d2WriteBaseKey(route.writes) === writes)) pages.push(pageId);
   }
   return pages;
 }
