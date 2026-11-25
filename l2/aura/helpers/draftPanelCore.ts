@@ -10,7 +10,7 @@
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
 
 import { forgetStaleDraftL2 } from '/_102033_/l2/cbe/studioDraftL2.js';
-import { deletedDraftFile, draftContentCrc, forgetDraftPaths, rememberDraftPaths, rememberSentCrc, requestDraftRecount, savedOriginToDrop, sentCrcOf, undoDraftPaths, undoPathsForDraftFile, withDraftUndoBrowserOnly, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
+import { canonicalDraftText, deletedDraftFile, draftContentCrc, forgetDraftPaths, rememberDraftPaths, rememberSentCrc, requestDraftRecount, savedOriginToDrop, sentCrcOf, undoDraftPaths, undoPathsForDraftFile, withDraftUndoBrowserOnly, type DraftFileIdentity } from '/_102033_/l2/cbe/studioDraftFiles.js';
 import { modelTextDiffers, openModelText } from '/_102020_/l2/aura/studio/studioAutoSave.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
@@ -1112,7 +1112,7 @@ async function storedLocalText(file: IPanelStorFile): Promise<string | undefined
   if (!file.getContent) return undefined;
   try {
     const content = await file.getContent();
-    if (typeof content === 'string') return content;
+    if (typeof content === 'string' || content instanceof Blob) return await canonicalDraftText(content);
     if (content != null) console.error('[draftPanel] local content is not text', file.shortName);
     return undefined;
   } catch (err) {

@@ -1341,6 +1341,49 @@ test('afterDraftSave resets the origin of a renamed file and keeps it renamed', 
   assert.equal(renamed.inLocalStorage, true);
 });
 
+test('st80 s2b: afterDraftSave of an l3 Blob leaves the file saved', async () => {
+  const host = globalThis as { mls?: { common?: unknown } };
+  const previousCommon = host.mls?.common;
+  if (!host.mls) host.mls = {};
+  host.mls.common = {
+    crc: {
+      crc32: (value: string) => {
+        let hash = 0;
+        for (const ch of value) hash = (hash * 33 + ch.charCodeAt(0)) >>> 0;
+        return hash;
+      },
+    },
+  };
+  const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x80, 0xff]);
+  const image: IPanelStorFile = {
+    project: 102047,
+    status: 'changed',
+    inLocalStorage: true,
+    level: 3,
+    folder: 'assets',
+    shortName: 'st80photo',
+    extension: '.png',
+    getContent: async () => new Blob([bytes], { type: 'image/png' }),
+  };
+  const logged: unknown[][] = [];
+  const previousError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  try {
+    await afterDraftSave(image, {
+      setLocal: async () => {},
+      setCache: async () => {},
+      deleteModels: () => {},
+      removeFromFiles: () => {},
+      resetRenameOrigin: async () => {},
+    });
+    assert.equal(collectEditedFiles({ photo: image }, 102047).length, 0);
+    assert.deepEqual(logged, []);
+  } finally {
+    console.error = previousError;
+    if (host.mls) host.mls.common = previousCommon;
+  }
+});
+
 test('save keeps the local row, and only a later edit is pending again', async () => {
   const host = globalThis as { mls?: { common?: unknown; editor?: unknown } };
   const previousCommon = host.mls?.common;
