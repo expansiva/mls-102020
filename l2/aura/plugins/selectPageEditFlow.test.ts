@@ -41,7 +41,7 @@ test('the page is read BEFORE the agent writes, and the change is discardable on
   // Every AI step is kept (the change, then each adjustment), the request too.
   assert.ok(finish.includes('const steps = review.notesLog.map(text => text.trim()).filter(Boolean);'));
   assert.ok(finish.includes("await recordPageVersion(versioned, 'ai', steps[0] ?? request, { request, steps });"));
-  assert.ok(member('private async _onReviewAdjust(').includes('notesLog: [...current.notesLog, result.notes.notes]'));
+  assert.ok(member('private async _applyAdjust(').includes('notesLog: [...current.notesLog, result.notes.notes]'));
   assert.ok(finish.includes('this._editUndo[page.name] = { before: review.before, after: review.after, appliedAt: Date.now() };'));
 });
 
@@ -92,12 +92,17 @@ test('Before | After only puts a text on screen: no version and no defs history'
   assert.ok(!/recordPageVersion|recordInDefsHistory|restoreEditPage/u.test(show));
 });
 
-test('an adjustment patches the candidate: same operations, the list grows, Before never changes, at most three', () => {
-  const adjust = member('private async _onReviewAdjust(');
-  assert.ok(adjust.includes('review.adjust.length >= MAX_REVIEW_ADJUST'));
-  assert.ok(adjust.includes('this._editEntry(page, review.request, review.device, review.element, review.operations, review.marks, adjust)'));
+test('an adjustment is analyzed on the candidate, then its plan patched there; the list grows, Before never changes, at most three', () => {
+  const plan = member('private async _planAdjust(');
+  assert.ok(plan.includes('review.adjust.length >= MAX_REVIEW_ADJUST'));
+  assert.ok(plan.includes('this._editEntry(page, review.request, review.device, review.element, undefined, review.marks, [...review.adjust, text], review.batch ?? [], binding)'), 'no operations: the gate');
+  assert.ok(plan.indexOf('await this._showCandidate(review);') < plan.indexOf("this._executeAgent('agentEditPage'"));
+  assert.ok(plan.includes('adjustPlan: { text, operations: result.plan, standard: binding }'));
+  const adjust = member('private async _applyAdjust(');
+  assert.ok(adjust.includes('this._editEntry(page, review.request, review.device, review.element, plan.operations, review.marks, adjust, review.batch ?? [], plan.standard)'), 'the plan of the adjustment');
   assert.ok(adjust.indexOf('await this._showCandidate(review);') < adjust.indexOf("this._executeAgent('agentEditPage'"));
   assert.ok(!adjust.includes('before:'), 'Before is never replaced');
+  assert.ok(member('private async _onReviewAdjust(').includes('await this._planAdjust(page, text);'), 'asking only analyzes');
   assert.ok(SELECT_PAGE.includes('...(adjust.length ? { adjust } : {})'));
 });
 

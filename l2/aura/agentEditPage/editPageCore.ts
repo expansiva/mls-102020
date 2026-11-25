@@ -16,6 +16,7 @@ import { DEFS_HISTORY_ASPECTS, type DefsHistoryAspect, type DefsHistoryRequest }
 export const EDIT_PAGE_AGENT_NAME = 'agentEditPage';
 export const EDIT_PAGE_GATE_AGENT_NAME = 'agentEditPageGate';
 export const EDIT_PAGE_PATCH_AGENT_NAME = 'agentEditPagePatch';
+export const EDIT_PAGE_STANDARD_AGENT_NAME = 'agentEditPageStandard';
 export const EDIT_PAGE_FOLDER = 'aura/agentEditPage';
 /** Patch attempts: the first one, then one repair with the diagnostic. */
 export const EDIT_PAGE_MAX_ATTEMPTS = 2;
@@ -39,11 +40,43 @@ export interface EditPageEntry {
    */
   marks: EditMark[];
   /**
-   * Adjustments asked after the person saw the result of the approved operations (the Studio preview), oldest first.
-   * Only with `operations`: the patch runs again ON the page as it is now (the candidate), with the same operations.
+   * Adjustments asked after the person saw the result of the request (the Studio preview), oldest first; the last
+   * one is asked now. Without `operations` the gate plans the newest one on the page as it is now (the candidate);
+   * with them (that plan, approved) the patch makes it on the candidate.
    */
   adjust: string[];
+  /**
+   * The other pages the same request goes to (same module, device and genome), when the person asked it of several
+   * pages at once. Only for consistency: every page is planned and patched on its own call. Empty = this page only.
+   */
+  batch: string[];
+  /**
+   * STANDARD phase: decide, once for the whole batch, the exact values every page must use (the page of the entry is
+   * the reference; `batch` the others). With `standard` (the previous one) and `adjust` (the newest ask last), the
+   * standard is adjusted instead. Only with `batch`, never with operations.
+   */
+  standardize: boolean;
+  /** The common standard of the batch: binding on the plan and the patch of every page. null = none. */
+  standard: EditStandard | null;
 }
+
+/** One value every page of a batch uses: what it is for, the exact classes, and the same in the person's words. */
+export interface StandardRule {
+  what: string;
+  classes: string;
+  summary: string;
+}
+
+/** The common standard of a request asked of several pages, decided once before any page is planned. */
+export interface EditStandard {
+  rules: StandardRule[];
+}
+
+/** Rules of one standard: a header, a card and a list fit; more is a redesign, not a standard. */
+export const EDIT_PAGE_MAX_STANDARD_RULES = 12;
+
+/** Pages one request may go to at once (this page included): every page costs a plan and a patch of the AI. */
+export const EDIT_PAGE_MAX_PAGES = 10;
 
 /** Adjustments per preview: after that, the person applies or discards (a patch on a patch drifts). */
 export const EDIT_PAGE_MAX_ADJUST = 3;
@@ -111,7 +144,7 @@ const MODULE = /^[a-z][A-Za-z0-9]*$/u;
 const PAGE_ID = /^[a-z][A-Za-z0-9_]*$/u;
 const GENOME = /^page\d\d$/u;
 
-export const EDIT_PAGE_USAGE = 'Entry (JSON): { "module", "page", "device"?: "desktop"|"mobile", "genome"?: "page11", "request", "operations"?, "element"?, "marks"?, "adjust"?: string[] }';
+export const EDIT_PAGE_USAGE = 'Entry (JSON): { "module", "page", "device"?: "desktop"|"mobile", "genome"?: "page11", "request", "operations"?, "element"?, "marks"?, "adjust"?: string[], "batch"?: string[], "standardize"?: true, "standard"?: { "rules": [...] } }';
 
 /** The Studio entry, validated. A refusal says what is wrong; nothing is guessed. */
 export function parseEditPageEntry(raw: string): { kind: 'entry'; entry: EditPageEntry } | { kind: 'refusal'; diagnostic: string } {
@@ -146,8 +179,52 @@ export function parseEditPageEntry(raw: string): { kind: 'entry'; entry: EditPag
   }
   const adjust = normalizeAdjust(row.adjust);
   if (!adjust.ok) return { kind: 'refusal', diagnostic: `EDIT_PAGE_ENTRY: adjust ${adjust.reason}` };
-  if (adjust.value.length && !operations) return { kind: 'refusal', diagnostic: 'EDIT_PAGE_ENTRY: adjust needs the approved operations' };
-  return { kind: 'entry', entry: { module: row.module, page: row.page, device, genome, request: row.request.trim(), operations, element, marks, adjust: adjust.value } };
+  const batch = normalizeBatch(row.batch, row.page);
+  if (!batch.ok) return { kind: 'refusal', diagnostic: `EDIT_PAGE_ENTRY: batch ${batch.reason}` };
+  // A mark or a selected element points at nodes of ONE page: the other pages have nothing it could mean.
+  if (batch.value.length && marks.length) return { kind: 'refusal', diagnostic: 'EDIT_PAGE_ENTRY: batch does not take an element or marks (they belong to one page)' };
+  const standard = normalizeStandard(row.standard);
+  if (!standard.ok) return { kind: 'refusal', diagnostic: `EDIT_PAGE_ENTRY: standard ${standard.reason}` };
+  const standardize = row.standardize === true;
+  if (standardize && !batch.value.length) return { kind: 'refusal', diagnostic: 'EDIT_PAGE_ENTRY: standardize needs the other pages (batch)' };
+  if (standardize && operations) return { kind: 'refusal', diagnostic: 'EDIT_PAGE_ENTRY: standardize takes no operations' };
+  return {
+    kind: 'entry',
+    entry: { module: row.module, page: row.page, device, genome, request: row.request.trim(), operations, element, marks, adjust: adjust.value, batch: batch.value, standardize, standard: standard.value },
+  };
+}
+
+/** Characters a class list never needs and a prompt must not carry: quotes, braces, markup, a color in hex. */
+const STANDARD_CLASSES_REFUSED = /[#'"`<>{};]|(?:^|\s)dark:/u;
+
+/** A standard as given: rules of non-empty texts within bounds; classes without hex, `dark:` or code. Absent = null. */
+export function normalizeStandard(value: unknown): Guard<EditStandard | null> {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  const rules = value && typeof value === 'object' && !Array.isArray(value) ? (value as { rules?: unknown }).rules : undefined;
+  if (!Array.isArray(rules)) return { ok: false, reason: 'has no list of rules' };
+  if (rules.length > EDIT_PAGE_MAX_STANDARD_RULES) return { ok: false, reason: `has more than ${EDIT_PAGE_MAX_STANDARD_RULES} rules` };
+  const out: StandardRule[] = [];
+  for (const item of rules) {
+    const rule = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    const [what, classes, summary] = [rule.what, rule.classes, rule.summary].map(text => (typeof text === 'string' ? text.trim().replace(/\s+/gu, ' ') : ''));
+    if (!what || !classes || !summary) return { ok: false, reason: 'has a rule with an empty field' };
+    if (what.length > 200 || classes.length > 300 || summary.length > 300) return { ok: false, reason: 'has a rule too long' };
+    if (STANDARD_CLASSES_REFUSED.test(classes)) return { ok: false, reason: `has classes a page may not use: ${classes}` };
+    out.push({ what, classes, summary });
+  }
+  return { ok: true, value: { rules: out } };
+}
+
+/** The other pages of a request asked of several: page names, distinct, without this page, within the limit. */
+export function normalizeBatch(value: unknown, page: unknown): Guard<string[]> {
+  if (value === undefined || value === null) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false, reason: 'is not a list' };
+  if (value.some(item => typeof item !== 'string' || !PAGE_ID.test(item))) return { ok: false, reason: 'has an item that is not a page name' };
+  const names = value as string[];
+  if (names.includes(page as string)) return { ok: false, reason: 'lists the page itself' };
+  if (new Set(names).size !== names.length) return { ok: false, reason: 'repeats a page' };
+  if (names.length + 1 > EDIT_PAGE_MAX_PAGES) return { ok: false, reason: `goes to ${names.length + 1} pages; at most ${EDIT_PAGE_MAX_PAGES}` };
+  return { ok: true, value: names };
 }
 
 /** The adjustments as given: a list of non-empty texts, at most EDIT_PAGE_MAX_ADJUST. Absent = none. */
@@ -173,7 +250,12 @@ export function parseEditPageStepArgs(raw: string): EditPageStepArgs {
   const parsed = normalizeEditMarks(args.marks ?? []);
   const marks = parsed.ok && parsed.value.length ? parsed.value : element ? [{ n: 1, note: null, elements: [element] }] : [];
   const adjust = normalizeAdjust(args.adjust);
-  return { ...args, element, marks, adjust: adjust.ok ? adjust.value : [] };
+  const batch = normalizeBatch(args.batch, args.page);
+  const standard = normalizeStandard(args.standard);
+  return {
+    ...args, element, marks, adjust: adjust.ok ? adjust.value : [], batch: batch.ok ? batch.value : [],
+    standardize: args.standardize === true, standard: standard.ok ? standard.value : null,
+  };
 }
 
 /**

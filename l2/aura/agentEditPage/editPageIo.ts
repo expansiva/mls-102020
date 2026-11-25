@@ -150,6 +150,16 @@ export async function loadEditPageContext(project: number, entry: Pick<EditPageE
   };
 }
 
+/** The other pages of a batch, files of the same folder: their text as the editor has it; a missing one is left out. */
+export async function loadBatchSources(project: number, folder: string, pages: readonly string[]): Promise<Array<{ page: string; source: string }>> {
+  const out: Array<{ page: string; source: string }> = [];
+  for (const page of pages) {
+    const file = await editorModel(project, folder, page, '.ts');
+    if (file) out.push({ page, source: file.model.model.getValue() });
+  }
+  return out;
+}
+
 /**
  * The selected element on this page: located by its structural anchor (the class picker's own resolution,
  * studioClassEdit), and, for a catalog molecule, its skill and its group's usage contract read as data (the files
@@ -208,6 +218,12 @@ export interface CommitResult {
  * compileAndApplyLiveUpdate. When the page is the one on screen, the target is the one the running app resolves;
  * otherwise the editor model of the file, compiled so a reload or a navigation serves the new build.
  */
+/**
+ * The `live` of a page written while ANOTHER page is on screen: not a failure — the page was compiled, and opening it
+ * shows the new build. Only the page on screen has anything to refresh.
+ */
+export const LIVE_OTHER_PAGE = 'another page is on screen';
+
 export async function commitPageSource(project: number, folder: string, shortName: string, text: string): Promise<CommitResult> {
   const host = currentEditHost()?.host ?? null;
   const pageEl = host ? findPageElement(host) : null;
@@ -228,7 +244,7 @@ export async function commitPageSource(project: number, folder: string, shortNam
     live = result.ok ? null : `${result.message} — ${await compileDiagnosis(file)}`;
   } else {
     await compileAfterEdit(file);
-    live = host ? 'another page is on screen' : 'no running app';
+    live = host ? LIVE_OTHER_PAGE : 'no running app';
   }
   const errors: unknown[] = (file.model as mls.editor.IModelTS).compilerResults?.errors ?? [];
   return { errors: errors.map(formatCompilerDiagnostic), live };

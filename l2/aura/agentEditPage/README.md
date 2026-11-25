@@ -27,6 +27,29 @@ molecule, the molecule's `skill` and its group's usage contract go too. A molecu
 (class/data-class on the tag and on its slots, configuration attributes such as size/data-variant); its BEHAVIOR is
 refused by the plan step, and the patch guard keeps every `@event`/`.property`/`?attribute` binding of it.
 
+## One request, several pages
+
+The agent stays a one-page agent. When the person asks the same thing of several pages (the AI tab's scope: the
+module's pages, the pages that use a molecule, or a chosen list — at most `EDIT_PAGE_MAX_PAGES`), the panel calls it
+once per page with `batch` = the other pages; the prompts then ask for the same answer on every page. Plans run one
+by one (two tasks on one thread mix their steps up in the runtime); previews run one by one, the page on screen last, each in the per-page review. A batch
+takes no element or marks (they belong to one page). The panel side is `aura/plugins/editBatchCore.ts`.
+
+## The common standard of a batch
+
+Each page is planned on its own and cannot see the others, so "the same on every page" was each page's own guess.
+Before the pages, ONE standard step (`agentEditPageStandard`, entry `standardize`) reads the page asked from and the
+pages the request names whole, the others outlined, and returns `rules`: per element, the exact classes every page
+uses. The person approves, cancels or asks to redo it; gate and patch then take it as binding (`standardLines`). An
+adjustment of several pages adjusts the standard first. The panel warns on a page whose result lacks a rule's classes
+(`standardMisses`).
+
+## Adjusting a preview
+
+An adjustment goes through both phases too: PLAN with `adjust` and no operations (the gate reads the page as it is
+now, the candidate, and plans only the newest ask — any organism, or a refusal with the reason), then APPLY with
+that plan and `adjust`. The request itself is never planned again.
+
 ## What a patch may not do (`editPageCore`)
 
 Touch a method outside the approved organisms (a new `render*` helper is fine); change imports, header, tag, class,

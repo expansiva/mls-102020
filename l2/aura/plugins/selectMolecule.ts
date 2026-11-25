@@ -16,6 +16,14 @@ const message_en = {
     previewing: 'previewing',
     previewUnavailable: 'preview unavailable',
     catalog: 'View catalog',
+    moduleSwapTitle: 'Also in other pages of the module',
+    moduleSwapDesc: 'These pages still use {from}. Swap it for {to} in them too (every occurrence)?',
+    moduleSwapApply: 'Swap in {n} pages',
+    moduleSwapBusy: 'Swapping…',
+    moduleSwapDismiss: 'Not now',
+    moduleSwapDone: 'Swapped in {n} pages: changed in the Studio, not saved.',
+    moduleSwapFailed: 'Not swapped: {list}',
+    moduleSwapClose: 'Close',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -28,6 +36,14 @@ const messages: Record<string, MessageType> = {
         previewing: 'pré-visualizando',
         previewUnavailable: 'pré-visualização indisponível',
         catalog: 'Ver catálogo',
+        moduleSwapTitle: 'Também nas outras páginas do módulo',
+        moduleSwapDesc: 'Estas páginas ainda usam {from}. Trocar por {to} nelas também (todas as ocorrências)?',
+        moduleSwapApply: 'Trocar em {n} páginas',
+        moduleSwapBusy: 'Trocando…',
+        moduleSwapDismiss: 'Agora não',
+        moduleSwapDone: 'Trocada em {n} páginas: alteradas no Studio, não salvas.',
+        moduleSwapFailed: 'Não trocadas: {list}',
+        moduleSwapClose: 'Fechar',
     },
     es: {
         title: 'Moléculas',
@@ -37,9 +53,30 @@ const messages: Record<string, MessageType> = {
         previewing: 'previsualizando',
         previewUnavailable: 'vista previa no disponible',
         catalog: 'Ver catálogo',
+        moduleSwapTitle: 'También en otras páginas del módulo',
+        moduleSwapDesc: 'Estas páginas aún usan {from}. ¿Cambiarlo por {to} en ellas también (todas las ocurrencias)?',
+        moduleSwapApply: 'Cambiar en {n} páginas',
+        moduleSwapBusy: 'Cambiando…',
+        moduleSwapDismiss: 'Ahora no',
+        moduleSwapDone: 'Cambiada en {n} páginas: modificadas en el Studio, sin guardar.',
+        moduleSwapFailed: 'No cambiadas: {list}',
+        moduleSwapClose: 'Cerrar',
     },
 };
+
 /// **collab_i18n_end**
+
+/** After a swap on the page on screen: the other pages of the module still using the old tag (serviceGenome). */
+export interface IModuleSwap {
+    from: string;
+    to: string;
+    project: number;
+    /** The folder of the page on screen: the other pages are its siblings (same device, same UX). */
+    folder: string;
+    pages: Array<{ name: string; shortName: string; picked: boolean }>;
+    busy: boolean;
+    done: { done: string[]; failed: Array<{ name: string; reason: string }> } | null;
+}
 
 /** Delay before a hovered/focused variant is previewed on the page. */
 const PREVIEW_DELAY_MS = 150;
@@ -72,6 +109,8 @@ export class PluginSelectMolecule extends StateLitElement {
     @property({ attribute: false }) previewUnavailable: number | null = null;
     /** The group has an index page, so "Ver catálogo" can open it. */
     @property({ attribute: false }) catalogAvailable: boolean = false;
+    /** The offer to swap in the other pages of the module, after a swap (null = none). */
+    @property({ attribute: false }) moduleSwap: IModuleSwap | null = null;
 
     /** Waits a moment before asking for a preview, so sweeping the list does not mount every variant. */
     private _previewTimer: ReturnType<typeof setTimeout> | null = null;
@@ -133,6 +172,8 @@ export class PluginSelectMolecule extends StateLitElement {
                         <span class="text-xs text-rose-600 dark:text-rose-400">${this.error}</span>
                     </div>
                 ` : nothing}
+
+                ${this._renderModuleSwap()}
 
                 <div
                     class="flex flex-col gap-1"
@@ -235,6 +276,42 @@ export class PluginSelectMolecule extends StateLitElement {
                         ${isAll ? 'translate-x-4' : 'translate-x-0'}
                     "></span>
                 </button>
+            </div>
+        `;
+    }
+
+    /** The other pages of the module that still use the old molecule: ticked by default, swapped only on the button. */
+    private _renderModuleSwap() {
+        const swap = this.moduleSwap;
+        if (!swap) return nothing;
+        const send = (detail: Record<string, unknown>) => this.dispatchEvent(new CustomEvent('molecule-module-swap', { detail, bubbles: true, composed: true }));
+        const picked = swap.pages.filter(p => p.picked).length;
+        return html`
+            <div class="rounded-lg border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">${this.msg.moduleSwapTitle}</span>
+                ${swap.done ? html`
+                    ${swap.done.done.length ? html`<span class="text-xs text-emerald-700 dark:text-emerald-300">${this.msg.moduleSwapDone.replace('{n}', String(swap.done.done.length))}</span>` : nothing}
+                    ${swap.done.failed.length ? html`<span class="text-xs text-rose-600 dark:text-rose-400 whitespace-pre-wrap wrap-break-word">${this.msg.moduleSwapFailed.replace('{list}', swap.done.failed.map(f => `${f.name} (${f.reason})`).join('; '))}</span>` : nothing}
+                    <button type="button" class="self-start text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer" @click=${() => send({ action: 'dismiss' })}>${this.msg.moduleSwapClose}</button>
+                ` : html`
+                    <span class="text-[11px] text-gray-600 dark:text-gray-300">${this.msg.moduleSwapDesc.replace('{from}', swap.from).replace('{to}', swap.to)}</span>
+                    <div class="flex flex-col gap-0.5">
+                        ${swap.pages.map(p => html`
+                            <label class="flex items-center gap-1.5 text-[11px] text-gray-700 dark:text-gray-200 cursor-pointer">
+                                <input type="checkbox" class="cursor-pointer disabled:cursor-not-allowed" .checked=${p.picked} ?disabled=${swap.busy}
+                                    @change=${() => send({ action: 'toggle', name: p.name })}>
+                                ${p.name}
+                            </label>`)}
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button"
+                            class="text-xs px-2.5 py-1 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            ?disabled=${swap.busy || !picked}
+                            @click=${() => send({ action: 'apply' })}>${swap.busy ? this.msg.moduleSwapBusy : this.msg.moduleSwapApply.replace('{n}', String(picked))}</button>
+                        <button type="button" class="text-xs text-gray-500 dark:text-gray-400 hover:underline cursor-pointer disabled:opacity-50" ?disabled=${swap.busy}
+                            @click=${() => send({ action: 'dismiss' })}>${this.msg.moduleSwapDismiss}</button>
+                    </div>
+                `}
             </div>
         `;
     }

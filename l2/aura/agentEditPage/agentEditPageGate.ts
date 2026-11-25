@@ -26,7 +26,8 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     const page = await loadEditPageContext(args.project, args);
     const humanPrompt = editPageGatePrompt({
       request: args.request, pageLabel: page.label, definition: page.definition, outline: page.outline,
-      sharedDeclaration: page.sharedDeclaration, history: page.history, selected: page.selected, marks: page.marks,
+      sharedDeclaration: page.sharedDeclaration, history: page.history, selected: page.selected, marks: page.marks, batch: args.batch,
+      adjust: args.adjust, standard: args.standard,
     });
     return [promptReady(context, parentStep, step, hookSequential, EDIT_PAGE_GATE_SYSTEM_PROMPT, humanPrompt, {
       name: EDIT_PAGE_GATE_TOOL, description: 'Apply (with the operations) or refuse (with the reason) the requested change', parameters: editPageGateSchema(page.organisms),

@@ -42,7 +42,7 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     const humanPrompt = editPagePatchPrompt({
       pageLabel: page.label, operations: operationsOf(args), methodsByOperation: methodsByOperation(page, args), source: page.source,
       sharedDeclaration: page.sharedDeclaration, tokens: page.tokens, locales: page.locales, history: page.history,
-      definition: page.hasDefs ? page.definition : null, selected: page.selected, marks: page.marks, adjust: args.adjust,
+      definition: page.hasDefs ? page.definition : null, selected: page.selected, marks: page.marks, adjust: args.adjust, batch: args.batch, standard: args.standard,
       repair: args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous ?? '' } : undefined,
     });
     return [promptReady(context, parentStep, step, hookSequential, EDIT_PAGE_PATCH_SYSTEM_PROMPT, humanPrompt, {
@@ -93,7 +93,7 @@ async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCon
     }, entries));
     try {
       await writeEditPageTrace(args.project, args, editPageStamp(at), {
-        at: at.toISOString(), request: args.request, adjust: args.adjust ?? [], marks: args.marks, operations, attempt: args.attempt, touched: applied.value.touched,
+        at: at.toISOString(), request: args.request, adjust: args.adjust ?? [], batch: args.batch ?? [], marks: args.marks, operations, attempt: args.attempt, touched: applied.value.touched,
         messages: patch.messages.map(message => message.key), warnings: applied.value.warnings, notes: patch.notes, history,
         live: live ?? 'applied', before: original, after: applied.value.code,
       });

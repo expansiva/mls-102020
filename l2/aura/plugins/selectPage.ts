@@ -24,8 +24,12 @@ import {
     type LayoutLine,
 } from '/_102020_/l2/aura/studio/studioAdvancedMode.js';
 import { annotCommand, getAnnotState, onAnnotStateChange, type IAnnotState } from '/_102020_/l2/aura/studio/studioAnnotateStore.js';
-import { commitPageSource, restoreEditPage, snapshotEditPage, snapshotPageFile, type EditPageSnapshot } from '/_102020_/l2/aura/agentEditPage/editPageIo.js';
-import { EDIT_PAGE_MAX_ADJUST, requestWithAdjustments } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
+import { LIVE_OTHER_PAGE, commitPageSource, restoreEditPage, snapshotEditPage, snapshotPageFile, type EditPageSnapshot } from '/_102020_/l2/aura/agentEditPage/editPageIo.js';
+import { EDIT_PAGE_MAX_ADJUST, EDIT_PAGE_MAX_PAGES, requestWithAdjustments } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
+import {
+    batchAdjusting, batchAdjustReady, batchAdjustTargets, batchCounts, standardMisses, batchDecision, batchOpen, batchOrder, moleculeTagsIn, pagesUsingTag, runLimited, scopePages,
+    type BatchAdjustState, type BatchRow, type BatchRowState, type EditScopeKind,
+} from '/_102020_/l2/aura/plugins/editBatchCore.js';
 import { setPageInReview } from '/_102020_/l2/aura/studio/studioPageReview.js';
 import { PAGE_VERSION_DIFF_TAG, type IPageVersionSide } from '/_102020_/l2/aura/studio/pageVersionDiff.js';
 import {
@@ -121,10 +125,76 @@ const message_en = {
     reviewDiscarding: 'Discarding…',
     reviewAdjust: 'Ask for an adjustment',
     reviewAdjustPlaceholder: 'E.g.: a bit less blue; keep the title on one line',
-    reviewAdjustSend: 'Send adjustment',
+    reviewAdjustSend: 'Analyze adjustment',
+    editScope: 'Scope',
+    editPagesTitle: 'Change several pages',
+    editScopePage: 'This page',
+    editScopeModule: 'Pages of the module',
+    editScopeMolecule: 'Pages that use a molecule',
+    editScopePick: 'Choose pages',
+    editScopeThis: 'this one',
+    editScopeMoleculePick: 'Choose the molecule',
+    editScopeMoleculeNone: 'This page uses no molecule.',
+    editScopeReading: 'Reading the pages…',
+    editScopeCount: '{n} pages: {list}',
+    editScopeTooMany: 'At most {max} pages per request ({n} reached): choose fewer.',
+    editScopeNone: 'No other page fits: choose another scope.',
+    editScopeNoMarks: 'With more than one page, the selected element and the marks do not go (they belong to this page).',
+    editBatchPlan: 'Review in {n} pages',
+    editBatchAnotherOpen: 'Another request of several pages is still open: decide it first.',
+    editBatchTitle: 'Request in {n} pages',
+    editBatchPlanning: 'planning…',
+    editBatchPlanned: 'plan ready',
+    editBatchRefused: 'refused',
+    editBatchWaiting: 'waiting',
+    editBatchGenerating: 'generating the preview…',
+    editBatchInReview: 'in review',
+    editBatchFailed: 'failed',
+    editBatchUnchanged: 'nothing changed',
+    editBatchApplied: 'applied',
+    editBatchDiscarded: 'discarded',
+    editBatchSkipped: 'left out',
+    editBatchGenerate: 'Generate preview in {n} pages',
+    editBatchCost: 'Asks the AI {n} times, one page at a time.',
+    editBatchApplyTicked: 'Apply {n} pages',
+    editBatchDiscardAll: 'Discard all',
+    editBatchRetry: 'Try again the ones that failed',
+    editBatchTask: 'task',
+    editBatchOpenHint: 'Click a page to see it with Before | After.',
+    editBatchUnsaved: '{n} pages in review: changed in the Studio, not saved, locked for editing.',
+    editBatchDone: 'Done: {applied} applied, {discarded} discarded, {other} without change.',
+    editBatchClose: 'Close',
+    editBatchAdjustAll: 'All ticked',
+    editBatchAdjustOne: 'Only the open page',
+    editBatchNoVariant: 'This page has no variant for this device.',
     reviewAdjusting: 'Adjusting…',
     reviewAdjustLimit: 'Limit of 3 adjustments reached: apply or discard.',
     reviewAdjustments: 'Adjustments: {list}',
+    reviewAdjustPlanning: 'Analyzing…',
+    reviewAdjustPlanTitle: 'Adjustment analyzed — what will change:',
+    reviewAdjustGenerate: 'Generate adjustment',
+    reviewAdjustCancel: 'Cancel adjustment',
+    reviewInBatch: 'Apply and discard are in the list above.',
+    editBatchAdjustQuote: 'Adjustment: “{text}”',
+    editBatchAdjustGenerate: 'Generate adjustment in {n}',
+    editBatchTickHint: 'Unticked pages are discarded when you apply.',
+    editStandardTitle: 'Common standard for the {n} pages',
+    editStandardShort: 'Common standard',
+    editStandardAdjusted: 'Standard of this adjustment',
+    editStandardDeciding: 'Deciding the common standard…',
+    editStandardHint: 'Every page will use exactly these values.',
+    editStandardApprove: 'Approve standard',
+    editStandardAdjustPlaceholder: 'E.g.: title a bit smaller; more space below the header',
+    editStandardAdjustSend: 'Redo standard',
+    editStandardRetry: 'Try again',
+    editStandardMisses: 'did not follow the standard: {list}',
+    editAdjustQueued: 'adjustment queued',
+    editAdjustPlanning: 'analyzing adjustment…',
+    editAdjustPlanned: 'adjustment analyzed',
+    editAdjustRefused: 'adjustment refused',
+    editAdjustGenerating: 'generating adjustment…',
+    editAdjustDone: 'adjusted',
+    editAdjustFailed: 'adjustment failed',
     reviewSaveNote: 'Until you decide, the page holds the preview: a Save now would save it.',
     editElement: 'Element',
     editElementIn: 'in',
@@ -249,10 +319,76 @@ const messages: Record<string, MessageType> = {
         reviewDiscarding: 'Descartando…',
         reviewAdjust: 'Pedir ajuste',
         reviewAdjustPlaceholder: 'Ex.: um pouco menos azul; manter o título em uma linha',
-        reviewAdjustSend: 'Enviar ajuste',
+        reviewAdjustSend: 'Analisar ajuste',
+        editScope: 'Alcance',
+        editPagesTitle: 'Alterar várias páginas',
+        editScopePage: 'Esta página',
+        editScopeModule: 'Páginas do módulo',
+        editScopeMolecule: 'Páginas que usam uma molécula',
+        editScopePick: 'Escolher páginas',
+        editScopeThis: 'esta',
+        editScopeMoleculePick: 'Escolha a molécula',
+        editScopeMoleculeNone: 'Esta página não usa molécula.',
+        editScopeReading: 'Lendo as páginas…',
+        editScopeCount: '{n} páginas: {list}',
+        editScopeTooMany: 'No máximo {max} páginas por pedido ({n} no alcance): escolha menos.',
+        editScopeNone: 'Nenhuma outra página entra: escolha outro alcance.',
+        editScopeNoMarks: 'Com mais de uma página, o elemento selecionado e as marcações não vão (são desta página).',
+        editBatchPlan: 'Revisar em {n} páginas',
+        editBatchAnotherOpen: 'Outro pedido em várias páginas ainda está aberto: decida ele antes.',
+        editBatchTitle: 'Pedido em {n} páginas',
+        editBatchPlanning: 'planejando…',
+        editBatchPlanned: 'plano pronto',
+        editBatchRefused: 'recusada',
+        editBatchWaiting: 'na fila',
+        editBatchGenerating: 'gerando a prévia…',
+        editBatchInReview: 'em revisão',
+        editBatchFailed: 'falhou',
+        editBatchUnchanged: 'nada mudou',
+        editBatchApplied: 'aplicada',
+        editBatchDiscarded: 'descartada',
+        editBatchSkipped: 'deixada de fora',
+        editBatchGenerate: 'Gerar prévia em {n} páginas',
+        editBatchCost: 'Consulta a IA {n} vezes, uma página por vez.',
+        editBatchApplyTicked: 'Aplicar {n} páginas',
+        editBatchDiscardAll: 'Descartar tudo',
+        editBatchRetry: 'Tentar de novo as que falharam',
+        editBatchTask: 'tarefa',
+        editBatchOpenHint: 'Clique numa página para vê-la com Antes | Depois.',
+        editBatchUnsaved: '{n} páginas em revisão: alteradas no Studio, não salvas, travadas para edição.',
+        editBatchDone: 'Pronto: {applied} aplicadas, {discarded} descartadas, {other} sem mudança.',
+        editBatchClose: 'Fechar',
+        editBatchAdjustAll: 'Todas as marcadas',
+        editBatchAdjustOne: 'Só a página aberta',
+        editBatchNoVariant: 'Esta página não tem a variante deste dispositivo.',
         reviewAdjusting: 'Ajustando…',
         reviewAdjustLimit: 'Limite de 3 ajustes atingido: aplique ou descarte.',
         reviewAdjustments: 'Ajustes: {list}',
+        reviewAdjustPlanning: 'Analisando…',
+        reviewAdjustPlanTitle: 'Ajuste analisado — o que vai mudar:',
+        reviewAdjustGenerate: 'Gerar ajuste',
+        reviewAdjustCancel: 'Cancelar ajuste',
+        reviewInBatch: 'Aplicar e descartar ficam na lista acima.',
+        editBatchAdjustQuote: 'Ajuste: “{text}”',
+        editBatchAdjustGenerate: 'Gerar ajuste em {n}',
+        editBatchTickHint: 'As desmarcadas são descartadas ao aplicar.',
+        editStandardTitle: 'Padrão comum para as {n} páginas',
+        editStandardShort: 'Padrão comum',
+        editStandardAdjusted: 'Padrão deste ajuste',
+        editStandardDeciding: 'Decidindo o padrão comum…',
+        editStandardHint: 'Todas as páginas vão usar exatamente estes valores.',
+        editStandardApprove: 'Aprovar padrão',
+        editStandardAdjustPlaceholder: 'Ex.: título um pouco menor; mais espaço abaixo do header',
+        editStandardAdjustSend: 'Refazer padrão',
+        editStandardRetry: 'Tentar de novo',
+        editStandardMisses: 'não seguiu o padrão: {list}',
+        editAdjustQueued: 'ajuste na fila',
+        editAdjustPlanning: 'analisando ajuste…',
+        editAdjustPlanned: 'ajuste analisado',
+        editAdjustRefused: 'ajuste recusado',
+        editAdjustGenerating: 'gerando ajuste…',
+        editAdjustDone: 'ajustada',
+        editAdjustFailed: 'ajuste falhou',
         reviewSaveNote: 'Até você decidir, a página fica com a prévia: um Salvar agora gravaria a prévia.',
         editElement: 'Elemento',
         editElementIn: 'em',
@@ -374,10 +510,76 @@ const messages: Record<string, MessageType> = {
         reviewDiscarding: 'Descartando…',
         reviewAdjust: 'Pedir ajuste',
         reviewAdjustPlaceholder: 'Ej.: un poco menos azul; mantener el título en una línea',
-        reviewAdjustSend: 'Enviar ajuste',
+        reviewAdjustSend: 'Analizar ajuste',
+        editScope: 'Alcance',
+        editPagesTitle: 'Cambiar varias páginas',
+        editScopePage: 'Esta página',
+        editScopeModule: 'Páginas del módulo',
+        editScopeMolecule: 'Páginas que usan una molécula',
+        editScopePick: 'Elegir páginas',
+        editScopeThis: 'esta',
+        editScopeMoleculePick: 'Elija la molécula',
+        editScopeMoleculeNone: 'Esta página no usa moléculas.',
+        editScopeReading: 'Leyendo las páginas…',
+        editScopeCount: '{n} páginas: {list}',
+        editScopeTooMany: 'Como máximo {max} páginas por pedido ({n} en el alcance): elija menos.',
+        editScopeNone: 'Ninguna otra página entra: elija otro alcance.',
+        editScopeNoMarks: 'Con más de una página, el elemento seleccionado y las marcas no van (son de esta página).',
+        editBatchPlan: 'Revisar en {n} páginas',
+        editBatchAnotherOpen: 'Otro pedido en varias páginas sigue abierto: decídalo antes.',
+        editBatchTitle: 'Pedido en {n} páginas',
+        editBatchPlanning: 'planificando…',
+        editBatchPlanned: 'plan listo',
+        editBatchRefused: 'rechazada',
+        editBatchWaiting: 'en cola',
+        editBatchGenerating: 'generando la vista previa…',
+        editBatchInReview: 'en revisión',
+        editBatchFailed: 'falló',
+        editBatchUnchanged: 'nada cambió',
+        editBatchApplied: 'aplicada',
+        editBatchDiscarded: 'descartada',
+        editBatchSkipped: 'dejada fuera',
+        editBatchGenerate: 'Generar vista previa en {n} páginas',
+        editBatchCost: 'Consulta la IA {n} veces, una página a la vez.',
+        editBatchApplyTicked: 'Aplicar {n} páginas',
+        editBatchDiscardAll: 'Descartar todo',
+        editBatchRetry: 'Reintentar las que fallaron',
+        editBatchTask: 'tarea',
+        editBatchOpenHint: 'Haga clic en una página para verla con Antes | Después.',
+        editBatchUnsaved: '{n} páginas en revisión: cambiadas en el Studio, sin guardar, bloqueadas para edición.',
+        editBatchDone: 'Listo: {applied} aplicadas, {discarded} descartadas, {other} sin cambio.',
+        editBatchClose: 'Cerrar',
+        editBatchAdjustAll: 'Todas las marcadas',
+        editBatchAdjustOne: 'Solo la página abierta',
+        editBatchNoVariant: 'Esta página no tiene la variante de este dispositivo.',
         reviewAdjusting: 'Ajustando…',
         reviewAdjustLimit: 'Límite de 3 ajustes alcanzado: aplique o descarte.',
         reviewAdjustments: 'Ajustes: {list}',
+        reviewAdjustPlanning: 'Analizando…',
+        reviewAdjustPlanTitle: 'Ajuste analizado — lo que va a cambiar:',
+        reviewAdjustGenerate: 'Generar ajuste',
+        reviewAdjustCancel: 'Cancelar ajuste',
+        reviewInBatch: 'Aplicar y descartar están en la lista de arriba.',
+        editBatchAdjustQuote: 'Ajuste: “{text}”',
+        editBatchAdjustGenerate: 'Generar ajuste en {n}',
+        editBatchTickHint: 'Las desmarcadas se descartan al aplicar.',
+        editStandardTitle: 'Estándar común para las {n} páginas',
+        editStandardShort: 'Estándar común',
+        editStandardAdjusted: 'Estándar de este ajuste',
+        editStandardDeciding: 'Decidiendo el estándar común…',
+        editStandardHint: 'Todas las páginas usarán exactamente estos valores.',
+        editStandardApprove: 'Aprobar estándar',
+        editStandardAdjustPlaceholder: 'Ej.: título un poco más pequeño; más espacio bajo el encabezado',
+        editStandardAdjustSend: 'Rehacer estándar',
+        editStandardRetry: 'Intentar de nuevo',
+        editStandardMisses: 'no siguió el estándar: {list}',
+        editAdjustQueued: 'ajuste en cola',
+        editAdjustPlanning: 'analizando ajuste…',
+        editAdjustPlanned: 'ajuste analizado',
+        editAdjustRefused: 'ajuste rechazado',
+        editAdjustGenerating: 'generando ajuste…',
+        editAdjustDone: 'ajustada',
+        editAdjustFailed: 'ajuste falló',
         reviewSaveNote: 'Hasta que decida, la página tiene la vista previa: un Guardar ahora la guardaría.',
         editElement: 'Elemento',
         editElementIn: 'en',
@@ -486,7 +688,47 @@ interface IEditReview {
     adjust: string[];
     /** What the AI said it changed: the first patch, then one entry per adjustment. */
     notesLog: string[];
+    /** The other pages of the same request, when it was asked of several (agentEditPage `batch`). */
+    batch?: string[];
+    /** An adjustment analyzed and waiting for "Generate": the ask, the gate's plan of it, and the standard it follows. */
+    adjustPlan?: { text: string; operations: IEditOperation[]; standard: IEditStandard | null };
+    /** The common standard of the batch this page follows (agentEditPage `standard`). */
+    standard?: IEditStandard | null;
 }
+
+/** The common standard of a request asked of several pages: the exact classes every page uses (agentEditPage). */
+interface IEditStandard {
+    rules: Array<{ what: string; classes: string; summary: string }>;
+}
+
+// A request asked of several pages: where each page stands, and the plan of each (editBatchCore).
+interface IEditBatch {
+    module: string;
+    device: string;
+    request: string;
+    /** Page names (IPageEntry.name), the page it was asked from first. */
+    pages: string[];
+    rows: Record<string, BatchRow>;
+    plans: Record<string, IEditOperation[]>;
+    /** standard → plan → confirm → generate → review. */
+    phase: 'standard' | 'plan' | 'confirm' | 'generate' | 'review';
+    /** The last adjustment asked of the batch (the rows say where each page stands with it). */
+    adjustText?: string;
+    /** The common standard, decided once before the pages are planned (null while deciding, or when there is none). */
+    standard: IEditStandard | null;
+    /** The standard being decided, and why it could not be. */
+    standardBusy?: boolean;
+    standardError?: string;
+    /** The standard an adjustment of the batch brought: it replaces `standard` once the adjustment is generated. */
+    adjustStandard?: IEditStandard | null;
+}
+
+/**
+ * Plans asked at once: ONE. Each page is its own agent task on the same thread, and the agent runtime does not run
+ * two tasks of one thread at the same time — concurrent streams looked their steps up in each other's task ("Step not
+ * found in runLLMStepAtomic", "No matching beforePromptStep"). Parallel work goes inside one task, not across tasks.
+ */
+const BATCH_PLAN_LANES = 1;
 
 /** Adjustments per preview (the agent refuses more). */
 const MAX_REVIEW_ADJUST = EDIT_PAGE_MAX_ADJUST;
@@ -530,11 +772,25 @@ export class PluginSelectPage extends StateLitElement {
     // the last error and the last result.
     @state() private _editDraft: Record<string, string> = {};
     @state() private _editDevice: Record<string, string> = {};
-    @state() private _editPlan: Record<string, { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null; marks: IEditMark[] }> = {};
-    @state() private _editBusy: Record<string, 'plan' | 'apply' | 'discard' | 'switch' | 'reviewApply' | 'reviewDiscard' | 'adjust'> = {};
+    @state() private _editPlan: Record<string, { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null; marks: IEditMark[]; batch?: string[]; standard?: IEditStandard | null }> = {};
+    @state() private _editBusy: Record<string, 'plan' | 'apply' | 'discard' | 'switch' | 'reviewApply' | 'reviewDiscard' | 'adjustPlan' | 'adjust'> = {};
     // The AI change on screen waiting for Apply / Discard, per page (the page is locked meanwhile: studioPageReview).
     @state() private _editReview: Record<string, IEditReview> = {};
     @state() private _adjustDraft: Record<string, string> = {};
+    // One request, several pages: the scope chosen per page, what it reaches, and the batch in flight.
+    @state() private _editScope: Record<string, EditScopeKind> = {};
+    @state() private _scopeTag: Record<string, string> = {};
+    // `<device>|<page>` → the molecule tags of that page; `<device>|<tag>` → the pages using it (null = reading).
+    @state() private _scopeTags: Record<string, string[]> = {};
+    @state() private _scopeMatches: Record<string, string[] | null> = {};
+    @state() private _scopePicked: Record<string, string[]> = {};
+    @state() private _editBatch: IEditBatch | null = null;
+    @state() private _batchBusy = false;
+    // The adjustment box of the batch list: the ask, and whether it goes to every ticked page or only the page open.
+    @state() private _batchAdjustDraft = '';
+    @state() private _batchAdjustScope: 'all' | 'open' = 'all';
+    // The ask that adjusts the common standard while it waits for approval.
+    @state() private _standardDraft = '';
     // The applied change that can still be discarded, per page: the page before it and the page it left.
     // `appliedAt` = when it was applied (the versions after it are the later edits a discard also takes back);
     // `confirmed` = the person was told those edits go back too, and the next click discards.
@@ -1239,6 +1495,11 @@ export class PluginSelectPage extends StateLitElement {
     private _renderEditPanel(page: IPageEntry) {
         const target = this._editTarget(page);
         if (!target) return nothing;
+        const batch = this._activeBatch();
+        if (batch?.pages.includes(page.name)) {
+            const inReview = this._editReview[page.name];
+            return html`<div class="flex flex-col gap-2">${this._renderBatch(page, batch)}${inReview && batch.phase === 'review' ? this._renderEditReview(page, inReview) : nothing}</div>`;
+        }
         const review = this._editReview[page.name];
         if (review) return this._renderEditReview(page, review);
         const plan = this._editPlan[page.name];
@@ -1249,12 +1510,11 @@ export class PluginSelectPage extends StateLitElement {
         // With the studio's Desktop | Mobile switch on screen, the request goes to the page variant being shown:
         // a second device picker here could aim at a file other than the one the element was selected on.
         const devices = this._contentDevice ? [] : page.devices.map(d => d.replace(/^web\//, '')).filter(d => d === 'desktop' || d === 'mobile');
-        const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
+        const many = this._manyPages(page, target.device);
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
                 <div class="flex items-center gap-2">
-                    <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
-                    ${this._renderAnnotateButton(page, !!busy)}
+                    <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${many ? this.msg.editPagesTitle : this.msg.editPage}</span>
                     ${devices.length > 1 ? html`
                         <select class="ml-auto text-[10px] px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300"
                             .value=${target.device}
@@ -1264,26 +1524,28 @@ export class PluginSelectPage extends StateLitElement {
                         </select>
                     ` : nothing}
                 </div>
-                ${this._renderElementChip(page, !!busy)}
-                ${this._renderMarks(page, !!busy)}
-                <textarea
-                    rows="2"
-                    class="${inputCls} resize-y"
-                    placeholder=${this.msg.editPlaceholder}
-                    ?disabled=${!!busy}
-                    .value=${this._editDraft[page.name] ?? ''}
-                    @input=${(e: Event) => { this._editDraft = { ...this._editDraft, [page.name]: (e.target as HTMLTextAreaElement).value }; }}
-                ></textarea>
-                <button
-                    class="self-start text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                    ?disabled=${!!busy || !this._editRequest(page)}
-                    @click=${() => this._onPlanEdit(page)}
-                >${busy === 'plan' ? this.msg.editPlanning : busy === 'apply' ? this.msg.editApplying : this.msg.editReview}</button>
+                ${many ? nothing : this._renderElementChip(page, !!busy)}
+                <div class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden transition-colors focus-within:border-indigo-400 dark:focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-400/40">
+                    <textarea
+                        rows="4"
+                        class="block w-full min-h-[5.5rem] max-h-80 resize-y border-0 bg-transparent px-2.5 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none"
+                        placeholder=${this.msg.editPlaceholder}
+                        ?disabled=${!!busy}
+                        .value=${this._editDraft[page.name] ?? ''}
+                        @input=${(e: Event) => { this._editDraft = { ...this._editDraft, [page.name]: (e.target as HTMLTextAreaElement).value }; }}
+                    ></textarea>
+                    <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-2 py-1.5 border-t border-gray-200 dark:border-gray-800">
+                        ${this._renderScopeSelect(page, target.device, !!busy)}
+                        ${many ? nothing : this._renderAnnotateButton(page, !!busy)}
+                        ${this._renderPlanButton(page, target.device, busy)}
+                    </div>
+                </div>
+                ${many ? this._renderScopeDetail(page, target.device, !!busy) : this._renderMarks(page, !!busy)}
                 ${done ? html`
                     <div class="text-xs text-emerald-700 dark:text-emerald-300 rounded bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1.5 flex flex-col gap-1">
                         <span><span class="font-semibold">${this.msg.editWhatChanged}:</span> ${done.notes}</span>
                         <span class="text-[10px] text-gray-500 dark:text-gray-400">${done.history === 'written' || done.history === 'unchanged' ? this.msg.editRecorded : this.msg.editNotRecorded}</span>
-                        ${done.live ? html`<span class="text-[10px] text-amber-600 dark:text-amber-400">${this.msg.editLiveNotApplied.replace('{reason}', done.live)}</span>` : nothing}
+                        ${this._liveWarning(done.live) ? html`<span class="text-[10px] text-amber-600 dark:text-amber-400">${this._liveWarning(done.live)}</span>` : nothing}
                         ${this._editUndo[page.name] ? html`
                             <button type="button"
                                 class="self-start mt-0.5 text-xs px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
@@ -1337,8 +1599,8 @@ export class PluginSelectPage extends StateLitElement {
         const usable = annot.available && !busy;
         return html`
             <button type="button"
-                class="ml-auto text-[11px] px-2 py-0.5 rounded-md cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed
-                    ${annot.active ? 'bg-pink-500 text-white' : 'border border-pink-400 text-pink-600 dark:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-900/20'}"
+                class="shrink-0 text-[11px] px-2 py-0.5 rounded-full cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+                    ${annot.active ? 'bg-pink-500 text-white' : 'border border-pink-400/70 text-pink-600 dark:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-900/20'}"
                 title=${annot.available ? '' : this.msg.annotateOff}
                 ?disabled=${!usable}
                 @click=${() => annotCommand({ kind: annot.active ? 'stop' : 'start' })}
@@ -1412,12 +1674,12 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
-    // The gate's plan, shown for confirmation before anything is written.
-    // In review: the AI change is on screen; Before | After, the code, Apply / Discard, and an adjustment.
+    // In review: the AI change on screen; Before | After, the code, Apply / Discard, and an adjustment (analyzed, then
+    // generated). A page of a batch only shows itself here: Apply, Discard and the adjustment live in the batch list.
     private _renderEditReview(page: IPageEntry, review: IEditReview) {
         const busy = this._editBusy[page.name];
         const error = this._editError[page.name];
-        const full = review.adjust.length >= MAX_REVIEW_ADJUST;
+        const inBatch = this._inBatch(page);
         // A segmented pill: a quiet track, the side on screen as a raised chip (the preview side with an amber dot).
         const seg = (which: 'before' | 'after', label: string) => {
             const on = review.showing === which;
@@ -1433,51 +1695,42 @@ export class PluginSelectPage extends StateLitElement {
                 ${label}
             </button>`;
         };
-        const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
         return html`
-            <div class="rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5 flex flex-col gap-2">
+            <div class="rounded-lg border ${inBatch ? 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40' : 'border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/10'} px-3 py-2.5 flex flex-col gap-2">
                 <div class="flex items-center gap-2">
-                    <span class="text-xs font-semibold text-amber-800 dark:text-amber-300">${this.msg.reviewTitle}</span>
+                    <span class="text-xs font-semibold ${inBatch ? 'text-gray-700 dark:text-gray-200' : 'text-amber-800 dark:text-amber-300'}">${inBatch ? page.name : this.msg.reviewTitle}</span>
                     <span class="ml-auto inline-flex items-center gap-0.5 p-0.5 rounded-full bg-gray-200/80 dark:bg-gray-900 ring-1 ring-inset ring-gray-300/60 dark:ring-gray-700 ${busy === 'switch' ? 'animate-pulse' : ''}" role="group">
                         ${seg('before', this.msg.reviewBefore)}${seg('after', this.msg.reviewAfter)}
                     </span>
                 </div>
-                <span class="text-[11px] italic text-gray-500 dark:text-gray-400">“${review.request}”</span>
+                ${inBatch ? nothing : html`<span class="text-[11px] italic text-gray-500 dark:text-gray-400">“${review.request}”</span>`}
                 ${review.adjust.length ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400">${this.msg.reviewAdjustments.replace('{list}', review.adjust.join('; '))}</span>` : nothing}
                 <span class="text-xs text-gray-700 dark:text-gray-200"><span class="font-semibold">${this.msg.editWhatChanged}:</span> ${review.notes.notes}</span>
-                <span class="text-[10px] text-gray-500 dark:text-gray-400">${busy === 'switch' ? this.msg.reviewSwitching : this.msg.reviewHint}</span>
-                <div class="flex items-center gap-2 flex-wrap">
-                    <button type="button"
-                        class="text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                        ?disabled=${!!busy}
-                        @click=${() => this._onReviewApply(page)}>${busy === 'reviewApply' ? this.msg.reviewApplying : this.msg.reviewApply}</button>
-                    <button type="button"
-                        class="text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                        ?disabled=${!!busy}
-                        @click=${() => this._onReviewDiscard(page)}>${busy === 'reviewDiscard' ? this.msg.reviewDiscarding : this.msg.reviewDiscard}</button>
-                    <button type="button" class="ml-auto text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                        @click=${() => this._onReviewCode(page)}>${this.msg.reviewCode}</button>
-                </div>
-                <div class="flex flex-col gap-1 border-t border-amber-200 dark:border-amber-800/40 pt-2">
-                    <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">${this.msg.reviewAdjust}</span>
-                    ${full ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400">${this.msg.reviewAdjustLimit}</span>` : html`
-                        <textarea rows="2" class="${inputCls} resize-y"
-                            placeholder=${this.msg.reviewAdjustPlaceholder}
-                            ?disabled=${!!busy}
-                            .value=${this._adjustDraft[page.name] ?? ''}
-                            @input=${(e: Event) => { this._adjustDraft = { ...this._adjustDraft, [page.name]: (e.target as HTMLTextAreaElement).value }; }}
-                        ></textarea>
+                ${inBatch ? html`
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] text-gray-500 dark:text-gray-400">${busy === 'switch' ? this.msg.reviewSwitching : this.msg.reviewInBatch}</span>
+                        <button type="button" class="ml-auto text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                            @click=${() => this._onReviewCode(page)}>${this.msg.reviewCode}</button>
+                    </div>` : html`
+                    <span class="text-[10px] text-gray-500 dark:text-gray-400">${busy === 'switch' ? this.msg.reviewSwitching : this.msg.reviewHint}</span>
+                    <div class="flex items-center gap-2 flex-wrap">
                         <button type="button"
-                            class="self-start text-xs px-2.5 py-1 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                            ?disabled=${!!busy || !(this._adjustDraft[page.name] ?? '').trim()}
-                            @click=${() => this._onReviewAdjust(page)}>${busy === 'adjust' ? this.msg.reviewAdjusting : this.msg.reviewAdjustSend}</button>
-                    `}
-                </div>
-                <span class="text-[10px] text-amber-700 dark:text-amber-400">${this.msg.reviewSaveNote}</span>
+                            class="text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                            ?disabled=${!!busy || !!review.adjustPlan}
+                            @click=${() => this._onReviewApply(page)}>${busy === 'reviewApply' ? this.msg.reviewApplying : this.msg.reviewApply}</button>
+                        <button type="button"
+                            class="text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                            ?disabled=${!!busy}
+                            @click=${() => this._onReviewDiscard(page)}>${busy === 'reviewDiscard' ? this.msg.reviewDiscarding : this.msg.reviewDiscard}</button>
+                        <button type="button" class="ml-auto text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                            @click=${() => this._onReviewCode(page)}>${this.msg.reviewCode}</button>
+                    </div>
+                    ${this._renderReviewAdjust(page, review)}
+                    <span class="text-[10px] text-amber-700 dark:text-amber-400">${this.msg.reviewSaveNote}</span>`}
                 ${error ? html`
                     <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${error}</div>
                 ` : nothing}
-                ${this._taskInfoByName.get(`edit:${page.name}`)?.task ? html`
+                ${!inBatch && this._taskInfoByName.get(`edit:${page.name}`)?.task ? html`
                     <button class="self-end text-xs text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
                         @click=${() => this._openTask(`edit:${page.name}`)}>${this.msg.followTask}</button>
                 ` : nothing}
@@ -1485,6 +1738,58 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
+    /** The adjustment of a single page in review: the ask, then its plan to confirm, then the generation. */
+    private _renderReviewAdjust(page: IPageEntry, review: IEditReview) {
+        const busy = this._editBusy[page.name];
+        const full = review.adjust.length >= MAX_REVIEW_ADJUST;
+        const plan = review.adjustPlan;
+        const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
+        const small = 'self-start text-xs px-2.5 py-1 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer';
+        return html`
+            <div class="flex flex-col gap-1.5 border-t border-amber-200 dark:border-amber-800/40 pt-2">
+                <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">${this.msg.reviewAdjust}</span>
+                ${plan ? html`
+                    <span class="text-[11px] italic text-gray-500 dark:text-gray-400">“${plan.text}”</span>
+                    <span class="text-[11px] text-gray-600 dark:text-gray-300">${this.msg.reviewAdjustPlanTitle}</span>
+                    ${this._renderOperations(plan.operations)}
+                    <div class="flex items-center gap-2">
+                        <button type="button" class="${small} bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500"
+                            ?disabled=${!!busy} @click=${() => this._applyAdjust(page)}>${busy === 'adjust' ? this.msg.reviewAdjusting : this.msg.reviewAdjustGenerate}</button>
+                        <button type="button" class="${small} border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-400"
+                            ?disabled=${!!busy} @click=${() => this._onReviewAdjustCancel(page)}>${this.msg.reviewAdjustCancel}</button>
+                    </div>`
+                : full ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400">${this.msg.reviewAdjustLimit}</span>` : html`
+                    <textarea rows="2" class="${inputCls} resize-y"
+                        placeholder=${this.msg.reviewAdjustPlaceholder}
+                        ?disabled=${!!busy}
+                        .value=${this._adjustDraft[page.name] ?? ''}
+                        @input=${(e: Event) => { this._adjustDraft = { ...this._adjustDraft, [page.name]: (e.target as HTMLTextAreaElement).value }; }}
+                    ></textarea>
+                    <button type="button"
+                        class="${small} border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                        ?disabled=${!!busy || !(this._adjustDraft[page.name] ?? '').trim()}
+                        @click=${() => this._onReviewAdjust(page)}>${busy === 'adjustPlan' ? this.msg.reviewAdjustPlanning : this.msg.reviewAdjustSend}</button>
+                `}
+            </div>`;
+    }
+
+    /** The operations of a plan, one line each: the mark, where, the aspect, and the change in the person's words. */
+    private _renderOperations(operations: IEditOperation[]) {
+        return html`
+            <div class="flex flex-col gap-1">
+                ${operations.map(op => html`
+                    <div class="flex items-baseline gap-1.5 text-xs text-gray-700 dark:text-gray-200">
+                        ${op.mark ? html`<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 bg-pink-500 text-white" title=${this.msg.planMark.replace('{n}', String(op.mark))}>${op.mark}</span>` : nothing}
+                        <span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 shrink-0">${op.organism ?? this.msg.editPageShell}</span>
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">${op.aspect}</span>
+                        ${op.revert ? html`<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">${this.msg.editRevert}</span>` : nothing}
+                        <span class="leading-snug">${op.summary}</span>
+                    </div>
+                `)}
+            </div>`;
+    }
+
+    // The gate's plan, shown for confirmation before anything is written.
     private _renderEditConfirm(page: IPageEntry, plan: { request: string; device: string; operations: IEditOperation[]; element: IEditElement | null; marks: IEditMark[] }) {
         const busy = this._editBusy[page.name];
         return html`
@@ -1495,17 +1800,7 @@ export class PluginSelectPage extends StateLitElement {
                     <span class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.editElement}: <span class="font-mono">${plan.element.tag}</span>${plan.element.organism ? ` ${this.msg.editElementIn} ${plan.element.organism}` : ''}</span>
                 ` : nothing}
                 ${plan.marks.length ? html`<span class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.marksCount.replace('{n}', String(plan.marks.length))}</span>` : nothing}
-                <div class="flex flex-col gap-1">
-                    ${plan.operations.map(op => html`
-                        <div class="flex items-baseline gap-1.5 text-xs text-gray-700 dark:text-gray-200">
-                            ${op.mark ? html`<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 bg-pink-500 text-white" title=${this.msg.planMark.replace('{n}', String(op.mark))}>${op.mark}</span>` : nothing}
-                            <span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 shrink-0">${op.organism ?? this.msg.editPageShell}</span>
-                            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">${op.aspect}</span>
-                            ${op.revert ? html`<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">${this.msg.editRevert}</span>` : nothing}
-                            <span class="leading-snug">${op.summary}</span>
-                        </div>
-                    `)}
-                </div>
+                ${this._renderOperations(plan.operations)}
                 <div class="flex items-center gap-2">
                     <button
                         class="text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
@@ -1529,14 +1824,23 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
-    private _editEntry(page: IPageEntry, request: string, device: string, element: IEditElement | null, operations?: IEditOperation[], marks: IEditMark[] = [], adjust: string[] = []): string | null {
+    private _editEntry(page: IPageEntry, request: string, device: string, element: IEditElement | null, operations?: IEditOperation[], marks: IEditMark[] = [], adjust: string[] = [], batch: string[] = [], standard: IEditStandard | null = null, standardize = false): string | null {
         const target = this._editTarget(page);
         const module = this._moduleName ?? this._modulePath;
         if (!target || !module) return null;
         return JSON.stringify({
             module, page: page.file?.shortName ?? page.name, device, genome: target.genome, request,
             ...(element ? { element } : {}), ...(operations ? { operations } : {}), ...(marks.length ? { marks } : {}), ...(adjust.length ? { adjust } : {}),
+            ...(batch.length ? { batch } : {}), ...(standard?.rules.length ? { standard } : {}), ...(standardize ? { standardize: true } : {}),
         });
+    }
+
+    /**
+     * Why the screen did not take the change, to show — or null. A page written while another one is on screen is not
+     * a warning: it was compiled, and opening it shows the change (every page of a batch but the last one).
+     */
+    private _liveWarning(live: string | null | undefined): string | null {
+        return live && live !== LIVE_OTHER_PAGE ? this.msg.editLiveNotApplied.replace('{reason}', live) : null;
     }
 
     // Per-page edit state is replaced, never mutated, so @state sees the change.
@@ -1601,7 +1905,7 @@ export class PluginSelectPage extends StateLitElement {
         const plan = this._editPlan[page.name];
         if (!plan || this._editBusy[page.name]) return;
         // The element the plan was made with goes back with it, even if the selection moved since.
-        const entry = this._editEntry(page, plan.request, plan.device, plan.element, plan.operations, plan.marks);
+        const entry = this._editEntry(page, plan.request, plan.device, plan.element, plan.operations, plan.marks, [], plan.batch ?? [], plan.standard ?? null);
         if (!entry) return;
         if (this._annot.active) annotCommand({ kind: 'stop' });
         this._setEdit('_editError', page.name, undefined);
@@ -1622,6 +1926,7 @@ export class PluginSelectPage extends StateLitElement {
                 if (before && after && after.source !== before.source) {
                     this._editReview = { ...this._editReview, [page.name]: { ...plan, before, after, notes: result.notes, notesLog: [result.notes.notes], showing: 'after', adjust: [] } };
                     setPageInReview(this._reviewRef(before), true);
+                    await this._ensureShown(page, after, result.notes.live);
                 } else {
                     // Nothing to review (nothing changed, or the page could not be read): the result simply stays.
                     await this._finishApplied(page, plan, result.notes, null);
@@ -1674,12 +1979,25 @@ export class PluginSelectPage extends StateLitElement {
             const snapshot = which === 'before' ? review.before : review.after;
             const result = await commitPageSource(snapshot.project, snapshot.folder, snapshot.page, snapshot.source);
             this._editReview = { ...this._editReview, [page.name]: { ...review, showing: which } };
-            if (result.live) this._setEdit('_editError', page.name, this.msg.editLiveNotApplied.replace('{reason}', result.live));
+            if (this._liveWarning(result.live)) this._setEdit('_editError', page.name, this._liveWarning(result.live));
         } catch (e: any) {
             this._setEdit('_editError', page.name, e?.message ?? String(e));
         } finally {
             this._setEdit('_editBusy', page.name, undefined);
         }
+    }
+
+    /**
+     * The agent wrote the page and tried to put it on screen. When that did not take (`live` says why), the page is
+     * put there once more the way Before | After does, and what still stops it is shown: a preview never sits
+     * silently behind an old screen. A page written while another one is on screen has nothing to refresh.
+     */
+    private async _ensureShown(page: IPageEntry, snapshot: EditPageSnapshot, live: string | null | undefined): Promise<void> {
+        if (!live || live === LIVE_OTHER_PAGE) return;
+        console.warn('[selectPage] the AI change did not reach the screen, trying again:', live);
+        const again = await commitPageSource(snapshot.project, snapshot.folder, snapshot.page, snapshot.source);
+        const warning = this._liveWarning(again.live);
+        if (warning) this._setEdit('_editError', page.name, warning);
     }
 
     /** Puts the candidate back on screen when the person was looking at Before (Apply and Adjust work on it). */
@@ -1714,7 +2032,7 @@ export class PluginSelectPage extends StateLitElement {
             const result = await restoreEditPage(review.before);
             this._endReview(page, review);
             this._editDiscarded = { ...this._editDiscarded, [page.name]: true };
-            if (result.live) this._setEdit('_editError', page.name, this.msg.editLiveNotApplied.replace('{reason}', result.live));
+            if (this._liveWarning(result.live)) this._setEdit('_editError', page.name, this._liveWarning(result.live));
         } catch (e: any) {
             this._setEdit('_editError', page.name, e?.message ?? String(e));
         } finally {
@@ -1722,14 +2040,47 @@ export class PluginSelectPage extends StateLitElement {
         }
     }
 
-    /** Ask for an adjustment: a new patch ON the candidate, same operations; Before stays the page before the request. */
-    private async _onReviewAdjust(page: IPageEntry) {
+    /**
+     * An adjustment, phase PLAN: the gate reads the page as it is now (the candidate) and plans only this ask — any
+     * organism, or a refusal with the reason. The plan waits in the review for "Generate". Nothing is written.
+     */
+    private async _planAdjust(page: IPageEntry, text: string, standard?: IEditStandard | null): Promise<boolean> {
         const review = this._editReview[page.name];
-        const text = (this._adjustDraft[page.name] ?? '').trim();
-        if (!review || !text || review.adjust.length >= MAX_REVIEW_ADJUST || this._editBusy[page.name]) return;
-        const adjust = [...review.adjust, text];
-        const entry = this._editEntry(page, review.request, review.device, review.element, review.operations, review.marks, adjust);
-        if (!entry) return;
+        if (!review || !text || review.adjust.length >= MAX_REVIEW_ADJUST || this._editBusy[page.name]) return false;
+        // The standard of a batch adjustment when it brought one; else the one the page already follows.
+        const binding = standard !== undefined ? standard : review.standard ?? null;
+        const entry = this._editEntry(page, review.request, review.device, review.element, undefined, review.marks, [...review.adjust, text], review.batch ?? [], binding);
+        if (!entry) return false;
+        this._setEdit('_editError', page.name, undefined);
+        this._setEdit('_editBusy', page.name, 'adjustPlan');
+        try {
+            // The gate reads the model: the candidate must be the text there, not Before.
+            await this._showCandidate(review);
+            const current: IEditReview = { ...review, showing: 'after', adjustPlan: undefined };
+            this._editReview = { ...this._editReview, [page.name]: current };
+            const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set(`edit:${page.name}`, data); this.requestUpdate(); });
+            if (result.failure) { this._setEdit('_editError', page.name, result.failure); return false; }
+            if (!result.plan?.length) { this._setEdit('_editError', page.name, this.msg.editNoAnswer); return false; }
+            const now = this._editReview[page.name];
+            if (!now) return false;
+            this._editReview = { ...this._editReview, [page.name]: { ...now, adjustPlan: { text, operations: result.plan, standard: binding } } };
+            return true;
+        } catch (e: any) {
+            this._setEdit('_editError', page.name, e?.message ?? String(e));
+            return false;
+        } finally {
+            this._setEdit('_editBusy', page.name, undefined);
+        }
+    }
+
+    /** An adjustment, phase APPLY: the approved plan patched ON the candidate; Before stays the page before the request. */
+    private async _applyAdjust(page: IPageEntry): Promise<boolean> {
+        const review = this._editReview[page.name];
+        const plan = review?.adjustPlan;
+        if (!review || !plan || this._editBusy[page.name]) return false;
+        const adjust = [...review.adjust, plan.text];
+        const entry = this._editEntry(page, review.request, review.device, review.element, plan.operations, review.marks, adjust, review.batch ?? [], plan.standard);
+        if (!entry) return false;
         this._setEdit('_editError', page.name, undefined);
         this._setEdit('_editBusy', page.name, 'adjust');
         try {
@@ -1737,18 +2088,33 @@ export class PluginSelectPage extends StateLitElement {
             const current: IEditReview = { ...review, showing: 'after' };
             this._editReview = { ...this._editReview, [page.name]: current };
             const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set(`edit:${page.name}`, data); this.requestUpdate(); });
-            if (result.failure) this._setEdit('_editError', page.name, result.failure);
-            else if (!result.notes) this._setEdit('_editError', page.name, this.msg.editNoAnswer);
-            else {
-                const after = await this._snapshotPage(entry);
-                this._editReview = { ...this._editReview, [page.name]: { ...current, after: after ?? current.after, notes: result.notes, notesLog: [...current.notesLog, result.notes.notes], adjust } };
-                this._adjustDraft = { ...this._adjustDraft, [page.name]: '' };
-            }
+            // A failed patch puts the candidate back: the plan stays, to try again or cancel.
+            if (result.failure) { this._setEdit('_editError', page.name, result.failure); return false; }
+            if (!result.notes) { this._setEdit('_editError', page.name, this.msg.editNoAnswer); return false; }
+            const after = await this._snapshotPage(entry);
+            this._editReview = { ...this._editReview, [page.name]: { ...current, after: after ?? current.after, notes: result.notes, notesLog: [...current.notesLog, result.notes.notes], adjust, adjustPlan: undefined, standard: plan.standard } };
+            this._adjustDraft = { ...this._adjustDraft, [page.name]: '' };
+            if (after) await this._ensureShown(page, after, result.notes.live);
+            return true;
         } catch (e: any) {
             this._setEdit('_editError', page.name, e?.message ?? String(e));
+            return false;
         } finally {
             this._setEdit('_editBusy', page.name, undefined);
         }
+    }
+
+    /** Ask for an adjustment of one page: analyzed first; its plan shows in the review card. */
+    private async _onReviewAdjust(page: IPageEntry) {
+        const text = (this._adjustDraft[page.name] ?? '').trim();
+        if (text) await this._planAdjust(page, text);
+    }
+
+    /** The plan of the adjustment is dropped: the candidate stays as it is, the ask stays to be refined. */
+    private _onReviewAdjustCancel(page: IPageEntry) {
+        const review = this._editReview[page.name];
+        if (!review?.adjustPlan || this._editBusy[page.name]) return;
+        this._editReview = { ...this._editReview, [page.name]: { ...review, adjustPlan: undefined } };
     }
 
     /** The code of Before against the candidate, in the details panel on the right (the page timeline's diff). */
@@ -1812,12 +2178,723 @@ export class PluginSelectPage extends StateLitElement {
             delete this._editUndo[page.name];
             this._setEdit('_editNotes', page.name, undefined);
             this._editDiscarded = { ...this._editDiscarded, [page.name]: true };
-            if (result.live) this._setEdit('_editError', page.name, this.msg.editLiveNotApplied.replace('{reason}', result.live));
+            if (this._liveWarning(result.live)) this._setEdit('_editError', page.name, this._liveWarning(result.live));
         } catch (e: any) {
             this._setEdit('_editError', page.name, e?.message ?? String(e));
         } finally {
             this._setEdit('_editBusy', page.name, undefined);
         }
+    }
+
+    // ─── One request, several pages (editBatchCore) ──────────────────────
+    // The agent stays a one-page agent: the panel plans every page (a few at a time, the plan only reads), then
+    // generates the previews one by one — the page on screen last — through the same per-page review as a single
+    // request. The batch only lists the pages and decides them together.
+
+    private _pageByName(name: string): IPageEntry | undefined {
+        return this._pages.find(p => p.name === name);
+    }
+
+    /** The batch of the module on screen (a batch of another module waits until the person comes back to it). */
+    private _activeBatch(): IEditBatch | null {
+        const batch = this._editBatch;
+        return batch && batch.module === (this._moduleName ?? this._modulePath) ? batch : null;
+    }
+
+    /** The rows as they stand now: a page whose review was decided in its own card counts as applied or discarded. */
+    private _batchRows(batch: IEditBatch): Record<string, BatchRow> {
+        const rows: Record<string, BatchRow> = {};
+        for (const name of batch.pages) {
+            const row = batch.rows[name];
+            rows[name] = row.state === 'review' && !this._editReview[name]
+                ? { ...row, state: this._editDiscarded[name] ? 'discarded' : 'applied' }
+                : row;
+        }
+        return rows;
+    }
+
+    private _setBatchRow(name: string, patch: Partial<BatchRow>) {
+        const batch = this._editBatch;
+        if (!batch?.rows[name]) return;
+        this._editBatch = { ...batch, rows: { ...batch.rows, [name]: { ...batch.rows[name], ...patch } } };
+    }
+
+    /** Pages of the module with the variant the request goes to (this device, generated for the current UX). */
+    private _batchCandidates(device: string): IPageEntry[] {
+        return this._pages.filter(p => p.exists && p.devices.includes(`web/${device}`) && !!this._editTarget(p));
+    }
+
+    /** `<module>/web/<device>/<genome>` of a page: where its variant for that device lives. */
+    private _variantFolder(page: IPageEntry, device: string): string | null {
+        const folder = page.file?.folder ?? '';
+        const at = folder.lastIndexOf('/web/');
+        const target = this._editTarget(page);
+        return at < 0 || !target ? null : `${folder.slice(0, at)}/web/${device}/${target.genome}`;
+    }
+
+    /** The other pages of the batch, as the agent names them (the file's short name). */
+    private _batchOthers(pages: readonly string[], name: string): string[] {
+        return pages.filter(n => n !== name).map(n => this._pageByName(n)?.file?.shortName ?? n);
+    }
+
+    /** The pages the chosen scope reaches (the page asked from included); null while unknown. */
+    private _scopeCandidates(page: IPageEntry, device: string): string[] | null {
+        const kind = this._editScope[page.name] ?? 'page';
+        const all = this._batchCandidates(device).map(p => p.name);
+        if (kind === 'module') return all;
+        if (kind === 'pick') return this._scopePicked[page.name] ?? all;
+        if (kind === 'molecule') {
+            const tag = this._scopeTag[page.name];
+            return tag ? this._scopeMatches[`${device}|${tag}`] ?? null : null;
+        }
+        return null;
+    }
+
+    private async _loadScopeTags(page: IPageEntry, device: string) {
+        const key = `${device}|${page.name}`;
+        const folder = this._variantFolder(page, device);
+        const project = Number(page.file?.project ?? 0);
+        let tags: string[] = [];
+        try {
+            const snapshot = folder && project ? await snapshotPageFile(project, folder, page.file.shortName) : null;
+            tags = snapshot ? moleculeTagsIn(snapshot.source) : [];
+        } catch (error) {
+            console.warn('[selectPage] molecules of the page could not be read:', error);
+        }
+        this._scopeTags = { ...this._scopeTags, [key]: tags };
+    }
+
+    /** Which pages use the molecule: read from each page's source (the editor model, the local copy included). */
+    private async _loadScopeMatches(device: string, tag: string) {
+        const key = `${device}|${tag}`;
+        this._scopeMatches = { ...this._scopeMatches, [key]: null };
+        const sources = await Promise.all(this._batchCandidates(device).map(async p => {
+            const folder = this._variantFolder(p, device);
+            try {
+                const snapshot = folder ? await snapshotPageFile(Number(p.file.project), folder, p.file.shortName) : null;
+                return { name: p.name, source: snapshot?.source ?? '' };
+            } catch {
+                return { name: p.name, source: '' };
+            }
+        }));
+        this._scopeMatches = { ...this._scopeMatches, [key]: pagesUsingTag(sources, tag) };
+    }
+
+    /** The request goes to more than this page: marking the page (Annotate, the selected element) means nothing there. */
+    private _manyPages(page: IPageEntry, device: string): boolean {
+        return (this._editScope[page.name] ?? 'page') !== 'page' && this._batchCandidates(device).length >= 2;
+    }
+
+    private _setScope(page: IPageEntry, device: string, kind: EditScopeKind) {
+        this._editScope = { ...this._editScope, [page.name]: kind };
+        // Drawing on the page is for one page only.
+        if (kind !== 'page' && this._annot.active) annotCommand({ kind: 'stop' });
+        if (kind === 'molecule' && this._scopeTags[`${device}|${page.name}`] === undefined) void this._loadScopeTags(page, device);
+    }
+
+    /** The scope, as a compact pill in the composer's bar; nothing when the module has no other page to send it to. */
+    private _renderScopeSelect(page: IPageEntry, device: string, busy: boolean) {
+        if (this._batchCandidates(device).length < 2) return nothing;
+        const kind = this._editScope[page.name] ?? 'page';
+        const labels: Record<EditScopeKind, string> = {
+            page: this.msg.editScopePage, module: this.msg.editScopeModule, molecule: this.msg.editScopeMolecule, pick: this.msg.editScopePick,
+        };
+        return html`
+            <select class="min-w-0 shrink max-w-[10rem] truncate text-[11px] pl-2 pr-1 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:[color-scheme:dark] text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 cursor-pointer disabled:cursor-not-allowed"
+                title=${this.msg.editScope}
+                aria-label=${this.msg.editScope}
+                ?disabled=${busy}
+                @change=${(e: Event) => this._setScope(page, device, (e.target as HTMLSelectElement).value as EditScopeKind)}>
+                ${(Object.keys(labels) as EditScopeKind[]).map(k => html`<option class="bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200" value=${k} ?selected=${k === kind}>${labels[k]}</option>`)}
+            </select>`;
+    }
+
+    /** Below the composer, for a scope of several pages: the molecule or the pages to choose, and the pages reached. */
+    private _renderScopeDetail(page: IPageEntry, device: string, busy: boolean) {
+        if (!this._manyPages(page, device)) return nothing;
+        const all = this._batchCandidates(device);
+        const kind = this._editScope[page.name] ?? 'page';
+        const selectCls = 'text-[11px] px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:[color-scheme:dark] text-gray-600 dark:text-gray-300';
+        let detail: unknown = nothing;
+        if (kind === 'molecule') {
+            const tags = this._scopeTags[`${device}|${page.name}`];
+            const tag = this._scopeTag[page.name] ?? '';
+            detail = tags === undefined
+                ? html`<span class="text-[11px] text-gray-400 dark:text-gray-500">${this.msg.editScopeReading}</span>`
+                : !tags.length
+                    ? html`<span class="text-[11px] text-gray-500 dark:text-gray-400">${this.msg.editScopeMoleculeNone}</span>`
+                    : html`
+                        <select class="${selectCls} font-mono max-w-full" ?disabled=${busy}
+                            @change=${(e: Event) => {
+                                const value = (e.target as HTMLSelectElement).value;
+                                this._scopeTag = { ...this._scopeTag, [page.name]: value };
+                                if (value) void this._loadScopeMatches(device, value);
+                            }}>
+                            <option value="" ?selected=${!tag}>${this.msg.editScopeMoleculePick}</option>
+                            ${tags.map(t => html`<option value=${t} ?selected=${t === tag}>${t}</option>`)}
+                        </select>`;
+        }
+        if (kind === 'pick') {
+            const picked = new Set(this._scopePicked[page.name] ?? all.map(p => p.name));
+            const toggle = (name: string, on: boolean) => {
+                const next = new Set(picked);
+                if (on) next.add(name); else next.delete(name);
+                this._scopePicked = { ...this._scopePicked, [page.name]: all.map(p => p.name).filter(n => next.has(n)) };
+            };
+            detail = html`
+                <div class="flex flex-col gap-0.5 max-h-40 overflow-auto rounded-md border border-gray-200 dark:border-gray-800 px-2 py-1">
+                    ${all.map(p => html`
+                        <label class="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300 cursor-pointer">
+                            <input type="checkbox" class="cursor-pointer disabled:cursor-not-allowed"
+                                .checked=${p.name === page.name || picked.has(p.name)}
+                                ?disabled=${busy || p.name === page.name}
+                                @change=${(e: Event) => toggle(p.name, (e.target as HTMLInputElement).checked)}>
+                            ${p.name}${p.name === page.name ? html` <span class="text-gray-400 dark:text-gray-500">(${this.msg.editScopeThis})</span>` : nothing}
+                        </label>`)}
+                </div>`;
+        }
+        const candidates = this._scopeCandidates(page, device);
+        const scoped = candidates ? scopePages(page.name, candidates, EDIT_PAGE_MAX_PAGES) : null;
+        // The pages reached, as chips (the pick list already shows them).
+        const reached = scoped && 'pages' in scoped && kind !== 'pick'
+            ? html`<div class="flex flex-wrap gap-1">${scoped.pages.map(name => html`
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200/70 dark:bg-gray-800 text-gray-600 dark:text-gray-300">${name}</span>`)}</div>`
+            : nothing;
+        const problem = scoped && !('pages' in scoped)
+            ? (scoped.refusal === 'tooMany'
+                ? this.msg.editScopeTooMany.replace('{max}', String(EDIT_PAGE_MAX_PAGES)).replace('{n}', String(scoped.count))
+                : this.msg.editScopeNone)
+            : !scoped && kind === 'molecule' && this._scopeTag[page.name] ? this.msg.editScopeReading : '';
+        const open = !!this._editBatch && batchOpen(this._batchRows(this._editBatch));
+        return html`
+            ${detail}
+            ${reached}
+            ${problem ? html`<span class="text-[11px] ${scoped ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}">${problem}</span>` : nothing}
+            ${open ? html`<span class="text-[11px] text-amber-700 dark:text-amber-400">${this.msg.editBatchAnotherOpen}</span>` : nothing}
+            ${this._marksFor(page).length || this._selectedElement(page).element ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.editScopeNoMarks}</span>` : nothing}`;
+    }
+
+    /** The send button at the right of the composer's bar: this page, or the pages of the scope. */
+    private _renderPlanButton(page: IPageEntry, device: string, busy: string | undefined) {
+        const cls = 'ml-auto shrink-0 text-xs font-medium px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer';
+        if (!this._manyPages(page, device)) {
+            return html`
+                <button type="button" class=${cls} ?disabled=${!!busy || !this._editRequest(page)} @click=${() => this._onPlanEdit(page)}
+                >${busy === 'plan' ? this.msg.editPlanning : busy === 'apply' ? this.msg.editApplying : this.msg.editReview}</button>`;
+        }
+        const candidates = this._scopeCandidates(page, device);
+        const scoped = candidates ? scopePages(page.name, candidates, EDIT_PAGE_MAX_PAGES) : null;
+        const open = !!this._editBatch && batchOpen(this._batchRows(this._editBatch));
+        const text = (this._editDraft[page.name] ?? '').trim();
+        return html`
+            <button type="button" class=${cls} ?disabled=${!!busy || !text || !scoped || !('pages' in scoped) || open} @click=${() => this._onPlanBatch(page)}
+            >${this.msg.editBatchPlan.replace('{n}', scoped && 'pages' in scoped ? String(scoped.pages.length) : '…')}</button>`;
+    }
+
+    /** PLAN of every page of the scope (a few at a time): the person then confirms them together. Nothing is written. */
+    private async _onPlanBatch(origin: IPageEntry) {
+        const request = (this._editDraft[origin.name] ?? '').trim();
+        const device = this._editTarget(origin)?.device;
+        const module = this._moduleName ?? this._modulePath;
+        if (!request || !device || !module || (this._editBatch && batchOpen(this._batchRows(this._editBatch)))) return;
+        const candidates = this._scopeCandidates(origin, device);
+        const scoped = candidates ? scopePages(origin.name, candidates, EDIT_PAGE_MAX_PAGES) : null;
+        if (!scoped || !('pages' in scoped)) return;
+        if (this._annot.active) annotCommand({ kind: 'stop' });
+        const pages = scoped.pages;
+        for (const name of pages) {
+            // A new request: the previous change of each page is kept for good.
+            delete this._editUndo[name];
+            this._setEdit('_editError', name, undefined);
+            this._setEdit('_editNotes', name, undefined);
+            this._setEdit('_editPlan', name, undefined);
+        }
+        this._editDiscarded = { ...this._editDiscarded, ...Object.fromEntries(pages.map(n => [n, false])) };
+        const batch: IEditBatch = {
+            module, device, request, pages, plans: {}, phase: 'standard', standard: null,
+            rows: Object.fromEntries(pages.map(n => [n, { state: 'waiting', include: true } as BatchRow])),
+        };
+        this._editBatch = batch;
+        this._standardDraft = '';
+        // The values every page must use, decided once; a request with nothing in common goes straight to the plans.
+        const standard = await this._runStandard(null);
+        if (standard && this._editBatch?.pages === pages) {
+            this._editBatch = { ...this._editBatch, standard };
+            if (!standard.rules.length) await this._planBatchPages();
+        }
+    }
+
+    /**
+     * The common standard: ONE task reads the page asked from (whole), the pages the request names and the outline of
+     * the others, and returns the exact classes for each element the request is about. With `adjust` the current
+     * standard is adjusted. null when it could not be decided (the reason is on the batch).
+     */
+    private async _runStandard(adjust: string | null, previous: IEditStandard | null = null): Promise<IEditStandard | null> {
+        const batch = this._editBatch;
+        const origin = batch ? this._pageByName(batch.pages[0]) : null;
+        if (!batch || !origin) return null;
+        const entry = this._editEntry(origin, batch.request, batch.device, null, undefined, [], adjust ? [adjust] : [], this._batchOthers(batch.pages, origin.name), previous, true);
+        const failed = (reason: string) => {
+            if (this._editBatch?.pages === batch.pages) this._editBatch = { ...this._editBatch, standardError: reason };
+            return null;
+        };
+        if (!entry) return failed(this.msg.editBatchNoVariant);
+        this._editBatch = { ...batch, standardBusy: true, standardError: undefined };
+        try {
+            const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set('edit:standard', data); this.requestUpdate(); });
+            if (this._editBatch?.pages !== batch.pages) return null;
+            if (result.failure) return failed(result.failure);
+            return result.standard ?? failed(this.msg.editNoAnswer);
+        } catch (e: any) {
+            return failed(e?.message ?? String(e));
+        } finally {
+            if (this._editBatch?.pages === batch.pages) this._editBatch = { ...this._editBatch, standardBusy: false };
+        }
+    }
+
+    /** The standard is approved: now every page is planned with it. */
+    private async _onApproveStandard() {
+        const batch = this._editBatch;
+        if (!batch || batch.phase !== 'standard' || batch.standardBusy || !batch.standard) return;
+        await this._planBatchPages();
+    }
+
+    /** The standard again: adjusted as asked (or decided once more after a failure). */
+    private async _onStandardAdjust() {
+        const batch = this._editBatch;
+        const text = this._standardDraft.trim();
+        if (!batch || batch.phase !== 'standard' || batch.standardBusy || (!text && batch.standard)) return;
+        const standard = await this._runStandard(batch.standard ? text : null, batch.standard);
+        if (standard && this._editBatch?.pages === batch.pages) {
+            this._editBatch = { ...this._editBatch, standard };
+            this._standardDraft = '';
+        }
+    }
+
+    /** Every page planned with the common standard, one at a time (two tasks of one thread mix their steps up). */
+    private async _planBatchPages() {
+        const batch = this._editBatch;
+        if (!batch) return;
+        const { pages, request, device, standard } = batch;
+        this._editBatch = { ...batch, phase: 'plan' };
+        for (const name of pages) this._setBatchRow(name, { state: 'planning' });
+        await runLimited(pages, BATCH_PLAN_LANES, async name => {
+            const page = this._pageByName(name);
+            const entry = page ? this._editEntry(page, request, device, null, undefined, [], [], this._batchOthers(pages, name), standard) : null;
+            if (!entry) { this._setBatchRow(name, { state: 'refused', reason: this.msg.editBatchNoVariant, include: false }); return; }
+            try {
+                const result = await this._executeAgent('agentEditPage', entry, data => { this._taskInfoByName.set(`edit:${name}`, data); this.requestUpdate(); });
+                if (this._editBatch?.pages !== pages) return;
+                if (result.failure) this._setBatchRow(name, { state: 'refused', reason: result.failure, include: false });
+                else if (result.plan?.length) {
+                    this._editBatch = { ...this._editBatch!, plans: { ...this._editBatch!.plans, [name]: result.plan } };
+                    this._setBatchRow(name, { state: 'planned', include: true });
+                } else this._setBatchRow(name, { state: 'refused', reason: this.msg.editNoAnswer, include: false });
+            } catch (e: any) {
+                this._setBatchRow(name, { state: 'refused', reason: e?.message ?? String(e), include: false });
+            }
+        });
+        if (this._editBatch?.pages === pages) this._editBatch = { ...this._editBatch, phase: 'confirm' };
+    }
+
+    /** The previews, one page at a time, the page on screen last; each page goes into its own review. */
+    private async _generateBatchPages(names: string[]) {
+        const batch = this._editBatch;
+        if (!batch || !names.length) return;
+        this._batchBusy = true;
+        this._editBatch = { ...batch, phase: 'generate' };
+        for (const name of names) this._setBatchRow(name, { state: 'waiting', reason: undefined });
+        const going = batch.pages.filter(n => names.includes(n) || this._batchRows(batch)[n].state === 'review');
+        try {
+            for (const name of batchOrder(names, this._selectedPage?.name ?? null)) {
+                if (this._editBatch?.pages !== batch.pages) return;
+                const page = this._pageByName(name);
+                const operations = batch.plans[name];
+                if (!page || !operations) { this._setBatchRow(name, { state: 'failed', reason: this.msg.editBatchNoVariant, include: false }); continue; }
+                this._setBatchRow(name, { state: 'generating' });
+                this._setEdit('_editError', name, undefined);
+                this._setEdit('_editPlan', name, { request: batch.request, device: batch.device, operations, element: null, marks: [], batch: this._batchOthers(going, name), standard: batch.standard });
+                await this._onApplyPlan(page);
+                const failed = this._editError[name];
+                const review = this._editReview[name];
+                this._setBatchRow(name, review ? { state: 'review', include: true, misses: standardMisses(review.after.source, batch.standard) }
+                    : failed ? { state: 'failed', reason: failed, include: false }
+                    : { state: 'unchanged', include: false });
+            }
+        } finally {
+            this._batchBusy = false;
+            if (this._editBatch?.pages === batch.pages) this._editBatch = { ...this._editBatch, phase: 'review' };
+        }
+    }
+
+    private async _onGenerateBatch() {
+        const batch = this._editBatch;
+        if (!batch || batch.phase !== 'confirm' || this._batchBusy) return;
+        const chosen = batch.pages.filter(n => batch.rows[n].state === 'planned' && batch.rows[n].include);
+        for (const name of batch.pages) if (batch.rows[name].state === 'planned' && !batch.rows[name].include) this._setBatchRow(name, { state: 'skipped' });
+        await this._generateBatchPages(chosen);
+    }
+
+    private async _onRetryBatch() {
+        const batch = this._editBatch;
+        if (!batch || this._batchBusy) return;
+        await this._generateBatchPages(batch.pages.filter(n => batch.rows[n].state === 'failed'));
+    }
+
+    /** Apply the ticked pages in review and discard the others (or discard them all): the page on screen last. */
+    private async _onBatchDecide(mode: 'ticked' | 'discardAll', only?: { name: string; apply: boolean }) {
+        const batch = this._editBatch;
+        if (!batch || this._batchBusy) return;
+        const rows = this._batchRows(batch);
+        let { apply, discard } = batchDecision(rows);
+        if (mode === 'discardAll') { discard = [...apply, ...discard]; apply = []; }
+        if (only) { apply = only.apply ? [only.name] : []; discard = only.apply ? [] : [only.name]; }
+        this._batchBusy = true;
+        try {
+            for (const name of batchOrder([...apply, ...discard], this._selectedPage?.name ?? null)) {
+                const page = this._pageByName(name);
+                if (!page || !this._editReview[name]) continue;
+                if (apply.includes(name)) await this._onReviewApply(page);
+                else await this._onReviewDiscard(page);
+                if (!this._editReview[name]) this._setBatchRow(name, { state: apply.includes(name) ? 'applied' : 'discarded' });
+            }
+        } finally {
+            this._batchBusy = false;
+        }
+    }
+
+    /**
+     * An adjustment of the batch, phase PLAN: on every ticked page in review (or only the page open), one page at a
+     * time; each row says where it stands. The plans wait in the list for one "Generate".
+     */
+    private async _onBatchAdjustPlan() {
+        const batch = this._editBatch;
+        const text = this._batchAdjustDraft.trim();
+        if (!batch || batch.phase !== 'review' || !text || this._batchBusy) return;
+        const onScreen = this._selectedPage?.name ?? null;
+        const adjustCount = (name: string) => this._editReview[name]?.adjust.length ?? MAX_REVIEW_ADJUST;
+        const targets = batchAdjustTargets(this._batchRows(batch), adjustCount, MAX_REVIEW_ADJUST)
+            .filter(name => this._batchAdjustScope === 'all' || name === onScreen);
+        if (!targets.length) return;
+        // A new adjustment: what the previous one said goes, and so do plans no one generated.
+        for (const name of batch.pages) {
+            const review = this._editReview[name];
+            if (review?.adjustPlan) this._editReview = { ...this._editReview, [name]: { ...review, adjustPlan: undefined } };
+            this._setBatchRow(name, { adjust: targets.includes(name) ? 'queued' : undefined, adjustReason: undefined });
+        }
+        this._editBatch = { ...this._editBatch!, adjustText: text, adjustStandard: undefined };
+        this._batchBusy = true;
+        try {
+            // On several pages the adjustment may move a common value: the standard is adjusted once, first.
+            let standard: IEditStandard | null | undefined;
+            if (targets.length > 1) {
+                standard = await this._runStandard(text, batch.standard);
+                if (!standard) {
+                    for (const name of targets) this._setBatchRow(name, { adjust: undefined });
+                    return;
+                }
+                if (this._editBatch?.pages !== batch.pages) return;
+                this._editBatch = { ...this._editBatch, adjustStandard: standard };
+            }
+            for (const name of targets) {
+                if (this._editBatch?.pages !== batch.pages) return;
+                const page = this._pageByName(name);
+                if (!page) { this._setBatchRow(name, { adjust: 'refused', adjustReason: this.msg.editBatchNoVariant }); continue; }
+                this._setBatchRow(name, { adjust: 'planning' });
+                const ok = await this._planAdjust(page, text, standard);
+                // The reason lives in the row, not twice on the page's own card.
+                this._setBatchRow(name, ok ? { adjust: 'planned' } : { adjust: 'refused', adjustReason: this._editError[name] ?? this.msg.editNoAnswer });
+                if (!ok) this._setEdit('_editError', name, undefined);
+            }
+        } finally {
+            this._batchBusy = false;
+        }
+    }
+
+    /** An adjustment of the batch, phase APPLY: the analyzed pages one by one, the page on screen last. */
+    private async _onBatchAdjustGenerate() {
+        const batch = this._editBatch;
+        if (!batch || this._batchBusy) return;
+        const ready = batchAdjustReady(this._batchRows(batch));
+        if (!ready.length) return;
+        for (const name of ready) this._setBatchRow(name, { adjust: 'queued' });
+        this._batchBusy = true;
+        try {
+            for (const name of batchOrder(ready, this._selectedPage?.name ?? null)) {
+                if (this._editBatch?.pages !== batch.pages) return;
+                const page = this._pageByName(name);
+                if (!page) continue;
+                this._setBatchRow(name, { adjust: 'generating' });
+                const standard = this._editReview[name]?.adjustPlan?.standard ?? null;
+                const ok = await this._applyAdjust(page);
+                const after = this._editReview[name]?.after.source;
+                this._setBatchRow(name, ok ? { adjust: 'done', misses: after ? standardMisses(after, standard) : undefined } : { adjust: 'failed', adjustReason: this._editError[name] ?? this.msg.editNoAnswer });
+                if (!ok) {
+                    this._setEdit('_editError', name, undefined);
+                    const review = this._editReview[name];
+                    if (review?.adjustPlan) this._editReview = { ...this._editReview, [name]: { ...review, adjustPlan: undefined } };
+                }
+            }
+            this._batchAdjustDraft = '';
+            // The adjusted standard is the batch's from now on.
+            if (this._editBatch?.pages === batch.pages && this._editBatch.adjustStandard) {
+                this._editBatch = { ...this._editBatch, standard: this._editBatch.adjustStandard, adjustStandard: undefined };
+            }
+        } finally {
+            this._batchBusy = false;
+        }
+    }
+
+    /** The analyzed adjustment is dropped on every page: the candidates stay, the ask stays to be refined. */
+    private _onBatchAdjustCancel() {
+        const batch = this._editBatch;
+        if (!batch || this._batchBusy) return;
+        for (const name of batch.pages) {
+            const review = this._editReview[name];
+            if (review?.adjustPlan) this._editReview = { ...this._editReview, [name]: { ...review, adjustPlan: undefined } };
+            this._setBatchRow(name, { adjust: undefined, adjustReason: undefined });
+        }
+        this._editBatch = { ...this._editBatch!, adjustStandard: undefined };
+    }
+
+    private _onCloseBatch() {
+        const batch = this._editBatch;
+        if (!batch) return;
+        // Plans that never became a preview are dropped with the batch; reviews still open are not touched.
+        for (const name of batch.pages) if (!this._editReview[name]) this._setEdit('_editPlan', name, undefined);
+        this._editBatch = null;
+    }
+
+    /** Whether the page is in review as part of the batch on screen (its adjustment can go to the whole batch). */
+    private _inBatch(page: IPageEntry): boolean {
+        const batch = this._activeBatch();
+        return !!batch && batch.pages.includes(page.name) && this._batchRows(batch)[page.name]?.state === 'review';
+    }
+
+    private _batchStateLabel(state: BatchRowState): string {
+        return {
+            planning: this.msg.editBatchPlanning, planned: this.msg.editBatchPlanned, refused: this.msg.editBatchRefused,
+            waiting: this.msg.editBatchWaiting, generating: this.msg.editBatchGenerating, review: this.msg.editBatchInReview,
+            failed: this.msg.editBatchFailed, unchanged: this.msg.editBatchUnchanged, applied: this.msg.editBatchApplied,
+            discarded: this.msg.editBatchDiscarded, skipped: this.msg.editBatchSkipped,
+        }[state];
+    }
+
+    private _batchAdjustLabel(state: BatchAdjustState): string {
+        return {
+            queued: this.msg.editAdjustQueued, planning: this.msg.editAdjustPlanning, planned: this.msg.editAdjustPlanned,
+            refused: this.msg.editAdjustRefused, generating: this.msg.editAdjustGenerating, done: this.msg.editAdjustDone,
+            failed: this.msg.editAdjustFailed,
+        }[state];
+    }
+
+    /** The rules of a standard: what each is for, in the person's words, and the exact classes. */
+    private _renderStandardRules(standard: IEditStandard, title: string) {
+        return html`
+            <div class="flex flex-col gap-1 rounded-md border border-indigo-200 dark:border-indigo-800/50 bg-white/70 dark:bg-gray-900/60 px-2 py-1.5">
+                <span class="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">${title}</span>
+                ${standard.rules.map(rule => html`
+                    <div class="flex flex-col">
+                        <span class="text-[11px] text-gray-700 dark:text-gray-200">${rule.summary}</span>
+                        <span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 wrap-break-word">${rule.classes}</span>
+                    </div>`)}
+            </div>`;
+    }
+
+    /**
+     * The common standard on top of the batch list. While it is decided: deciding, then the rules with Approve /
+     * Cancel and an ask to redo it (or the reason it failed and a retry). Afterwards, the rules the pages follow.
+     */
+    private _renderBatchStandard(batch: IEditBatch) {
+        const standard = batch.standard;
+        if (batch.phase !== 'standard') {
+            return standard?.rules.length ? this._renderStandardRules(standard, this.msg.editStandardShort) : nothing;
+        }
+        const primary = 'text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer';
+        const secondary = 'text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer';
+        const busy = !!batch.standardBusy;
+        const task = this._taskInfoByName.get('edit:standard')?.task;
+        return html`
+            <div class="flex flex-col gap-2">
+                ${busy ? html`
+                    <div class="flex items-center gap-2">
+                        <span class="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" aria-hidden="true"></span>
+                        <span class="text-xs text-gray-600 dark:text-gray-300">${this.msg.editStandardDeciding}</span>
+                        ${task ? html`<button type="button" class="ml-auto text-[10px] text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer" @click=${() => this._openTask('edit:standard')}>${this.msg.editBatchTask}</button>` : nothing}
+                    </div>` : nothing}
+                ${standard?.rules.length ? html`
+                    ${this._renderStandardRules(standard, this.msg.editStandardTitle.replace('{n}', String(batch.pages.length)))}
+                    <span class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.editStandardHint}</span>` : nothing}
+                ${batch.standardError && !busy ? html`<span class="text-[11px] text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word">${batch.standardError}</span>` : nothing}
+                ${standard?.rules.length ? html`
+                    <div class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden focus-within:border-indigo-400 dark:focus-within:border-indigo-500">
+                        <textarea rows="2"
+                            class="block w-full resize-y border-0 bg-transparent px-2.5 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none"
+                            placeholder=${this.msg.editStandardAdjustPlaceholder}
+                            ?disabled=${busy}
+                            .value=${this._standardDraft}
+                            @input=${(e: Event) => { this._standardDraft = (e.target as HTMLTextAreaElement).value; }}
+                        ></textarea>
+                        <div class="flex items-center px-2 py-1.5 border-t border-gray-200 dark:border-gray-800">
+                            <button type="button" class="ml-auto text-xs px-2.5 py-1 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                ?disabled=${busy || !this._standardDraft.trim()}
+                                @click=${() => this._onStandardAdjust()}>${this.msg.editStandardAdjustSend}</button>
+                        </div>
+                    </div>` : nothing}
+                <div class="flex items-center gap-2 flex-wrap">
+                    ${standard?.rules.length ? html`<button type="button" class=${primary} ?disabled=${busy} @click=${() => this._onApproveStandard()}>${this.msg.editStandardApprove}</button>`
+                        : batch.standardError && !busy ? html`<button type="button" class=${primary} @click=${() => this._onStandardAdjust()}>${this.msg.editStandardRetry}</button>` : nothing}
+                    <button type="button" class=${secondary} ?disabled=${busy} @click=${() => this._onCloseBatch()}>${this.msg.editPlanCancel}</button>
+                </div>
+            </div>`;
+    }
+
+    /**
+     * The batch list: the ONLY place a request of several pages is decided. Each row says where its page stands
+     * (the preview, then an adjustment: analyzing, analyzed with its plan, generating, done or why not); below, one
+     * adjustment box and one decision (apply the ticked, discard the rest — or discard all). The page's own card only
+     * shows the page.
+     */
+    private _renderBatch(page: IPageEntry, batch: IEditBatch) {
+        const rows = this._batchRows(batch);
+        const busy = this._batchBusy;
+        const onScreen = this._selectedPage?.name ?? null;
+        const counts = batchCounts(rows);
+        const open = batchOpen(rows);
+        const ready = batchAdjustReady(rows);
+        const adjusting = batchAdjusting(rows);
+        const primary = 'text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer';
+        const secondary = 'text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer';
+        const dot: Record<BatchRowState, string> = {
+            planning: 'bg-gray-400 animate-pulse', planned: 'bg-indigo-500', refused: 'bg-gray-300 dark:bg-gray-600',
+            waiting: 'bg-gray-400', generating: 'bg-amber-400 animate-pulse', review: 'bg-amber-500', failed: 'bg-red-500',
+            unchanged: 'bg-gray-300 dark:bg-gray-600', applied: 'bg-emerald-500', discarded: 'bg-gray-400', skipped: 'bg-gray-300 dark:bg-gray-600',
+        };
+        const adjustDot: Record<BatchAdjustState, string> = {
+            queued: 'bg-gray-400', planning: 'bg-indigo-400 animate-pulse', planned: 'bg-indigo-500', refused: 'bg-gray-400',
+            generating: 'bg-indigo-400 animate-pulse', done: 'bg-amber-500', failed: 'bg-red-500',
+        };
+        const ticked = batch.phase === 'confirm'
+            ? batch.pages.filter(n => rows[n].state === 'planned' && rows[n].include).length
+            : batch.pages.filter(n => rows[n].state === 'review' && rows[n].include).length;
+        const inReview = counts.review ?? 0;
+        const row = (name: string) => {
+            const r = rows[name];
+            const tickable = (batch.phase === 'confirm' && r.state === 'planned') || (batch.phase === 'review' && r.state === 'review');
+            const target = this._pageByName(name);
+            const index = target ? this._pages.indexOf(target) : -1;
+            const error = r.state === 'review' ? this._editError[name] : undefined;
+            const adjust = r.state === 'review' ? r.adjust : undefined;
+            const adjustPlan = adjust === 'planned' ? this._editReview[name]?.adjustPlan : undefined;
+            return html`
+                <li class="flex flex-col gap-1 rounded-md px-2 py-1.5 ${name === onScreen ? 'bg-white dark:bg-gray-800/70 ring-1 ring-indigo-200 dark:ring-indigo-800/50' : 'bg-gray-50 dark:bg-gray-900/50'}">
+                    <div class="flex items-center gap-2 min-w-0">
+                        ${tickable ? html`
+                            <input type="checkbox" class="cursor-pointer disabled:cursor-not-allowed" .checked=${r.include} ?disabled=${busy || adjusting}
+                                aria-label=${name}
+                                @change=${(e: Event) => this._setBatchRow(name, { include: (e.target as HTMLInputElement).checked })}>`
+                            : html`<span class="w-3.5 shrink-0"></span>`}
+                        <span class="h-2 w-2 shrink-0 rounded-full ${adjust ? adjustDot[adjust] : dot[r.state]}" aria-hidden="true"></span>
+                        <button type="button" class="min-w-0 text-xs font-medium text-gray-700 dark:text-gray-200 hover:underline cursor-pointer truncate disabled:cursor-default disabled:no-underline"
+                            ?disabled=${index < 0 || name === onScreen}
+                            title=${this.msg.editBatchOpenHint}
+                            @click=${() => this._dispatchSelect(index + 1)}>${name}</button>
+                        <span class="text-[10px] text-gray-500 dark:text-gray-400 shrink-0">${adjust ? this._batchAdjustLabel(adjust) : this._batchStateLabel(r.state)}</span>
+                        ${this._taskInfoByName.get(`edit:${name}`)?.task ? html`
+                            <button type="button" class="ml-auto shrink-0 text-[10px] text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer" @click=${() => this._openTask(`edit:${name}`)}>${this.msg.editBatchTask}</button>` : nothing}
+                    </div>
+                    ${batch.phase === 'confirm' && r.state === 'planned' ? html`
+                        <ul class="flex flex-col gap-0.5 pl-6">
+                            ${(batch.plans[name] ?? []).map(op => html`
+                                <li class="flex items-baseline gap-1.5 text-[11px] text-gray-600 dark:text-gray-300">
+                                    <span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 shrink-0">${op.organism ?? this.msg.editPageShell}</span>
+                                    <span class="leading-snug">${op.summary}</span>
+                                </li>`)}
+                        </ul>` : nothing}
+                    ${adjustPlan ? html`
+                        <ul class="flex flex-col gap-0.5 pl-6">
+                            ${adjustPlan.operations.map(op => html`
+                                <li class="flex items-baseline gap-1.5 text-[11px] text-gray-600 dark:text-gray-300">
+                                    <span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 shrink-0">${op.organism ?? this.msg.editPageShell}</span>
+                                    <span class="leading-snug">${op.summary}</span>
+                                </li>`)}
+                        </ul>` : nothing}
+                    ${r.reason && (r.state === 'refused' || r.state === 'failed') ? html`<span class="pl-6 text-[11px] text-gray-500 dark:text-gray-400 whitespace-pre-wrap wrap-break-word">${r.reason}</span>` : nothing}
+                    ${adjust && r.adjustReason && (adjust === 'refused' || adjust === 'failed') ? html`<span class="pl-6 text-[11px] ${adjust === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'} whitespace-pre-wrap wrap-break-word">${r.adjustReason}</span>` : nothing}
+                    ${r.misses?.length && r.state === 'review' ? html`<span class="pl-6 text-[11px] text-amber-700 dark:text-amber-400">${this.msg.editStandardMisses.replace('{list}', r.misses.join('; '))}</span>` : nothing}
+                    ${error ? html`<span class="pl-6 text-[11px] text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word">${error}</span>` : nothing}
+                </li>`;
+        };
+        const adjustTargets = batchAdjustTargets(rows, n => this._editReview[n]?.adjust.length ?? MAX_REVIEW_ADJUST, MAX_REVIEW_ADJUST);
+        const scopeCount = this._batchAdjustScope === 'all' ? adjustTargets.length : (onScreen && adjustTargets.includes(onScreen) ? 1 : 0);
+        const draft = this._batchAdjustDraft;
+        // The adjustment box: write → analyze (rows say how it goes) → the plans in the rows → generate or cancel.
+        const adjustBox = ready.length && !busy ? html`
+            <div class="flex flex-col gap-1.5 border-t border-amber-200 dark:border-amber-800/40 pt-2">
+                <span class="text-[11px] italic text-gray-500 dark:text-gray-400">${this.msg.editBatchAdjustQuote.replace('{text}', batch.adjustText ?? '')}</span>
+                ${batch.adjustStandard?.rules.length ? this._renderStandardRules(batch.adjustStandard, this.msg.editStandardAdjusted) : nothing}
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button type="button" class=${primary} @click=${() => this._onBatchAdjustGenerate()}>${this.msg.editBatchAdjustGenerate.replace('{n}', String(ready.length))}</button>
+                    <button type="button" class=${secondary} @click=${() => this._onBatchAdjustCancel()}>${this.msg.reviewAdjustCancel}</button>
+                </div>
+            </div>` : html`
+            <div class="flex flex-col gap-1.5 border-t border-amber-200 dark:border-amber-800/40 pt-2">
+                <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">${this.msg.reviewAdjust}</span>
+                <div class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden focus-within:border-indigo-400 dark:focus-within:border-indigo-500">
+                    <textarea rows="2"
+                        class="block w-full resize-y border-0 bg-transparent px-2.5 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none"
+                        placeholder=${this.msg.reviewAdjustPlaceholder}
+                        ?disabled=${busy}
+                        .value=${draft}
+                        @input=${(e: Event) => { this._batchAdjustDraft = (e.target as HTMLTextAreaElement).value; }}
+                    ></textarea>
+                    <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-2 py-1.5 border-t border-gray-200 dark:border-gray-800">
+                        <select class="min-w-0 shrink max-w-[12rem] truncate text-[11px] pl-2 pr-1 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:[color-scheme:dark] text-gray-600 dark:text-gray-300 cursor-pointer disabled:cursor-not-allowed"
+                            aria-label=${this.msg.editScope}
+                            ?disabled=${busy}
+                            @change=${(e: Event) => { this._batchAdjustScope = (e.target as HTMLSelectElement).value === 'open' ? 'open' : 'all'; }}>
+                            <option class="bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200" value="all" ?selected=${this._batchAdjustScope === 'all'}>${this.msg.editBatchAdjustAll} · ${adjustTargets.length}</option>
+                            <option class="bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200" value="open" ?selected=${this._batchAdjustScope === 'open'}>${this.msg.editBatchAdjustOne}</option>
+                        </select>
+                        <button type="button" class="ml-auto shrink-0 text-xs font-medium px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                            ?disabled=${busy || !draft.trim() || !scopeCount}
+                            @click=${() => this._onBatchAdjustPlan()}>${busy && adjusting ? this.msg.reviewAdjustPlanning : this.msg.reviewAdjustSend}</button>
+                    </div>
+                </div>
+            </div>`;
+        return html`
+            <div class="rounded-lg border ${batch.phase === 'review' || batch.phase === 'generate' ? 'border-amber-300 dark:border-amber-700/60 bg-amber-50/60 dark:bg-amber-900/10' : 'border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10'} px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">${this.msg.editBatchTitle.replace('{n}', String(batch.pages.length))}</span>
+                <span class="text-[11px] italic text-gray-500 dark:text-gray-400">“${batch.request}”</span>
+                ${this._renderBatchStandard(batch)}
+                <ul class="flex flex-col gap-1">${batch.pages.map(row)}</ul>
+                ${batch.phase === 'review' && inReview ? html`<span class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.editBatchOpenHint} ${this.msg.editBatchTickHint}</span>` : nothing}
+                ${batch.phase === 'confirm' ? html`
+                    <span class="text-[10px] text-gray-500 dark:text-gray-400">${this.msg.editBatchCost.replace('{n}', String(ticked))}</span>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <button type="button" class=${primary} ?disabled=${busy || !ticked} @click=${() => this._onGenerateBatch()}>${this.msg.editBatchGenerate.replace('{n}', String(ticked))}</button>
+                        <button type="button" class=${secondary} ?disabled=${busy} @click=${() => this._onCloseBatch()}>${this.msg.editPlanCancel}</button>
+                    </div>` : nothing}
+                ${batch.phase === 'plan' ? html`
+                    <button type="button" class="self-start ${secondary}" @click=${() => this._onCloseBatch()}>${this.msg.editPlanCancel}</button>` : nothing}
+                ${batch.phase === 'review' && inReview ? html`
+                    ${adjustBox}
+                    ${ready.length && !busy ? nothing : html`
+                        <div class="flex items-center gap-2 flex-wrap border-t border-amber-200 dark:border-amber-800/40 pt-2">
+                            <button type="button" class=${primary} ?disabled=${busy} @click=${() => this._onBatchDecide('ticked')}>${this.msg.editBatchApplyTicked.replace('{n}', String(ticked))}</button>
+                            <button type="button" class=${secondary} ?disabled=${busy} @click=${() => this._onBatchDecide('discardAll')}>${this.msg.editBatchDiscardAll}</button>
+                        </div>
+                        <span class="text-[10px] text-amber-700 dark:text-amber-400">${this.msg.editBatchUnsaved.replace('{n}', String(inReview))}</span>`}` : nothing}
+                ${batch.phase === 'review' && counts.failed ? html`
+                    <button type="button" class="self-start text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer disabled:opacity-50" ?disabled=${busy} @click=${() => this._onRetryBatch()}>${this.msg.editBatchRetry}</button>` : nothing}
+                ${batch.phase === 'review' && !open ? html`
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-gray-600 dark:text-gray-300">${this.msg.editBatchDone
+                            .replace('{applied}', String(counts.applied ?? 0)).replace('{discarded}', String(counts.discarded ?? 0))
+                            .replace('{other}', String((counts.failed ?? 0) + (counts.unchanged ?? 0) + (counts.refused ?? 0) + (counts.skipped ?? 0)))}</span>
+                        <button type="button" class="ml-auto text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer" @click=${() => this._onCloseBatch()}>${this.msg.editBatchClose}</button>
+                    </div>` : nothing}
+            </div>`;
     }
 
     // Cancel: back to the request, kept so it can be refined.
@@ -2021,7 +3098,7 @@ export class PluginSelectPage extends StateLitElement {
         agentName: string,
         prompt: string,
         onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
-    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string; plan?: IEditOperation[]; notes?: IEditNotes }> {
+    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string; plan?: IEditOperation[]; notes?: IEditNotes; standard?: IEditStandard }> {
         // Thread host: selectPage lives in serviceGenome since the knob move (D4).
         const fullName = '_102020_/l2/serviceGenome';
         let threadPromise = this._threadCache.get(fullName);
@@ -2053,6 +3130,7 @@ export class PluginSelectPage extends StateLitElement {
         // `NOTES:<json>` (apply phase).
         let plan: IEditOperation[] | undefined;
         let notes: IEditNotes | undefined;
+        let standard: IEditStandard | undefined;
         for await (const event of executeBeforePromptStream(moduleAgent, context)) {
             if (event.type === 'task-created') {
                 taskId = event.taskId; task = event.task; message = event.message;
@@ -2066,6 +3144,7 @@ export class PluginSelectPage extends StateLitElement {
                         try {
                             if (i.traceMsg.startsWith('PLAN:')) plan = JSON.parse(i.traceMsg.slice(5));
                             else if (i.traceMsg.startsWith('NOTES:')) notes = JSON.parse(i.traceMsg.slice(6));
+                            else if (i.traceMsg.startsWith('STANDARD:')) standard = JSON.parse(i.traceMsg.slice(9));
                         } catch { /* not ours */ }
                     }
                 }
@@ -2073,7 +3152,7 @@ export class PluginSelectPage extends StateLitElement {
                 failure = String(event.error);
             }
         }
-        return { taskId, task, message, failure, plan, notes };
+        return { taskId, task, message, failure, plan, notes, standard };
     }
 
     private async _openTask(pageName: string) {

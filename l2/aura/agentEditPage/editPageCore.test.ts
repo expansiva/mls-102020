@@ -4,11 +4,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   applyMessages, applyPagePatch, catalogueKeys, catalogueLocales, designSystemColorTokens, listMethods, methodsForOperation,
-  normalizeOperations, operationHistoryEntry, pageOutline, parseEditPageEntry, requestWithAdjustments, readPageDefinition, type EditOperation, type PagePatch,
+  EDIT_PAGE_MAX_PAGES, normalizeOperations, normalizeStandard, operationHistoryEntry, pageOutline, parseEditPageEntry, requestWithAdjustments, readPageDefinition, type EditOperation, type PagePatch,
 } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
 import {
-  EDIT_PAGE_GATE_SYSTEM_PROMPT, EDIT_PAGE_PATCH_SYSTEM_PROMPT, editPageGatePrompt, editPageGateSchema, editPagePatchPrompt, editPageToolArguments,
+  EDIT_PAGE_GATE_SYSTEM_PROMPT, EDIT_PAGE_PATCH_SYSTEM_PROMPT, batchLines, editPageStandardPrompt, pagesNamedIn, standardLines, editPageGatePrompt, editPageGateSchema, editPagePatchPrompt, editPageToolArguments,
 } from '/_102020_/l2/aura/agentEditPage/editPagePrompts.js';
+import { gateStep, patchStep, standardStep } from '/_102020_/l2/aura/agentEditPage/editPageIntents.js';
 import { recordDefsHistory, splitDefsHistory, withDefsHistory, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
 
 // 999999/sampleModule are fictitious on purpose: no test depends on a real project. The page follows the shape
@@ -211,23 +212,57 @@ test('design system color tokens', () => {
 
 test('the Studio entry', () => {
   const parsed = parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":" centralize "}');
-  assert.deepEqual(parsed, { kind: 'entry', entry: { module: 'sampleModule', page: 'pessoas', device: 'desktop', genome: 'page11', request: 'centralize', operations: null, element: null, marks: [], adjust: [] } });
+  assert.deepEqual(parsed, { kind: 'entry', entry: { module: 'sampleModule', page: 'pessoas', device: 'desktop', genome: 'page11', request: 'centralize', operations: null, element: null, marks: [], adjust: [], batch: [], standardize: false, standard: null } });
   assert.equal(parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":"x","device":"tv"}').kind, 'refusal');
   assert.equal(parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":"x","operations":[{"aspect":"nope"}]}').kind, 'refusal');
 });
 
-test('the Studio entry: adjustments come only with approved operations, at most three, never empty', () => {
+test('the Studio entry: adjustments, planned (no operations) or applied (with the plan), at most three, never empty', () => {
   const ops = '"operations":[{"id":"op1","organism":"listaPessoas","aspect":"style.emphasis","change":"maior","summary":"maior"}]';
   const base = `{"module":"sampleModule","page":"pessoas","request":"titulo maior",${ops}`;
   const ok = parseEditPageEntry(`${base},"adjust":[" menos azul "]}`);
   assert.equal(ok.kind, 'entry');
   assert.deepEqual(ok.kind === 'entry' ? ok.entry.adjust : null, ['menos azul']);
-  assert.equal(parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":"x","adjust":["y"]}').kind, 'refusal', 'no operations');
+  const plan = parseEditPageEntry('{"module":"sampleModule","page":"pessoas","request":"x","adjust":["y"]}');
+  assert.deepEqual(plan.kind === 'entry' ? [plan.entry.operations, plan.entry.adjust] : null, [null, ['y']], 'no operations: the gate plans the adjustment');
   assert.equal(parseEditPageEntry(`${base},"adjust":["a","b","c","d"]}`).kind, 'refusal', 'over the limit');
   assert.equal(parseEditPageEntry(`${base},"adjust":["  "]}`).kind, 'refusal', 'empty item');
   assert.equal(parseEditPageEntry(`${base},"adjust":"y"}`).kind, 'refusal', 'not a list');
   assert.equal(requestWithAdjustments('titulo maior', []), 'titulo maior');
   assert.equal(requestWithAdjustments('titulo maior', ['menos azul', 'mais espaco']), 'titulo maior (ajuste: menos azul; mais espaco)');
+});
+
+test('the Studio entry: a request of several pages lists the others, distinct, without marks', () => {
+  const base = '"module":"sampleModule","page":"pessoas","request":"titulos iguais"';
+  const ok = parseEditPageEntry(`{${base},"batch":["empresas","contratos"]}`);
+  assert.deepEqual(ok.kind === 'entry' ? ok.entry.batch : null, ['empresas', 'contratos']);
+  assert.equal(parseEditPageEntry(`{${base},"batch":["pessoas"]}`).kind, 'refusal', 'the page itself');
+  assert.equal(parseEditPageEntry(`{${base},"batch":["a1","a1"]}`).kind, 'refusal', 'repeated');
+  assert.equal(parseEditPageEntry(`{${base},"batch":["../x"]}`).kind, 'refusal', 'not a page name');
+  const many = Array.from({ length: EDIT_PAGE_MAX_PAGES }, (_, i) => `p${i}`);
+  assert.equal(parseEditPageEntry(`{${base},"batch":${JSON.stringify(many)}}`).kind, 'refusal', 'over the limit (the page counts)');
+  assert.equal(parseEditPageEntry(`{${base},"batch":${JSON.stringify(many.slice(1))}}`).kind, 'entry');
+  const element = '"element":{"tag":"h1","organism":null,"organismPath":"h1","anchorPath":null,"literal":""}';
+  assert.equal(parseEditPageEntry(`{${base},${element},"batch":["empresas"]}`).kind, 'refusal', 'an element belongs to one page');
+});
+
+test('step ids carry the device: desktop and mobile of the same page never collide', () => {
+  const args = { project: 999999, module: 'sampleModule', page: 'pessoas', genome: 'page11', request: 'x', operations: null, element: null, marks: [], adjust: [], batch: [], attempt: 1 };
+  const desktop = gateStep({ ...args, device: 'desktop' }).planning!.planId;
+  const mobile = gateStep({ ...args, device: 'mobile' }).planning!.planId;
+  assert.notEqual(desktop, mobile);
+  assert.notEqual(patchStep({ ...args, device: 'desktop' }).planning!.planId, patchStep({ ...args, device: 'mobile' }).planning!.planId);
+});
+
+test('prompts: a request of several pages asks for the same answer on all of them', () => {
+  assert.deepEqual(batchLines([]), []);
+  const lines = batchLines(['empresas', 'contratos']).join(' ');
+  assert.ok(lines.includes('goes to 3 pages') && lines.includes('empresas, contratos') && lines.includes('the same design tokens'));
+  const definition = readPageDefinition('export const definition = {"intent":"Ver","sections":[],"organisms":{"listaPessoas":{"kind":"list","text":"Lista"}}} as const;')!;
+  const gate = editPageGatePrompt({ request: 'x', pageLabel: 'p', definition, outline: pageOutline(PAGE), sharedDeclaration: '', history: [], batch: ['empresas'] });
+  assert.ok(gate.includes('# The same request goes to 2 pages of the module'));
+  const patch = editPagePatchPrompt({ pageLabel: 'p', operations: [op('listaPessoas')], methodsByOperation: { op1: ['renderLista'] }, source: PAGE, sharedDeclaration: '', tokens: [], locales: [], history: [], definition, batch: ['empresas'] });
+  assert.ok(patch.indexOf('# The same request goes to') < patch.indexOf('# The page file'));
 });
 
 test('prompts: the adjustment says the file already holds the result, the newest ask last', () => {
@@ -239,6 +274,7 @@ test('prompts: the adjustment says the file already holds the result, the newest
   assert.ok(section >= 0 && section < prompt.indexOf('# The page file'));
   assert.ok(prompt.includes('ALREADY contains the result'));
   assert.ok(prompt.includes('- Earlier (1): menos azul') && prompt.includes('- Now: mais espaco'));
+  assert.ok(prompt.includes('are the plan of the adjustment asked now'));
 });
 
 test('prompts: model type markers, strict tool, content', () => {
@@ -254,4 +290,50 @@ test('prompts: model type markers, strict tool, content', () => {
   assert.ok(patch.includes('→ methods: renderLista') && patch.includes('TS2339 x'));
   assert.deepEqual(editPageToolArguments({ type: 'flexible', result: { toolName: 'submitEditPlan', arguments: '{"verdict":"apply"}' } }, 'submitEditPlan'), { verdict: 'apply' });
   assert.throws(() => editPageToolArguments({ type: 'flexible', result: { toolName: 'other', arguments: '{}' } }, 'submitEditPlan'), /MISMATCH/u);
+});
+
+test('prompts: an adjustment is planned by the gate on the result, only the newest ask, any organism', () => {
+  const definition = readPageDefinition('export const definition = {"intent":"Ver","sections":[],"organisms":{"listaPessoas":{"kind":"list","text":"Lista"}}} as const;')!;
+  const input = { request: 'centralize', pageLabel: 'p', definition, outline: pageOutline(PAGE), sharedDeclaration: '', history: [] };
+  assert.ok(editPageGatePrompt(input).startsWith('# The request\n'));
+  const gate = editPageGatePrompt({ ...input, adjust: ['menos azul', 'header igual ao da inicio'] });
+  assert.ok(gate.startsWith('# The request (already applied)\ncentralize'));
+  assert.ok(gate.indexOf('# The adjustment to plan now') < gate.indexOf('# The page —'));
+  assert.ok(gate.includes('- Earlier (1): menos azul') && gate.includes('- Now: header igual ao da inicio'));
+  assert.ok(gate.includes('not only the ones the request touched'));
+});
+
+test('the standard: rules within bounds, classes a page may use; only with the other pages, never with operations', () => {
+  const rule = { what: 'page header title', classes: 'text-2xl  font-semibold', summary: 'título 2xl' };
+  assert.deepEqual(normalizeStandard({ rules: [rule] }), { ok: true, value: { rules: [{ ...rule, classes: 'text-2xl font-semibold' }] } });
+  assert.deepEqual(normalizeStandard(undefined), { ok: true, value: null });
+  for (const classes of ['text-[#ff0000]', 'dark:text-white', 'x" onclick="y', 'a${b}']) {
+    assert.equal(normalizeStandard({ rules: [{ ...rule, classes }] }).ok, false, classes);
+  }
+  assert.equal(normalizeStandard({ rules: [{ ...rule, summary: ' ' }] }).ok, false);
+  const base = '{"module":"sampleModule","page":"pessoas","request":"header igual"';
+  const ok = parseEditPageEntry(`${base},"batch":["empresas"],"standardize":true}`);
+  assert.deepEqual(ok.kind === 'entry' ? [ok.entry.standardize, ok.entry.standard] : null, [true, null]);
+  assert.equal(parseEditPageEntry(`${base},"standardize":true}`).kind, 'refusal', 'no other page');
+  const ops = '"operations":[{"id":"op1","organism":"listaPessoas","aspect":"style.emphasis","change":"maior","summary":"maior"}]';
+  assert.equal(parseEditPageEntry(`${base},"batch":["empresas"],"standardize":true,${ops}}`).kind, 'refusal', 'no operations');
+  const args = { project: 999999, module: 'sampleModule', page: 'pessoas', device: 'desktop' as const, genome: 'page11', request: 'x', operations: null, element: null, marks: [], adjust: [], batch: ['empresas'], standardize: true, standard: null, attempt: 1 };
+  assert.ok(standardStep(args).planning!.planId.startsWith('editPage-standard-desktop-pessoas'));
+});
+
+test('prompts: the standard reads the reference and named pages whole; gate and patch take it as binding', () => {
+  assert.deepEqual(pagesNamedIn('seguindo o modelo da pagina inicio, title', ['inicio', 'listas_tarefas', 'ini']), ['inicio']);
+  const standard = { rules: [{ what: 'page header title', classes: 'text-2xl font-semibold', summary: 'título' }] };
+  const prompt = editPageStandardPrompt({ request: 'header igual', pageLabel: 'p', source: PAGE, named: [{ page: 'inicio', source: 'INICIO' }], others: [{ page: 'empresas', outline: pageOutline(PAGE) }], tokens: [] });
+  assert.ok(prompt.includes('## The reference page — p') && prompt.includes('## A page the request names — inicio') && prompt.includes('- empresas'));
+  assert.ok(!prompt.includes('# The previous standard'));
+  const adjusted = editPageStandardPrompt({ request: 'header igual', adjust: ['titulo menor'], previous: standard, pageLabel: 'p', source: PAGE, named: [], others: [], tokens: [] });
+  assert.ok(adjusted.includes('- page header title: text-2xl font-semibold') && adjusted.includes('# The adjustment asked now\ntitulo menor'));
+  assert.deepEqual(standardLines(null), []);
+  assert.ok(standardLines(standard).join('\n').includes('use EXACTLY these classes'));
+  const definition = readPageDefinition('export const definition = {"intent":"Ver","sections":[],"organisms":{"listaPessoas":{"kind":"list","text":"Lista"}}} as const;')!;
+  const gate = editPageGatePrompt({ request: 'x', pageLabel: 'p', definition, outline: pageOutline(PAGE), sharedDeclaration: '', history: [], batch: ['empresas'], standard });
+  assert.ok(gate.indexOf('# The common standard') > gate.indexOf('# The same request goes to'));
+  const patch = editPagePatchPrompt({ pageLabel: 'p', operations: [op('listaPessoas')], methodsByOperation: { op1: ['renderLista'] }, source: PAGE, sharedDeclaration: '', tokens: [], locales: [], history: [], definition, standard });
+  assert.ok(patch.includes('- page header title: text-2xl font-semibold'));
 });

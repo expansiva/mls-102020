@@ -3,7 +3,7 @@
 // The collab-messages intents agentEditPage emits (add a step, update a step, the prompt of a step). Private to
 // this folder: no other agent's intents module is imported (skills/agentCodeIsPrivate.md).
 
-import { EDIT_PAGE_GATE_AGENT_NAME, EDIT_PAGE_PATCH_AGENT_NAME, type EditPageStepArgs } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
+import { EDIT_PAGE_GATE_AGENT_NAME, EDIT_PAGE_PATCH_AGENT_NAME, EDIT_PAGE_STANDARD_AGENT_NAME, type EditPageStepArgs } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
 
 export function addStep(context: mls.msg.ExecutionContext, parentStepId: number, step: mls.msg.AIPayload, bootstrap = false): mls.msg.AgentIntentAddStep {
   return {
@@ -64,9 +64,13 @@ function agentStep(agentName: string, title: string, planId: string, args: EditP
 }
 
 export function gateStep(args: EditPageStepArgs): mls.msg.AIAgentStep {
-  return agentStep(EDIT_PAGE_GATE_AGENT_NAME, `Plan the change of ${args.page}`, `editPage-gate-${args.page}`, args);
+  return agentStep(EDIT_PAGE_GATE_AGENT_NAME, `Plan the change of ${args.page}`, `editPage-gate-${args.device}-${args.page}`, args);
+}
+
+export function standardStep(args: EditPageStepArgs): mls.msg.AIAgentStep {
+  return agentStep(EDIT_PAGE_STANDARD_AGENT_NAME, `${args.standard ? 'Adjust' : 'Decide'} the common standard of ${args.batch.length + 1} pages`, `editPage-standard-${args.device}-${args.page}`, args);
 }
 
 export function patchStep(args: EditPageStepArgs): mls.msg.AIAgentStep {
-  return agentStep(EDIT_PAGE_PATCH_AGENT_NAME, `Change ${args.page}${args.attempt > 1 ? ' (repair)' : ''}`, `editPage-patch-${args.page}-${args.attempt}`, args);
+  return agentStep(EDIT_PAGE_PATCH_AGENT_NAME, `Change ${args.page}${args.attempt > 1 ? ' (repair)' : ''}`, `editPage-patch-${args.device}-${args.page}-${args.attempt}`, args);
 }

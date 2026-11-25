@@ -72,7 +72,7 @@ test('the panel sends the marks of THIS page, and the selection becomes one more
   assert.match(SELECT_PAGE, /\.\.\.\(marks\.length \? \{ marks \} : \{\}\)/u);
   assert.match(SELECT_PAGE, /marks\.push\(\{ note: null, elements: \[selected\] \}\)/u);
   assert.match(SELECT_PAGE, /const element = marks\.length \? null : selected;/u);
-  assert.match(SELECT_PAGE, /plan\.operations, plan\.marks\)/u, 'the approved plan goes back with its marks');
+  assert.match(SELECT_PAGE, /plan\.operations, plan\.marks, \[\], plan\.batch \?\? \[\], plan\.standard \?\? null\)/u, 'the approved plan goes back with its marks');
   assert.match(SELECT_PAGE, /if \(plan\.marks\.length\) annotCommand\(\{ kind: 'clear' \}\);/u);
 });
 

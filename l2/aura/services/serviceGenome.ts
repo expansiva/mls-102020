@@ -32,6 +32,9 @@ import '/_102020_/l2/aura/plugins/selectPage.js';
 // templates per page (selectUx), and the component rules come from the template.
 import '/_102020_/l2/aura/plugins/selectUx.js';
 import '/_102020_/l2/aura/plugins/selectMolecule.js';
+import type { IModuleSwap } from '/_102020_/l2/aura/plugins/selectMolecule.js';
+import { moleculeTagsIn } from '/_102020_/l2/aura/plugins/editBatchCore.js';
+import { commitPageSource, snapshotPageFile } from '/_102020_/l2/aura/agentEditPage/editPageIo.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -201,6 +204,8 @@ export class ServiceGenome102020 extends ServiceBase {
     @state() private _oldSelectedTag: string = '';
     @state() private _moleculeError: string = '';
     @state() private _moleculeReplaceMode: 'selected' | 'all' = 'selected';
+    // After a swap: the other pages of the module still using the old molecule, offered to be swapped too.
+    @state() private _moduleSwap: IModuleSwap | null = null;
     /** The variant shown on the page without being applied (hover/focus in the panel); null = none. */
     @state() private _moleculePreviewValue: number | null = null;
     /** The variant whose on-screen preview could not be shown, for the panel to say so. */
@@ -372,6 +377,8 @@ export class ServiceGenome102020 extends ServiceBase {
     private async _onPreviewSelectedElementChanged(tag: string) {
         // Another selection: a preview of the previous one must not stay on the page.
         this._clearMoleculePreview();
+        // The offer to swap in the other pages was about the previous swap.
+        if (this._moduleSwap && !this._moduleSwap.busy) this._moduleSwap = null;
         // Its catalog belongs to the group that was selected.
         if (!tag || this._extractGroupFromTag(tag) !== this._selectedMoleculeGroup) this._moleculeCatalog.close();
         await this._ensureMoleculesLoaded();
@@ -609,6 +616,9 @@ export class ServiceGenome102020 extends ServiceBase {
 
         notePageEdit(versioned, 'me', tStudio('versions.moleculeSwap', { from: this._oldSelectedTag, to: newTag }));
 
+        // The other pages of the module that still use the old molecule: offered, never swapped without asking.
+        void this._offerModuleSwap({ ...file, project: Number(file.project) }, this._oldSelectedTag, newTag);
+
         this._oldSelectedTag = newTag;
         // No reselect key is written: the in-place editor restores its own selection by POSITION
         // when the live update announces the remount.
@@ -632,6 +642,79 @@ export class ServiceGenome102020 extends ServiceBase {
 
         await this._applyToRunningPage(target);
 
+    }
+
+    // ─── The same swap in the other pages of the module (no AI) ──────────
+
+    /** A page's source from its editor model (the local copy included); null when it cannot be read. */
+    private async _pageSource(project: number, folder: string, shortName: string): Promise<string | null> {
+        try {
+            return (await snapshotPageFile(project, folder, shortName))?.source ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * After a swap on the page on screen: the other pages of the module that still use the old tag. They are the
+     * siblings in the same folder (same device, same UX), so the swap means the same thing there.
+     */
+    private async _offerModuleSwap(file: { project: number; folder: string; shortName: string }, from: string, to: string): Promise<void> {
+        const pages: IModuleSwap['pages'] = [];
+        for (const entry of this._pageEntries) {
+            if (entry.file.shortName === file.shortName) continue;
+            const source = await this._pageSource(file.project, file.folder, entry.file.shortName);
+            if (source !== null && moleculeTagsIn(source).includes(from)) pages.push({ name: entry.name, shortName: entry.file.shortName, picked: true });
+        }
+        this._moduleSwap = pages.length ? { from, to, project: file.project, folder: file.folder, pages, busy: false, done: null } : null;
+    }
+
+    private _onModuleSwapEvent(detail: { action: 'toggle'; name: string } | { action: 'apply' } | { action: 'dismiss' }): void {
+        const swap = this._moduleSwap;
+        if (!swap || swap.busy) return;
+        if (detail.action === 'dismiss') { this._moduleSwap = null; return; }
+        if (detail.action === 'toggle') {
+            this._moduleSwap = { ...swap, pages: swap.pages.map(p => (p.name === detail.name ? { ...p, picked: !p.picked } : p)) };
+            return;
+        }
+        void this._onModuleSwapApply();
+    }
+
+    /**
+     * Every occurrence of the old tag in each ticked page, one page at a time: model + local copy + compile (as the
+     * AI edit writes a page), a version before and after, and the defs history (`scope: 'all'`), so a regeneration
+     * redoes it. A page that does not compile goes back as it was; a page in AI review is left alone.
+     */
+    private async _onModuleSwapApply(): Promise<void> {
+        const swap = this._moduleSwap;
+        if (!swap || swap.busy) return;
+        this._moduleSwap = { ...swap, busy: true, done: null };
+        const done: string[] = [];
+        const failed: Array<{ name: string; reason: string }> = [];
+        for (const page of swap.pages.filter(p => p.picked)) {
+            const ref = { project: swap.project, folder: swap.folder, shortName: page.shortName };
+            try {
+                if (isPageInReview(ref)) { failed.push({ name: page.name, reason: tStudio('reason.pageInReview') }); continue; }
+                const source = await this._pageSource(ref.project, ref.folder, ref.shortName);
+                if (source === null) { failed.push({ name: page.name, reason: 'not found' }); continue; }
+                const result = replaceComponentTag(swap.from, swap.to, source, undefined, 'all');
+                if (!result.success || !result.newSource) { failed.push({ name: page.name, reason: result.error ?? '' }); continue; }
+                const versioned = versionedPage(ref);
+                await ensurePageVersion(versioned, source);
+                const commit = await commitPageSource(ref.project, ref.folder, ref.shortName, result.newSource);
+                if (commit.errors.length) {
+                    await commitPageSource(ref.project, ref.folder, ref.shortName, source);
+                    failed.push({ name: page.name, reason: commit.errors[0] });
+                    continue;
+                }
+                await recordEditInDefs(ref, { kind: 'molecule', organism: null, target: swap.from, from: swap.from, to: swap.to, at: new Date().toISOString(), scope: 'all' });
+                notePageEdit(versioned, 'me', tStudio('versions.moleculeSwap', { from: swap.from, to: swap.to }));
+                done.push(page.name);
+            } catch (error) {
+                failed.push({ name: page.name, reason: error instanceof Error ? error.message : String(error) });
+            }
+        }
+        this._moduleSwap = { ...swap, busy: false, done: { done, failed } };
     }
 
     /**
@@ -1399,6 +1482,8 @@ export class ServiceGenome102020 extends ServiceBase {
                         .previewValue=${this._moleculePreviewValue}
                         .previewUnavailable=${this._moleculePreviewUnavailable}
                         .catalogAvailable=${!!this._catalogFile()}
+                        .moduleSwap=${this._moduleSwap}
+                        @molecule-module-swap=${(e: CustomEvent) => this._onModuleSwapEvent(e.detail)}
                         @molecule-catalog=${() => void this._openMoleculeCatalog()}
                         @molecule-preview=${(e: CustomEvent) => void this._onMoleculePreview(e.detail.value)}
                     ></aura--plugins--select-molecule-102020>

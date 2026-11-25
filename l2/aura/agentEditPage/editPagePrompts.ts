@@ -6,10 +6,11 @@
 // direction of the change comes from the person's request, never from a rule here.
 
 import { DEFS_HISTORY_ASPECTS, type DefsHistoryEntry } from '/_102020_/l2/helpers/defsHistory/defsHistory.js';
-import type { EditOperation, MethodOutline, PageDefinitionDigest } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
+import type { EditOperation, EditStandard, MethodOutline, PageDefinitionDigest } from '/_102020_/l2/aura/agentEditPage/editPageCore.js';
 
 export const EDIT_PAGE_GATE_TOOL = 'submitEditPlan';
 export const EDIT_PAGE_PATCH_TOOL = 'submitPagePatch';
+export const EDIT_PAGE_STANDARD_TOOL = 'submitStandard';
 
 export const EDIT_PAGE_GATE_SYSTEM_PROMPT = `<!-- modelType: reasoning -->
 <!-- x-tool-strict: true -->
@@ -181,6 +182,50 @@ export interface EditPageGateInput {
   history: readonly DefsHistoryEntry[];
   selected?: SelectedElementPrompt | null;
   marks?: readonly MarkPrompt[];
+  /** The other pages the same request goes to (consistency only). */
+  batch?: readonly string[];
+  /** Adjustments of a preview: the request is already applied and the page file shows it; plan the newest one. */
+  adjust?: readonly string[];
+  /** The common standard of the batch: binding. */
+  standard?: EditStandard | null;
+}
+
+/** The adjustment to plan: the request is already in the file, plan only the newest ask (the earlier ones are in too). */
+export function gateAdjustLines(adjust: readonly string[] | null | undefined): string[] {
+  if (!adjust?.length) return [];
+  return [
+    '# The adjustment to plan now',
+    'The request above was ALREADY applied: the page file outlined below shows its result, and the person looked at it on screen.',
+    'Plan ONLY the adjustment asked now (the earlier ones are already in the file too). It may touch any organism, not only the ones the request touched.',
+    'Refuse, with the reason, when the page file alone cannot do it.',
+    ...adjust.map((text, index) => `- ${index === adjust.length - 1 ? 'Now' : `Earlier (${index + 1})`}: ${text}`),
+    '',
+  ];
+}
+
+/** The same request goes to other pages of the module: the answer must look the same on all of them. */
+export function batchLines(batch: readonly string[] | null | undefined): string[] {
+  if (!batch?.length) return [];
+  return [
+    `# The same request goes to ${batch.length + 1} pages of the module`,
+    `The other pages: ${batch.join(', ')}. Each page is changed on its own, without seeing the others.`,
+    'Answer so the result looks the same on every page: the same design tokens, sizes and form for the same kind of element; no choice that only makes sense here.',
+    'If this page has nothing the request is about, refuse saying so (the other pages go on).',
+    '',
+  ];
+}
+
+/** The common standard: the same exact classes on every page, already decided — not the model's to choose. */
+export function standardLines(standard: EditStandard | null | undefined): string[] {
+  if (!standard?.rules.length) return [];
+  return [
+    '# The common standard — binding on every page of the request',
+    'Decided once for all the pages. For each element below, use EXACTLY these classes, replacing the classes of the same',
+    'kind it has now (size, weight, spacing, alignment…). Never pick other values for them; an element this page does not',
+    'have is skipped. In a plan, each `change` names the classes verbatim.',
+    ...standard.rules.map(rule => `- ${rule.what}: ${rule.classes}`),
+    '',
+  ];
 }
 
 function historyLines(history: readonly DefsHistoryEntry[]): string[] {
@@ -228,9 +273,10 @@ function elementLines(selected: SelectedElementPrompt, heading: string): string[
 
 export function editPageGatePrompt(input: EditPageGateInput): string {
   return [
-    '# The request',
+    input.adjust?.length ? '# The request (already applied)' : '# The request',
     input.request,
     '',
+    ...gateAdjustLines(input.adjust),
     `# The page — ${input.pageLabel}`,
     `Intent: ${input.definition.intent || '(none)'}`,
     '',
@@ -244,6 +290,8 @@ export function editPageGatePrompt(input: EditPageGateInput): string {
     '',
     ...selectedElementLines(input.selected),
     ...markedLines(input.marks),
+    ...batchLines(input.batch),
+    ...standardLines(input.standard),
     ...historyLines(input.history),
     '# Shared declaration — what the page can read and call',
     '```ts', input.sharedDeclaration.trim() || '(not found)', '```',
@@ -263,8 +311,12 @@ export interface EditPagePatchInput {
   definition: PageDefinitionDigest | null;
   selected?: SelectedElementPrompt | null;
   marks?: readonly MarkPrompt[];
-  /** Adjustments asked after the person saw the result: the page file below already holds that result. */
+  /** Adjustments asked after the person saw the result: the page file below already holds it; the operations plan the newest. */
   adjust?: readonly string[];
+  /** The other pages the same request goes to (consistency only). */
+  batch?: readonly string[];
+  /** The common standard of the batch: binding. */
+  standard?: EditStandard | null;
   repair?: { diagnostic: string; previous: string };
 }
 
@@ -273,8 +325,8 @@ function adjustLines(adjust: readonly string[] | undefined): string[] {
   if (!adjust?.length) return [];
   return [
     '# Adjustment after the person saw the result',
-    'The page file below ALREADY contains the result of the approved operations. The person looked at it on screen and asked for an adjustment.',
-    'Change only what the adjustment asks, inside the same methods; keep everything else of the current result as it is.',
+    'The page file below ALREADY contains the result of the request and of the earlier adjustments. The person looked at it on screen and asked for an adjustment.',
+    'The approved operations above are the plan of the adjustment asked now: change only what they say; keep everything else of the current result as it is.',
     ...adjust.map((text, index) => `- ${index === adjust.length - 1 ? 'Now' : `Earlier (${index + 1})`}: ${text}`),
     '',
   ];
@@ -293,6 +345,8 @@ export function editPagePatchPrompt(input: EditPagePatchInput): string {
     ] : []),
     ...selectedElementLines(input.selected),
     ...markedLines(input.marks),
+    ...batchLines(input.batch),
+    ...standardLines(input.standard),
     ...historyLines(input.history),
     `# Locales of the catalogue (default first): ${input.locales.join(', ') || '(no catalogue)'}`,
     '',
@@ -312,6 +366,103 @@ export function editPagePatchPrompt(input: EditPagePatchInput): string {
       'What you returned:',
       '```ts', input.repair.previous.trim(), '```',
     ] : []),
+  ].join('\n');
+}
+
+export const EDIT_PAGE_STANDARD_SYSTEM_PROMPT = `<!-- modelType: reasoning -->
+<!-- x-tool-strict: true -->
+
+A person asked the same change of several pages of one module of a business app (Lit + Tailwind). Before any page is
+changed, you decide ONCE the exact values every page must use, so the pages end up the same. Answer with
+\`${EDIT_PAGE_STANDARD_TOOL}\`.
+
+## What you receive
+
+- **The request**, in the person's words (and, when adjusting, the previous standard and the adjustment asked now).
+- **The reference page file**: the page the request was asked from, whole. Its current classes are the starting point.
+- **Pages the request names** (when it names any, e.g. "like the inicio page"), whole: then the values come from them.
+- **The other pages, outlined**: their methods, the organisms each wraps, the texts and molecules they use.
+- **Design tokens (color)**.
+
+## The rules
+
+One rule per kind of element the request is about (e.g. "page header title", "page header subtitle", "page header
+container spacing"). \`what\` names the element so a model that sees only ONE page finds it there, in English.
+\`classes\` is the exact Tailwind class list every page must use for it: size, weight, line height, spacing, alignment,
+gap. Colors only as design tokens (\`text-[var(--<token>,currentColor)]\`, \`bg-[var(--<token>,transparent)]\`) — no
+palette classes, \`#hex\` or \`dark:\`. \`summary\` says the same in the person's language, short, for them to approve.
+
+Prefer values already on the pages (the reference page first, a page the request names above all) over new ones.
+Only presentation: a rule never adds data, text or behavior. When the request asks for nothing that has a common value
+(e.g. "add an icon to the button"), return no rules. When adjusting: return the WHOLE standard, the previous rules kept
+as they are and only what the adjustment asks changed.`;
+
+/** The standard tool: the rules, strict. */
+export function editPageStandardSchema(): Record<string, unknown> {
+  return {
+    type: 'object', additionalProperties: false, required: ['rules'],
+    properties: {
+      rules: {
+        type: 'array',
+        items: {
+          type: 'object', additionalProperties: false, required: ['what', 'classes', 'summary'],
+          properties: {
+            what: { type: 'string', description: 'The element, in English, findable on any one page.' },
+            classes: { type: 'string', description: 'The exact Tailwind classes every page uses for it.' },
+            summary: { type: 'string', description: 'The same, short, in the person\'s language.' },
+          },
+        },
+      },
+    },
+  };
+}
+
+export interface EditPageStandardInput {
+  request: string;
+  /** The adjustment of the standard asked now (with `previous`). */
+  adjust?: readonly string[];
+  previous?: EditStandard | null;
+  pageLabel: string;
+  source: string;
+  /** Pages the request names, whole. */
+  named: ReadonlyArray<{ page: string; source: string }>;
+  others: ReadonlyArray<{ page: string; outline: readonly MethodOutline[] }>;
+  tokens: readonly string[];
+}
+
+/** The pages a text names (a whole word, any case): the ones whose values the person points at. */
+export function pagesNamedIn(text: string, pages: readonly string[]): string[] {
+  const lower = text.toLowerCase();
+  return pages.filter(page => new RegExp(`(^|[^a-z0-9_])${page.toLowerCase()}($|[^a-z0-9_])`, 'u').test(lower));
+}
+
+function outlineLines(outline: readonly MethodOutline[]): string[] {
+  return outline.map(method => `  - ${method.name}()${method.organisms.length ? ` wraps ${method.organisms.join(', ')}` : ''}`
+    + `${method.keys.length ? `; texts ${method.keys.join(', ')}` : ''}${method.molecules.length ? `; molecules ${method.molecules.join(', ')}` : ''}`);
+}
+
+export function editPageStandardPrompt(input: EditPageStandardInput): string {
+  const asked = input.adjust?.length ? input.adjust[input.adjust.length - 1] : '';
+  return [
+    '# The request',
+    input.request,
+    '',
+    ...(input.previous?.rules.length ? [
+      '# The previous standard (already approved)',
+      ...input.previous.rules.map(rule => `- ${rule.what}: ${rule.classes}`),
+      '',
+    ] : []),
+    ...(asked ? ['# The adjustment asked now', asked, ''] : []),
+    `# The pages: ${input.others.length + 1}`,
+    '',
+    `## The reference page — ${input.pageLabel}`,
+    '```ts', input.source.trim(), '```',
+    '',
+    ...input.named.flatMap(item => [`## A page the request names — ${item.page}`, '```ts', item.source.trim(), '```', '']),
+    '## The other pages, outlined',
+    ...input.others.flatMap(item => [`- ${item.page}`, ...outlineLines(item.outline)]),
+    '',
+    `# Design tokens (color): ${input.tokens.join(', ') || '(none declared)'}`,
   ].join('\n');
 }
 
