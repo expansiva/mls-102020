@@ -1,0 +1,3 @@
+Approved telegram BFF (bff55 output already in pipeline shape) copied from
+mls-102047/l2/telegram/pipeline/agentDefsL2/bff/{conversations,audit,bots}.json
+for d2_219. Tests read these files, never the live 102047 tree.

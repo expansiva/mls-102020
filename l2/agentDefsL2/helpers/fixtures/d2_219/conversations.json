@@ -1,0 +1,1250 @@
+{
+  "types": [
+    {
+      "name": "CmAgent",
+      "description": "A cm agent that can answer a bot's conversations.",
+      "fields": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "CmAgent.agentId"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "CmAgent.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bot",
+      "description": "A Telegram bot of the company with its situation and its answering cm agent.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.name"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'notConfigured' | 'active' | 'paused' | 'deactivated'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.status"
+            ]
+          }
+        },
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.agentId"
+            ]
+          }
+        },
+        {
+          "name": "cmAgent",
+          "type": "CmAgent",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "ConversationRowDetails",
+      "description": "Derived display data of a conversation summary.",
+      "fields": [
+        {
+          "name": "identificationShown",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.identificationShown"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "ConversationRow",
+      "description": "Summary of one Telegram conversation with its bot and answering agent.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.version"
+            ]
+          }
+        },
+        {
+          "name": "botId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.botId"
+            ]
+          }
+        },
+        {
+          "name": "telegramName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.telegramName"
+            ]
+          }
+        },
+        {
+          "name": "chatKind",
+          "type": "'person' | 'group'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.chatKind"
+            ]
+          }
+        },
+        {
+          "name": "identificationName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.identificationName"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'open' | 'blocked'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.status"
+            ]
+          }
+        },
+        {
+          "name": "lastMessageAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.lastMessageAt"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "ConversationRowDetails"
+        },
+        {
+          "name": "telegramBot",
+          "type": "Bot"
+        }
+      ]
+    },
+    {
+      "name": "ConversationIdentification",
+      "description": "The identification the cm told for a conversation.",
+      "fields": [
+        {
+          "name": "kind",
+          "type": "'employee' | 'externalCustomer'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.identification.kind"
+            ]
+          }
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.identification.email"
+            ]
+          }
+        },
+        {
+          "name": "identifiedAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.identification.identifiedAt"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "ConversationBlock",
+      "description": "The latest block of a conversation: who, when, why and when it was undone.",
+      "fields": [
+        {
+          "name": "blockedBy",
+          "type": "'companyAdmin' | 'cm'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.block.blockedBy"
+            ]
+          }
+        },
+        {
+          "name": "blockedAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.block.blockedAt"
+            ]
+          }
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.block.reason"
+            ]
+          }
+        },
+        {
+          "name": "unblockedAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.block.unblockedAt"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "ConversationDetails",
+      "description": "Details of a conversation: derived display flags, identification and block.",
+      "fields": [
+        {
+          "name": "identificationShown",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.identificationShown"
+            ]
+          }
+        },
+        {
+          "name": "isAnonymous",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.isAnonymous"
+            ]
+          }
+        },
+        {
+          "name": "canSend",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.canSend"
+            ]
+          }
+        },
+        {
+          "name": "identification",
+          "type": "ConversationIdentification",
+          "optional": true
+        },
+        {
+          "name": "block",
+          "type": "ConversationBlock",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "Conversation",
+      "description": "One Telegram conversation with its dates, situation, identification, block and bot.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.version"
+            ]
+          }
+        },
+        {
+          "name": "botId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.botId"
+            ]
+          }
+        },
+        {
+          "name": "telegramName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.telegramName"
+            ]
+          }
+        },
+        {
+          "name": "chatKind",
+          "type": "'person' | 'group'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.chatKind"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'open' | 'blocked'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.status"
+            ]
+          }
+        },
+        {
+          "name": "firstMessageAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.firstMessageAt"
+            ]
+          }
+        },
+        {
+          "name": "lastMessageAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.lastMessageAt"
+            ]
+          }
+        },
+        {
+          "name": "identificationName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.identificationName"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "ConversationDetails"
+        },
+        {
+          "name": "telegramBot",
+          "type": "Bot"
+        }
+      ]
+    },
+    {
+      "name": "AuditReason",
+      "description": "Kind of reason for a refused or failed message.",
+      "fields": [
+        {
+          "name": "code",
+          "type": "'botNotActive' | 'conversationBlocked' | 'notText' | 'noConversation' | 'telegramError' | 'cmError'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.reason.code"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AuditDetails",
+      "description": "Details of an audit record: author shown, text and reason.",
+      "fields": [
+        {
+          "name": "authorDisplay",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.authorDisplay"
+            ]
+          }
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.text"
+            ]
+          }
+        },
+        {
+          "name": "reason",
+          "type": "AuditReason",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "TimelineEntry",
+      "description": "One audit record of a conversation: a message that came in or went out, or a refused attempt.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.id"
+            ]
+          }
+        },
+        {
+          "name": "writtenAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.writtenAt"
+            ]
+          }
+        },
+        {
+          "name": "direction",
+          "type": "'incoming' | 'outgoing'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.direction"
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "type": "'delivered' | 'refused' | 'failed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.result"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "AuditDetails"
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "getConversationsPage",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "botId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.botId"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'open' | 'blocked'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.status"
+            ]
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "conversations",
+          "type": "ConversationRow[]",
+          "paginated": true
+        },
+        {
+          "name": "bots",
+          "type": "Bot[]"
+        },
+        {
+          "name": "agents",
+          "type": "CmAgent[]"
+        }
+      ],
+      "rules": [
+        "adminOnlyScreens",
+        "showAnonymousWhenUnidentified",
+        "agentChosenFromCm"
+      ],
+      "jsdoc": {
+        "purpose": "Opens the conversations screen in one call: the first page of conversations, the company's bots used as filter and as target of bot actions, and the cm agents that can answer a bot.",
+        "input": "botId: optional bot to filter by (from the URL). status: optional situation filter. page/pageSize: paging of the conversation list.",
+        "processing": "Company admin only (adminOnlyScreens). Lists the organization's conversations filtered by bot and situation, ordered by lastMessageAt newest first, each with its bot and the bot's cm agent. identificationShown is computed: identificationName or 'Anonymous' when empty (showAnonymousWhenUnidentified). Bots are listed by name with their agent name. Agents are read from the cm agent list (agentChosenFromCm).",
+        "output": "conversations: a page of conversation summaries with bot and agent; bots: all bots with situation and agent; agents: the cm agents available."
+      }
+    },
+    {
+      "id": "searchConversations",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "botId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.botId"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'open' | 'blocked'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.status"
+            ]
+          }
+        },
+        {
+          "name": "chatKind",
+          "type": "'person' | 'group'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.chatKind"
+            ]
+          }
+        },
+        {
+          "name": "search",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "conversations",
+          "type": "ConversationRow[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "adminOnlyScreens",
+        "showAnonymousWhenUnidentified"
+      ],
+      "jsdoc": {
+        "purpose": "Finds conversations by bot, situation, person or group and text, page by page.",
+        "input": "botId: bot filter. status: open or blocked. chatKind: person or group. search: text contained in the name on Telegram or the identification. page/pageSize: paging.",
+        "processing": "Company admin only. Filters the organization's conversations by the given filters and by search over telegramName and identificationName, ordered by lastMessageAt newest first. identificationShown is computed as identificationName or 'Anonymous' (showAnonymousWhenUnidentified).",
+        "output": "A page of conversation summaries, each with its bot, the bot's situation and its answering agent."
+      }
+    },
+    {
+      "id": "getConversation",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.id"
+            ]
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "conversation",
+          "type": "Conversation"
+        },
+        {
+          "name": "timeline",
+          "type": "TimelineEntry[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "adminOnlyScreens",
+        "showAnonymousWhenUnidentified",
+        "onlyActiveBotCarriesMessages",
+        "blockedConversationRefusesMessages",
+        "auditAdminOnly",
+        "auditRetention90Days"
+      ],
+      "jsdoc": {
+        "purpose": "Opens the chosen conversation with everything the focus and history sections show.",
+        "input": "id: the conversation picked in the list. pageSize: size of the first timeline page.",
+        "processing": "Reads the conversation by id with its bot, identification and latest block. Computes canSend = status open and bot active (onlyActiveBotCarriesMessages, blockedConversationRefusesMessages), isAnonymous and identificationShown ('Anonymous' when no identification). Lists the first page of the conversation's audit records ordered by writtenAt; only records still kept (auditRetention90Days) and only for the company admin (auditAdminOnly). authorDisplay is computed from the author name or 'Anonymous'.",
+        "output": "conversation: the conversation in its current state with bot, identification and block; timeline: the first page of its audit records."
+      }
+    },
+    {
+      "id": "listConversationTimeline",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "conversationId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.conversationId"
+            ]
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "timeline",
+          "type": "TimelineEntry[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "auditAdminOnly",
+        "auditRetention90Days"
+      ],
+      "jsdoc": {
+        "purpose": "Brings further pages of the conversation's history.",
+        "input": "conversationId: the open conversation. page/pageSize: paging.",
+        "processing": "Lists the audit records of the conversation ordered by writtenAt, company admin only (auditAdminOnly), records still kept within 90 days (auditRetention90Days). authorDisplay is computed from the author name or 'Anonymous'.",
+        "output": "A page of audit records of the conversation."
+      }
+    },
+    {
+      "id": "changeBotAgent",
+      "kind": "cmd",
+      "when": "changeBotAgent",
+      "writes": "TelegramBot.update",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        },
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.agentId"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "Bot"
+        }
+      ],
+      "rules": [
+        "agentChosenFromCm",
+        "adminOnlyScreens"
+      ],
+      "jsdoc": {
+        "purpose": "Makes another cm agent answer the conversations of the bot the list is filtered by.",
+        "input": "id and version: the bot and the version the admin saw. agentId: the chosen cm agent.",
+        "processing": "Company admin only. Refuses an agent that is not among the cm's agents (agentChosenFromCm) and a stale version. Updates TelegramBot.agentId.",
+        "output": "The bot in its new state with the new agent and its name."
+      }
+    },
+    {
+      "id": "deactivateBot",
+      "kind": "cmd",
+      "when": "deactivateBot",
+      "writes": "TelegramBot.deactivate",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "Bot"
+        }
+      ],
+      "rules": [
+        "botNeverDeleted",
+        "onlyActiveBotCarriesMessages",
+        "adminOnlyScreens"
+      ],
+      "jsdoc": {
+        "purpose": "Retires the bot the list is filtered by.",
+        "input": "id and version: the bot and the version the admin saw.",
+        "processing": "Company admin only. Applies the deactivate transition from notConfigured, active or paused; refuses other situations and a stale version. The bot is never deleted (botNeverDeleted): its conversations and audit stay readable; it stops carrying messages (onlyActiveBotCarriesMessages).",
+        "output": "The bot in the deactivated situation with its agent."
+      }
+    },
+    {
+      "id": "blockConversation",
+      "kind": "cmd",
+      "when": "blockConversation",
+      "writes": "TelegramConversation.block",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.version"
+            ]
+          }
+        },
+        {
+          "name": "details.block.reason",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.block.reason"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "conversation",
+          "type": "Conversation"
+        }
+      ],
+      "rules": [
+        "blockRequiresReason",
+        "blockedConversationRefusesMessages",
+        "adminOnlyScreens"
+      ],
+      "jsdoc": {
+        "purpose": "Blocks an open conversation so no message flows to or from it.",
+        "input": "id and version: the conversation and the version seen. details.block.reason: why it is blocked.",
+        "processing": "Company admin only. Refuses an empty reason (blockRequiresReason), a conversation not open and a stale version. Applies the block transition recording blockedBy companyAdmin, blockedAt now and the reason. From then on messages are refused (blockedConversationRefusesMessages); canSend is computed again.",
+        "output": "The conversation in the blocked situation with its block, bot and computed flags."
+      }
+    },
+    {
+      "id": "unblockConversation",
+      "kind": "cmd",
+      "when": "unblockConversation",
+      "writes": "TelegramConversation.unblock",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.version"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "conversation",
+          "type": "Conversation"
+        }
+      ],
+      "rules": [
+        "cmBlockUndoneOnlyByAdmin",
+        "adminOnlyScreens"
+      ],
+      "jsdoc": {
+        "purpose": "Reopens a blocked conversation, including one blocked by the cm.",
+        "input": "id and version: the conversation and the version seen.",
+        "processing": "Company admin only; a block by the cm can be undone only by the admin (cmBlockUndoneOnlyByAdmin). Refuses a conversation not blocked and a stale version. Applies the unblock transition and records unblockedAt on the block; canSend is computed again.",
+        "output": "The conversation in the open situation with its last block and computed flags."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "conversationList",
+        "reads": "getConversationsPage.conversations"
+      },
+      {
+        "organism": "conversationList",
+        "reads": "getConversationsPage.bots"
+      },
+      {
+        "organism": "conversationList",
+        "reads": "getConversationsPage.agents"
+      },
+      {
+        "organism": "conversationHighlights",
+        "reads": "getConversation.conversation"
+      },
+      {
+        "organism": "conversationDetail",
+        "reads": "getConversation.conversation"
+      },
+      {
+        "organism": "conversationActions",
+        "reads": "getConversation.conversation"
+      },
+      {
+        "organism": "conversationTimeline",
+        "reads": "getConversation.conversation"
+      },
+      {
+        "organism": "conversationTimeline",
+        "reads": "getConversation.timeline"
+      }
+    ],
+    "commands": [
+      {
+        "endpoint": "changeBotAgent",
+        "refreshes": [
+          "searchConversations"
+        ]
+      },
+      {
+        "endpoint": "deactivateBot",
+        "refreshes": [
+          "searchConversations",
+          "getConversation"
+        ]
+      },
+      {
+        "endpoint": "blockConversation",
+        "refreshes": [
+          "searchConversations"
+        ]
+      },
+      {
+        "endpoint": "unblockConversation",
+        "refreshes": [
+          "searchConversations"
+        ]
+      }
+    ],
+    "selections": [
+      {
+        "organism": "conversationList",
+        "via": {
+          "query": "getConversation"
+        }
+      }
+    ],
+    "journeys": [
+      {
+        "step": "blockConversation/findConversation",
+        "organisms": [
+          "conversationList"
+        ],
+        "endpoints": [
+          "getConversationsPage",
+          "searchConversations"
+        ]
+      },
+      {
+        "step": "blockConversation/inspectConversation",
+        "organisms": [
+          "conversationHighlights",
+          "conversationDetail"
+        ],
+        "endpoints": [
+          "getConversation"
+        ]
+      },
+      {
+        "step": "blockConversation/reviewConversationMessages",
+        "organisms": [
+          "conversationTimeline"
+        ],
+        "endpoints": [
+          "getConversation",
+          "listConversationTimeline"
+        ]
+      },
+      {
+        "step": "blockConversation/blockConversationAct",
+        "organisms": [
+          "conversationActions"
+        ],
+        "endpoints": [
+          "blockConversation"
+        ]
+      },
+      {
+        "step": "changeBotAgent/findBotForAgent",
+        "organisms": [
+          "conversationList"
+        ],
+        "endpoints": [
+          "getConversationsPage",
+          "searchConversations"
+        ]
+      },
+      {
+        "step": "changeBotAgent/changeAgent",
+        "organisms": [
+          "conversationList"
+        ],
+        "endpoints": [
+          "changeBotAgent"
+        ]
+      },
+      {
+        "step": "changeBotAgent/viewAffectedConversations",
+        "organisms": [
+          "conversationList"
+        ],
+        "endpoints": [
+          "searchConversations"
+        ]
+      },
+      {
+        "step": "deactivateBot/findBotToDeactivate",
+        "organisms": [
+          "conversationList"
+        ],
+        "endpoints": [
+          "getConversationsPage",
+          "searchConversations"
+        ]
+      },
+      {
+        "step": "deactivateBot/reviewBotConversations",
+        "organisms": [
+          "conversationList"
+        ],
+        "endpoints": [
+          "searchConversations"
+        ]
+      },
+      {
+        "step": "deactivateBot/deactivateBotAct",
+        "organisms": [
+          "conversationList"
+        ],
+        "endpoints": [
+          "deactivateBot"
+        ]
+      },
+      {
+        "step": "deactivateBot/confirmAuditReadable",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "audit"
+      },
+      {
+        "step": "reviewConversations/listConversations",
+        "organisms": [
+          "conversationList"
+        ],
+        "endpoints": [
+          "getConversationsPage",
+          "searchConversations"
+        ]
+      },
+      {
+        "step": "reviewConversations/viewConversation",
+        "organisms": [
+          "conversationHighlights",
+          "conversationDetail"
+        ],
+        "endpoints": [
+          "getConversation"
+        ]
+      },
+      {
+        "step": "unblockConversation/findBlockedConversation",
+        "organisms": [
+          "conversationList"
+        ],
+        "endpoints": [
+          "searchConversations"
+        ]
+      },
+      {
+        "step": "unblockConversation/inspectBlock",
+        "organisms": [
+          "conversationDetail",
+          "conversationActions"
+        ],
+        "endpoints": [
+          "getConversation"
+        ]
+      },
+      {
+        "step": "unblockConversation/unblockConversationAct",
+        "organisms": [
+          "conversationActions"
+        ],
+        "endpoints": [
+          "unblockConversation"
+        ]
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "searchConversations",
+        "state": "getConversationsPage.conversations",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "listConversationTimeline",
+        "state": "getConversation.timeline",
+        "mode": "append"
+      },
+      {
+        "endpoint": "changeBotAgent",
+        "state": "getConversationsPage.bots",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "deactivateBot",
+        "state": "getConversationsPage.bots",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "blockConversation",
+        "state": "getConversation.conversation",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "unblockConversation",
+        "state": "getConversation.conversation",
+        "mode": "upsert"
+      }
+    ]
+  }
+}

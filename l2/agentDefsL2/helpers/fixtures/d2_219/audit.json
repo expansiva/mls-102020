@@ -1,0 +1,1153 @@
+{
+  "types": [
+    {
+      "name": "AuditReason",
+      "description": "The reason an audit record was refused or failed.",
+      "fields": [
+        {
+          "name": "code",
+          "type": "'botNotActive' | 'conversationBlocked' | 'notText' | 'noConversation' | 'telegramError' | 'cmError'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.reason.code"
+            ]
+          }
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.reason.message"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AuditBotRef",
+      "description": "A Telegram bot identified by its name.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AuditConversationShown",
+      "description": "How a conversation is shown: the identification told by the cm, or 'Anonymous'.",
+      "fields": [
+        {
+          "name": "identificationShown",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.details.identificationShown"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AuditConversationRef",
+      "description": "A Telegram conversation identified by its name on Telegram and the name shown for it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.id"
+            ]
+          }
+        },
+        {
+          "name": "telegramName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.telegramName"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "AuditConversationShown"
+        }
+      ]
+    },
+    {
+      "name": "AuditRowDetails",
+      "description": "The details of an audit record summarised for a row: author shown and reason.",
+      "fields": [
+        {
+          "name": "authorDisplay",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.authorDisplay"
+            ]
+          }
+        },
+        {
+          "name": "reason",
+          "type": "AuditReason",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "AuditRow",
+      "description": "One audit record summarised: when it was written, bot, conversation, author shown, direction and result.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.id"
+            ]
+          }
+        },
+        {
+          "name": "writtenAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.writtenAt"
+            ]
+          }
+        },
+        {
+          "name": "botId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.botId"
+            ]
+          }
+        },
+        {
+          "name": "conversationId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.conversationId"
+            ]
+          }
+        },
+        {
+          "name": "direction",
+          "type": "'incoming' | 'outgoing'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.direction"
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "type": "'delivered' | 'refused' | 'failed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.result"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "AuditRowDetails"
+        },
+        {
+          "name": "telegramBot",
+          "type": "AuditBotRef"
+        },
+        {
+          "name": "telegramConversation",
+          "type": "AuditConversationRef",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "AuditTimelineDetails",
+      "description": "The details of an audit record in the message flow: author shown, text and reason.",
+      "fields": [
+        {
+          "name": "authorDisplay",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.authorDisplay"
+            ]
+          }
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.text"
+            ]
+          }
+        },
+        {
+          "name": "reason",
+          "type": "AuditReason",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "AuditTimelineEntry",
+      "description": "One message of the flow: when it was written, direction, result, author shown, text, bot and conversation shown.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.id"
+            ]
+          }
+        },
+        {
+          "name": "writtenAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.writtenAt"
+            ]
+          }
+        },
+        {
+          "name": "direction",
+          "type": "'incoming' | 'outgoing'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.direction"
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "type": "'delivered' | 'refused' | 'failed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.result"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "AuditTimelineDetails"
+        },
+        {
+          "name": "telegramBot",
+          "type": "AuditBotRef"
+        },
+        {
+          "name": "telegramConversation",
+          "type": "AuditConversationRef",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "name": "AuditAuthor",
+      "description": "The author of a message as Telegram reported it.",
+      "fields": [
+        {
+          "name": "telegramAccount",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.author.telegramAccount"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.author.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AuditPart",
+      "description": "One part of a long text sent in parts, with its result.",
+      "fields": [
+        {
+          "name": "sequence",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.parts.sequence"
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "type": "'delivered' | 'failed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.parts.result"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AuditRecordDetails",
+      "description": "The full details of an audit record: author, text, kind, reason, parts and erase day.",
+      "fields": [
+        {
+          "name": "author",
+          "type": "AuditAuthor"
+        },
+        {
+          "name": "authorDisplay",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.authorDisplay"
+            ]
+          }
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.text"
+            ]
+          }
+        },
+        {
+          "name": "messageKind",
+          "type": "'text' | 'other'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.messageKind"
+            ]
+          }
+        },
+        {
+          "name": "reason",
+          "type": "AuditReason",
+          "optional": true
+        },
+        {
+          "name": "parts",
+          "type": "AuditPart[]"
+        },
+        {
+          "name": "expiresOn",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.details.expiresOn"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AuditRecordBot",
+      "description": "The bot of an audit record with its current situation.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.name"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'notConfigured' | 'active' | 'paused' | 'deactivated'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.status"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AuditRecordConversation",
+      "description": "The conversation of an audit record with its current situation.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.id"
+            ]
+          }
+        },
+        {
+          "name": "telegramName",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.telegramName"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'open' | 'blocked'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.status"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "AuditConversationShown"
+        }
+      ]
+    },
+    {
+      "name": "AuditAgent",
+      "description": "The cm agent that was answering when the message passed.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "CmAgent.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AuditRecordDetail",
+      "description": "One audit record in full, with its bot, conversation and answering agent.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.id"
+            ]
+          }
+        },
+        {
+          "name": "writtenAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.writtenAt"
+            ]
+          }
+        },
+        {
+          "name": "recordedAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.recordedAt"
+            ]
+          }
+        },
+        {
+          "name": "botId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.botId"
+            ]
+          }
+        },
+        {
+          "name": "conversationId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.conversationId"
+            ]
+          }
+        },
+        {
+          "name": "agentId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.agentId"
+            ]
+          }
+        },
+        {
+          "name": "direction",
+          "type": "'incoming' | 'outgoing'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.direction"
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "type": "'delivered' | 'refused' | 'failed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.result"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "AuditRecordDetails"
+        },
+        {
+          "name": "telegramBot",
+          "type": "AuditRecordBot"
+        },
+        {
+          "name": "telegramConversation",
+          "type": "AuditRecordConversation",
+          "optional": true
+        },
+        {
+          "name": "cmAgent",
+          "type": "AuditAgent",
+          "optional": true
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "listAuditFilterBots",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [],
+      "output": [
+        {
+          "name": "bots",
+          "type": "AuditBotRef[]"
+        }
+      ],
+      "rules": [
+        "auditAdminOnly",
+        "adminOnlyScreens",
+        "botNeverDeleted"
+      ],
+      "jsdoc": {
+        "purpose": "Gives the bots of the company that can be chosen to filter the audit.",
+        "input": "None; the company comes from the logged-in admin.",
+        "processing": "Lists every bot of the organization in any situation, deactivated included (botNeverDeleted keeps their audit readable), ordered by name. Only the company admin may call it (auditAdminOnly, adminOnlyScreens).",
+        "output": "The bots with id and name."
+      }
+    },
+    {
+      "id": "searchAuditConversations",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "text",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "botId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramConversation.botId"
+            ]
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "conversations",
+          "type": "AuditConversationRef[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "adminOnlyScreens",
+        "showAnonymousWhenUnidentified"
+      ],
+      "jsdoc": {
+        "purpose": "Finds conversations to choose as the conversation filter of the audit.",
+        "input": "text: part of the name on Telegram or of the identification; botId: optional bot whose conversations are searched; page and pageSize: the page asked.",
+        "processing": "Searches the organization's conversations whose telegramName or identificationName contains the text, restricted to the bot when given, ordered by last message date. identificationShown is computed: the cm identification name or 'Anonymous' when there is none (showAnonymousWhenUnidentified). Company admin only (adminOnlyScreens).",
+        "output": "A page of conversations with id, name on Telegram and name shown."
+      }
+    },
+    {
+      "id": "listAuditRecords",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "writtenFrom",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.writtenAt"
+            ]
+          }
+        },
+        {
+          "name": "writtenTo",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.writtenAt"
+            ]
+          }
+        },
+        {
+          "name": "botId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.botId"
+            ]
+          }
+        },
+        {
+          "name": "conversationId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.conversationId"
+            ]
+          }
+        },
+        {
+          "name": "direction",
+          "type": "'incoming' | 'outgoing'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.direction"
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "type": "'delivered' | 'refused' | 'failed'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.result"
+            ]
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "records",
+          "type": "AuditRow[]",
+          "paginated": true
+        },
+        {
+          "name": "matchingCount",
+          "type": "number",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "MessageAudit.id"
+            ]
+          }
+        }
+      ],
+      "rules": [
+        "auditAdminOnly",
+        "auditRetention90Days",
+        "auditEveryMessage",
+        "showAnonymousWhenUnidentified"
+      ],
+      "jsdoc": {
+        "purpose": "Lists the audit records of the company's bots that match the admin's filters, newest written first.",
+        "input": "writtenFrom and writtenTo: the period of the time the message was written; botId, conversationId, direction and result: optional filters; page and pageSize: the page asked.",
+        "processing": "Filters the organization's MessageAudit records by writtenAt within the period and by the given bot, conversation, direction and result, ordered by writtenAt descending. Only records still kept are listed: erased 90 days after written (auditRetention90Days). Joins the bot name and the conversation name on Telegram and identificationShown ('Anonymous' when unidentified, showAnonymousWhenUnidentified); a refused send without conversation has none. authorDisplay is computed: the author name or 'Anonymous'. matchingCount counts all records matching the same filters. Company admin only (auditAdminOnly).",
+        "output": "A page of audit rows with when written, bot, conversation, author shown, direction, result and reason code, plus the number of records matching the filters."
+      }
+    },
+    {
+      "id": "listAuditTimeline",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [
+        {
+          "name": "writtenFrom",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.writtenAt"
+            ]
+          }
+        },
+        {
+          "name": "writtenTo",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.writtenAt"
+            ]
+          }
+        },
+        {
+          "name": "botId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.botId"
+            ]
+          }
+        },
+        {
+          "name": "conversationId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.conversationId"
+            ]
+          }
+        },
+        {
+          "name": "direction",
+          "type": "'incoming' | 'outgoing'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.direction"
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "type": "'delivered' | 'refused' | 'failed'",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.result"
+            ]
+          }
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "entries",
+          "type": "AuditTimelineEntry[]",
+          "paginated": true
+        }
+      ],
+      "rules": [
+        "auditAdminOnly",
+        "auditRetention90Days",
+        "showAnonymousWhenUnidentified",
+        "longTextSentInParts"
+      ],
+      "jsdoc": {
+        "purpose": "Gives the messages matching the audit filters in the order they were written, to follow the exchange.",
+        "input": "The same filters as the audit list: period of writtenAt, bot, conversation, direction, result; page and pageSize: the page asked.",
+        "processing": "Filters the organization's MessageAudit records still kept (auditRetention90Days) like the list, ordered by writtenAt ascending. Includes the text, the author shown (computed, 'Anonymous' when no name), the bot name and the conversation name shown ('Anonymous' when unidentified, showAnonymousWhenUnidentified), and for refused or failed records the reason code and message. A long text sent in parts stays one entry (longTextSentInParts). Company admin only (auditAdminOnly).",
+        "output": "A page of timeline entries, oldest first, with direction, result, author shown, text, reason, bot and conversation."
+      }
+    },
+    {
+      "id": "getAuditRecord",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "MessageAudit.id"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "record",
+          "type": "AuditRecordDetail"
+        }
+      ],
+      "rules": [
+        "auditAdminOnly",
+        "auditRetention90Days",
+        "showAnonymousWhenUnidentified",
+        "longTextSentInParts",
+        "auditAppendOnly"
+      ],
+      "jsdoc": {
+        "purpose": "Opens one audit record in full.",
+        "input": "id: the audit record chosen in the list or the timeline.",
+        "processing": "Reads the MessageAudit record of the organization by id (read-only, auditAppendOnly) with its bot (name and current situation), its conversation (name on Telegram, name shown and current situation) and the cm agent name that was answering. Computes authorDisplay ('Anonymous' when no author name), identificationShown ('Anonymous' when unidentified, showAnonymousWhenUnidentified) and expiresOn as writtenAt plus 90 days (auditRetention90Days). Returns the parts with their sequence and result when the text was sent in parts (longTextSentInParts). Company admin only (auditAdminOnly); a record already erased is not found.",
+        "output": "The audit record with when written and recorded, direction, author account and name, text, message kind, result with reason, parts, erase day, bot, conversation and answering agent."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "auditList",
+        "reads": "listAuditRecords.records"
+      },
+      {
+        "organism": "auditList",
+        "reads": "listAuditRecords.matchingCount"
+      },
+      {
+        "organism": "auditList",
+        "reads": "listAuditFilterBots.bots"
+      },
+      {
+        "organism": "auditList",
+        "reads": "searchAuditConversations.conversations"
+      },
+      {
+        "organism": "auditRecord",
+        "reads": "getAuditRecord.record"
+      },
+      {
+        "organism": "auditTimeline",
+        "reads": "listAuditTimeline.entries"
+      }
+    ],
+    "commands": [],
+    "selections": [
+      {
+        "organism": "auditList",
+        "via": {
+          "query": "getAuditRecord"
+        }
+      },
+      {
+        "organism": "auditTimeline",
+        "via": {
+          "query": "getAuditRecord"
+        }
+      }
+    ],
+    "journeys": [
+      {
+        "step": "reviewAudit/filterAudit",
+        "organisms": [
+          "auditList"
+        ],
+        "endpoints": [
+          "listAuditRecords",
+          "listAuditFilterBots",
+          "searchAuditConversations"
+        ]
+      },
+      {
+        "step": "reviewAudit/viewAuditRecord",
+        "organisms": [
+          "auditRecord",
+          "auditTimeline"
+        ],
+        "endpoints": [
+          "getAuditRecord",
+          "listAuditTimeline"
+        ]
+      },
+      {
+        "step": "pauseBot/findBotToPause",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "bots"
+      },
+      {
+        "step": "pauseBot/reviewBotMessages",
+        "organisms": [
+          "auditList",
+          "auditTimeline",
+          "auditRecord"
+        ],
+        "endpoints": [
+          "listAuditRecords",
+          "listAuditTimeline",
+          "getAuditRecord"
+        ]
+      },
+      {
+        "step": "pauseBot/pauseBotAct",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "bots"
+      },
+      {
+        "step": "resumeBot/findPausedBot",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "bots"
+      },
+      {
+        "step": "resumeBot/inspectPause",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "bots"
+      },
+      {
+        "step": "resumeBot/reviewRefusedWhilePaused",
+        "organisms": [
+          "auditList",
+          "auditRecord"
+        ],
+        "endpoints": [
+          "listAuditRecords",
+          "getAuditRecord"
+        ]
+      },
+      {
+        "step": "resumeBot/resumeBotAct",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "bots"
+      },
+      {
+        "step": "deactivateBot/findBotToDeactivate",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "bots"
+      },
+      {
+        "step": "deactivateBot/reviewBotConversations",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "conversations"
+      },
+      {
+        "step": "deactivateBot/deactivateBotAct",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "bots"
+      },
+      {
+        "step": "deactivateBot/confirmAuditReadable",
+        "organisms": [
+          "auditList"
+        ],
+        "endpoints": [
+          "listAuditRecords",
+          "listAuditFilterBots"
+        ]
+      },
+      {
+        "step": "blockConversation/findConversation",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "conversations"
+      },
+      {
+        "step": "blockConversation/inspectConversation",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "conversations"
+      },
+      {
+        "step": "blockConversation/reviewConversationMessages",
+        "organisms": [
+          "auditList",
+          "auditTimeline",
+          "auditRecord"
+        ],
+        "endpoints": [
+          "listAuditRecords",
+          "searchAuditConversations",
+          "listAuditTimeline",
+          "getAuditRecord"
+        ]
+      },
+      {
+        "step": "blockConversation/blockConversationAct",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "conversations"
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "searchAuditConversations",
+        "state": "searchAuditConversations.conversations",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "listAuditRecords",
+        "state": "listAuditRecords.records",
+        "mode": "append"
+      },
+      {
+        "endpoint": "listAuditTimeline",
+        "state": "listAuditTimeline.entries",
+        "mode": "append"
+      }
+    ]
+  }
+}
