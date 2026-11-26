@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
-import { describeEffort, describeEffortFrom, effortPrompt, effortPromptFrom, finishEffortFrom } from '/_102020_/l2/helpers/effort/describeEffort.js';
+import { describeEffort, describeEffortFrom, effortPrompt, effortPromptFrom, finishEffort, finishEffortFrom } from '/_102020_/l2/helpers/effort/describeEffort.js';
 import { L4_DIFF_KINDS, L4_DIFF_OPS, type EffortInput, type L4DiffItem, type L4DiffKind, type L4DiffOp } from '/_102035_/l2/solution/poolPlan.js';
 
 const FIXTURE = new URL('./fixtures/agendaClinica/contracts/', import.meta.url);
@@ -1391,5 +1391,90 @@ void test('describeEffort imports only helpers and the solution types, and does 
   for (const spec of specs) assert.ok(allowed.some(prefix => spec.startsWith(prefix)), spec);
   for (const name of ['writeFile', 'writeJson', 'writeText', 'saveFile', 'fetch']) {
     assert.equal(new RegExp(`\\b${name}\\b`).test(text), false, name);
+  }
+});
+
+const NO_L2_REASON = 'module telegram has no generated L2; the first generation reads the changed L4';
+
+function telegramInput(item: Pick<L4DiffItem, 'changeId' | 'kind' | 'op' | 'entity' | 'before' | 'after'>): EffortInput {
+  return {
+    module: 'telegram',
+    base: { baseId: 'mls-102047', revisionId: 'rev' },
+    item: { ...item, source: 'l4/telegram/module.defs.ts' },
+  };
+}
+
+void test('a module with no L2 file is an empty computed answer on every branch', async () => {
+  const previous = mls.stor.files;
+  mls.stor.files = {
+    l4: { project: 102047, level: 4, status: 'active', folder: 'telegram', extension: '.defs.ts', shortName: 'module', getContent: async () => 'export {}' },
+    otherModule: { project: 102047, level: 2, status: 'active', folder: 'outro', extension: '.ts', shortName: 'page', getContent: async () => 'export {}' },
+    deleted: { project: 102047, level: 2, status: 'deleted', folder: 'telegram', extension: '.ts', shortName: 'old', getContent: async () => 'export {}' },
+    prefix: { project: 102047, level: 2, status: 'active', folder: 'telegramExtra', extension: '.ts', shortName: 'x', getContent: async () => 'export {}' },
+  } as unknown as typeof mls.stor.files;
+  const branches: Array<Pick<L4DiffItem, 'changeId' | 'kind' | 'op' | 'entity' | 'before' | 'after'>> = [
+    { changeId: 'artifact:journeys/index.defs.ts', kind: 'artifact', op: 'changed', entity: '' },
+    { changeId: 'artifact:rules.defs.ts', kind: 'artifact', op: 'changed', entity: '' },
+    { changeId: 'inbound:aviso', kind: 'inbound', op: 'added', entity: '' },
+    { changeId: 'connection:cm.listAgents', kind: 'connection', op: 'changed', entity: '' },
+    { changeId: 'plugin:stripe', kind: 'plugin', op: 'added', entity: '' },
+    { changeId: 'externalSystem:repoHost', kind: 'externalSystem', op: 'removed', entity: '' },
+    { changeId: 'entity:Tarefa', kind: 'entity', op: 'added', entity: 'Tarefa' },
+    { changeId: 'process:avisar', kind: 'process', op: 'added', entity: '' },
+    { changeId: 'grant:membro', kind: 'grant', op: 'changed', entity: '' },
+    { changeId: 'field:title', kind: 'field', op: 'changed', entity: 'Tarefa', before: { title: 'A', type: 'string' }, after: { title: 'B', type: 'string' } },
+    { changeId: 'journey:criar', kind: 'journey', op: 'removed', entity: '' },
+    { changeId: 'step:criar/abrir', kind: 'step', op: 'changed', entity: '', before: { title: 'A' }, after: { title: 'B' } },
+    { changeId: 'entity:Tarefa', kind: 'entity', op: 'changed', entity: 'Tarefa', before: { title: 'A' }, after: { title: 'B' } },
+    { changeId: 'entity:Tarefa', kind: 'entity', op: 'removed', entity: 'Tarefa' },
+    { changeId: 'transition:retomar', kind: 'transition', op: 'changed', entity: 'Tarefa' },
+    { changeId: 'process:avisar', kind: 'process', op: 'changed', entity: '' },
+    { changeId: 'task:avisar.ligar', kind: 'task', op: 'added', entity: '' },
+    { changeId: 'outbound:aviso', kind: 'outbound', op: 'changed', entity: '' },
+    { changeId: 'field:status', kind: 'field', op: 'changed', entity: 'Tarefa', before: { type: 'string' }, after: { type: 'number' } },
+    { changeId: 'rule:nova', kind: 'rule', op: 'added', entity: '' },
+    { changeId: 'rule:velha', kind: 'rule', op: 'removed', entity: '' },
+    { changeId: 'rule:status', kind: 'rule', op: 'changed', entity: '' },
+  ];
+  const reasons: string[] = [];
+  const original = console.info;
+  console.info = (...args: unknown[]) => { reasons.push(args.map(item => String(item)).join(' ')); };
+  try {
+    for (const item of branches) {
+      const row = await describeEffort(telegramInput(item));
+      assert.equal(row.status, 'computed', item.changeId);
+      assert.equal(row.abend, undefined, item.changeId);
+      assert.deepEqual(row.materialize, [], item.changeId);
+      assert.deepEqual(row.regenerateDefs, [], item.changeId);
+      assert.deepEqual(row.create, [], item.changeId);
+      assert.equal(reasons.some(line => line === `${item.changeId} ${NO_L2_REASON}`), true, item.changeId);
+    }
+    assert.equal(await effortPrompt(telegramInput({ changeId: 'rule:nova', kind: 'rule', op: 'added', entity: '' })), null);
+    const finished = await finishEffort(telegramInput({ changeId: 'rule:nova', kind: 'rule', op: 'added', entity: '' }), { pages: 'no' });
+    assert.equal(finished.status, 'computed');
+    assert.equal(finished.abend, undefined);
+    assert.deepEqual(finished.materialize, []);
+  } finally {
+    console.info = original;
+    mls.stor.files = previous;
+  }
+});
+
+void test('an L2 file and no contracts still abends', async () => {
+  const previous = mls.stor.files;
+  mls.stor.files = {
+    page: {
+      project: 102047, level: 2, status: 'active', folder: 'telegram/web/pages', extension: '.ts', shortName: 'home',
+      getContent: async () => 'export {}',
+    },
+  } as unknown as typeof mls.stor.files;
+  try {
+    const row = await describeEffort(telegramInput({
+      changeId: 'rule:status', kind: 'rule', op: 'changed', entity: '',
+    }));
+    assert.equal(row.status, 'abend');
+    assert.equal(row.abend?.reason, 'no generated L2 contracts for module telegram');
+  } finally {
+    mls.stor.files = previous;
   }
 });

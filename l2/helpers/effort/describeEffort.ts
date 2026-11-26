@@ -16,6 +16,8 @@ export interface DescribeEffortSources {
   configSource?: string;
   /** `l2/<module>/web/shared/<pageId>.defs.ts` bodies, keyed by page id. */
   shared?: Record<string, string>;
+  /** False when the project has no L2 file for the module. Absent keeps the previous answer. */
+  moduleHasL2?: boolean;
 }
 
 function answer(
@@ -615,7 +617,10 @@ function malformed(input: EffortInput): EffortAnswer {
 }
 
 /** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. The journeys index artifact is empty because each journey item already answers. An inbound change is empty because the arrival writes through the use case and the route. A new entity or process is empty because screens follow journeys. A changed entity answers by attribute. Text-only on any other kind is an empty computed answer. */
+const NO_L2_LAYER = 'has no generated L2; the first generation reads the changed L4';
+
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
+  if (sources?.moduleHasL2 === false) return notedEmpty(input, `module ${input.module} ${NO_L2_LAYER}`);
   if (input.item.kind === 'artifact' && input.item.changeId === `artifact:${JOURNEY_INDEX_PATH}`) {
     console.info(input.item.changeId, JOURNEY_INDEX_REASON);
     return answer(input, []);
@@ -947,24 +952,30 @@ async function fileBody(file: StorFile): Promise<string | undefined> {
   return typeof content === 'string' && content.length > 0 ? content : undefined;
 }
 
-async function moduleWebDefs(input: EffortInput): Promise<{ projectError?: string; contracts: Record<string, string>; shared: Record<string, string> }> {
+function folderOfModule(folder: string, moduleName: string): boolean {
+  return folder === moduleName || folder.startsWith(`${moduleName}/`);
+}
+
+async function moduleWebDefs(input: EffortInput): Promise<{ projectError?: string; hasL2: boolean; contracts: Record<string, string>; shared: Record<string, string> }> {
   const project = projectId(input);
   if (project === undefined) {
-    return { projectError: `cannot resolve the project of base ${input.base.baseId}`, contracts: {}, shared: {} };
+    return { projectError: `cannot resolve the project of base ${input.base.baseId}`, hasL2: false, contracts: {}, shared: {} };
   }
   const contractsFolder = `${input.module}/web/contracts`;
   const sharedFolder = `${input.module}/web/shared`;
   const contracts: Record<string, string> = {};
   const shared: Record<string, string> = {};
+  let hasL2 = false;
   for (const file of Object.values(mls.stor.files) as StorFile[]) {
     if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
+    if (folderOfModule(file.folder, input.module)) hasL2 = true;
     if (file.extension !== '.defs.ts') continue;
     const body = await fileBody(file);
     if (!body) continue;
     if (file.folder === contractsFolder) contracts[file.shortName] = body;
     else if (file.folder === sharedFolder) shared[file.shortName] = body;
   }
-  return { contracts, shared };
+  return { contracts, shared, hasL2 };
 }
 
 /** A new rule, journey or transition asks for a model call. Every other item returns null and does not read files. */
@@ -972,7 +983,7 @@ export async function effortPrompt(input: EffortInput): Promise<EffortPromptRequ
   const asks = (input.item.kind === 'rule' || input.item.kind === 'journey' || input.item.kind === 'transition') && input.item.op === 'added';
   if (!asks) return null;
   const loaded = await moduleWebDefs(input);
-  if (loaded.projectError) return null;
+  if (loaded.projectError || loaded.hasL2 === false) return null;
   return effortPromptFrom(input, loaded.contracts, loaded.shared);
 }
 
@@ -980,6 +991,7 @@ export async function effortPrompt(input: EffortInput): Promise<EffortPromptRequ
 export async function finishEffort(input: EffortInput, modelOutput: unknown): Promise<EffortAnswer> {
   const loaded = await moduleWebDefs(input);
   if (loaded.projectError) return answer(input, [], loaded.projectError);
+  if (loaded.hasL2 === false) return answer(input, []);
   return finishEffortFrom(input, loaded.contracts, modelOutput);
 }
 
@@ -1001,7 +1013,7 @@ export async function describeEffort(input: EffortInput): Promise<EffortAnswer> 
         configSource = await fileBody(file);
       }
     }
-    return describeEffortFrom(input, loaded.contracts, { moduleSource, configSource, shared: loaded.shared });
+    return describeEffortFrom(input, loaded.contracts, { moduleSource, configSource, shared: loaded.shared, moduleHasL2: loaded.hasL2 });
   }
-  return describeEffortFrom(input, loaded.contracts, { shared: loaded.shared });
+  return describeEffortFrom(input, loaded.contracts, { shared: loaded.shared, moduleHasL2: loaded.hasL2 });
 }
