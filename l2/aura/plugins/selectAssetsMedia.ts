@@ -12,6 +12,9 @@ import {
     type IAssetsLocation, type MediaCategory,
 } from '/_102020_/l2/aura/plugins/helpers/assetsMediaCore.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
+import { offerTour, startTour } from '/_102020_/l2/aura/studio/studioTour.js';
+import { ASSETS_TOUR } from '/_102020_/l2/aura/studio/studioTours.js';
+import { t as tStudio } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -34,6 +37,8 @@ const message_en = {
     errDelete: 'Could not delete the file.',
     noProject: 'Open a project to see its media.',
     noFiles: 'No media files in this project yet.',
+    emptyHint: 'Upload images, icons and fonts of the project. Then use them in a molecule or in the Design System.',
+    emptyAdd: 'Upload the first file',
     noResults: 'No files match your search.',
     catAll: 'All',
     catImage: 'Images',
@@ -69,6 +74,8 @@ const messages: Record<string, MessageType> = {
         errDelete: 'Não foi possível excluir o arquivo.',
         noProject: 'Abra um projeto para ver a mídia dele.',
         noFiles: 'Nenhum arquivo de mídia neste projeto ainda.',
+        emptyHint: 'Envie imagens, ícones e fontes do projeto. Depois é só usar numa molécula ou no Design System.',
+        emptyAdd: 'Enviar o primeiro arquivo',
         noResults: 'Nenhum arquivo corresponde à sua busca.',
         catAll: 'Todos',
         catImage: 'Imagens',
@@ -101,6 +108,8 @@ const messages: Record<string, MessageType> = {
         errDelete: 'No se pudo eliminar el archivo.',
         noProject: 'Abra un proyecto para ver sus medios.',
         noFiles: 'Todavía no hay archivos multimedia en este proyecto.',
+        emptyHint: 'Suba imágenes, íconos y fuentes del proyecto. Luego úselos en una molécula o en el Design System.',
+        emptyAdd: 'Subir el primer archivo',
         noResults: 'Ningún archivo coincide con su búsqueda.',
         catAll: 'Todos',
         catImage: 'Imágenes',
@@ -261,15 +270,24 @@ export class PluginSelectAssetsMedia extends StateLitElement {
     render() {
         return html`
             <div class="flex flex-col gap-3">
-                <aura--plugins--nav-header-102020
-                    .fixedLabel=${this.msg.category}
-                    .itemName=${this.msg.title}
-                    .desc=${this.msg.desc}
-                    .value=${MY_SLOT}
-                    .min=${ASSETS_MIN}
-                    .max=${ASSETS_MAX}
-                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
-                ></aura--plugins--nav-header-102020>
+                <div class="flex items-start gap-1.5">
+                    <aura--plugins--nav-header-102020
+                        class="flex-1 min-w-0"
+                        data-tour="assets-nav"
+                        .fixedLabel=${this.msg.category}
+                        .itemName=${this.msg.title}
+                        .desc=${this.msg.desc}
+                        .value=${MY_SLOT}
+                        .min=${ASSETS_MIN}
+                        .max=${ASSETS_MAX}
+                        @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                    ></aura--plugins--nav-header-102020>
+                    <button type="button"
+                        class="shrink-0 mt-0.5 w-6 h-6 rounded-full border border-gray-300 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer"
+                        title=${tStudio('tour.help')}
+                        aria-label=${tStudio('tour.help')}
+                        @click=${() => startTour(ASSETS_TOUR)}>?</button>
+                </div>
 
                 ${this._location ? html`
                     ${this._renderToolbar()}
@@ -282,11 +300,21 @@ export class PluginSelectAssetsMedia extends StateLitElement {
         `;
     }
 
+    // The first time the media are on screen, their tour is offered (once per version: studioTour remembers).
+    private _tourOffered = false;
+
+    updated(changed: Map<string, unknown>) {
+        super.updated(changed);
+        if (this._tourOffered || !this._location) return;
+        this._tourOffered = true;
+        setTimeout(() => offerTour(ASSETS_TOUR, { busy: !!this._pending || this._uploadLoading }), 800);
+    }
+
     // ─── Toolbar ─────────────────────────────────────────────────────
 
     private _renderToolbar() {
         return html`
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1.5" data-tour="assets-toolbar">
                 <input
                     type="text"
                     .value=${this._search}
@@ -303,6 +331,7 @@ export class PluginSelectAssetsMedia extends StateLitElement {
                 />
                 ${this._renderViewToggle()}
                 <button
+                    data-tour="assets-add"
                     class="
                         shrink-0 flex items-center gap-1 text-sm px-2.5 py-1.5 rounded-md
                         bg-indigo-500 dark:bg-indigo-600 text-white
@@ -441,7 +470,7 @@ export class PluginSelectAssetsMedia extends StateLitElement {
         ].filter(c => c.key === 'all' || counts[c.key as MediaCategory] > 0);
 
         return html`
-            <div class="flex items-center gap-1 flex-wrap">
+            <div class="flex items-center gap-1 flex-wrap" data-tour="assets-categories">
                 ${cats.map(c => html`
                     <button
                         class="
@@ -464,15 +493,23 @@ export class PluginSelectAssetsMedia extends StateLitElement {
 
     private _renderContent() {
         if (this._files.length === 0) {
-            return html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noFiles}</span>`;
+            return html`
+                <div data-tour="assets-files" class="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 px-4 py-5 flex flex-col items-center gap-2 text-center">
+                    <span class="text-sm font-semibold text-gray-600 dark:text-gray-300">${this.msg.noFiles}</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">${this.msg.emptyHint}</span>
+                    <button type="button"
+                        class="text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors cursor-pointer"
+                        @click=${() => this._openFilePicker()}>${this.msg.emptyAdd}</button>
+                </div>`;
         }
         const filtered = this._filtered;
         if (filtered.length === 0) {
             return html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`;
         }
-        if (this._viewMode === 'grid') return this._renderGrid(filtered);
-        if (this._viewMode === 'preview') return this._renderListPreview(filtered);
-        return this._renderListShort(filtered);
+        const view = this._viewMode === 'grid' ? this._renderGrid(filtered)
+            : this._viewMode === 'preview' ? this._renderListPreview(filtered)
+            : this._renderListShort(filtered);
+        return html`<div data-tour="assets-files">${view}</div>`;
     }
 
     private _urlOf(f: IMediaFile): string {

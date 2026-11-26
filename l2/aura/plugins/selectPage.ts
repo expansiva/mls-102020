@@ -30,7 +30,10 @@ import {
     batchAdjusting, batchAdjustReady, batchAdjustTargets, batchCounts, standardMisses, batchDecision, batchOpen, batchOrder, moleculeTagsIn, pagesUsingTag, runLimited, scopePages,
     type BatchAdjustState, type BatchRow, type BatchRowState, type EditScopeKind,
 } from '/_102020_/l2/aura/plugins/editBatchCore.js';
-import { setPageInReview } from '/_102020_/l2/aura/studio/studioPageReview.js';
+import { isPageInReview, setPageInReview } from '/_102020_/l2/aura/studio/studioPageReview.js';
+import { offerTour, startTour } from '/_102020_/l2/aura/studio/studioTour.js';
+import { GENOME_TOUR } from '/_102020_/l2/aura/studio/studioTours.js';
+import { t as tStudio } from '/_102020_/l2/aura/studio/studioMessages.js';
 import { PAGE_VERSION_DIFF_TAG, type IPageVersionSide } from '/_102020_/l2/aura/studio/pageVersionDiff.js';
 import {
     ensurePageVersion, listPageVersions, pageVersionsAvailable, recordPageVersion, restorePageVersion, versionedPage,
@@ -836,6 +839,7 @@ export class PluginSelectPage extends StateLitElement {
         this._selection = getAuraEdit()?.selection ?? null;
         subscribe('aura.edit.selection', this);
         subscribe('aura.actualDevice', this);
+        window.addEventListener('studio-tour-open-tab', this._onTourOpenTab);
         this._loadPages();
         void this._readStudioTheme();
     }
@@ -910,6 +914,32 @@ export class PluginSelectPage extends StateLitElement {
         this._unsubAnnot = null;
         unsubscribe('aura.edit.selection', this);
         unsubscribe('aura.actualDevice', this);
+        window.removeEventListener('studio-tour-open-tab', this._onTourOpenTab);
+    }
+
+    // The guided tour asks for the tab its step points into.
+    private readonly _onTourOpenTab = (event: Event) => {
+        const tab = (event as CustomEvent<{ tab?: string }>).detail?.tab;
+        if (tab === 'visual' || tab === 'ai' || tab === 'states' || tab === 'page') this._tab = tab;
+    };
+
+    /** Something the person is in the middle of: no tour opens over it. */
+    private _tourBusy(): boolean {
+        const file = this._selectedPage?.file;
+        return Object.values(this._editBusy).some(Boolean) || this._batchBusy || !!this._editBatch
+            || Object.keys(this._editReview).length > 0
+            || (!!file && isPageInReview({ project: Number(file.project), folder: file.folder, shortName: file.shortName }));
+    }
+
+    // The first time a page of the Genome is on screen, the tour is offered (once per version: studioTour remembers).
+    private _tourOffered = false;
+
+    updated(changed: Map<string, unknown>) {
+        super.updated(changed);
+        if (this._tourOffered || !this._selectedPage?.exists) return;
+        this._tourOffered = true;
+        // After the page and the panel settle, so the first step finds its element.
+        setTimeout(() => offerTour(GENOME_TOUR, { busy: this._tourBusy() }), 800);
     }
 
     handleIcaStateChange(key: string, value: unknown) {
@@ -1209,15 +1239,25 @@ export class PluginSelectPage extends StateLitElement {
         const max = this._pages.length + 1;
         return html`
             <div class="flex flex-col gap-3">
-                <aura--plugins--nav-header-102020
-                    .fixedLabel=${this.msg.title}
-                    .itemName=${page?.name ?? ''}
-                    .desc=${this.msg.desc}
-                    .value=${this.value ?? 0}
-                    .min=${0}
-                    .max=${max}
-                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
-                ></aura--plugins--nav-header-102020>
+                <div class="flex items-start gap-1.5">
+                    <aura--plugins--nav-header-102020
+                        class="flex-1 min-w-0"
+                        data-tour="genome-pages"
+                        .fixedLabel=${this.msg.title}
+                        .itemName=${page?.name ?? ''}
+                        .desc=${this.msg.desc}
+                        .value=${this.value ?? 0}
+                        .min=${0}
+                        .max=${max}
+                        @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                    ></aura--plugins--nav-header-102020>
+                    ${page?.exists ? html`
+                        <button type="button"
+                            class="shrink-0 mt-0.5 w-6 h-6 rounded-full border border-gray-300 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer"
+                            title=${tStudio('tour.help')}
+                            aria-label=${tStudio('tour.help')}
+                            @click=${() => startTour(GENOME_TOUR)}>?</button>` : nothing}
+                </div>
                 ${page ? this._renderPageDetail(page) : nothing}
             </div>
         `;
@@ -1249,7 +1289,7 @@ export class PluginSelectPage extends StateLitElement {
         ];
         const missing = options.filter(o => o.id !== current && !available.includes(`web/${o.id}`));
         return html`
-            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
+            <div data-tour="genome-device" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
                 <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.deviceTitle}</span>
                 <div role="radiogroup" class="flex self-start rounded-md border border-gray-300 dark:border-gray-700 overflow-hidden">
                     ${options.map(o => {
@@ -1284,7 +1324,7 @@ export class PluginSelectPage extends StateLitElement {
             { id: 'dark', label: this.msg.themeDark },
         ];
         return html`
-            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
+            <div data-tour="genome-theme" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
                 <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.themeTitle}</span>
                 <div role="radiogroup" class="flex self-start rounded-md border border-gray-300 dark:border-gray-700 overflow-hidden">
                     ${options.map(o => html`
@@ -1314,7 +1354,7 @@ export class PluginSelectPage extends StateLitElement {
             { value: true, label: this.msg.advancedOn },
         ];
         return html`
-            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
+            <div data-tour="genome-advanced" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
                 <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.advancedTitle}</span>
                 <div role="radiogroup" class="flex self-start rounded-md border border-gray-300 dark:border-gray-700 overflow-hidden">
                     ${options.map(o => html`
@@ -1407,19 +1447,19 @@ export class PluginSelectPage extends StateLitElement {
     // Every panel stays mounted and only the open one shows: the docked class picker must not leave the DOM, or the
     // editor hands the editing back to the floating picker, which then pops over the app.
     private _renderTabPanel(id: DetailTab, content: unknown) {
-        return html`<div role="tabpanel" class="${this._tab === id ? 'flex' : 'hidden'} flex-col gap-3">${content}</div>`;
+        return html`<div role="tabpanel" data-tour="genome-tab-${id}" class="${this._tab === id ? 'flex' : 'hidden'} flex-col gap-3">${content}</div>`;
     }
 
     // The page timeline (pageVersionsPanel): the page file on screen, the one the edits write.
     private _renderVersions(page: IPageEntry) {
         const file = page.file;
         const ref = file ? { project: Number(file.project), folder: file.folder, shortName: file.shortName } : null;
-        return html`<aura--studio--page-versions-102020 .page=${ref}></aura--studio--page-versions-102020>`;
+        return html`<aura--studio--page-versions-102020 data-tour="genome-versions" .page=${ref}></aura--studio--page-versions-102020>`;
     }
 
     private _renderPageInfo(page: IPageEntry) {
         return html`
-            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
+            <div data-tour="genome-page-info" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
                 <div class="flex items-baseline gap-1">
                     <span class="text-xs text-gray-400 dark:text-gray-500">${this._moduleName}/</span>
                     <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${page.name}</span>
@@ -2914,7 +2954,7 @@ export class PluginSelectPage extends StateLitElement {
     // Loaded lazily, for the same reason as the picker.
     private _renderPageTree() {
         void import('/_102020_/l2/aura/studio/pageTreePanel.js');
-        return html`<aura--studio--page-tree-102020></aura--studio--page-tree-102020>`;
+        return html`<aura--studio--page-tree-102020 data-tour="genome-tree"></aura--studio--page-tree-102020>`;
     }
 
     // The class picker DOCKED here (pageClassPickerPanel) — a second take on the floating one, kept
@@ -2924,7 +2964,7 @@ export class PluginSelectPage extends StateLitElement {
     private _renderClassPicker() {
         void import('/_102020_/l2/aura/studio/pageClassPickerPanel.js');
         return html`
-            <div class="border-t border-gray-200 dark:border-gray-800 pt-3">
+            <div class="border-t border-gray-200 dark:border-gray-800 pt-3" data-tour="genome-inspect">
                 <aura--studio--page-class-picker-102020></aura--studio--page-class-picker-102020>
             </div>
         `;

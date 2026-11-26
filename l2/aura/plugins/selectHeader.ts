@@ -45,6 +45,9 @@ import { designSystemNames } from '/_102020_/l2/aura/plugins/helpers/dsConfigLis
 import { readThemes } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 import '/_102020_/l2/aura/plugins/pluginHeaderEditor.js';
+import { offerTour, startTour } from '/_102020_/l2/aura/studio/studioTour.js';
+import { HEADER_TOUR } from '/_102020_/l2/aura/studio/studioTours.js';
+import { t as tStudio } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 /** Tag of the editor this panel opens in the details area (it defines itself on import). */
 const HEADER_EDITOR_TAG = 'aura--plugins--plugin-header-editor-102020';
@@ -155,7 +158,14 @@ export class PluginSelectHeader extends StateLitElement {
     super.disconnectedCallback();
   }
 
+  // The first time the headers are on screen, their tour is offered (once per version: studioTour remembers).
+  private _tourOffered = false;
+
   updated() {
+    if (!this._tourOffered && this.projectId && !this._loading) {
+      this._tourOffered = true;
+      setTimeout(() => offerTour(HEADER_TOUR, { busy: !!this._busy }), 800);
+    }
     // Both scenarios show real bands: the list one per header, the edit one for the selected header.
     // _mountBands queries by profile, so it finds whichever hosts this render put on the page.
     void this._mountBands();
@@ -276,15 +286,24 @@ export class PluginSelectHeader extends StateLitElement {
 
   private _navHeader(itemName: string, desc: string, value: number) {
     return html`
-      <aura--plugins--nav-header-102020
-        .fixedLabel=${this.msg.title}
-        .itemName=${itemName}
-        .desc=${desc}
-        .value=${value}
-        .min=${0}
-        .max=${this._entries.length + 1}
-        @nav-change=${(e: CustomEvent) => this._select(e.detail.value)}
-      ></aura--plugins--nav-header-102020>
+      <div class="flex items-start gap-1.5">
+        <aura--plugins--nav-header-102020
+          class="flex-1 min-w-0"
+          data-tour="header-nav"
+          .fixedLabel=${this.msg.title}
+          .itemName=${itemName}
+          .desc=${desc}
+          .value=${value}
+          .min=${0}
+          .max=${this._entries.length + 1}
+          @nav-change=${(e: CustomEvent) => this._select(e.detail.value)}
+        ></aura--plugins--nav-header-102020>
+        <button type="button"
+          class="shrink-0 mt-0.5 w-6 h-6 rounded-full border border-gray-300 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer"
+          title=${tStudio('tour.help')}
+          aria-label=${tStudio('tour.help')}
+          @click=${() => startTour(HEADER_TOUR)}>?</button>
+      </div>
     `;
   }
 
@@ -295,7 +314,7 @@ export class PluginSelectHeader extends StateLitElement {
         ${this._error ? this._renderError() : nothing}
         ${this._entries.length === 0
           ? this._frame(this.msg.none)
-          : html`<div class="flex flex-col gap-3">${this._entries.map((entry, i) => this._renderCard(entry, i + 1))}</div>`}
+          : html`<div class="flex flex-col gap-3" data-tour="header-list">${this._entries.map((entry, i) => this._renderCard(entry, i + 1))}</div>`}
         ${this._renderAddCard()}
       </div>
     `;
@@ -378,6 +397,7 @@ export class PluginSelectHeader extends StateLitElement {
   private _renderAddCard() {
     return html`
       <button type="button"
+        data-tour="header-add"
         class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-3 py-3 text-sm
                text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400"
         @click=${() => this._select(this._entries.length + 1)}
@@ -426,7 +446,7 @@ export class PluginSelectHeader extends StateLitElement {
           <span class="text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate">${entry.tag}</span>
         </div>
 
-        ${this._renderBandHost(entry.profileName)}
+        <div data-tour="header-band">${this._renderBandHost(entry.profileName)}</div>
 
         ${reasons.length ? html`
           <ul class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300 flex flex-col gap-0.5">
@@ -435,11 +455,13 @@ export class PluginSelectHeader extends StateLitElement {
 
         <div class="flex items-center gap-2 flex-wrap">
           <button type="button"
+            data-tour="header-edit"
             class="rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white disabled:opacity-50"
             ?disabled=${!!this._busy}
             @click=${() => void this._openEditor(entry)}>${this.msg.edit}</button>
           ${entry.isActive ? nothing : html`
             <button type="button"
+              data-tour="header-default"
               class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
               ?disabled=${!!this._busy}
               @click=${() => void this._setDefault(entry)}>${this._busy || this.msg.setDefault}</button>
@@ -546,7 +568,7 @@ export class PluginSelectHeader extends StateLitElement {
       <div class="flex flex-col gap-3">
         ${this._navHeader(this.msg.addTitle, this.msg.addDesc, this.value ?? 0)}
         ${this._error ? this._renderError() : nothing}
-        <label class="flex flex-col gap-1 text-sm">
+        <label class="flex flex-col gap-1 text-sm" data-tour="header-name">
           <span class="text-gray-600 dark:text-gray-300">${this.msg.nameLabel}</span>
           <input
             class="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5 text-sm"

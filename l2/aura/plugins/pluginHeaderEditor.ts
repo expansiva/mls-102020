@@ -91,6 +91,9 @@ import {
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
 import { designSystemNames } from '/_102020_/l2/aura/plugins/helpers/dsConfigList.js';
 import { readThemes } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
+import { continueTour, startTour } from '/_102020_/l2/aura/studio/studioTour.js';
+import { HEADER_EDITOR_TOUR, HEADER_TOUR } from '/_102020_/l2/aura/studio/studioTours.js';
+import { t as tStudio } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 /// **collab_i18n_start**
 const message_en = {
@@ -576,7 +579,15 @@ export class PluginHeaderEditor extends PluginBaseModule {
     });
   }
 
+  // The first time the editor is on screen its tour is offered — or, when the Header knob's tour led here through
+  // "Edit", it simply goes on (continueTour).
+  private _tourOffered = false;
+
   updated(): void {
+    if (!this._tourOffered && this._projectId) {
+      this._tourOffered = true;
+      setTimeout(() => continueTour(HEADER_TOUR, HEADER_EDITOR_TOUR, { busy: !!this._busy || !!this._previewTag }), 600);
+    }
     void this._mountAppliedPreview();
     if (this._previewTag) void this._mountDraftPreview();
   }
@@ -896,9 +907,9 @@ export class PluginHeaderEditor extends PluginBaseModule {
   // ── render ──────────────────────────────────────────────────────────────
 
   /** Section shell: same card the project panel uses, so the screen reads as part of it. */
-  private _card(title: string, body: unknown, aside: unknown = nothing) {
+  private _card(title: string, body: unknown, aside: unknown = nothing, tour: string | null = null) {
     return html`
-      <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
+      <section data-tour=${tour ?? nothing} class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
         <header class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
           <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex-1">${title}</h3>
           ${aside}
@@ -925,7 +936,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
     // Creating a variant: there is nothing applied to show, and the list above already shows the rest.
     if (!view && this.variant) return nothing;
     if (!view) {
-      return this._card(this.msg.applied, html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noHeader}</p>`);
+      return this._card(this.msg.applied, html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noHeader}</p>`, nothing, 'header-editor-applied');
     }
     return this._card(
       this.msg.applied,
@@ -941,6 +952,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
           ${view.profileName} · ${view.tag} · ${view.heightPx ?? AURA_HEADER_HEIGHT_PX}px
         </span>
       `,
+      'header-editor-applied',
     );
   }
 
@@ -1074,7 +1086,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
           </div>
         </div>
       ` : nothing}
-    `);
+    `, nothing, 'header-editor-brand');
   }
 
   /**
@@ -1315,7 +1327,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
     const faulty = this._errorTab;
 
     return html`
-      <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
+      <section data-tour="header-editor-request" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
         <header class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
           <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex-1">${this.msg.request}</h3>
           ${this._previewTag
@@ -1396,7 +1408,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
       return nothing;
     }
     return html`
-      <div class="sticky bottom-0 -mx-3 px-3 py-2 flex flex-col gap-2 bg-white/95 dark:bg-gray-900/95 border-t border-gray-200 dark:border-gray-800 backdrop-blur">
+      <div data-tour="header-editor-bar" class="sticky bottom-0 -mx-3 px-3 py-2 flex flex-col gap-2 bg-white/95 dark:bg-gray-900/95 border-t border-gray-200 dark:border-gray-800 backdrop-blur">
       ${this._error ? html`
         <p class="rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-2.5 py-1.5 text-sm text-red-700 dark:text-red-300">
           ${this._error}
@@ -1504,8 +1516,13 @@ export class PluginHeaderEditor extends PluginBaseModule {
               bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">${this.msg.isDefault}</span>
           ` : nothing}
           <span class="ml-auto"></span>
-          ${this._renderPreviewModulePicker()}
+          <span class="inline-flex items-center gap-2 flex-wrap" data-tour="header-editor-preview-as">${this._renderPreviewModulePicker()}</span>
           <span class="text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
+          <button type="button"
+          class="shrink-0 w-6 h-6 rounded-full border border-gray-300 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer"
+          title=${tStudio('tour.help')}
+          aria-label=${tStudio('tour.help')}
+          @click=${() => startTour(HEADER_EDITOR_TOUR)}>?</button>
         </div>
         ${this._renderApplied()}
         ${this._renderMark()}

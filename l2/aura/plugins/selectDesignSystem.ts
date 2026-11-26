@@ -34,6 +34,9 @@ import {
 import { baseName, colorRowsToMap, countByKind, diffTokens, tokenStatus, valueRowsToMap, type ChangeKind, type KeyChange, type TokenMaps, type TokenSection } from '/_102020_/l2/aura/plugins/helpers/dsDiff.js';
 import { parseTokenQuery, rowMatchesQuery, type SearchableRow } from '/_102020_/l2/aura/plugins/helpers/dsTokenSearch.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
+import { offerTour, startTour } from '/_102020_/l2/aura/studio/studioTour.js';
+import { DESIGN_SYSTEM_TOUR } from '/_102020_/l2/aura/studio/studioTours.js';
+import { t as tStudio } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 // DESIGN SYSTEM = the entries of `_<project>_/l2/designSystem.ts` — the SINGLE home of
 // identity + styling tokens. This plugin edits those entries DIRECTLY (token names are
@@ -1521,7 +1524,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 ${this._navHeader(this.msg.allTitle, this.msg.allDesc, 0)}
                 ${this._entries.length === 0
                     ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noDs}</span>`
-                    : html`<div class="grid grid-cols-2 gap-2">${this._entries.map(e => this._renderDsCard(e))}</div>`}
+                    : html`<div class="grid grid-cols-2 gap-2" data-tour="ds-list">${this._entries.map(e => this._renderDsCard(e))}</div>`}
                 ${this._renderAddCard()}
             </div>
         `;
@@ -1557,7 +1560,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private _renderAddCard() {
         return html`
-            <div class="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500 p-3 flex flex-col items-center justify-center gap-1 cursor-pointer text-gray-400 dark:text-gray-500 hover:text-indigo-500 transition-colors min-h-23"
+            <div data-tour="ds-add" class="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500 p-3 flex flex-col items-center justify-center gap-1 cursor-pointer text-gray-400 dark:text-gray-500 hover:text-indigo-500 transition-colors min-h-23"
                 @click=${() => this._dispatchSelect(this._customKey)}>
                 <span class="text-2xl leading-none">+</span>
                 <span class="text-xs font-semibold">${this.msg.addTitle}</span>
@@ -1608,7 +1611,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 <button class="w-11 h-11 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-400 hover:text-indigo-500 hover:border-indigo-400 text-xl cursor-pointer"
                     @click=${() => { this._palette = [...this._palette, '#888888']; }}>+</button>
             </div>
-        `);
+        `, null, 'ds-palette');
     }
 
     private _renderSwatch(hex: string, i: number) {
@@ -1648,7 +1651,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 ${busy ? this._renderSpinner('border-white') : nothing}
                 ${busy ? this.msg.aiGenerating : this.msg.aiGenerate}</button>
             ${this._renderGenTasks()}
-        `);
+        `, null, 'ds-ai');
     }
 
     /** Generation feedback: running / done / error per task, each with "follow task". */
@@ -1797,10 +1800,10 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     /** `hits` (filtering only): the section opens itself when it has matches and shows how many. */
-    private _section(title: string, tag: string | null, open: boolean, body: unknown, hits: number | null = null) {
+    private _section(title: string, tag: string | null, open: boolean, body: unknown, hits: number | null = null, tour: string | null = null) {
         const filtering = hits !== null && this._filtering;
         return html`
-            <details class="group rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 overflow-hidden" ?open=${filtering ? hits! > 0 : open}>
+            <details data-tour=${tour ?? nothing} class="group rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 overflow-hidden" ?open=${filtering ? hits! > 0 : open}>
                 <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-3 py-2.5 flex items-center gap-2">
                     <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${title}</span>
                     ${filtering ? html`<span class="text-[10px] font-semibold rounded px-1.5 py-0.5 ${hits ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800'}">${hits}</span>` : nothing}
@@ -1841,7 +1844,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 <button class="text-xs font-semibold px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
                     title=${this.msg.recalcHint} @click=${() => this._recalcAllStates()}>↻ ${this.msg.recalcAll}</button>
             </div>
-        `, hits);
+        `, hits, 'ds-colors');
     }
 
     private _renderNoMatch() {
@@ -1944,7 +1947,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _renderScopeNote(entry: IDsEntry) {
         const live = canPreview({ editorProjectId: this.projectId, bootProjectId: siteProjectFromBoot(window.collabBoot), entryName: entry.name, doc: document });
         return html`
-            <div class="flex flex-col gap-1 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-2.5 py-2">
+            <div data-tour="ds-scope" class="flex flex-col gap-1 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-2.5 py-2">
                 <span class="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">${this.msg.scopeNote}</span>
                 <span class="flex items-center gap-1.5 text-[11px] leading-snug ${live ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}">
                     <span class="w-1.5 h-1.5 rounded-full shrink-0 ${live ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}"></span>
@@ -1962,7 +1965,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         const usedCount = this._usedRowCount;
         const all = this._allRows;
         return html`
-            <div class="sticky top-0 z-10 flex flex-col gap-2.5 rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm">
+            <div data-tour="ds-filter" class="sticky top-0 z-10 flex flex-col gap-2.5 rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm">
                 ${this._panelTitle(this.msg.filterTitle)}
                 <div class="relative flex items-center">
                     <svg class="absolute left-2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2013,7 +2016,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     /** Token ↔ page: the inspect switch, its hint and what the picked element reads. Only with the app on screen. */
     private _renderInspectPanel() {
         if (!pageRegion(document)) return nothing;
-        return this._panel(this.msg.inspectTitle, html`
+        return html`<div data-tour="ds-inspect">${this._panel(this.msg.inspectTitle, html`
                     <div class="flex items-center gap-2">
                         <button class="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border transition-colors cursor-pointer ${this._inspecting
                             ? 'border-pink-400 bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400'
@@ -2024,7 +2027,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                         <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${this._inspecting ? this.msg.inspectHint : this.msg.hoverHint}</span>
                     </div>
                     ${this._inspecting ? this._renderInspected() : nothing}
-        `);
+        `)}</div>`;
     }
 
     private _renderInspected() {
@@ -2332,7 +2335,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
             ${this._renderRemoved('components')}
             ${this._filtering && total && !hits ? this._renderNoMatch() : nothing}
             <p class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.mlSectionAddHint}</p>
-        `, hits);
+        `, hits, 'ds-components');
     }
 
     /** One molecule's own values (theme `components[tag]`). */
@@ -2466,13 +2469,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
                     @click=${() => { this._fonts = [...this._fonts, { name: '', source: 'google', family: '', weights: [400], fallback: 'sans-serif' }]; this._touch(); }}>${this.msg.addFont}</button>
             </div>`}
-        `, hits);
+        `, hits, 'ds-typography');
     }
 
     // global: plain token | value rows
     private _renderGlobalSection() {
         return this._section(this.msg.globalTitle, this.msg.globalTag, false,
-            this._renderValueRows(this._global, 'global', rows => { this._global = rows; }), this._countVisible(this._global));
+            this._renderValueRows(this._global, 'global', rows => { this._global = rows; }), this._countVisible(this._global), 'ds-global');
     }
 
     private _renderValueRows(rows: IValueRow[], section: 'typography' | 'global', commit: (rows: IValueRow[]) => void) {
@@ -2776,7 +2779,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         const dirty = this._dirty && !this._saved;
         const canUndo = dirty && !this._isAdd && !!this._selectedEntry;
         return html`
-            <div class="sticky bottom-0 z-10 mt-1 py-2.5 flex flex-col gap-2 border-t border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm">
+            <div data-tour="ds-save" class="sticky bottom-0 z-10 mt-1 py-2.5 flex flex-col gap-2 border-t border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm">
                 ${dirty && this._showDiff ? this._renderDiffList() : nothing}
                 ${dirty || this._saved ? html`
                     <div class="flex items-center gap-2 min-w-0">
@@ -3005,16 +3008,35 @@ export class PluginSelectDesignSystem extends StateLitElement {
     // ── shared chrome ───────────────────────────────────────────────────
     private _navHeader(itemName: string, desc: string, value: number) {
         return html`
-            <aura--plugins--nav-header-102020
-                .fixedLabel=${this.msg.title}
-                .itemName=${itemName}
-                .desc=${desc}
-                .value=${value}
-                .min=${0}
-                .max=${this._maxValue}
-                @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
-            ></aura--plugins--nav-header-102020>
+            <div class="flex items-start gap-1.5">
+                <aura--plugins--nav-header-102020
+                    class="flex-1 min-w-0"
+                    data-tour="ds-nav"
+                    .fixedLabel=${this.msg.title}
+                    .itemName=${itemName}
+                    .desc=${desc}
+                    .value=${value}
+                    .min=${0}
+                    .max=${this._maxValue}
+                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                ></aura--plugins--nav-header-102020>
+                <button type="button"
+                    class="shrink-0 mt-0.5 w-6 h-6 rounded-full border border-gray-300 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer"
+                    title=${tStudio('tour.help')}
+                    aria-label=${tStudio('tour.help')}
+                    @click=${() => startTour(DESIGN_SYSTEM_TOUR)}>?</button>
+            </div>
         `;
+    }
+
+    // The first time the design systems are on screen, their tour is offered (once per version: studioTour remembers).
+    private _tourOffered = false;
+
+    updated(changed: Map<string, unknown>) {
+        super.updated(changed);
+        if (this._tourOffered || !this.projectId || this._loading) return;
+        this._tourOffered = true;
+        setTimeout(() => offerTour(DESIGN_SYSTEM_TOUR, { busy: this._generating || hasRunning('ds:generate') }), 800);
     }
 
     private _renderNeedsProject() {
