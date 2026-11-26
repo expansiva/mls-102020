@@ -12,7 +12,7 @@ export type MediaCategory = 'image' | 'icon' | 'video' | 'audio' | 'font' | 'doc
 export const ASSETS_LEVEL = 3;
 
 /** Largest file the panel accepts. The stor keeps the bytes in IndexedDB and the VM publish sends them as base64. */
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 64 * 1024 * 1024;
 
 export const EXTENSION_MAP: Readonly<Record<string, MediaCategory>> = {
     '.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.gif': 'image',
