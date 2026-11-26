@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   categoriesFor, hasPoster, isWritableMediaUrl, isWritableMediaValue, liveMediaSrc, mediaFileLabel, mediaKindOf, mimeOfUrl,
-  moleculeMediaKind, readMediaSrc, readMediaValue, sourceChanges, spliceMediaAttributes, spliceMediaSrc,
+  moleculeMediaKind, PEEK_HEIGHT, PEEK_WIDTH, peekPosition, readMediaSrc, readMediaValue, sourceChanges, spliceMediaAttributes, spliceMediaSrc, stepIndex,
 } from '/_102020_/l2/aura/studio/studioMediaSrc.js';
 
 const page = (tag: string) => `html\`<div class="p-4">${tag}<span>x</span></div>\``;
@@ -168,4 +168,23 @@ test('poster: literal replaced, absent inserted, binding refused', () => {
 test('the live value reads the stash of any attribute', () => {
   const swapped = new Map([['poster', 'blob:x'], ['data-collab-asset-poster', '/_1_/l3/assets/p.png']]);
   assert.equal(liveMediaSrc({ getAttribute: (n) => swapped.get(n) ?? null }, 'poster'), '/_1_/l3/assets/p.png');
+});
+
+test('the hover preview goes left of the card when it fits, else right, always on screen', () => {
+  // A card in the panel on the right: room on the left, the preview sits there.
+  assert.deepEqual(peekPosition({ left: 900, right: 970, top: 300 }, 1280, 800), { left: 900 - 10 - PEEK_WIDTH, top: 300 });
+  // A card near the left edge: no room before it, so after it.
+  assert.deepEqual(peekPosition({ left: 100, right: 170, top: 300 }, 1280, 800), { left: 180, top: 300 });
+  // Low on the screen: the top is pulled up so the whole preview shows.
+  assert.equal(peekPosition({ left: 900, right: 970, top: 780 }, 1280, 800).top, 800 - PEEK_HEIGHT - 8);
+  // A narrow window: never past either edge.
+  const tight = peekPosition({ left: 50, right: 200, top: 10 }, 300, 800);
+  assert.equal(tight.left, 300 - PEEK_WIDTH - 8);
+});
+
+test('the viewer walks the gallery around both ends', () => {
+  assert.equal(stepIndex(0, -1, 3), 2);
+  assert.equal(stepIndex(2, 1, 3), 0);
+  assert.equal(stepIndex(1, 1, 3), 2);
+  assert.equal(stepIndex(0, 1, 0), 0);
 });

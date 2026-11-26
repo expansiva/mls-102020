@@ -1455,6 +1455,8 @@ export class StudioEditor {
     //  3. the selection: up one level, and only at the page's own root does it close the panel.
     if (e.key === 'Escape') {
       if (this.editSpan || this.isTypingTarget(e)) return;
+      // Something inside the panel that closes on its own Esc (the media viewer): leave the key to it.
+      if (this.isEscOwnedInside(e)) return;
       // Nothing of ours is open: the key belongs to whatever else is listening.
       if (!this.classPanel) return;
       e.preventDefault();
@@ -1492,6 +1494,12 @@ export class StudioEditor {
     e.stopPropagation();
     void (key === 'y' || e.shiftKey ? this.redo() : this.undo());
   };
+
+  /** Whether the keystroke comes from inside an element marked `data-esc-owner`, which handles Esc itself. */
+  private isEscOwnedInside(e: KeyboardEvent): boolean {
+    const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    return path.some((node) => (node as Element).hasAttribute?.('data-esc-owner'));
+  }
 
   /** Whether the keystroke belongs to something the user is typing into. */
   private isTypingTarget(e: KeyboardEvent): boolean {

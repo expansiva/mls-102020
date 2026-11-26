@@ -233,6 +233,44 @@ aura--studio--class-picker-102020 {
   /* A long file name ends in an ellipsis inside its card; the full name is in the tooltip. */
   .acp-media-choice { min-width: 0; overflow: hidden; }
   .acp-media-choice .acp-media-name { display: block; max-width: 100%; }
+  /* Each gallery card is two buttons: choosing the file, and the magnifier in its corner. */
+  .acp-media-choice { position: relative; }
+  .acp-media-choice:hover:not(.acp-current) { border-color: #4287f5; }
+  .acp-media-pick {
+    display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; min-width: 0;
+    padding: 0; background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer;
+  }
+  .acp-media-pick[disabled] { cursor: default; }
+  .acp-media-zoom {
+    position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0; line-height: 16px;
+    font-size: 11px; color: inherit; background: #1f2933; border: 1px solid rgba(245,247,250,0.15); border-radius: 3px;
+    cursor: pointer; opacity: 0; transition: opacity 120ms;
+  }
+  .acp-media-choice:hover .acp-media-zoom, .acp-media-zoom:focus-visible { opacity: 1; }
+  .acp-media-zoom:hover { border-color: #4287f5; }
+  /* The hover preview: beside the panel, over the page, never under the pointer. */
+  .acp-media-peek {
+    position: fixed; z-index: 2147483000; width: 240px; box-sizing: border-box; padding: 6px;
+    display: flex; flex-direction: column; gap: 4px; pointer-events: none;
+    background: #1f2933; border: 1px solid rgba(245,247,250,0.15); border-radius: 6px;
+  }
+  .acp-media-peek-img { width: 100%; height: 170px; object-fit: contain; background: rgba(127,127,127,0.12); border-radius: 4px; }
+  .acp-media-size { font-size: 11px; color: #9aa5b1; }
+  /* The viewer: the file large, in place of the gallery it was opened from. */
+  .acp-media-viewer { display: flex; flex-direction: column; gap: 6px; padding: 6px 0 2px; outline: none; }
+  .acp-media-viewer-bar { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+  .acp-media-viewer-stage {
+    display: flex; align-items: center; justify-content: center; min-height: 120px;
+    background: rgba(127,127,127,0.12); border-radius: 4px; overflow: hidden;
+  }
+  .acp-media-viewer-media { display: block; width: 100%; max-height: 320px; object-fit: contain; }
+  object.acp-media-viewer-media { height: 320px; }
+  .acp-media-viewer-audio { width: 100%; margin: 12px 6px; }
+  .acp-media-use {
+    padding: 5px 8px; font: inherit; font-size: 12px; color: #fff; background: #4287f5;
+    border: 0; border-radius: 4px; cursor: pointer;
+  }
+  .acp-media-use[disabled] { background: transparent; color: #9aa5b1; border: 1px solid rgba(245,247,250,0.15); cursor: default; }
 
   .acp-text-label {
     flex: 0 0 96px; color: #9aa5b1; font-size: 11px;

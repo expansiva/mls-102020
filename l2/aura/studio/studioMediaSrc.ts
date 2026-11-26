@@ -224,3 +224,35 @@ export function mediaFileLabel(url: string): string {
   const path = url.replace(/[?#].*$/u, '');
   return path.slice(path.lastIndexOf('/') + 1) || url;
 }
+
+/** Size of the hover preview of a gallery card, in CSS pixels. */
+export const PEEK_WIDTH = 240;
+export const PEEK_HEIGHT = 220;
+const PEEK_GAP = 10;
+const PEEK_MARGIN = 8;
+
+/**
+ * Where the hover preview of a gallery card goes, in viewport coordinates.
+ *
+ * To the LEFT of the card when it fits — the panel sits on the right of the screen, floating or
+ * docked, so that side is the page — else to the right, kept inside the viewport. Its top follows
+ * the card, clamped so the whole preview stays on screen.
+ */
+export function peekPosition(
+  card: { left: number; right: number; top: number },
+  viewportWidth: number,
+  viewportHeight: number,
+): { left: number; top: number } {
+  const before = card.left - PEEK_GAP - PEEK_WIDTH;
+  const left = before >= PEEK_MARGIN
+    ? before
+    : Math.max(PEEK_MARGIN, Math.min(card.right + PEEK_GAP, viewportWidth - PEEK_WIDTH - PEEK_MARGIN));
+  const top = Math.max(PEEK_MARGIN, Math.min(card.top, viewportHeight - PEEK_HEIGHT - PEEK_MARGIN));
+  return { left: Math.round(left), top: Math.round(top) };
+}
+
+/** The step of the media viewer: wraps around both ends, so ‹ on the first file goes to the last. */
+export function stepIndex(index: number, delta: number, length: number): number {
+  if (length <= 0) return 0;
+  return ((index + delta) % length + length) % length;
+}

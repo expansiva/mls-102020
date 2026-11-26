@@ -27,7 +27,7 @@ import { getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { getActualLanguage, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { combinationName } from '/_102020_/l2/aura/helpers/pageCombination.js';
 import { currentLanguage, describePageFolder } from '/_102020_/l2/aura/studio/studioEditTarget.js';
-import { categoriesFor, mediaFileLabel, type MediaKind } from '/_102020_/l2/aura/studio/studioMediaSrc.js';
+import { categoriesFor, mediaFileLabel, peekPosition, stepIndex, type MediaKind } from '/_102020_/l2/aura/studio/studioMediaSrc.js';
 import { assetUrl, categoryOf, isProjectMediaFile } from '/_102020_/l2/aura/plugins/helpers/assetsMediaCore.js';
 import {
   ANIMATION_GROUPS,
@@ -538,6 +538,19 @@ interface IPasteOption {
 /**
  * The panel's content, for both pickers. Abstract: a subclass registers the tag and draws the chrome.
  */
+/** The open media viewer: the gallery it came from and the file on show. */
+interface IMediaViewer {
+  key: string;
+  kind: MediaKind;
+  choices: { url: string; name: string }[];
+  index: number;
+  value: string;
+  pick: (url: string) => void;
+}
+
+/** How long the pointer rests on a card before its preview shows: crossing the grid does not flash. */
+const MEDIA_PEEK_DELAY_MS = 300;
+
 export abstract class ClassPickerBase extends StateLitElement {
   @property({ attribute: false }) target?: IPickerTarget;
   /** Classes with a rule in the BUILT css — what the client will actually render. */
@@ -596,6 +609,14 @@ export abstract class ClassPickerBase extends StateLitElement {
   @state() private menuOpen = false;
   /** Which media gallery is open: `single`, `item:<n>`, `poster`, `add` — or none. */
   @state() private mediaOpen: string | null = null;
+  /** The hover preview of a gallery card: the file and where the card is on screen. */
+  @state() private mediaPeek: { url: string; name: string; card: { left: number; right: number; top: number } } | null = null;
+  /** The pixel size of the file in the preview or the viewer, once its image has loaded. */
+  @state() private mediaSize = '';
+  /** The media viewer, opened by a card's magnifier in place of the gallery it belongs to (`key`). */
+  @state() private mediaViewer: IMediaViewer | null = null;
+  private mediaPeekTimer = 0;
+  private focusViewer = false;
   /** Token index whose typed-value input is open. */
   @state() private typedEditing: string | null = null;
   /** State keys the scenario panel is currently simulating — see renderScenarioBadge. */
@@ -631,6 +652,7 @@ export abstract class ClassPickerBase extends StateLitElement {
 
   disconnectedCallback(): void {
     unsubscribe(ClassPickerBase.SCENARIO_KEY, this);
+    window.clearTimeout(this.mediaPeekTimer);
     super.disconnectedCallback();
   }
 
@@ -690,6 +712,11 @@ export abstract class ClassPickerBase extends StateLitElement {
     if (changed.has('target')) this.menuOpen = false;
     // The media gallery belongs to the element it was opened for: another selection, another gallery.
     if (changed.has('target')) this.mediaOpen = null;
+    // The viewer and the preview live inside that gallery: they go with it.
+    if (changed.has('target') || changed.has('mediaOpen')) {
+      this.mediaViewer = null;
+      this.clearMediaPeek();
+    }
     // A slot that is no longer there (the page was rebuilt) is not a part to stay on.
     if (typeof this.editPart === 'number' && !this.target?.slots[this.editPart]) this.editPart = 'inner';
     // The page tree picked a slot: open the Slots section on it. After the reset above, which a new
@@ -719,6 +746,11 @@ export abstract class ClassPickerBase extends StateLitElement {
   updated(changed: Map<string, unknown>): void {
     super.updated(changed);
     this.syncClipboardProps(changed);
+    // The viewer takes the keyboard when it opens, so the arrows and Esc reach it without a click first.
+    if (this.focusViewer) {
+      this.focusViewer = false;
+      this.renderRoot.querySelector<HTMLElement>('.acp-media-viewer')?.focus();
+    }
     if (!changed.has('target')) return;
     const row = this.renderRoot.querySelector('.acp-chain');
     if (row) row.scrollLeft = row.scrollWidth;
@@ -964,20 +996,149 @@ export abstract class ClassPickerBase extends StateLitElement {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  /**
+   * The files the element can switch to. Each card is TWO buttons side by side — choosing the file,
+   * and the magnifier that opens it large — never one inside the other. The current file keeps its
+   * magnifier: seeing what is on screen at full size is part of deciding to change it.
+   */
   protected renderMediaGallery(project: number | null, kind: MediaKind, value: string, pick: (url: string) => void) {
     const choices = this.mediaChoices(project, kind);
     if (!choices.length) return html`<div class="acp-reason">${t('panel.mediaEmpty')}</div>`;
+    const viewer = this.mediaViewer;
+    if (viewer && viewer.key === this.mediaOpen) return this.renderMediaViewer(viewer);
     const icon = kind === 'video' ? '▶' : kind === 'audio' ? '♪' : '▤';
     return html`<div class="acp-media-grid">
-      ${choices.map((choice) => html`<button type="button"
+      ${choices.map((choice, index) => html`<div
         class="acp-media-choice ${choice.url === value ? 'acp-current' : ''}"
-        title=${choice.url} ?disabled=${choice.url === value}
-        @click=${() => { this.mediaOpen = null; pick(choice.url); }}>
-        ${kind === 'image'
+        @mouseenter=${(e: MouseEvent) => { if (kind === 'image') this.scheduleMediaPeek(e.currentTarget as HTMLElement, choice); }}
+        @mouseleave=${() => this.clearMediaPeek()}>
+        <button type="button" class="acp-media-pick" title=${choice.url} ?disabled=${choice.url === value}
+          @click=${() => { this.mediaOpen = null; pick(choice.url); }}>
+          ${kind === 'image'
     ? html`<img class="acp-media-choice-img" src=${choice.url} alt="" loading="lazy">`
     : html`<span class="acp-media-choice-icon">${icon}</span>`}
-        <span class="acp-media-name">${choice.name}</span>
-      </button>`)}
+          <span class="acp-media-name">${choice.name}</span>
+        </button>
+        <button type="button" class="acp-media-zoom" title=${t('panel.mediaZoom')} aria-label=${t('panel.mediaZoom')}
+          @click=${() => this.openMediaViewer({ key: this.mediaOpen ?? '', kind, choices, index, value, pick })}>⤢</button>
+      </div>`)}
+    </div>${this.renderMediaPeek()}`;
+  }
+
+  private scheduleMediaPeek(card: HTMLElement, choice: { url: string; name: string }): void {
+    window.clearTimeout(this.mediaPeekTimer);
+    this.mediaPeekTimer = window.setTimeout(() => {
+      if (!card.isConnected) return;
+      const box = card.getBoundingClientRect();
+      this.mediaSize = '';
+      this.mediaPeek = { ...choice, card: { left: box.left, right: box.right, top: box.top } };
+    }, MEDIA_PEEK_DELAY_MS);
+  }
+
+  private clearMediaPeek(): void {
+    window.clearTimeout(this.mediaPeekTimer);
+    this.mediaPeek = null;
+  }
+
+  /** Pixel size of the image just loaded in the preview or the viewer. */
+  private readMediaSize(e: Event): void {
+    const img = e.target as HTMLImageElement;
+    this.mediaSize = img.naturalWidth ? `${img.naturalWidth}×${img.naturalHeight}` : '';
+  }
+
+  /**
+   * The hover preview: a larger copy of the card's picture beside the panel, over the page. Fixed to
+   * the viewport (the panel has no transformed ancestor), and blind to the pointer, so it can never
+   * sit between the pointer and the card it describes.
+   */
+  private renderMediaPeek() {
+    const peek = this.mediaPeek;
+    if (!peek) return nothing;
+    const at = peekPosition(peek.card, window.innerWidth, window.innerHeight);
+    return html`<div class="acp-media-peek" style="left:${at.left}px;top:${at.top}px" aria-hidden="true">
+      <img class="acp-media-peek-img" src=${peek.url} alt="" @load=${(e: Event) => this.readMediaSize(e)}>
+      <span class="acp-media-name">${peek.name}</span>
+      <span class="acp-media-size">${this.mediaSize}</span>
+    </div>`;
+  }
+
+  private openMediaViewer(viewer: IMediaViewer): void {
+    this.clearMediaPeek();
+    this.mediaSize = '';
+    this.mediaViewer = viewer;
+    this.focusViewer = true;
+  }
+
+  private stepMediaViewer(delta: number): void {
+    const viewer = this.mediaViewer;
+    if (!viewer || viewer.choices.length < 2) return;
+    this.mediaSize = '';
+    this.mediaViewer = { ...viewer, index: stepIndex(viewer.index, delta, viewer.choices.length) };
+  }
+
+  private closeMediaViewer(): void {
+    this.mediaViewer = null;
+  }
+
+  /**
+   * The viewer's keys: arrows walk the gallery, Esc closes the viewer — and only the viewer. The
+   * editor's own Esc (up one level / close the panel) leaves an event that comes from inside an
+   * element marked `data-esc-owner`, and the stop here keeps it from going any further.
+   */
+  private onMediaViewerKey(e: KeyboardEvent): void {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.closeMediaViewer();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.stepMediaViewer(e.key === 'ArrowLeft' ? -1 : 1);
+    }
+  }
+
+  /** Uses the file on show: the same pick as its card, so the write and its undo are the card's. */
+  private useMediaViewer(): void {
+    const viewer = this.mediaViewer;
+    if (!viewer) return;
+    const url = viewer.choices[viewer.index].url;
+    this.mediaViewer = null;
+    this.mediaOpen = null;
+    viewer.pick(url);
+  }
+
+  private renderViewerMedia(kind: MediaKind, url: string) {
+    if (kind === 'video') return html`<video class="acp-media-viewer-media" src=${url} controls preload="metadata"></video>`;
+    if (kind === 'audio') return html`<audio class="acp-media-viewer-audio" src=${url} controls preload="metadata"></audio>`;
+    if (kind === 'document') {
+      return html`<object class="acp-media-viewer-media" data=${url} type="application/pdf">
+        <a class="acp-link" href=${url} target="_blank" rel="noopener">${t('panel.mediaOpenTab')}</a></object>`;
+    }
+    return html`<img class="acp-media-viewer-media" src=${url} alt="" @load=${(e: Event) => this.readMediaSize(e)}>`;
+  }
+
+  /** The file large, in place of the gallery it was opened from, with a way through the others. */
+  protected renderMediaViewer(viewer: IMediaViewer) {
+    const choice = viewer.choices[viewer.index];
+    const current = choice.url === viewer.value;
+    const many = viewer.choices.length > 1;
+    return html`<div class="acp-media-viewer" tabindex="-1" data-esc-owner
+      @keydown=${(e: KeyboardEvent) => this.onMediaViewerKey(e)}>
+      <div class="acp-media-viewer-bar">
+        <span class="acp-media-name" title=${choice.url}>${choice.name}</span>
+        <button type="button" class="acp-icon" title=${t('panel.mediaClose')} aria-label=${t('panel.mediaClose')}
+          @click=${() => this.closeMediaViewer()}>✕</button>
+      </div>
+      <div class="acp-media-viewer-stage">${this.renderViewerMedia(viewer.kind, choice.url)}</div>
+      <div class="acp-media-viewer-bar">
+        ${many ? html`<button type="button" class="acp-icon" title=${t('panel.mediaPrev')} aria-label=${t('panel.mediaPrev')}
+          @click=${() => this.stepMediaViewer(-1)}>‹</button>` : nothing}
+        <span class="acp-media-size">${many ? `${viewer.index + 1}/${viewer.choices.length}` : ''}${this.mediaSize ? ` · ${this.mediaSize}` : ''}</span>
+        ${many ? html`<button type="button" class="acp-icon" title=${t('panel.mediaNext')} aria-label=${t('panel.mediaNext')}
+          @click=${() => this.stepMediaViewer(1)}>›</button>` : nothing}
+      </div>
+      <button type="button" class="acp-media-use" ?disabled=${current} @click=${() => this.useMediaViewer()}
+        >${current ? t('panel.mediaInUse') : t('panel.mediaUse')}</button>
     </div>`;
   }
 

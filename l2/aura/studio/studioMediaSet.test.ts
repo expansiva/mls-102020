@@ -57,3 +57,30 @@ test('the panel sends the item it means, and the gallery offers the kind of the 
   assert.ok(PANEL.includes("'picker-media-remove'"));
   assert.ok(body(PANEL, 'protected mediaChoices(').includes('categoriesFor(kind)'));
 });
+
+test('a gallery card is two sibling buttons, never a button inside a button', () => {
+  const gallery = body(PANEL, 'protected renderMediaGallery(');
+  const card = gallery.slice(gallery.indexOf('<div\n        class="acp-media-choice'));
+  // The card itself is a div: the pick and the magnifier are its two children.
+  assert.ok(!gallery.includes('<button type="button"\n        class="acp-media-choice'));
+  assert.ok(card.indexOf('class="acp-media-pick"') < card.indexOf('</button>'));
+  assert.ok(card.indexOf('</button>') < card.indexOf('class="acp-media-zoom"'));
+  // The magnifier is not disabled on the current file: only the pick is.
+  const zoom = card.slice(card.indexOf('class="acp-media-zoom"'), card.indexOf('</button>', card.indexOf('class="acp-media-zoom"')));
+  assert.ok(!zoom.includes('?disabled'));
+});
+
+test('"use this file" goes through the same pick as the card', () => {
+  const use = body(PANEL, 'private useMediaViewer(');
+  assert.ok(use.includes('viewer.pick(url)'));
+  assert.ok(body(PANEL, 'protected renderMediaGallery(').includes("this.openMediaViewer({ key: this.mediaOpen ?? '', kind, choices, index, value, pick })"));
+});
+
+test('the viewer owns its Esc: the editor leaves it, the viewer stops it', () => {
+  assert.ok(PANEL.includes('class="acp-media-viewer" tabindex="-1" data-esc-owner'));
+  const key = body(PANEL, 'private onMediaViewerKey(');
+  assert.ok(key.indexOf("e.key === 'Escape'") < key.indexOf('e.stopPropagation()'));
+  const esc = EDITOR.slice(EDITOR.indexOf("if (e.key === 'Escape') {\n      if (this.editSpan"));
+  assert.ok(esc.indexOf('this.isEscOwnedInside(e)') >= 0);
+  assert.ok(esc.indexOf('this.isEscOwnedInside(e)') < esc.indexOf('this.selectParentLevel()'));
+});
