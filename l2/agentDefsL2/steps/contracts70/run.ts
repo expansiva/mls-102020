@@ -125,11 +125,12 @@ export interface D2Contracts70Port {
 
 const UNAPPROVED = /^D2_CONTRACTS_BFF_MISSING: |^D2_CONTRACTS_SHARED_RECEIPT_MISSING$/u;
 
-/** Lines the /rederive run prints: one materialize command per page whose contract text changed, alphabetical. */
+/** Lines the /rederive run prints: one materialize command per page whose contract text changed, alphabetical, without --force. */
 export function d2ContractRederiveLines(module: string, wrote: readonly string[]): string {
   const pages = [...wrote].sort();
   if (!pages.length) return 'no contract changed; nothing to regenerate';
-  return pages.map(pageId => `@@agentMaterializeL2 ${module} --page ${pageId} --force`).join('\n');
+  const commands = pages.map(pageId => `@@agentMaterializeL2 ${module} --page ${pageId}`).join('\n');
+  return `${commands}\nThe existing screen is verified and repaired only if it does not compile. --force rebuilds it from scratch.`;
 }
 
 /** Every page goes alone (d2_76): refused upstream is skipped, refused here is recorded, the others are rendered. */

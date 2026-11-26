@@ -9,7 +9,7 @@ import { parseL2Page11 } from '/_102020_/l2/agentMaterializeL2/helpers/defs/page
 import { parseL2Shared } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import {
-  M4_SHARED_RUNTIME_REFS, approveM4Shared, m4SharedRules, buildM4SharedContext, buildM4SharedPrompt, buildM4SharedRepairPrompt, m4AddedMemberFindings, m4SharedEnvironmentFailure, m4SharedReuseBlocker, mergeM4Findings, m4SharedToolFindings, m4SharedToolSchema, m4SharedToolSource, recordM4SharedAttempt, reusableM4Shared, studioSharedPort, type M4SharedPort,
+  M4_SHARED_RUNTIME_REFS, approveM4Shared, m4CheckExistingShared, m4SharedCurrent, m4SharedRules, buildM4SharedContext, buildM4SharedPrompt, buildM4SharedRepairPrompt, m4AddedMemberFindings, m4SharedEnvironmentFailure, m4SharedReuseBlocker, mergeM4Findings, m4SharedToolFindings, m4SharedToolSchema, m4SharedToolSource, recordM4SharedAttempt, reusableM4Shared, studioSharedPort, type M4SharedPort,
 } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { createAgent as createSharedAgent } from '/_102020_/l2/agentMaterializeL2/steps/shared40/agentM4SharedPage.js';
 
@@ -350,4 +350,73 @@ test('the notes of a UX variant never reach the shared rules', () => {
     { severity: 'error', code: 'M4_INPUT_ROUTE_MISSING', page: 'p', path: 'shared:requests.y', message: 'e' },
   ];
   assert.deepEqual(m4SharedRules(problems).map(item => item.message), ['a', 'b']);
+});
+
+const SOURCE_KEY = '102047/l2/controleEstoque/web/shared/produtos.ts';
+const DTS_KEY = '102047/l2/controleEstoque/web/shared/produtosDts.txt';
+const RECEIPT_KEY = '102047/l2/controleEstoque/pipeline/agentMaterializeL2/shared40/produtos.json';
+const INPUT_KEY = '102047/l2/controleEstoque/pipeline/agentMaterializeL2/input.json';
+
+test('an existing shared is reused, kept, or sent to repair from the file on disk', async () => {
+  const current = await studio();
+  const context = await buildM4SharedContext(identity, 'produtos', current);
+  await approveM4Shared(context, reference, 2, current, [{ code: 'A', message: 'kept finding' }]);
+  const snapshot = JSON.parse(current.files.get(INPUT_KEY)!);
+  const compilesBefore = current.compiled.length;
+  assert.equal(await m4SharedCurrent(identity, 'produtos', current, snapshot), true);
+  const reused = await m4CheckExistingShared(identity, 'produtos', current, snapshot);
+  assert.deepEqual(reused, { verdict: 'reused' });
+  assert.equal(current.compiled.length, compilesBefore, 'a current receipt does not compile');
+
+  const keptPort = await studio();
+  await approveM4Shared(await buildM4SharedContext(identity, 'produtos', keptPort), reference, 3, keptPort, [{ code: 'A', message: 'from the old receipt' }]);
+  const keptSnapshot = JSON.parse(keptPort.files.get(INPUT_KEY)!);
+  const oldReceipt = JSON.parse(keptPort.files.get(RECEIPT_KEY)!);
+  keptPort.files.set(RECEIPT_KEY, JSON.stringify({ ...oldReceipt, unitInputHash: 'sha256:contract-changed' }));
+  assert.equal(await m4SharedCurrent(identity, 'produtos', keptPort, keptSnapshot), false);
+  keptPort.compiled.length = 0;
+  const kept = await m4CheckExistingShared(identity, 'produtos', keptPort, keptSnapshot);
+  assert.deepEqual(kept, { verdict: 'kept' });
+  assert.equal(keptPort.compiled.length, 1);
+  const rewritten = JSON.parse(keptPort.files.get(RECEIPT_KEY)!);
+  assert.equal(rewritten.unitInputHash, context.unitInputHash);
+  assert.equal(rewritten.fingerprint, 'data-v1');
+  assert.equal(rewritten.attempt, 3);
+  assert.equal(rewritten.findings.some((item: { code: string }) => item.code === 'A'), true);
+
+  const repairPort = await studio();
+  await approveM4Shared(await buildM4SharedContext(identity, 'produtos', repairPort), reference, 1, repairPort);
+  const repairSnapshot = JSON.parse(repairPort.files.get(INPUT_KEY)!);
+  const disk = repairPort.files.get(SOURCE_KEY)!;
+  repairPort.files.set(RECEIPT_KEY, JSON.stringify({ ...JSON.parse(repairPort.files.get(RECEIPT_KEY)!), unitInputHash: 'sha256:stale' }));
+  repairPort.compile = async () => ({ errors: ["produtos.ts(10,1): error TS2304: Cannot find name 'x'."], declaration: null });
+  const repair = await m4CheckExistingShared(identity, 'produtos', repairPort, repairSnapshot);
+  assert.equal(repair.verdict, 'repair');
+  assert.equal(repair.previous, disk);
+  assert.match(repair.diagnostic ?? '', /TS2304/u);
+  assert.equal(repairPort.files.get(SOURCE_KEY), disk, 'a failed compile leaves the disk file');
+
+  const envPort = await studio();
+  await approveM4Shared(await buildM4SharedContext(identity, 'produtos', envPort), reference, 1, envPort);
+  const envSnapshot = JSON.parse(envPort.files.get(INPUT_KEY)!);
+  const envDisk = envPort.files.get(SOURCE_KEY)!;
+  envPort.files.set(RECEIPT_KEY, JSON.stringify({ ...JSON.parse(envPort.files.get(RECEIPT_KEY)!), unitInputHash: 'sha256:stale' }));
+  envPort.compile = async () => ({ errors: ['Studio TypeScript compiler is unavailable'], declaration: null });
+  await assert.rejects(m4CheckExistingShared(identity, 'produtos', envPort, envSnapshot), /Studio TypeScript compiler is unavailable/u);
+  assert.equal(envPort.files.get(SOURCE_KEY), envDisk);
+
+  const bare = await studio();
+  const bareSnapshot = JSON.parse(bare.files.get(INPUT_KEY)!);
+  bare.files.set(SOURCE_KEY, reference);
+  bare.files.set(DTS_KEY, DECLARATION);
+  assert.equal(bare.files.has(RECEIPT_KEY), false);
+  const checked = await m4CheckExistingShared(identity, 'produtos', bare, bareSnapshot);
+  assert.equal(checked.verdict, 'kept');
+  assert.equal(JSON.parse(bare.files.get(RECEIPT_KEY)!).attempt, 1);
+
+  bare.files.delete(DTS_KEY);
+  await assert.rejects(m4CheckExistingShared(identity, 'produtos', bare, bareSnapshot), /M4_SHARED_CHECK_MISSING/u);
+  bare.files.set(DTS_KEY, DECLARATION);
+  bare.files.delete(SOURCE_KEY);
+  await assert.rejects(m4CheckExistingShared(identity, 'produtos', bare, bareSnapshot), /M4_SHARED_CHECK_MISSING/u);
 });

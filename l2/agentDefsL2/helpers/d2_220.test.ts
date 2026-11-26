@@ -101,9 +101,10 @@ void test('d2_220: an old contract the current emitter changes is wrote, and the
   assert.deepEqual(result.wrote, ['conversations', 'audit', 'bots']);
   assert.deepEqual(result.reused, ['steady']);
   assert.equal(d2ContractRederiveLines('telegram', result.wrote), [
-    '@@agentMaterializeL2 telegram --page audit --force',
-    '@@agentMaterializeL2 telegram --page bots --force',
-    '@@agentMaterializeL2 telegram --page conversations --force',
+    '@@agentMaterializeL2 telegram --page audit',
+    '@@agentMaterializeL2 telegram --page bots',
+    '@@agentMaterializeL2 telegram --page conversations',
+    'The existing screen is verified and repaired only if it does not compile. --force rebuilds it from scratch.',
   ].join('\n'));
 });
 

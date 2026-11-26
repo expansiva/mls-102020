@@ -338,6 +338,50 @@ export async function m4SharedReuseBlocker(identity: M4RunIdentity, pageId: stri
   return null;
 }
 
+/** What checking the shared already on disk decided. `repair` carries the disk text as the refused file. */
+export interface M4ExistingShared {
+  verdict: 'reused' | 'kept' | 'repair';
+  diagnostic?: string;
+  previous?: string;
+}
+
+/**
+ * The receipt still does not decide generation. It is current when it exists, carries the data fingerprint,
+ * and its `unitInputHash` is the shared unit hash `buildM4SharedContext` records.
+ */
+export async function m4SharedCurrent(identity: M4RunIdentity, pageId: string, port: M4SharedPort, snapshot: M4InputSnapshot): Promise<boolean> {
+  const receipt = await port.readJson<M4SharedReceipt>(sharedReceiptInfo(identity, pageId));
+  if (!receipt?.fingerprint) return false;
+  const page = snapshot.pages.find(item => item.pageId === pageId);
+  const unit = page?.units.find(item => item.kind === 'shared');
+  return unit !== undefined && receipt.unitInputHash === unit.inputHash;
+}
+
+/**
+ * The `.ts` and the Dts are already on disk. Current receipt: `reused`, no compile and no write.
+ * Otherwise the disk file is attempt 1 of approval against the current contract. It compiles: `kept`.
+ * A code or gate failure: `repair`, with the disk text untouched. An environment failure is rethrown.
+ */
+export async function m4CheckExistingShared(identity: M4RunIdentity, pageId: string, port: M4SharedPort, snapshot: M4InputSnapshot): Promise<M4ExistingShared> {
+  const sourceInfo = sharedSourceInfo(identity, pageId);
+  const declarationInfo = sharedDeclarationInfo(identity, pageId);
+  if (!port.exists(sourceInfo) || !port.exists(declarationInfo)) {
+    throw new Error(`M4_SHARED_CHECK_MISSING: ${displayPath(sourceInfo)} and ${displayPath(declarationInfo)} must both exist.`);
+  }
+  if (await m4SharedCurrent(identity, pageId, port, snapshot)) return { verdict: 'reused' };
+  const previous = await port.read(sourceInfo);
+  const receipt = await port.readJson<M4SharedReceipt>(sharedReceiptInfo(identity, pageId));
+  const context = await buildM4SharedContext(identity, pageId, port, snapshot);
+  try {
+    await approveM4Shared(context, previous, receipt?.attempt ?? 1, port, receipt?.findings ?? []);
+    return { verdict: 'kept' };
+  } catch (error) {
+    const diagnostic = error instanceof Error ? error.message : String(error);
+    if (m4SharedEnvironmentFailure(diagnostic)) throw error;
+    return { verdict: 'repair', diagnostic, previous };
+  }
+}
+
 /**
  * A write that did not compile is not a finished file. Put the previous text back, or delete the file
  * when there was none. The original failure is rethrown; a failed undo is appended to that message.
