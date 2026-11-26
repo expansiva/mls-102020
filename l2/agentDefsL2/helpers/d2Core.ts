@@ -29,9 +29,11 @@ export const D2_FLOW_STEP_IDS = [
   'finalize80',
 ] as const;
 export const D2_PAGES_FLOW_STEP_IDS = ['entry10', 'input20', 'pages50', 'finalize80'] as const;
+/** Re-emit contracts from the approved BFF. No bff55, shared60, pages50 or finalize80. */
+export const D2_CONTRACTS_FLOW_STEP_IDS = ['entry10', 'input20', 'contracts70'] as const;
 
 export type D2StepId = typeof D2_FLOW_STEP_IDS[number];
-export type D2Scope = 'all' | 'pages';
+export type D2Scope = 'all' | 'pages' | 'contracts';
 type D2RecordedStepId = D2StepId | 'contracts30' | 'shared40';
 
 export const D2_STEP_DEPENDS_ON: Record<Exclude<D2StepId, 'finalize80'>, readonly string[]> = {
@@ -115,14 +117,21 @@ export function parseD2MessageInvocation(value: string, project = currentD2Proje
   if (tokens.some(token => token.toLowerCase() === '/candidate')) {
     return { kind: 'refusal', diagnostic: '/candidate is not supported by agentDefsL2.' };
   }
-  const flag = tokens.find(token => token.startsWith('/') && token.toLowerCase() !== '/pages');
-  if (flag) return { kind: 'refusal', diagnostic: `Unknown flag: ${flag}.` };
   const pages = tokens.some(token => token.toLowerCase() === '/pages');
-  if (pages && (tokens.length !== 2 || tokens[1].toLowerCase() !== '/pages')) {
-    return { kind: 'refusal', diagnostic: 'Usage: @@agentDefsL2 <lowerCamel> [/pages].' };
+  const rederive = tokens.some(token => token.toLowerCase() === '/rederive');
+  if (pages && rederive) {
+    return { kind: 'refusal', diagnostic: 'Usage: @@agentDefsL2 <lowerCamel> [/pages | /rederive]. /pages and /rederive together are refused.' };
   }
-  if (!pages && tokens.length !== 1) {
-    return { kind: 'refusal', diagnostic: 'Usage: @@agentDefsL2 <lowerCamel> [/pages].' };
+  const flag = tokens.find(token => token.startsWith('/') && token.toLowerCase() !== '/pages' && token.toLowerCase() !== '/rederive');
+  if (flag) return { kind: 'refusal', diagnostic: `Unknown flag: ${flag}.` };
+  if (pages && (tokens.length !== 2 || tokens[1].toLowerCase() !== '/pages')) {
+    return { kind: 'refusal', diagnostic: 'Usage: @@agentDefsL2 <lowerCamel> [/pages | /rederive].' };
+  }
+  if (rederive && (tokens.length !== 2 || tokens[1].toLowerCase() !== '/rederive')) {
+    return { kind: 'refusal', diagnostic: 'Usage: @@agentDefsL2 <lowerCamel> [/pages | /rederive].' };
+  }
+  if (!pages && !rederive && tokens.length !== 1) {
+    return { kind: 'refusal', diagnostic: 'Usage: @@agentDefsL2 <lowerCamel> [/pages | /rederive].' };
   }
   if (!Number.isSafeInteger(project) || project <= 0) {
     return { kind: 'refusal', diagnostic: 'The current project is unavailable.' };
@@ -131,7 +140,7 @@ export function parseD2MessageInvocation(value: string, project = currentD2Proje
   if (!moduleTokenOk(module)) {
     return { kind: 'refusal', diagnostic: 'Module name must be lowerCamel and must not contain a path.' };
   }
-  return { kind: 'run', project, module, scope: pages ? 'pages' : 'all' };
+  return { kind: 'run', project, module, scope: rederive ? 'contracts' : pages ? 'pages' : 'all' };
 }
 
 export function parseD2StepInvocation(value: string, currentProject = currentD2Project()): D2StepInvocation {
@@ -150,7 +159,7 @@ export function parseD2StepInvocation(value: string, currentProject = currentD2P
   if (unknown) return { kind: 'refusal', diagnostic: `Unknown step arg: ${unknown}.` };
   const project = typeof raw.project === 'number' ? raw.project : Number.NaN;
   const module = typeof raw.module === 'string' ? raw.module.trim() : '';
-  if (raw.scope !== 'all' && raw.scope !== 'pages') return { kind: 'refusal', diagnostic: 'Step scope must be all or pages.' };
+  if (raw.scope !== 'all' && raw.scope !== 'pages' && raw.scope !== 'contracts') return { kind: 'refusal', diagnostic: 'Step scope must be all, pages or contracts.' };
   if (!Number.isSafeInteger(project) || project <= 0) {
     return { kind: 'refusal', diagnostic: 'agentDefsL2 step args require a positive integer project.' };
   }
@@ -181,7 +190,9 @@ export function d2StepIdOf(step: mls.msg.AIAgentStep): D2StepId | '' {
 export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity & { scope: D2Scope; bffPages?: string[] }): mls.msg.AIAgentStep {
   const dependsOn = stepId === 'finalize80'
     ? [identity.scope === 'pages' ? 'pages50-done' : 'contracts70-done']
-    : [...D2_STEP_DEPENDS_ON[stepId]];
+    : stepId === 'contracts70' && identity.scope === 'contracts'
+      ? ['input20-done']
+      : [...D2_STEP_DEPENDS_ON[stepId]];
   return {
     type: 'agent',
     stepId: 0,
@@ -214,7 +225,9 @@ export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity & { 
 }
 
 export function buildD2PlannedSteps(identity: D2RunIdentity & { scope: D2Scope; bffPages?: string[] }): mls.msg.AIAgentStep[] {
-  const ids = identity.scope === 'pages' ? D2_PAGES_FLOW_STEP_IDS : D2_FLOW_STEP_IDS;
+  const ids = identity.scope === 'pages' ? D2_PAGES_FLOW_STEP_IDS
+    : identity.scope === 'contracts' ? D2_CONTRACTS_FLOW_STEP_IDS
+    : D2_FLOW_STEP_IDS;
   return ids.map(stepId => createD2AgentStep(stepId, identity));
 }
 
@@ -343,8 +356,9 @@ export async function markD2FinalizeBlocked(identity: D2RunIdentity, diagnostic:
 }
 
 export const D2_HELP = [
-  'Usage: @@agentDefsL2 <lowerCamel> [/pages]',
+  'Usage: @@agentDefsL2 <lowerCamel> [/pages | /rederive]',
   'The module is explicit and the project comes from the current context.',
   'Without a flag the flow is entry10, input20, pages50, bff55, shared60, contracts70 and finalize80.',
   '/pages stops at page11: entry10, input20, pages50 and finalize80.',
+  '/rederive re-emits contracts from the approved BFF: entry10, input20 and contracts70. It does not run bff55, shared60 or a model, and it does not change the approved design.',
 ].join('\n');

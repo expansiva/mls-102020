@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/agentDefsL2.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { D2_AGENT_NAME, D2_HELP, buildD2PlannedSteps, d2StepIdOf, markD2Unavailable, parseD2MessageInvocation, parseD2StepInvocation } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { D2_AGENT_NAME, D2_HELP, buildD2PlannedSteps, d2StepIdOf, markD2Unavailable, parseD2MessageInvocation, parseD2StepInvocation, type D2Scope } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import '/_102020_/l2/agentDefsL2/steps/entry10/agentD2Entry.js';
 import '/_102020_/l2/agentDefsL2/steps/input20/agentD2Input.js';
@@ -18,7 +18,7 @@ export function createAgent(): IAgentAsync {
 }
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
-  const createTask = (identity: { project: number; module: string; scope: 'all' | 'pages' } | null, human: string, title: string): mls.msg.AgentIntentAddMessageAI => ({
+  const createTask = (identity: { project: number; module: string; scope: D2Scope } | null, human: string, title: string): mls.msg.AgentIntentAddMessageAI => ({
     type: 'add-message-ai', skipRootLLM: true,
     request: { action: 'addMessageAI', agentName: agent.agentName,
       inputAI: [{ type: 'system', content: 'agentDefsL2 deterministic bootstrap. The root model is disabled.' }, { type: 'human', content: human }],

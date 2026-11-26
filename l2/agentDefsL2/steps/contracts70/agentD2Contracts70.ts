@@ -4,7 +4,7 @@ import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readD2Input } from '/_102020_/l2/helpers/defsInput/io.js';
 import { D2_CONTRACTS70_AGENT_NAME, markD2StepApproved, parseD2StepInvocation, readD2Pipeline } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
-import { executeD2Contracts70, productionContractsPort, type D2Contracts70Port } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
+import { d2ContractRederiveLines, executeD2Contracts70, productionContractsPort, type D2Contracts70Port } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -15,26 +15,30 @@ export function createAgent(): IAgentAsync {
 
 export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, argsOrPort?: string | D2Contracts70Port): Promise<mls.msg.AgentIntent[]> {
   try {
-    const port = typeof argsOrPort === 'object' ? argsOrPort : await productionContractsPort(parsedIdentity(argsOrPort || step.prompt || ''));
-    const result = await executeD2Contracts70(port, typeof argsOrPort === 'object' ? undefined : parsedIdentity(step.prompt || ''));
-    if (typeof argsOrPort !== 'object') {
-      const identity = parsedIdentity(step.prompt || '');
+    const identity = typeof argsOrPort === 'object' ? undefined : parsedIdentity(argsOrPort || step.prompt || '');
+    const port = identity ? await productionContractsPort(identity) : argsOrPort as D2Contracts70Port;
+    const result = await executeD2Contracts70(port, identity);
+    if (identity) {
       const snapshot = await readD2Input(identity);
       if (!snapshot) throw new Error('D2_CONTRACTS_INPUT_MISSING');
       const pipeline = await readD2Pipeline(identity);
-      if (pipeline) await markD2StepApproved(identity, 'contracts70', [...result.wrote, ...result.reused].map(pageId => `l2/${identity.module}/web/contracts/${pageId}.defs.ts`), snapshot.snapshotHash);
+      // /rederive must not pull a complete pipeline back to inProgress.
+      if (pipeline && !(identity.scope === 'contracts' && pipeline.status === 'complete')) {
+        await markD2StepApproved(identity, 'contracts70', [...result.wrote, ...result.reused].map(pageId => `l2/${identity.module}/web/contracts/${pageId}.defs.ts`), snapshot.snapshotHash);
+      }
     }
+    const rederive = identity?.scope === 'contracts' ? d2ContractRederiveLines(identity.module, result.wrote) : '';
     return [
-      addD2Step(context, parentStep.stepId, d2Result('Contracts ready', JSON.stringify({ completedStep: 'contracts70', nextStep: 'finalize80', wrote: result.wrote, reused: result.reused, refused: [...result.skipped, ...result.refused.map(row => row.pageId)] }), 'contracts70-done')),
+      addD2Step(context, parentStep.stepId, d2Result('Contracts ready', JSON.stringify({ completedStep: 'contracts70', ...(rederive ? { rederive } : { nextStep: 'finalize80' }), wrote: result.wrote, reused: result.reused, refused: [...result.skipped, ...result.refused.map(row => row.pageId)] }), 'contracts70-done')),
       // d2_76: a refused page does not stop the others; finalize80 fails the pipeline once, listing it.
-      updateD2Status(context, parentStep, step, hookSequential, 'completed', `contracts70 wrote ${result.wrote.length}, reused ${result.reused.length} and skipped ${result.skipped.length} refused upstream.${result.refused.length ? ` D2_CONTRACTS_PAGES_REFUSED: ${result.refused.map(row => `${row.pageId}: ${row.diagnostic}`).join(' || ')}` : ''}`),
+      updateD2Status(context, parentStep, step, hookSequential, 'completed', rederive || `contracts70 wrote ${result.wrote.length}, reused ${result.reused.length} and skipped ${result.skipped.length} refused upstream.${result.refused.length ? ` D2_CONTRACTS_PAGES_REFUSED: ${result.refused.map(row => `${row.pageId}: ${row.diagnostic}`).join(' || ')}` : ''}`),
     ];
   } catch (error) {
     return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))];
   }
 }
 
-function parsedIdentity(raw: string): { project: number; module: string } {
+function parsedIdentity(raw: string): { project: number; module: string; scope: 'all' | 'pages' | 'contracts' } {
   const parsed = parseD2StepInvocation(raw, Number(mls.actualProject || 0));
   if (parsed.kind === 'refusal') throw new Error(parsed.diagnostic);
   return parsed;
