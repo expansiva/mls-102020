@@ -2,7 +2,7 @@
 
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readD2Input } from '/_102020_/l2/helpers/defsInput/io.js';
-import { D2_CONTRACTS70_AGENT_NAME, markD2StepApproved, parseD2StepInvocation, readD2Pipeline } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { D2_CONTRACTS70_AGENT_NAME, markD2StepApproved, parseD2StepInvocation } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import { d2ContractRederiveLines, executeD2Contracts70, productionContractsPort, type D2Contracts70Port } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
 
@@ -21,11 +21,7 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
     if (identity) {
       const snapshot = await readD2Input(identity);
       if (!snapshot) throw new Error('D2_CONTRACTS_INPUT_MISSING');
-      const pipeline = await readD2Pipeline(identity);
-      // /rederive must not pull a complete pipeline back to inProgress.
-      if (pipeline && !(identity.scope === 'contracts' && pipeline.status === 'complete')) {
-        await markD2StepApproved(identity, 'contracts70', [...result.wrote, ...result.reused].map(pageId => `l2/${identity.module}/web/contracts/${pageId}.defs.ts`), snapshot.snapshotHash);
-      }
+      await markD2StepApproved(identity, 'contracts70', [...result.wrote, ...result.reused].map(pageId => `l2/${identity.module}/web/contracts/${pageId}.defs.ts`), snapshot.snapshotHash, identity.scope === 'contracts');
     }
     const rederive = identity?.scope === 'contracts' ? d2ContractRederiveLines(identity.module, result.wrote) : '';
     return [

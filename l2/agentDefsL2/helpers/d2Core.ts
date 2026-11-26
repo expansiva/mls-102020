@@ -292,6 +292,7 @@ export async function markD2StepApproved(
   stepId: D2RecordedStepId,
   artifactPaths: string[],
   snapshotHash?: string,
+  keepComplete = false,
 ): Promise<void> {
   const pipeline = await readD2Pipeline(identity);
   if (!pipeline) throw new Error('agentDefsL2 pipeline is missing; entry10 must run first.');
@@ -301,8 +302,8 @@ export async function markD2StepApproved(
   const updatedAt = new Date().toISOString();
   await writeJson(d2PipelineFile(identity), {
     ...pipeline,
-    status: 'inProgress',
-    awaitingStep: undefined,
+    status: keepComplete ? pipeline.status : 'inProgress',
+    awaitingStep: keepComplete ? pipeline.awaitingStep : undefined,
     steps: {
       ...pipeline.steps,
       [stepId]: { status: 'approved', updatedAt, artifactPaths, ...(snapshotHash ? { snapshotHash } : {}) },

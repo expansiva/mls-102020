@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { buildD2PlannedSteps, parseD2MessageInvocation, parseD2StepInvocation } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { D2_FLOW_ID, D2_PIPELINE_VERSION, buildD2PlannedSteps, d2PipelineFile, initializeD2Pipeline, markD2StepApproved, parseD2MessageInvocation, parseD2StepInvocation, type D2PipelineState } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import type { D2BffDesign } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { renderD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/helpers/sharedV2/format.js';
@@ -120,6 +120,55 @@ void test('d2_220: an unchanged contract is reused and prints nothing to regener
   assert.deepEqual(again.wrote, []);
   assert.deepEqual(again.reused, ['audit']);
   assert.equal(d2ContractRederiveLines('telegram', again.wrote), 'no contract changed; nothing to regenerate');
+});
+
+void test('d2_220: a complete pipeline stays complete in contracts scope and is reopened otherwise', async () => {
+  const moduleName = 'd2220keep';
+  const run = { project: 102047, module: moduleName };
+  const base: D2PipelineState = {
+    schemaVersion: D2_PIPELINE_VERSION,
+    flowId: D2_FLOW_ID,
+    project: run.project,
+    module: moduleName,
+    status: 'complete',
+    steps: { entry10: { status: 'approved', updatedAt: '2026-11-26T00:00:00.000Z' } },
+    createdAt: '2026-11-26T00:00:00.000Z',
+    updatedAt: '2026-11-26T00:00:00.000Z',
+  };
+  const previousGet = mls.stor.getKeyToFile;
+  mls.stor.getKeyToFile = (info) => [info.project, info.level, info.folder, info.shortName, info.extension].join('|');
+  const key = mls.stor.getKeyToFile(d2PipelineFile(run));
+  const previousFiles = mls.stor.files;
+  const previousLocal = mls.stor.localStor;
+  mls.stor.localStor = { setContent: async () => {} } as typeof mls.stor.localStor;
+  let stored = `${JSON.stringify(base, null, 2)}\n`;
+  const file = {
+    project: run.project, level: 2, status: 'active', folder: `${moduleName}/pipeline/agentDefsL2`, extension: '.json', shortName: 'pipeline',
+    getContent: async () => stored,
+    getValueInfo: async () => ({ content: stored }),
+  };
+  mls.stor.files = { ...previousFiles, [key]: file } as unknown as typeof mls.stor.files;
+  mls.stor.localStor.setContent = async (_file, value) => { stored = String((value as { content?: unknown }).content ?? ''); };
+  try {
+    const kept = await initializeD2Pipeline(run);
+    assert.equal(kept.status, 'complete');
+    await markD2StepApproved(run, 'input20', [`l2/${moduleName}/pipeline/agentDefsL2/input.json`], 'snap-a', true);
+    await markD2StepApproved(run, 'contracts70', [`l2/${moduleName}/web/contracts/audit.defs.ts`], 'snap-a', true);
+    const afterContracts = JSON.parse(stored) as D2PipelineState;
+    assert.equal(afterContracts.status, 'complete');
+    assert.equal(afterContracts.awaitingStep, undefined);
+    assert.equal(afterContracts.steps.input20?.status, 'approved');
+    assert.equal(afterContracts.steps.contracts70?.status, 'approved');
+    await markD2StepApproved(run, 'input20', [`l2/${moduleName}/pipeline/agentDefsL2/input.json`], 'snap-b');
+    const reopened = JSON.parse(stored) as D2PipelineState;
+    assert.equal(reopened.status, 'inProgress');
+    assert.equal(reopened.awaitingStep, undefined);
+    assert.equal(reopened.steps.input20?.snapshotHash, 'snap-b');
+  } finally {
+    mls.stor.files = previousFiles;
+    mls.stor.localStor = previousLocal;
+    mls.stor.getKeyToFile = previousGet;
+  }
 });
 
 void test('d2_220: the contracts port fails if bff55, shared60 or a model is called', async () => {

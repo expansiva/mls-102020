@@ -27,7 +27,7 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     );
     await assertD2InputSourcesStable(bundle);
     const persisted = await writeAcceptedD2Input(identity, snapshot);
-    await markD2StepApproved(identity, 'input20', [`l2/${identity.module}/pipeline/agentDefsL2/input.json`], snapshot.snapshotHash);
+    await markD2StepApproved(identity, 'input20', [`l2/${identity.module}/pipeline/agentDefsL2/input.json`], snapshot.snapshotHash, parsed.scope === 'contracts');
     const result = JSON.stringify({ ...identity, completedStep: 'input20', nextStep: 'pages50', snapshotHash: snapshot.snapshotHash, writePages: snapshot.selection.writePageIds.length, reused: persisted.reused });
     return [addD2Step(context, parentStep.stepId, d2Result('Inputs ready', result, 'input20-done')),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `input20 accepted ${snapshot.selection.pages.length} page(s), snapshot ${snapshot.snapshotHash}`)];
