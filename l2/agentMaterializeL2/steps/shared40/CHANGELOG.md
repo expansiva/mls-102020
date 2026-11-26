@@ -1,5 +1,6 @@
 # shared40 — CHANGELOG
 
+- 2026-11-26: **an existing shared is checked, not regenerated, unless `--force`.** The chain compiles the file on disk against the current contract. Zero errors keeps it and rewrites the receipt (`kept`); a current receipt is `reused` without compiling. Errors schedule one repair (`attempt` 2) whose previous file is the file on disk. A missing shared is still generated. `--force` still deletes the `.ts` and the Dts and generates from scratch. The chain closes only when the shared and each page in scope exist and their receipts are current. The dispatch status has one line per page (`shared kept|repaired|generated|reused`, then each device).
 - 2026-10-05: created for agentMaterializeL2 (phase B), from the generic shared40 of agentMaterializeL2v2 (refactor of 05/10).
   - **Prompt** rewritten from the briefing of 05/10: intent and commitments, nothing computed in the browser, declared modes, the selection as the item, route purpose in each method JSDoc, `readonly` and `version`, the hub page, the L4 as business context.
   - **L4** in the prompt: the page slice, rebuilt from the ids of `input.json`.

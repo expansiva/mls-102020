@@ -41,13 +41,14 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
   try {
     // One chain per page (shared, then pages, then reviews): each page moves on as soon as its own shared is approved.
     // Each chain lives under a group step of its page (agentM4ChainPage), so the run reads page by page.
-    const { steps, pages, chains } = await m4ChainStart(identity, scope);
+    const { steps, pages, lines, chains } = await m4ChainStart(identity, scope);
+    const report = lines.join(' | ');
     if (!steps.length) {
       const done = await m4ChainDoneIntent(context, parentStep, identity, scope);
-      return [...(done ? [done] : []), updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `shared40 reused every unit of ${pages.length} page(s) without an LLM call (${m4ScopeLabel(scope)}).`)];
+      return [...(done ? [done] : []), updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `shared40 reused every unit of ${pages.length} page(s) without an LLM call (${m4ScopeLabel(scope)}). ${report}`)];
     }
-    const groups = chains.map(chain => addAgentStep(context, parentStep.stepId, chainPageStep({ ...identity, pageId: chain.pageId, scope, units: chain.steps })));
-    return [...groups, updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `Started ${chains.length} page chain(s): ${chains.map(chain => `${chain.pageId} [${chain.steps.map(worker => worker.stepTitle).join(', ')}]`).join('; ')} (${m4ScopeLabel(scope)}).`)];
+    const groups = chains.map(chain => addAgentStep(context, parentStep.stepId, chainPageStep({ ...identity, pageId: chain.pageId, scope, units: chain.steps, line: chain.line })));
+    return [...groups, updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `Started ${chains.length} page chain(s): ${chains.map(chain => `${chain.pageId} [${chain.steps.map(worker => worker.stepTitle).join(', ')}]`).join('; ')} (${m4ScopeLabel(scope)}). ${report}`)];
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
     try { await markM4Step(identity, 'shared40', { status: 'failed', diagnostic }); } catch { /* pipeline missing */ }

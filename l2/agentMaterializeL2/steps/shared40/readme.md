@@ -12,6 +12,8 @@
 
 **LLM:** one call per page (`parallel_dynamic`), tool `submitSharedTs { source, findings }`, system prompt `prompt.md`, plus the Studio `.d.ts` of the runtime modules.
 
+**Existing file:** without `--force`, a shared `.ts` and its Dts already on disk are checked against the current contract. They compile: the file stays (`kept`, or `reused` when the receipt is already current) and no model is called. They do not compile: one repair starts from that file. A missing file is generated. `--force` still deletes the generated files and builds them from scratch.
+
 ## What the prompt asks (briefing of 05/10)
 
 - Read the defs as intent and commitments; never infer behavior from a name.

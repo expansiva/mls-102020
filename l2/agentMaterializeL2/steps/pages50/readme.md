@@ -12,6 +12,8 @@
 
 **LLM:** one call per page and device, with the tool `submitPageTs { design, source }` and the system prompt `prompt.md` (model type design). Repairs are focused and use `promptRepair.md`.
 
+**Existing file:** without `--force`, a page `.ts` already on disk is checked against the current contract. It compiles: the file stays (`kept`, or `reused` when the receipt is already current). It does not compile: one repair starts from that file. A missing page is generated. `--force` still deletes the page and builds it from scratch.
+
 **Gate:** it refuses only what breaks the app, even while the design gate is off:
 - hand-made view switching;
 - an unguarded scene host;
