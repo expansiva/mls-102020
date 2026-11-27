@@ -10,7 +10,7 @@ import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { L2ContractDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/contract.js';
 import type { L2SharedDefinition } from '/_102020_/l2/agentMaterializeL2/helpers/defs/shared.js';
 
-export interface L4Field { path: string; type: string; title: string; description: string; derived: boolean; required: boolean }
+export interface L4Field { path: string; type: string; title: string; description: string; derived: boolean; required: boolean; secret: boolean }
 export interface L4Entity { entityId: string; title: string; description: string; displayField: string; fields: L4Field[]; rules: string[] }
 export interface L4JourneyStep { stepId: string; kind: string; entity: string; title: string; description: string }
 export interface L4Journey { journeyId: string; actorRef: string; title: string; goal: string; steps: L4JourneyStep[] }
@@ -168,7 +168,7 @@ export function renderL4Slice(slice: L4PageSlice): string {
       lines.push(`- **${entity.entityId}** — ${entity.title}: ${entity.description}${entity.displayField ? ` (shown by \`${entity.displayField}\`)` : ''}`);
       if (slice.wide) continue;
       for (const field of entity.fields.filter(item => item.title)) {
-        lines.push(`  - \`${field.path}\` (${field.type}${field.derived ? ', computed by the backend' : ''}${field.required ? ', required' : ''}) — ${field.title}${field.description ? `: ${field.description}` : ''}`);
+        lines.push(`  - \`${field.path}\` (${field.type}${field.derived ? ', computed by the backend' : ''}${field.required ? ', required' : ''}${field.secret ? ', secret' : ''}) — ${field.title}${field.description ? `: ${field.description}` : ''}`);
       }
     }
   }
@@ -190,7 +190,7 @@ function flattenFields(fields: Record<string, unknown>, prefix = ''): L4Field[] 
   for (const [name, value] of Object.entries(fields)) {
     const row = record(value);
     const path = prefix ? `${prefix}.${name}` : name;
-    out.push({ path, type: str(row.type), title: str(row.title), description: str(row.description), derived: row.derived === true, required: row.required === true });
+    out.push({ path, type: str(row.type), title: str(row.title), description: str(row.description), derived: row.derived === true, required: row.required === true, secret: row.secret === true });
     if (row.fields && typeof row.fields === 'object') out.push(...flattenFields(record(row.fields), path));
   }
   return out;

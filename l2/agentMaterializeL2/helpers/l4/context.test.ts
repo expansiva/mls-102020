@@ -75,3 +75,23 @@ test('a module with no L4 gives an empty context, never a failure', async () => 
   assert.deepEqual(l4.entities, []);
   assert.deepEqual(l4.module.productLanguages, []);
 });
+
+test('a secret field is marked in the slice line; a slice with no secret field is unchanged', async () => {
+  const secretPort: L4Port = {
+    ...diskPort,
+    read: async info => {
+      const text = readFileSync(path(info), 'utf8');
+      return info.shortName === 'Colaborador' ? text.replace(/("fields": \{[\s\S]*?"type": "string",)/u, '$1\n"secret": true,') : text;
+    },
+  };
+  const plain = await readL4Module(102047, 'reembolsoDespesas', diskPort);
+  const marked = await readL4Module(102047, 'reembolsoDespesas', secretPort);
+  const flagged = marked.entities.flatMap(entity => entity.fields.filter(field => field.secret).map(field => `${entity.entityId}.${field.path}`));
+  assert.equal(flagged.length, 1, 'exactly the one edited field is secret');
+  assert.ok(plain.entities.every(entity => entity.fields.every(field => field.secret === false)));
+  const text = (l4: typeof plain) => renderL4Slice({ ...l4, journeys: [], actors: [], wide: false });
+  const withSecret = text(marked).split('\n').filter(line => line.includes(', secret)'));
+  assert.equal(withSecret.length, 1);
+  assert.equal(text(plain).includes('secret'), false, 'no secret field: no mention in the context');
+  assert.equal(text(marked).replace(', secret)', ')'), text(plain), 'the only difference is the word secret on that line');
+});
