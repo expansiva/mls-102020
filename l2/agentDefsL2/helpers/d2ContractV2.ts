@@ -26,7 +26,7 @@ export function buildD2ContractFromBff(input: {
     name: type.name,
     entityId: d2BffTypeRoot(type.name, design),
     requestIds: design.endpoints.filter(endpoint => endpoint.output.some(leaf => references(leaf, type.name, design))).map(endpoint => endpoint.id),
-    body: bodyLines(type.fields, entities, 1).join('\n'),
+    body: bodyLines(type.fields, entities, 1, design, type.name).join('\n'),
     ...(type.description ? { jsdoc: d2JsdocText(type.description) } : {}),
   }));
   const routes: D2ContractV2Route[] = design.endpoints.map(endpoint => ({
@@ -83,11 +83,24 @@ function leafTree(rows: readonly D2BffLeaf[]): Map<string, LeafNode> {
   return root;
 }
 
-function bodyLines(rows: readonly D2BffLeaf[], entities: Record<string, Ns5OntologyAnyEntity>, depth: number, tree = leafTree(rows)): string[] {
+function relatedOptional(leaf: D2BffLeaf, ownerName: string, design: D2BffDesign): boolean {
+  const parsed = parseD2BffType(leaf.type);
+  if (!parsed || parsed.base !== 'ref' || parsed.list) return false;
+  const targetRoot = d2BffTypeRoot(parsed.ref, design);
+  const ownerRoot = d2BffTypeRoot(ownerName, design);
+  return Boolean(targetRoot && ownerRoot && targetRoot !== ownerRoot);
+}
+
+function optionalLeaf(leaf: D2BffLeaf, ownerName?: string, design?: D2BffDesign): boolean {
+  if (leaf.optional) return true;
+  return Boolean(ownerName && design && relatedOptional(leaf, ownerName, design));
+}
+
+function bodyLines(rows: readonly D2BffLeaf[], entities: Record<string, Ns5OntologyAnyEntity>, depth: number, design: D2BffDesign, ownerName: string, tree = leafTree(rows)): string[] {
   const indent = '  '.repeat(depth);
   return [...tree].flatMap(([key, node]) => node.children.size
-    ? [`${indent}${key}: {`, ...bodyLines([], entities, depth + 1, node.children), `${indent}};`]
-    : [`${indent}${readonly(node.leaf!, entities)}${key}${node.leaf!.optional ? '?' : ''}: ${leafType(node.leaf!)};`]);
+    ? [`${indent}${key}: {`, ...bodyLines([], entities, depth + 1, design, ownerName, node.children), `${indent}};`]
+    : [`${indent}${readonly(node.leaf!, entities)}${key}${optionalLeaf(node.leaf!, ownerName, design) ? '?' : ''}: ${leafType(node.leaf!)};`]);
 }
 
 function inline(rows: readonly D2BffLeaf[], entities: Record<string, Ns5OntologyAnyEntity>, output: boolean, tree = leafTree(rows)): string {

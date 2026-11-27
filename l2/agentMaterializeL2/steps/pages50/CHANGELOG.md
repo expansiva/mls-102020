@@ -1,5 +1,6 @@
 # pages50 — CHANGELOG
 
+- 2026-11-26: **an existing page is checked, not regenerated, unless `--force`.** After the shared is kept or reused, each page `.ts` on disk is compiled against the current contract. Zero errors keeps it (`kept`); a current receipt is `reused`. Errors schedule one repair from that file, carrying the receipt design. A missing page is generated. `--force` still deletes the page and generates it from scratch. The same line as shared40 names each device `kept`, `repaired`, `generated` or `reused`.
 - 2026-10-05: created for agentMaterializeL2 (phase C), from the generic pages50 of agentMaterializeL2v2 (refactor of 05/10). It keeps the v2 features:
   - free design under a minimal contract;
   - the template, with its `## On mobile` section;

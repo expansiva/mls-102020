@@ -703,6 +703,47 @@ export async function reusableM4Page(identity: M4RunIdentity, pageId: string, de
   return port.exists(pageSourceInfo(identity, pageId, device, genome));
 }
 
+/**
+ * The receipt matches what `buildM4PageContext` would hash today. Existence of the `.ts` is not enough:
+ * a contract change moves `dataHash`, and the page is checked again.
+ */
+export async function m4PageCurrent(identity: M4RunIdentity, pageId: string, device: L2Page11Device, genome: string, port: M4PagePort, snapshot: M4InputSnapshot): Promise<boolean> {
+  const receipt = await port.readJson<M4PageReceipt>(pageReceiptInfo(identity, pageId, device, genome));
+  if (!receipt?.fingerprint || receipt.dataHash === undefined) return false;
+  const context = await buildM4PageContext(identity, pageId, device, port, snapshot, genome);
+  return receipt.fingerprint === M4_REUSE_FINGERPRINT && receipt.dataHash === context.dataHash;
+}
+
+export interface M4ExistingPageCheck {
+  verdict: 'reused' | 'kept' | 'repair';
+  diagnostic?: string;
+  previous?: string;
+  design?: M4PageDesign | null;
+}
+
+/**
+ * The page file on disk is attempt 1. Current receipt → `reused` (no compile). Otherwise the same
+ * `approveM4Page` the gate already uses: it compiles, and on success rewrites the receipt (`kept`).
+ * A refusal restores the disk file and comes back as `repair`. An environment failure is rethrown.
+ */
+export async function m4CheckExistingPage(identity: M4RunIdentity, pageId: string, device: L2Page11Device, genome: string, port: M4PagePort, snapshot: M4InputSnapshot): Promise<M4ExistingPageCheck> {
+  const info = pageSourceInfo(identity, pageId, device, genome);
+  if (!port.exists(info)) throw new Error(`M4_PAGE_MISSING: ${displayPath(info)} does not exist`);
+  if (await m4PageCurrent(identity, pageId, device, genome, port, snapshot)) return { verdict: 'reused' };
+  const previous = await port.read(info);
+  const receipt = await port.readJson<M4PageReceipt>(pageReceiptInfo(identity, pageId, device, genome));
+  const context = await buildM4PageContext(identity, pageId, device, port, snapshot, genome);
+  const design = receipt?.design ?? null;
+  try {
+    await approveM4Page(context, previous, receipt?.attempt ?? 1, port, design);
+    return { verdict: 'kept' };
+  } catch (error) {
+    const diagnostic = error instanceof Error ? error.message : String(error);
+    if (m4PageEnvironmentFailure(diagnostic)) throw error instanceof Error ? error : new Error(diagnostic);
+    return { verdict: 'repair', diagnostic, previous, design };
+  }
+}
+
 export async function recordM4PageAttempt(identity: M4RunIdentity, pageId: string, device: L2Page11Device, attempt: number, source: unknown, diagnostic: string, port: Pick<M4PagePort, 'writeText'> = studioPagePort, genome: string = L2_PRIMARY_GENOME): Promise<void> {
   const body = typeof source === 'string' ? source : JSON.stringify(source ?? null, null, 2);
   await port.writeText(pageAttemptInfo(identity, pageId, device, attempt, genome), `/* refused: ${diagnostic.replace(/\*\//gu, '* /')} */\n\n${body}\n`);

@@ -7,9 +7,10 @@ import test from 'node:test';
 import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { runM4Input } from '/_102020_/l2/agentMaterializeL2/steps/input20/run.js';
 import { approveM4Shared, buildM4SharedContext } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
+import { M4_REUSE_FINGERPRINT } from '/_102020_/l2/agentMaterializeL2/steps/shared40/run.js';
 import { reviewReceiptInfo } from '/_102020_/l2/agentMaterializeL2/steps/review55/run.js';
 import {
-  M4_CONNECTION_REFUSED_LINE, M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4ConnectionCallsSection, m4MoveI18nBeforeClass, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, m4RouteOutputs, m4ServedJourneySteps, productLocales, reusableM4Page, studioPagePort, type M4PagePort,
+  M4_CONNECTION_REFUSED_LINE, M4_PAGE_GATE_ENFORCED, approveM4Page, buildM4PageContext, buildM4PagePrompt, buildM4PageRepairPrompt, designTokenNames, m4CheckExistingPage, m4ConnectionCallsSection, m4MoveI18nBeforeClass, m4PageCurrent, m4PlatformTypes, m4PageDesign, m4PageEnvironmentFailure, m4PageToolAnswer, m4RouteOutputs, m4ServedJourneySteps, pageReceiptInfo, productLocales, reusableM4Page, studioPagePort, type M4PagePort,
 } from '/_102020_/l2/agentMaterializeL2/steps/pages50/run.js';
 import { createAgent as createPageAgent } from '/_102020_/l2/agentMaterializeL2/steps/pages50/agentM4PagesPage.js';
 import { gateM4PageSource, m4MoleculeSurfaceLine } from '/_102020_/l2/agentMaterializeL2/steps/pages50/gate.js';
@@ -167,6 +168,57 @@ test('the reference page is approved, compiled and reused; only a data change re
   assert.ok(port.files.has(declaration));
   port.files.set(declaration, `${port.files.get(declaration)}\nexport type Extra = string;\n`);
   assert.equal(await reusableM4Page(identity, 'produtos', 'desktop', port), true, 'a page .ts that exists is kept');
+});
+
+test('an existing page is reused when its receipt matches, kept when it still compiles, or returned for repair', async () => {
+  const port = await studio();
+  const pageKey = '102047/l2/controleEstoque/web/desktop/page11/produtos.ts';
+  const receiptInfo = pageReceiptInfo(identity, 'produtos', 'desktop');
+  await assert.rejects(m4CheckExistingPage(identity, 'produtos', 'desktop', 'page11', port, await port.readJson(receiptInfo) as never), /M4_PAGE_MISSING:/u);
+  const context = await buildM4PageContext(identity, 'produtos', 'desktop', port);
+  await approveM4Page(context, pageRef.source, 1, port);
+  const snapshot = await port.readJson<M4InputSnapshot>({ project: identity.project, level: 2, folder: `${identity.module}/pipeline/agentMaterializeL2`, shortName: 'input', extension: '.json' });
+  if (!snapshot) throw new Error('input snapshot missing');
+  const compiled = port.compiled.length;
+  assert.equal(await m4PageCurrent(identity, 'produtos', 'desktop', 'page11', port, snapshot), true);
+  assert.deepEqual(await m4CheckExistingPage(identity, 'produtos', 'desktop', 'page11', port, snapshot), { verdict: 'reused' });
+  assert.equal(port.compiled.length, compiled, 'a current page is not compiled again');
+
+  const disk = `${port.files.get(pageKey)}\n// still the page\n`;
+  port.files.set(pageKey, disk);
+  const receipt = JSON.parse(port.files.get(key(receiptInfo))!);
+  port.files.set(key(receiptInfo), JSON.stringify({ ...receipt, dataHash: 'sha256:stale', attempt: 2, design: { concept: 'grid', views: [], decisions: 'keep the grid' } }));
+  assert.equal(await m4PageCurrent(identity, 'produtos', 'desktop', 'page11', port, snapshot), false);
+  const kept = await m4CheckExistingPage(identity, 'produtos', 'desktop', 'page11', port, snapshot);
+  assert.equal(kept.verdict, 'kept');
+  assert.equal(JSON.parse(port.files.get(key(receiptInfo))!).dataHash, context.dataHash, 'kept rewrites the receipt');
+  assert.equal(await m4PageCurrent(identity, 'produtos', 'desktop', 'page11', port, snapshot), true);
+
+  port.files.delete(key(receiptInfo));
+  const withoutReceipt = await m4CheckExistingPage(identity, 'produtos', 'desktop', 'page11', port, snapshot);
+  assert.equal(withoutReceipt.verdict, 'kept', 'files without a receipt are still checked');
+  assert.equal(port.files.has(key(receiptInfo)), true);
+
+  const failing = await studio(["line 3:5 - TS2339 - Property 'x' does not exist."]);
+  const broken = `${pageRef.source}\n// on disk\n`;
+  failing.files.set(pageKey, broken);
+  const failingSnapshot = await failing.readJson<M4InputSnapshot>({ project: identity.project, level: 2, folder: `${identity.module}/pipeline/agentMaterializeL2`, shortName: 'input', extension: '.json' });
+  if (!failingSnapshot) throw new Error('input snapshot missing');
+  await failing.writeJson(receiptInfo, { fingerprint: M4_REUSE_FINGERPRINT, dataHash: 'sha256:old', attempt: 3, design: { concept: 'from the receipt', views: [], decisions: '' } });
+  const repair = await m4CheckExistingPage(identity, 'produtos', 'desktop', 'page11', failing, failingSnapshot);
+  assert.equal(repair.verdict, 'repair');
+  assert.equal(repair.previous, broken);
+  assert.match(repair.diagnostic ?? '', /M4_PAGE_COMPILE:\nline 3:5/u);
+  assert.equal(repair.design?.concept, 'from the receipt');
+  assert.equal(failing.files.get(pageKey), broken, 'a refused check leaves the disk file');
+  assert.equal(JSON.parse(failing.files.get(key(receiptInfo))!).dataHash, 'sha256:old', 'a repair does not rewrite the receipt');
+
+  failing.compile = async info => {
+    if (info.folder.endsWith('/web/shared')) return { errors: [], declaration: pageRef.sharedDeclaration };
+    return { errors: ['Studio TypeScript compiler is unavailable'], declaration: null };
+  };
+  await assert.rejects(m4CheckExistingPage(identity, 'produtos', 'desktop', 'page11', failing, failingSnapshot), /Studio TypeScript compiler is unavailable/u);
+  assert.equal(failing.files.get(pageKey), broken, 'an environment failure restores the disk file');
 });
 
 test('a page is skipped when its .ts exists; the page11 defs and the receipt do not decide', async () => {

@@ -32,6 +32,15 @@ test('the group adds its units under itself, then stays in_progress: the engine 
   assert.equal(intents[2].stepId, 7);
 });
 
+test('the group status carries the page line from the dispatcher', () => {
+  const units = [pageWorkerStep({ ...identity, pageId: 'consultas', device: 'desktop', attempt: 1, chain: true })];
+  const line = 'consultas: shared kept; desktop generated; mobile reused';
+  const group = { ...chainPageStep({ ...identity, pageId: 'consultas', units, line }), stepId: 7 } as mls.msg.AIAgentStep;
+  const intents = chainPageIntents(context, root, group, 3, parseChainPageArgs(group.prompt ?? '')) as Array<Record<string, unknown>>;
+  assert.equal(intents[1].status, 'in_progress');
+  assert.match(String(intents[1].traceMsg), new RegExp(line));
+});
+
 test('a group with nothing pending completes at once', () => {
   const group = { ...chainPageStep({ ...identity, pageId: 'consultas', units: [] }), stepId: 7 } as mls.msg.AIAgentStep;
   const intents = chainPageIntents(context, root, group, 3, parseChainPageArgs(group.prompt ?? '')) as Array<Record<string, unknown>>;

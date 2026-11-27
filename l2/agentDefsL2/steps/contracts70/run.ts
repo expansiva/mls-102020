@@ -3,6 +3,7 @@
 import { fileExists, readJson, readSourceText, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
+import type { D2Scope } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
 import { parseD2ContractV2, renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
@@ -118,6 +119,18 @@ export interface D2Contracts70Port {
   load(pageId: string): Promise<D2Contracts70Page>;
   readExisting(pageId: string): Promise<D2Contracts70Existing>;
   writer: D2Contracts70Writer;
+  /** /rederive: a page with no approved BFF or no shared is skipped, not refused. */
+  skipUnapproved?: boolean;
+}
+
+const UNAPPROVED = /^D2_CONTRACTS_BFF_MISSING: |^D2_CONTRACTS_SHARED_RECEIPT_MISSING$/u;
+
+/** Lines the /rederive run prints: one materialize command per page whose contract text changed, alphabetical, without --force. */
+export function d2ContractRederiveLines(module: string, wrote: readonly string[]): string {
+  const pages = [...wrote].sort();
+  if (!pages.length) return 'no contract changed; nothing to regenerate';
+  const commands = pages.map(pageId => `@@agentMaterializeL2 ${module} --page ${pageId}`).join('\n');
+  return `${commands}\nThe existing screen is verified and repaired only if it does not compile. --force rebuilds it from scratch.`;
 }
 
 /** Every page goes alone (d2_76): refused upstream is skipped, refused here is recorded, the others are rendered. */
@@ -133,6 +146,7 @@ export async function executeD2Contracts70(port: D2Contracts70Port, identity?: D
       (result.wrote ? wrote : reused).push(pageId);
     } catch (error) {
       const diagnostic = error instanceof Error ? error.message : String(error);
+      if (port.skipUnapproved && UNAPPROVED.test(diagnostic)) { skipped.push(pageId); continue; }
       refused.push({ pageId, diagnostic });
       if (identity) await port.writer.writeJson(contractReceiptInfo(identity, pageId), { schemaVersion: D2_CONTRACTS70_REFUSAL_VERSION, ...identity, pageId, diagnostic });
     }
@@ -145,12 +159,15 @@ export async function readD2ContractsRefusal(identity: D2RunIdentity, pageId: st
   return value?.schemaVersion === D2_CONTRACTS70_REFUSAL_VERSION ? value.diagnostic ?? '' : null;
 }
 
-export async function loadD2ContractsPage(identity: D2RunIdentity, pageId: string): Promise<D2Contracts70Page> {
+export async function loadD2ContractsPage(identity: D2RunIdentity, pageId: string, scope?: D2Scope): Promise<D2Contracts70Page> {
   const snapshot = await readD2Input(identity);
   if (!snapshot) throw new Error('D2_CONTRACTS_INPUT_MISSING');
   const bundle = await readD2InputBundle(identity);
   await assertD2InputSourcesStable(bundle);
-  if (!snapshot.selection.writePageIds.includes(pageId)) throw new Error(`D2_CONTRACTS_PAGE_NOT_SELECTED: ${pageId}`);
+  const selected = scope === 'contracts'
+    ? snapshot.selection.pages.some(page => page.pageId === pageId)
+    : snapshot.selection.writePageIds.includes(pageId);
+  if (!selected) throw new Error(`D2_CONTRACTS_PAGE_NOT_SELECTED: ${pageId}`);
   const entities = bundle.artifacts.entities as Record<string, Ns5OntologyAnyEntity>;
   const design = await readUsableD2Bff(identity, pageId, bundle.artifacts, entities);
   if (!design) throw new Error(`D2_CONTRACTS_BFF_MISSING: ${pageId}`);
@@ -196,14 +213,18 @@ function page11Info(identity: D2RunIdentity, pageId: string, device: D2Page11Dev
   return { project: identity.project, level: 2, folder: `${identity.module}/web/${device}/page11`, shortName: pageId, extension: '.defs.ts' };
 }
 
-export async function productionContractsPort(identity: D2RunIdentity): Promise<D2Contracts70Port> {
+export async function productionContractsPort(identity: D2RunIdentity & { scope?: D2Scope }): Promise<D2Contracts70Port> {
   const snapshot = await readD2Input(identity);
   if (!snapshot) throw new Error('D2_CONTRACTS_INPUT_MISSING');
-  const ids = [...snapshot.selection.writePageIds].sort();
+  const accepted = identity.scope === 'contracts'
+    ? snapshot.selection.pages.map(page => page.pageId)
+    : snapshot.selection.writePageIds;
+  const ids = [...accepted].sort();
   return {
     pageIds: async () => ids,
+    skipUnapproved: identity.scope === 'contracts',
     upstreamRefusal: async pageId => (await readD2BffRefusal(identity, pageId))?.diagnostic ?? await readD2SharedRefusal(identity, pageId),
-    load: pageId => loadD2ContractsPage(identity, pageId),
+    load: pageId => loadD2ContractsPage(identity, pageId, identity.scope),
     readExisting: async pageId => ({
       source: fileExists(contractInfo(identity, pageId)) ? await readSourceText(contractInfo(identity, pageId)) || null : null,
       receipt: await readJson<D2Contracts70Receipt>(contractReceiptInfo(identity, pageId)),

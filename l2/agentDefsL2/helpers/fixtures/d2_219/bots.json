@@ -1,0 +1,1098 @@
+{
+  "types": [
+    {
+      "name": "CmAgentOption",
+      "description": "A cm agent that can answer a bot's conversations: its reference and its name as the cm shows it.",
+      "fields": [
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "CmAgent.agentId"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "CmAgent.name"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "BotSummaryDetails",
+      "description": "The activity figures of a bot: last activity and number of conversations.",
+      "fields": [
+        {
+          "name": "lastActivityAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.lastActivityAt"
+            ]
+          }
+        },
+        {
+          "name": "conversationCount",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.conversationCount"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "BotSummary",
+      "description": "A Telegram bot of the company with its audience, answering agent, situation and activity figures.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.name"
+            ]
+          }
+        },
+        {
+          "name": "audience",
+          "type": "'employees' | 'externalCustomers' | 'meetings'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.audience"
+            ]
+          }
+        },
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.agentId"
+            ]
+          }
+        },
+        {
+          "name": "cmAgent",
+          "type": "CmAgentOption"
+        },
+        {
+          "name": "status",
+          "type": "'notConfigured' | 'active' | 'paused' | 'deactivated'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.status"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "BotSummaryDetails"
+        }
+      ]
+    },
+    {
+      "name": "BotLastCheck",
+      "description": "The last check of a bot with Telegram: reported name, when, result and reason of failure.",
+      "fields": [
+        {
+          "name": "reportedName",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.lastCheck.reportedName"
+            ]
+          }
+        },
+        {
+          "name": "checkedAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.lastCheck.checkedAt"
+            ]
+          }
+        },
+        {
+          "name": "result",
+          "type": "'succeeded' | 'failed'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.lastCheck.result"
+            ]
+          }
+        },
+        {
+          "name": "failureReason",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.lastCheck.failureReason"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "BotPause",
+      "description": "The pause of a bot: who paused it (admin or cm), when and why.",
+      "fields": [
+        {
+          "name": "pausedBy",
+          "type": "'admin' | 'cm'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.pause.pausedBy"
+            ]
+          }
+        },
+        {
+          "name": "pausedAt",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.pause.pausedAt"
+            ]
+          }
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.pause.reason"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "BotDetailDetails",
+      "description": "The details of a bot: last check, pause, activation and deactivation, and activity figures.",
+      "fields": [
+        {
+          "name": "lastCheck",
+          "type": "BotLastCheck",
+          "optional": true
+        },
+        {
+          "name": "pause",
+          "type": "BotPause",
+          "optional": true
+        },
+        {
+          "name": "activatedAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.activatedAt"
+            ]
+          }
+        },
+        {
+          "name": "activatedBy",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.activatedBy"
+            ]
+          }
+        },
+        {
+          "name": "deactivatedAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.deactivatedAt"
+            ]
+          }
+        },
+        {
+          "name": "conversationCount",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.conversationCount"
+            ]
+          }
+        },
+        {
+          "name": "lastActivityAt",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.lastActivityAt"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "BotDetail",
+      "description": "One Telegram bot in full: audience, answering agent, situation, last check with Telegram, pause, activation and activity.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.name"
+            ]
+          }
+        },
+        {
+          "name": "audience",
+          "type": "'employees' | 'externalCustomers' | 'meetings'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.audience"
+            ]
+          }
+        },
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.agentId"
+            ]
+          }
+        },
+        {
+          "name": "cmAgent",
+          "type": "CmAgentOption"
+        },
+        {
+          "name": "status",
+          "type": "'notConfigured' | 'active' | 'paused' | 'deactivated'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.status"
+            ]
+          }
+        },
+        {
+          "name": "details",
+          "type": "BotDetailDetails"
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "loadBots",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [],
+      "output": [
+        {
+          "name": "bots",
+          "type": "BotSummary[]"
+        },
+        {
+          "name": "agents",
+          "type": "CmAgentOption[]"
+        }
+      ],
+      "rules": [
+        "adminOnlyScreens",
+        "agentChosenFromCm"
+      ],
+      "jsdoc": {
+        "purpose": "Loads the company's bots with their audience, answering agent, situation and activity figures, plus the cm agents that can answer a bot.",
+        "input": "None; the company comes from the logged-in company admin.",
+        "processing": "Only the company admin may call it (adminOnlyScreens). Lists the company's bots ordered by name, joining each bot's agent name from the cm agent list. lastActivityAt is computed from the latest audit record of the bot and conversationCount by counting the bot's conversations; both are derived, never stored. The agents come from the cm agent list (telegram.pickCmAgent, agentChosenFromCm).",
+        "output": "bots: every bot of the company (empty when there is none yet) with name, audience, agent, situation and activity figures; agents: the cm agents available to answer a bot."
+      }
+    },
+    {
+      "id": "getBot",
+      "kind": "qry",
+      "when": "interaction",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "BotDetail"
+        }
+      ],
+      "rules": [
+        "adminOnlyScreens",
+        "pauseKeepsWhoWhenWhy"
+      ],
+      "jsdoc": {
+        "purpose": "Opens one bot with its check with Telegram, its pause and its activation.",
+        "input": "id: the bot chosen in the list or in the activity figures.",
+        "processing": "Reads the bot by id within the company (adminOnlyScreens), joins the agent name from the cm, and computes conversationCount and lastActivityAt from the bot's conversations and audit records (derived). The pause keeps who, when and why (pauseKeepsWhoWhenWhy).",
+        "output": "bot: the bot in its current state with version, agent, situation, last check, pause, activation, deactivation and activity figures."
+      }
+    },
+    {
+      "id": "registerBot",
+      "kind": "cmd",
+      "when": "registerBot",
+      "writes": "TelegramBot.create",
+      "input": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.name"
+            ]
+          }
+        },
+        {
+          "name": "audience",
+          "type": "'employees' | 'externalCustomers' | 'meetings'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.audience"
+            ]
+          }
+        },
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.agentId"
+            ]
+          }
+        },
+        {
+          "name": "details.accessKey",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.accessKey"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "BotDetail"
+        }
+      ],
+      "rules": [
+        "accessKeyAdminOnly",
+        "agentChosenFromCm",
+        "adminOnlyScreens"
+      ],
+      "jsdoc": {
+        "purpose": "Registers a new Telegram bot of the company.",
+        "input": "name: the bot name; audience: who talks to the bot; agentId: the cm agent that answers; details.accessKey: the access key Telegram gave.",
+        "processing": "Only the company admin may enter the access key (accessKeyAdminOnly). Refuses an agent that is not in the cm agent list (agentChosenFromCm) and a name already used by another bot (uniqueKey). Saves the bot in the situation notConfigured.",
+        "output": "bot: the new bot, not configured, with its agent and version."
+      }
+    },
+    {
+      "id": "checkBot",
+      "kind": "cmd",
+      "when": "checkBot",
+      "writes": "TelegramBot.update+checkBotIdentity",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        },
+        {
+          "name": "agentId",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.agentId"
+            ]
+          }
+        },
+        {
+          "name": "details.pause.reason",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.pause.reason"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "BotDetail"
+        }
+      ],
+      "rules": [
+        "accessKeyAdminOnly"
+      ],
+      "jsdoc": {
+        "purpose": "Checks the bot with Telegram using its access key.",
+        "input": "id and version of the open bot; agentId (optional): the answering agent as shown in the actions, accepted only when it is the bot's current agent; details.pause.reason (optional): the pause details.pause.reason as shown in the actions, accepted only when unchanged.",
+        "processing": "Checks the version, asks Telegram who the bot is with the stored access key (telegram.checkBot; the key never leaves the server, accessKeyAdminOnly) and records lastCheck: the reported name, the check time, the result and, when it failed, the reason in plain words. agentId and reason, when sent, must match the stored values; this command does not change the agent nor the pause.",
+        "output": "bot: the bot with its new last check and new version."
+      }
+    },
+    {
+      "id": "activateBot",
+      "kind": "cmd",
+      "when": "activateBot",
+      "writes": "TelegramBot.activate",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "BotDetail"
+        }
+      ],
+      "rules": [
+        "botActivationRequiresModuleSecret",
+        "textMessagesOnly",
+        "onlyActiveBotCarriesMessages"
+      ],
+      "jsdoc": {
+        "purpose": "Activates a not configured bot so Telegram delivers its text messages to the module.",
+        "input": "id and version of the open bot.",
+        "processing": "Allowed only from notConfigured. Refuses when the module secret is not set in the platform configuration of outside systems (botActivationRequiresModuleSecret). Tells Telegram where to deliver, asking for text messages only (telegram.registerDelivery, textMessagesOnly), then moves the bot to active and records activatedAt and activatedBy with the logged-in admin.",
+        "output": "bot: the bot in the situation active, with activation date and author and new version."
+      }
+    },
+    {
+      "id": "pauseBot",
+      "kind": "cmd",
+      "when": "pauseBot",
+      "writes": "TelegramBot.pause",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        },
+        {
+          "name": "details.pause.reason",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.pause.reason"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "BotDetail"
+        }
+      ],
+      "rules": [
+        "pauseKeepsWhoWhenWhy",
+        "onlyActiveBotCarriesMessages"
+      ],
+      "jsdoc": {
+        "purpose": "Pauses an active bot giving the reason.",
+        "input": "id and version of the open bot; details.pause.reason: why it is paused.",
+        "processing": "Allowed only from active. Refuses an empty reason and records pausedBy admin, pausedAt now and the reason (pauseKeepsWhoWhenWhy). From then on the bot carries no messages (onlyActiveBotCarriesMessages).",
+        "output": "bot: the bot in the situation paused with who, when and why and new version."
+      }
+    },
+    {
+      "id": "resumeBot",
+      "kind": "cmd",
+      "when": "resumeBot",
+      "writes": "TelegramBot.resume",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "BotDetail"
+        }
+      ],
+      "rules": [
+        "cmPauseUndoneOnlyByAdmin"
+      ],
+      "jsdoc": {
+        "purpose": "Resumes a paused bot so it carries messages again.",
+        "input": "id and version of the open bot.",
+        "processing": "Allowed only from paused and only by the company admin, including a pause made by the cm (cmPauseUndoneOnlyByAdmin). Moves the bot to active.",
+        "output": "bot: the bot in the situation active with new version."
+      }
+    },
+    {
+      "id": "changeAgent",
+      "kind": "cmd",
+      "when": "changeAgent",
+      "writes": "TelegramBot.update+listAgents",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        },
+        {
+          "name": "agentId",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.agentId"
+            ]
+          }
+        },
+        {
+          "name": "details.pause.reason",
+          "type": "string",
+          "optional": true,
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.details.pause.reason"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "BotDetail"
+        }
+      ],
+      "rules": [
+        "agentChosenFromCm"
+      ],
+      "jsdoc": {
+        "purpose": "Changes the cm agent that answers the bot's conversations.",
+        "input": "id and version of the open bot; agentId: the newly chosen cm agent; details.pause.reason (optional): the pause details.pause.reason as shown in the actions, accepted only when unchanged.",
+        "processing": "Checks the version and refuses an agent that is not in the cm agent list (agentChosenFromCm), then stores the new agent; new messages go to the cm with this agent. The pause, when present, is kept as it is; a sent reason must match the stored one.",
+        "output": "bot: the bot with its new answering agent and name and new version."
+      }
+    },
+    {
+      "id": "deactivateBot",
+      "kind": "cmd",
+      "when": "deactivateBot",
+      "writes": "TelegramBot.deactivate",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.id"
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "TelegramBot.version"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "bot",
+          "type": "BotDetail"
+        }
+      ],
+      "rules": [
+        "botNeverDeleted",
+        "onlyActiveBotCarriesMessages"
+      ],
+      "jsdoc": {
+        "purpose": "Retires a bot that is no longer used.",
+        "input": "id and version of the open bot.",
+        "processing": "Allowed from notConfigured, active or paused. Moves the bot to deactivated and records deactivatedAt; the bot is never deleted so its conversations and audit stay readable (botNeverDeleted), and it carries no more messages.",
+        "output": "bot: the bot in the situation deactivated with its deactivation date and new version."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "botActivity",
+        "reads": "loadBots.bots"
+      },
+      {
+        "organism": "botList",
+        "reads": "loadBots.bots"
+      },
+      {
+        "organism": "registerBotForm",
+        "reads": "loadBots.agents"
+      },
+      {
+        "organism": "botDetail",
+        "reads": "getBot.bot"
+      },
+      {
+        "organism": "botActions",
+        "reads": "getBot.bot"
+      },
+      {
+        "organism": "botActions",
+        "reads": "loadBots.agents"
+      },
+      {
+        "organism": "cmPauseTimeline",
+        "reads": "getBot.bot"
+      }
+    ],
+    "commands": [
+      {
+        "endpoint": "registerBot",
+        "refreshes": [
+          "loadBots"
+        ]
+      },
+      {
+        "endpoint": "checkBot",
+        "refreshes": []
+      },
+      {
+        "endpoint": "activateBot",
+        "refreshes": [
+          "loadBots"
+        ]
+      },
+      {
+        "endpoint": "pauseBot",
+        "refreshes": [
+          "loadBots"
+        ]
+      },
+      {
+        "endpoint": "resumeBot",
+        "refreshes": [
+          "loadBots"
+        ]
+      },
+      {
+        "endpoint": "changeAgent",
+        "refreshes": [
+          "loadBots"
+        ]
+      },
+      {
+        "endpoint": "deactivateBot",
+        "refreshes": [
+          "loadBots"
+        ]
+      }
+    ],
+    "selections": [
+      {
+        "organism": "botList",
+        "via": {
+          "query": "getBot"
+        }
+      },
+      {
+        "organism": "botActivity",
+        "via": {
+          "query": "getBot"
+        }
+      }
+    ],
+    "journeys": [
+      {
+        "step": "registerBot/openBots",
+        "organisms": [
+          "botList"
+        ],
+        "endpoints": [
+          "loadBots"
+        ]
+      },
+      {
+        "step": "registerBot/createBot",
+        "organisms": [
+          "registerBotForm"
+        ],
+        "endpoints": [
+          "registerBot"
+        ]
+      },
+      {
+        "step": "checkAndActivateBot/findBot",
+        "organisms": [
+          "botList"
+        ],
+        "endpoints": [
+          "loadBots",
+          "getBot"
+        ]
+      },
+      {
+        "step": "checkAndActivateBot/checkBot",
+        "organisms": [
+          "botActions"
+        ],
+        "endpoints": [
+          "checkBot"
+        ]
+      },
+      {
+        "step": "checkAndActivateBot/reviewCheck",
+        "organisms": [
+          "botDetail"
+        ],
+        "endpoints": [
+          "getBot"
+        ]
+      },
+      {
+        "step": "checkAndActivateBot/activateBot",
+        "organisms": [
+          "botActions"
+        ],
+        "endpoints": [
+          "activateBot"
+        ]
+      },
+      {
+        "step": "changeBotAgent/findBotForAgent",
+        "organisms": [
+          "botList"
+        ],
+        "endpoints": [
+          "loadBots",
+          "getBot"
+        ]
+      },
+      {
+        "step": "changeBotAgent/changeAgent",
+        "organisms": [
+          "botActions"
+        ],
+        "endpoints": [
+          "changeAgent"
+        ]
+      },
+      {
+        "step": "changeBotAgent/viewAffectedConversations",
+        "organisms": [
+          "botDetail"
+        ],
+        "endpoints": [],
+        "continuesIn": "conversations"
+      },
+      {
+        "step": "deactivateBot/findBotToDeactivate",
+        "organisms": [
+          "botList"
+        ],
+        "endpoints": [
+          "loadBots",
+          "getBot"
+        ]
+      },
+      {
+        "step": "deactivateBot/reviewBotConversations",
+        "organisms": [
+          "botDetail"
+        ],
+        "endpoints": [],
+        "continuesIn": "conversations"
+      },
+      {
+        "step": "deactivateBot/deactivateBotAct",
+        "organisms": [
+          "botActions"
+        ],
+        "endpoints": [
+          "deactivateBot"
+        ]
+      },
+      {
+        "step": "deactivateBot/confirmAuditReadable",
+        "organisms": [
+          "botDetail"
+        ],
+        "endpoints": [],
+        "continuesIn": "audit"
+      },
+      {
+        "step": "pauseBot/findBotToPause",
+        "organisms": [
+          "botList"
+        ],
+        "endpoints": [
+          "loadBots",
+          "getBot"
+        ]
+      },
+      {
+        "step": "pauseBot/reviewBotMessages",
+        "organisms": [
+          "botDetail"
+        ],
+        "endpoints": [],
+        "continuesIn": "audit"
+      },
+      {
+        "step": "pauseBot/pauseBotAct",
+        "organisms": [
+          "botActions"
+        ],
+        "endpoints": [
+          "pauseBot"
+        ]
+      },
+      {
+        "step": "resumeBot/findPausedBot",
+        "organisms": [
+          "botList"
+        ],
+        "endpoints": [
+          "loadBots",
+          "getBot"
+        ]
+      },
+      {
+        "step": "resumeBot/inspectPause",
+        "organisms": [
+          "botDetail",
+          "cmPauseTimeline"
+        ],
+        "endpoints": [
+          "getBot"
+        ]
+      },
+      {
+        "step": "resumeBot/reviewRefusedWhilePaused",
+        "organisms": [
+          "botDetail"
+        ],
+        "endpoints": [],
+        "continuesIn": "audit"
+      },
+      {
+        "step": "resumeBot/resumeBotAct",
+        "organisms": [
+          "botActions"
+        ],
+        "endpoints": [
+          "resumeBot"
+        ]
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "registerBot",
+        "state": "getBot.bot",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "checkBot",
+        "state": "getBot.bot",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "activateBot",
+        "state": "getBot.bot",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "pauseBot",
+        "state": "getBot.bot",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "resumeBot",
+        "state": "getBot.bot",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "changeAgent",
+        "state": "getBot.bot",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "deactivateBot",
+        "state": "getBot.bot",
+        "mode": "replace"
+      }
+    ]
+  }
+}

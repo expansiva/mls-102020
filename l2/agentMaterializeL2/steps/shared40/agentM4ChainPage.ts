@@ -16,7 +16,7 @@ export function createAgent(): IAgentAsync {
 }
 
 /** `units` are the page's first worker steps, computed once by the dispatcher (it applied --force already). */
-export interface M4ChainPageArgs extends M4RunIdentity { pageId: string; scope?: M4RunScope; units: mls.msg.AIAgentStep[] }
+export interface M4ChainPageArgs extends M4RunIdentity { pageId: string; scope?: M4RunScope; units: mls.msg.AIAgentStep[]; line?: string }
 
 export function chainPageStep(args: M4ChainPageArgs): mls.msg.AIAgentStep {
   return {
@@ -30,16 +30,17 @@ export function parseChainPageArgs(raw: string): M4ChainPageArgs {
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new Error('M4_CHAIN_ARGS_INVALID'); }
   const args = value as M4ChainPageArgs;
-  if (!args || !Number.isSafeInteger(args.project) || args.project <= 0 || !moduleTokenOk(args.module) || !/^[a-z][A-Za-z0-9_]*$/u.test(args.pageId) || !Array.isArray(args.units)) throw new Error('M4_CHAIN_ARGS_INVALID');
+  if (!args || !Number.isSafeInteger(args.project) || args.project <= 0 || !moduleTokenOk(args.module) || !/^[a-z][A-Za-z0-9_]*$/u.test(args.pageId) || !Array.isArray(args.units) || (args.line !== undefined && typeof args.line !== 'string')) throw new Error('M4_CHAIN_ARGS_INVALID');
   return args;
 }
 
 /** The intents of a group: its units under itself first, then in_progress, never completed (the engine completes it). */
 export function chainPageIntents(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: M4ChainPageArgs): mls.msg.AgentIntent[] {
-  if (!args.units.length) return [updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `Page ${args.pageId}: nothing pending.`)];
+  const line = args.line ? ` ${args.line}` : '';
+  if (!args.units.length) return [updateAgentStatus(context, parentStep, step, hookSequential, 'completed', `Page ${args.pageId}: nothing pending.${line}`)];
   return [
     ...args.units.map(unit => addAgentStep(context, step.stepId, unit)),
-    updateAgentStatus(context, parentStep, step, hookSequential, 'in_progress', `Page ${args.pageId}: ${args.units.map(unit => unit.stepTitle).join(', ')}.`),
+    updateAgentStatus(context, parentStep, step, hookSequential, 'in_progress', `Page ${args.pageId}: ${args.units.map(unit => unit.stepTitle).join(', ')}.${line}`),
   ];
 }
 

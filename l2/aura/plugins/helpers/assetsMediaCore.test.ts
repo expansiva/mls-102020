@@ -30,8 +30,9 @@ test('checkUpload accepts media, refuses other extensions and oversized files', 
     assert.deepEqual(checkUpload({ name: 'foto.jpg', size: 1000 }),
         { ok: true, shortName: 'foto', extension: '.jpg', category: 'image' });
     assert.deepEqual(checkUpload({ name: 'setup.exe', size: 10 }), { ok: false, reason: 'extension' });
-    assert.deepEqual(checkUpload({ name: 'video.mp4', size: MAX_UPLOAD_BYTES + 1 }), { ok: false, reason: 'size' });
-    assert.deepEqual(checkUpload({ name: 'video.mp4', size: MAX_UPLOAD_BYTES }).ok, true);
+    assert.equal(MAX_UPLOAD_BYTES, 64 * 1024 * 1024);
+    assert.deepEqual(checkUpload({ name: 'video.mp4', size: 64 * 1024 * 1024 + 1 }), { ok: false, reason: 'size' });
+    assert.deepEqual(checkUpload({ name: 'video.mp4', size: 64 * 1024 * 1024 }).ok, true);
     assert.deepEqual(checkUpload({ name: '!!!.png', size: 10 }), { ok: false, reason: 'name' });
 });
 
