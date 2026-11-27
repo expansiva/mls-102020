@@ -374,6 +374,63 @@ function agreeDraftWithSavedWrite(context: D2BffCheckContext, design: D2BffDesig
   }
 }
 
+// d2_228: one organism with several `update` submits of one entity splits the organism's edits among them.
+const botEntities = { TelegramBot: {} as Ns5OntologyAnyEntity };
+const botEdits = ['TelegramBot.agentId', 'TelegramBot.details.pause.reason', 'TelegramBot.details.accessKey'];
+function botsContext(updates: string[], edits = botEdits): D2BffCheckContext {
+  const pause: D2Write = { entity: 'TelegramBot', operation: 'transition', transitionRef: 'pause' };
+  const submits = [...updates.map(id => ({ intentId: id, write: 'TelegramBot.update' })), { intentId: 'pauseBot', write: d2WriteKey(pause) }];
+  return {
+    ...base,
+    entities: botEntities,
+    page11: { desktop: page(Object.fromEntries(submits.map(item => [item.intentId, organism(item.intentId)]))), mobile: page({}) },
+    drafts: { desktop: needs({ botActions: { reads: [], edits, selects: '', submits } }), mobile: needs({}) },
+    need: { pageId: 'bots', actors: [], reads: [], writes: [{ entity: 'TelegramBot', operation: 'update' }, pause] },
+  };
+}
+const botPause = { id: 'pauseBot', when: 'pauseBot', writes: 'TelegramBot.transition:pause', input: ['TelegramBot.id', 'TelegramBot.version', 'TelegramBot.details.pause.reason'] };
+
+test('d2_228: with several updates in one organism each asks for id and version, and the fields it carries', () => {
+  const context = botsContext(['checkBot', 'changeAgent', 'changeAccessKey']);
+  const right = design([
+    { id: 'checkBot', when: 'checkBot', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version'] },
+    { id: 'changeAgent', when: 'changeAgent', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version', 'TelegramBot.agentId'] },
+    { id: 'changeAccessKey', when: 'changeAccessKey', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version', 'TelegramBot.details.accessKey'] },
+    botPause,
+  ]);
+  assert.deepEqual(issues(context, right), []);
+  // an edit that no command of the organism carries is refused
+  const orphan = design([
+    { id: 'checkBot', when: 'checkBot', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version'] },
+    { id: 'changeAgent', when: 'changeAgent', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version', 'TelegramBot.agentId'] },
+    { id: 'changeAccessKey', when: 'changeAccessKey', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version'] },
+    botPause,
+  ]);
+  const found = issues(context, orphan);
+  assert.equal(found.length, 1);
+  assert.match(found[0], /carry no input leaf for TelegramBot\.details\.accessKey/u);
+  // a field that is no edit of the organism is refused on the command that carries it
+  const alien = design([
+    { id: 'checkBot', when: 'checkBot', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version', 'TelegramBot.details.lastCheck.result'] },
+    { id: 'changeAgent', when: 'changeAgent', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version', 'TelegramBot.agentId'] },
+    { id: 'changeAccessKey', when: 'changeAccessKey', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version', 'TelegramBot.details.accessKey'] },
+    botPause,
+  ]);
+  const foreign = issues(context, alien);
+  assert.equal(foreign.length, 1);
+  assert.match(foreign[0], /command checkBot .* carries TelegramBot\.details\.lastCheck\.result, which is not an edit of its organism/u);
+});
+
+test('d2_228: a single update in the organism keeps asking for every edit of the organism', () => {
+  const context = botsContext(['changeAgent'], ['TelegramBot.agentId', 'TelegramBot.details.accessKey']);
+  const found = issues(context, design([
+    { id: 'changeAgent', when: 'changeAgent', writes: 'TelegramBot.update', input: ['TelegramBot.id', 'TelegramBot.version', 'TelegramBot.agentId'] },
+    { id: 'pausar', when: 'pauseBot', writes: 'TelegramBot.transition:pause', input: ['TelegramBot.id', 'TelegramBot.version', 'TelegramBot.details.pause.reason'] },
+  ]));
+  assert.equal(found.length, 1);
+  assert.match(found[0], /command changeAgent .* asks for TelegramBot\.details\.accessKey/u);
+});
+
 test('the two saved external answers pass the gate once expectVersion is added', async () => {
   await withProjectFiles(async () => {
   for (const pageId of ['agent_behavior', 'my_conduct'] as const) {

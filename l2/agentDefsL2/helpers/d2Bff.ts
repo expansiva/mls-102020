@@ -823,6 +823,28 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
   const pageEdits = [...new Set((['desktop', 'mobile'] as const).flatMap(device => Object.values(context.drafts[device].organisms).flatMap(row => row.edits)))];
   const editsOfSubmit = (intentId: string): string[] => [...new Set((['desktop', 'mobile'] as const).flatMap(device =>
     Object.values(context.drafts[device].organisms).filter(row => row.submits.some(submit => submit.intentId === intentId)).flatMap(row => row.edits)))];
+  // d2_228: an organism with two or more `update` submits of one entity splits the organism's edits among them: each command asks for id + version and
+  // the fields it carries must be edits of the organism; every edit must be carried by some command of the group (checked after the commands).
+  const updateGroups = new Map<string, { entity: string; intents: Set<string>; organism: Set<string>; edits: Set<string> }>();
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const [organismId, row] of Object.entries(context.drafts[device].organisms)) {
+      const byEntity = new Map<string, string[]>();
+      for (const submit of row.submits) {
+        const found = d2WriteByKey(context.need.writes, submits.get(submit.intentId) || submit.write);
+        if (!found || found.operation !== 'update' || (context.entities[found.entity] as { kind?: string } | undefined)?.kind === 'external') continue;
+        byEntity.set(found.entity, [...(byEntity.get(found.entity) ?? []), submit.intentId]);
+      }
+      for (const [entity, intents] of byEntity) {
+        if (new Set(intents).size < 2) continue;
+        const group = updateGroups.get(`${organismId}\0${entity}`) ?? { entity, intents: new Set<string>(), organism: new Set<string>(), edits: new Set<string>() };
+        for (const intent of intents) group.intents.add(intent);
+        for (const submit of row.submits) group.organism.add(submit.intentId);
+        for (const path of row.edits) if (entityOf(path) === entity) group.edits.add(path);
+        updateGroups.set(`${organismId}\0${entity}`, group);
+      }
+    }
+  }
+  const groupOf = (intentId: string, entity: string) => [...updateGroups.values()].find(group => group.entity === entity && group.intents.has(intentId));
   for (const [intentId, write] of submits) {
     const commands = design.endpoints.filter(endpoint => endpoint.kind === 'cmd' && endpoint.when === intentId);
     if (commands.length !== 1) {
@@ -851,10 +873,24 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
       }).gap;
       if (gap) add('D2_EXTERNAL_CALL_UNRESOLVED', `endpoints.${command.id}.writes`, externalCallGapMessage(pageWrite.entity, pageWrite.operation, gap, unresolved?.message));
     }
-    const missing = d2WriteRequiredInput(pageWrite, context.entities, edits, context.external).filter(token => token.includes('.')
+    const split = pageWrite.operation === 'update' ? groupOf(intentId, pageWrite.entity) : undefined;
+    if (split) {
+      const alien = carried.filter(origin => entityOf(origin) === pageWrite.entity && ![`${pageWrite.entity}.id`, `${pageWrite.entity}.version`].includes(origin)
+        && ![...split.edits].some(edit => origin === edit || origin.startsWith(`${edit}.`)));
+      if (alien.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, `command ${command.id} (${command.writes}) carries ${alien.join(', ')}, which is not an edit of its organism (${[...split.edits].join(', ')}).`);
+    }
+    const missing = d2WriteRequiredInput(pageWrite, context.entities, split ? [] : edits, context.external).filter(token => token.includes('.')
       ? !carried.some(origin => covers(origin, token)) && !relatedCover(token)
       : !leaves.some(item => item.leaf.name === token));
     if (missing.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, commandInputMessage(command, pageWrite, context, missing));
+  }
+  for (const group of updateGroups.values()) {
+    const groupCommands = design.endpoints.filter(endpoint => endpoint.kind === 'cmd' && group.intents.has(endpoint.when));
+    // an edit may be carried by any command of the organism (a pause reason belongs to the pause command), not only by the updates
+    const organismCommands = design.endpoints.filter(endpoint => endpoint.kind === 'cmd' && group.organism.has(endpoint.when));
+    const carriedByGroup = organismCommands.flatMap(command => d2BffValueLeaves(command.input, design).filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths));
+    const orphans = [...group.edits].filter(edit => !carriedByGroup.some(origin => covers(origin, edit)));
+    if (orphans.length && groupCommands[0]) add('D2_BFF_COMMAND_INPUT', `endpoints.${groupCommands[0].id}.input`, `the update commands of ${group.entity} on this page (${groupCommands.map(command => command.id).join(', ')}) and the other commands of its organism carry no input leaf for ${orphans.join(', ')}; each edit of the organism is carried by one command, naming that Entity.path as a field origin.`);
   }
 
   // B.4 nothing beyond the plan: a command writes what the page may write and serves a submit of this page.
