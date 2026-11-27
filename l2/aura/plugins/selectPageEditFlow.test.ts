@@ -42,7 +42,7 @@ test('the page is read BEFORE the agent writes, and the change is discardable on
   assert.ok(finish.includes('const steps = review.notesLog.map(text => text.trim()).filter(Boolean);'));
   assert.ok(finish.includes("await recordPageVersion(versioned, 'ai', steps[0] ?? request, { request, steps });"));
   assert.ok(member('private async _applyAdjust(').includes('notesLog: [...current.notesLog, result.notes.notes]'));
-  assert.ok(finish.includes('this._editUndo[page.name] = { before: review.before, after: review.after, appliedAt: Date.now() };'));
+  assert.ok(finish.includes('this._setEditUndo(page.name, { before: review.before, after: review.after, appliedAt: Date.now() });'));
 });
 
 test('a discard of a changed page asks first, goes through the timeline, and refuses only without it', () => {
@@ -59,7 +59,7 @@ test('a discard of a changed page asks first, goes through the timeline, and ref
 });
 
 test('a new request keeps the previous change for good', () => {
-  assert.ok(member('private async _onPlanEdit(').includes('delete this._editUndo[page.name];'));
+  assert.ok(member('private async _onPlanEdit(').includes('this._setEditUndo(page.name, undefined);'));
 });
 
 test('the restore goes through the same writes as the apply: the page source and the defs history', () => {

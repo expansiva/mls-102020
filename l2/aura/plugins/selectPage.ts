@@ -30,7 +30,7 @@ import {
     batchAdjusting, batchAdjustReady, batchAdjustTargets, batchCounts, standardMisses, batchDecision, batchOpen, batchOrder, moleculeTagsIn, pagesUsingTag, runLimited, scopePages,
     type BatchAdjustState, type BatchRow, type BatchRowState, type EditScopeKind,
 } from '/_102020_/l2/aura/plugins/editBatchCore.js';
-import { isPageInReview, setPageInReview } from '/_102020_/l2/aura/studio/studioPageReview.js';
+import { isPageInReview, setPageAiUndo, setPageInReview } from '/_102020_/l2/aura/studio/studioPageReview.js';
 import { offerTour, startTour } from '/_102020_/l2/aura/studio/studioTour.js';
 import { GENOME_TOUR } from '/_102020_/l2/aura/studio/studioTours.js';
 import { t as tStudio } from '/_102020_/l2/aura/studio/studioMessages.js';
@@ -1921,7 +1921,7 @@ export class PluginSelectPage extends StateLitElement {
         // The request is out: the drawing pointer gives the page back (the marks stay, they are part of it).
         if (this._annot.active) annotCommand({ kind: 'stop' });
         // A new request: the previous change is kept for good.
-        delete this._editUndo[page.name];
+        this._setEditUndo(page.name, undefined);
         this._editDiscarded = { ...this._editDiscarded, [page.name]: false };
         this._setEdit('_editError', page.name, undefined);
         this._setEdit('_editNotes', page.name, undefined);
@@ -1981,6 +1981,18 @@ export class PluginSelectPage extends StateLitElement {
         }
     }
 
+    /** The discard of the last applied AI change, offered or withdrawn — and said to the page timeline (no clearing meanwhile). */
+    private _setEditUndo(name: string, undo: { before: EditPageSnapshot; after: EditPageSnapshot; appliedAt: number; confirmed?: boolean } | undefined) {
+        const previous = this._editUndo[name];
+        if (previous) setPageAiUndo(this._reviewRef(previous.after), false);
+        if (undo) {
+            this._editUndo[name] = undo;
+            setPageAiUndo(this._reviewRef(undo.after), true);
+        } else {
+            delete this._editUndo[name];
+        }
+    }
+
     private _reviewRef(snapshot: EditPageSnapshot): { project: number; folder: string; shortName: string } {
         return { project: snapshot.project, folder: snapshot.folder, shortName: snapshot.page };
     }
@@ -1994,7 +2006,7 @@ export class PluginSelectPage extends StateLitElement {
             const request = requestWithAdjustments(plan.request, review.adjust);
             const steps = review.notesLog.map(text => text.trim()).filter(Boolean);
             await recordPageVersion(versioned, 'ai', steps[0] ?? request, { request, steps });
-            this._editUndo[page.name] = { before: review.before, after: review.after, appliedAt: Date.now() };
+            this._setEditUndo(page.name, { before: review.before, after: review.after, appliedAt: Date.now() });
         }
         this._editDraft = { ...this._editDraft, [page.name]: '' };
         // The marks were for this request: applied, they are done (the page they circled has changed).
@@ -2215,7 +2227,7 @@ export class PluginSelectPage extends StateLitElement {
             const result = versioned
                 ? await restorePageVersion(versioned, { id: 0, at: undo.appliedAt, who: 'ai', what: '', ...before })
                 : await restoreEditPage(undo.before);
-            delete this._editUndo[page.name];
+            this._setEditUndo(page.name, undefined);
             this._setEdit('_editNotes', page.name, undefined);
             this._editDiscarded = { ...this._editDiscarded, [page.name]: true };
             if (this._liveWarning(result.live)) this._setEdit('_editError', page.name, this._liveWarning(result.live));
@@ -2444,7 +2456,7 @@ export class PluginSelectPage extends StateLitElement {
         const pages = scoped.pages;
         for (const name of pages) {
             // A new request: the previous change of each page is kept for good.
-            delete this._editUndo[name];
+            this._setEditUndo(name, undefined);
             this._setEdit('_editError', name, undefined);
             this._setEdit('_editNotes', name, undefined);
             this._setEdit('_editPlan', name, undefined);

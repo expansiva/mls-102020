@@ -37,6 +37,26 @@ export function isPageInReview(file: { project: number | string; folder: string;
   return inReview.has(keyOf({ project: Number(file.project), folder: file.folder, shortName: file.shortName }));
 }
 
+const aiUndo = new Set<string>();
+
+/**
+ * The page's last applied AI change can still be discarded (the AI tab offers it). That discard goes back through the
+ * page timeline when the page changed since, so the timeline must not be cleared meanwhile.
+ */
+export function setPageAiUndo(page: IReviewPage, on: boolean): void {
+  const key = keyOf(page);
+  if (on === aiUndo.has(key)) return;
+  if (on) aiUndo.add(key); else aiUndo.delete(key);
+  for (const listener of listeners) {
+    try { listener(); } catch (error) { console.warn('[pageReview] listener failed:', error); }
+  }
+}
+
+export function hasPageAiUndo(file: { project: number | string; folder: string; shortName: string } | null | undefined): boolean {
+  if (!file) return false;
+  return aiUndo.has(keyOf({ project: Number(file.project), folder: file.folder, shortName: file.shortName }));
+}
+
 export function onPageReviewChange(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

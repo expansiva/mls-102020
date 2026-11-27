@@ -15,10 +15,11 @@ import {
   groupTimeline, newerThan, pageVersionKey, regenAfter, type IPageVersion, type PageVersionWho,
 } from '/_102020_/l2/aura/studio/pageVersionsCore.js';
 import {
-  listPageVersions, listSavedPageVersions, onPageVersions, pageVersionsAvailable, readSavedPageVersion,
+  clearBlock, clearPageVersions, listPageVersions, listSavedPageVersions, onPageVersions, pageVersionsAvailable, readSavedPageVersion,
   restorePageVersion, restoreSavedPageVersion, versionedPage, type IPageRef, type ISavedPageVersion,
 } from '/_102020_/l2/aura/studio/pageVersions.js';
 import { snapshotPageFile } from '/_102020_/l2/aura/agentEditPage/editPageIo.js';
+import { onPageReviewChange } from '/_102020_/l2/aura/studio/studioPageReview.js';
 
 import { PAGE_VERSION_DIFF_TAG, type IPageVersionSide } from '/_102020_/l2/aura/studio/pageVersionDiff.js';
 import { clearServiceDetails, openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
@@ -58,17 +59,23 @@ export class PageVersionsPanel extends StateLitElement {
   private _unsub: (() => void) | null = null;
   private _loadedKey = '';
 
+  private _unsubReview: (() => void) | null = null;
+
   connectedCallback(): void {
     super.connectedCallback();
     this._unsub = onPageVersions((key) => {
       const page = this._ref();
       if (page && key === pageVersionKey(page)) void this._load();
     });
+    // A review or an AI discard on offer blocks "Clear history": the button follows them.
+    this._unsubReview = onPageReviewChange(() => this.requestUpdate());
   }
 
   disconnectedCallback(): void {
     this._unsub?.();
     this._unsub = null;
+    this._unsubReview?.();
+    this._unsubReview = null;
     this._closeDiff();
     super.disconnectedCallback();
   }
@@ -124,7 +131,7 @@ export class PageVersionsPanel extends StateLitElement {
   /** What the version IS: the edit itself for the Studio and the AI, the kind for the others. */
   private _title(v: IPageVersion): string {
     switch (v.who) {
-      case 'open': return t('versions.whoOpen');
+      case 'open': return v.cleared ? t('versions.whoCleared') : t('versions.whoOpen');
       case 'regen': return t('versions.whoRegen');
       case 'other': return t('versions.whoOther');
       case 'restore': return t('versions.whoRestoreShort');
@@ -279,6 +286,29 @@ export class PageVersionsPanel extends StateLitElement {
       else this._done(s.at, result.live);
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._busy = null;
+      this._confirm = null;
+    }
+  }
+
+  /** "Clear history": the page as it is now becomes the only version (the saved ones stay). */
+  private async _clear(): Promise<void> {
+    const page = this._ref();
+    if (!page || this._busy) return;
+    this._busy = 'clear';
+    this._error = '';
+    this._message = '';
+    try {
+      const result = await clearPageVersions(page);
+      if (result === 'cleared') {
+        this._closeDiff();
+        this._openGroups = new Set();
+        this._expanded = new Set();
+        this._message = t('versions.cleared');
+      } else {
+        this._error = t(result === 'review' ? 'versions.clearBlockedReview' : result === 'aiUndo' ? 'versions.clearBlockedUndo' : 'versions.clearFailed');
+      }
     } finally {
       this._busy = null;
       this._confirm = null;
@@ -452,13 +482,13 @@ export class PageVersionsPanel extends StateLitElement {
     `;
   }
 
-  private _renderConfirm(lines: string[], run: () => void, busy: boolean): TemplateResult {
+  private _renderConfirm(lines: string[], run: () => void, busy: boolean, busyLabel = t('versions.restoring')): TemplateResult {
     return html`
       <div class="flex flex-col gap-1 pl-[1.125rem]">
         ${lines.filter(Boolean).map(line => html`<span class="text-[10px] text-amber-700 dark:text-amber-400">${line}</span>`)}
         <div class="flex items-center gap-2">
           <button type="button" class="text-xs px-2.5 py-1 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 cursor-pointer"
-            ?disabled=${busy} @click=${run}>${busy ? t('versions.restoring') : t('versions.confirm')}</button>
+            ?disabled=${busy} @click=${run}>${busy ? busyLabel : t('versions.confirm')}</button>
           <button type="button" class="text-xs text-gray-500 dark:text-gray-400 hover:underline cursor-pointer"
             ?disabled=${busy} @click=${() => { this._confirm = null; }}>${t('versions.cancel')}</button>
         </div>
@@ -469,8 +499,14 @@ export class PageVersionsPanel extends StateLitElement {
   private _renderSaved(): TemplateResult {
     return html`
       <div class="flex flex-col gap-1 border-t border-gray-200 dark:border-gray-800 pt-2">
-        <button type="button" class="self-start text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-          @click=${() => this._toggleSaved()}>${this._savedOpen ? t('versions.hideSaved') : t('versions.showSaved')}</button>
+        <div class="flex items-center gap-2">
+          <button type="button" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+            @click=${() => this._toggleSaved()}>${this._savedOpen ? t('versions.hideSaved') : t('versions.showSaved')}</button>
+          ${this._renderClearButton()}
+        </div>
+        ${this._confirm === 'clear'
+          ? this._renderConfirm([t('versions.clearConfirm').replace('{n}', String(this._versions.length - 1))], () => this._clear(), this._busy === 'clear', t('versions.clearing'))
+          : nothing}
         ${!this._savedOpen ? nothing
           : this._savedLoading ? html`<span class="text-xs text-gray-500 dark:text-gray-400">${t('versions.savedLoading')}</span>`
           : this._savedError ? html`<span class="text-xs text-red-600 dark:text-red-400">${this._savedError}</span>`
@@ -480,6 +516,24 @@ export class PageVersionsPanel extends StateLitElement {
             <ul class="flex flex-col gap-1">${this._saved.map(s => this._renderSavedRow(s))}</ul>
           `}
       </div>
+    `;
+  }
+
+  /**
+   * "Clear history", at the right of the saved versions. Disabled, with the reason as its title, while the timeline is
+   * the way back of something open (an AI review, an AI change the AI tab can still discard) or holds nothing to clear.
+   */
+  private _renderClearButton(): TemplateResult | typeof nothing {
+    const page = this._ref();
+    if (!page || !pageVersionsAvailable() || this._confirm === 'clear') return nothing;
+    const block = clearBlock(page, this._versions);
+    const reason = block === 'review' ? t('versions.clearBlockedReview') : block === 'aiUndo' ? t('versions.clearBlockedUndo') : block === 'nothing' ? t('versions.clearNothing') : '';
+    return html`
+      <button type="button"
+        class="ml-auto text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline disabled:hover:text-gray-500"
+        title=${reason || t('versions.clearHint')}
+        ?disabled=${!!block || !!this._busy}
+        @click=${() => { this._confirm = 'clear'; }}>${t('versions.clear')}</button>
     `;
   }
 

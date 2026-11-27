@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  groupTimeline, newerThan, pageVersionKey, pushVersion, regenAfter, sameContent, trimProject, versionBytes,
+  clearedTimeline, groupTimeline, newerThan, pageVersionKey, pushVersion, regenAfter, sameContent, trimProject, versionBytes,
   type IPageVersion, type IPageVersionsRecord,
 } from '/_102020_/l2/aura/studio/pageVersionsCore.js';
 import { memoryBackend, PageVersionsStore, type IPageVersionsBackend } from '/_102020_/l2/aura/studio/pageVersionsStore.js';
@@ -147,4 +147,21 @@ test('a failing backend is silent: empty list, null append, unavailable', async 
     console.warn = warn;
   }
   assert.equal(store.available, false);
+});
+
+test('clearing: only the page as it is now remains, as an open version (the new start), and the store replaces the list', async () => {
+  const cleared = clearedTimeline({ ts: 'TS', defs: null }, 5000);
+  assert.deepEqual(cleared, [{ id: 5000, at: 5000, who: 'open', what: '', ts: 'TS', defs: null, cleared: true }]);
+  const backend = memoryBackend();
+  const store = new PageVersionsStore(backend);
+  const page = { project: 999999, folder: 'sampleModule/web/desktop/page11', shortName: 'pessoas' };
+  for (const [i, ts] of ['a', 'b', 'c'].entries()) await store.append(page, { id: 1000 + i, at: 1000 + i, who: i ? 'me' : 'open', what: `e${i}`, ts, defs: null });
+  assert.equal((await store.list(page)).length, 3);
+  assert.equal(await store.replace(page, clearedTimeline({ ts: 'c', defs: null }, 9000)), true);
+  const after = await store.list(page);
+  assert.equal(after.length, 1);
+  assert.equal(after[0].cleared, true);
+  // The next edit goes on from the new start, and the start itself is never merged into nor trimmed.
+  const next = await store.append(page, { id: 9100, at: 9100, who: 'me', what: 'e9', ts: 'd', defs: null });
+  assert.deepEqual(next?.map(v => v.who), ['open', 'me']);
 });

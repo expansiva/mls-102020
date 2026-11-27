@@ -42,6 +42,8 @@ export interface IPageVersion {
   request?: string;
   /** For `ai`: what the AI said it changed at each step — the change, then each adjustment — in order. */
   steps?: string[];
+  /** For `open`: the starting point "Clear history" left (the page as it was when the timeline was cleared). */
+  cleared?: boolean;
 }
 
 export interface IPageVersionLimits {
@@ -90,6 +92,14 @@ export function pushVersion(list: readonly IPageVersion[], next: IPageVersion, l
     out.splice(drop, 1);
   }
   return out;
+}
+
+/**
+ * The timeline after "Clear history": only the page as it is now, as the new starting point — an `open` version, so
+ * every rule that keeps the way back to the start (never merged into, never trimmed) keeps this one too.
+ */
+export function clearedTimeline(content: Pick<IPageVersion, 'ts' | 'defs'>, now: number): IPageVersion[] {
+  return [{ id: now, at: now, who: 'open', what: '', ts: content.ts, defs: content.defs ?? null, cleared: true }];
 }
 
 export interface IPageVersionsRecord {

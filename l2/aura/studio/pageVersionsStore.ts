@@ -123,6 +123,17 @@ export class PageVersionsStore {
     }
   }
 
+  /** Replaces the page's whole list ("Clear history"). false when the store failed. */
+  async replace(page: IPageRef, versions: IPageVersion[]): Promise<boolean> {
+    try {
+      await this.backend.put({ key: pageVersionKey(page), project: page.project, versions });
+      return true;
+    } catch (error) {
+      this.fail(error);
+      return false;
+    }
+  }
+
   private fail(error: unknown): void {
     if (this.available) console.warn('[pageVersions] the timeline store failed; edits go on without it:', error);
     this.available = false;

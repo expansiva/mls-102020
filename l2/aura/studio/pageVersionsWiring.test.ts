@@ -96,3 +96,23 @@ test('the Page tab shows the versions panel', () => {
   assert.ok(SELECT_PAGE.includes("import '/_102020_/l2/aura/studio/pageVersionsPanel.js';"));
   assert.ok(SELECT_PAGE.includes('${this._renderVersions(page)}'));
 });
+
+test('clearing the history: one page, refused while the timeline is the way back of an AI review or an AI discard on offer', () => {
+  const clear = between(VERSIONS, 'export async function clearPageVersions(', '// ─── The saved past');
+  assert.ok(clear.indexOf("if (isPageInReview(ref)) return 'review';") < clear.indexOf('await flushPageEdit(ref);'));
+  assert.ok(clear.indexOf("if (hasPageAiUndo(ref)) return 'aiUndo';") < clear.indexOf('await flushPageEdit(ref);'));
+  assert.ok(clear.includes('theStore().replace(ref, clearedTimeline(content, Date.now()))'));
+  // The AI tab says when its discard is on offer — every write of _editUndo goes through one helper.
+  assert.equal((SELECT_PAGE.match(/this\._editUndo\[[^\]]+\] = /gu) ?? []).length, 1, 'only _setEditUndo writes it');
+  assert.equal((SELECT_PAGE.match(/delete this\._editUndo\[/gu) ?? []).length, 1, 'only _setEditUndo deletes it');
+  const helper = between(SELECT_PAGE, 'private _setEditUndo(', 'private _reviewRef(');
+  assert.ok(helper.includes('setPageAiUndo(this._reviewRef(undo.after), true);') && helper.includes('setPageAiUndo(this._reviewRef(previous.after), false);'));
+  const panel = read('pageVersionsPanel.ts');
+  const button = between(panel, 'private _renderClearButton(', 'private _renderSavedRow(');
+  assert.ok(button.includes('const block = clearBlock(page, this._versions);') && button.includes('?disabled=${!!block || !!this._busy}'));
+  assert.ok(panel.includes("this._confirm === 'clear'") && panel.includes('() => this._clear()'), 'two clicks');
+  assert.ok(panel.includes('onPageReviewChange(() => this.requestUpdate())'), 'the button follows the review and the AI discard');
+  for (const key of ['versions.clear', 'versions.clearConfirm', 'versions.cleared', 'versions.whoCleared', 'versions.clearBlockedReview', 'versions.clearBlockedUndo', 'versions.clearNothing', 'versions.clearFailed']) {
+    assert.equal(read('studioMessages.ts').split(`'${key}':`).length - 1, 2, key);
+  }
+});

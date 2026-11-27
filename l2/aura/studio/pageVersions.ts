@@ -15,7 +15,8 @@
 
 import { defsHistoryEnabled } from '/_102020_/l2/aura/studio/studioDefsHistory.js';
 import { restoreEditPage, snapshotPageFile, type CommitResult } from '/_102020_/l2/aura/agentEditPage/editPageIo.js';
-import { pageVersionKey, sameContent, type IPageVersion, type PageVersionWho } from '/_102020_/l2/aura/studio/pageVersionsCore.js';
+import { clearedTimeline, pageVersionKey, sameContent, type IPageVersion, type PageVersionWho } from '/_102020_/l2/aura/studio/pageVersionsCore.js';
+import { hasPageAiUndo, isPageInReview } from '/_102020_/l2/aura/studio/studioPageReview.js';
 import { indexedDbBackend, PageVersionsStore, type IPageRef } from '/_102020_/l2/aura/studio/pageVersionsStore.js';
 
 export type { IPageRef } from '/_102020_/l2/aura/studio/pageVersionsStore.js';
@@ -177,6 +178,37 @@ export async function restorePageVersion(page: IPageRef, version: IPageVersion, 
   });
   await serial(ref, () => take(ref, 'restore', '', { restoredFrom: version.at, ...(saved ? { restoredSaved: true } : {}) }));
   return result;
+}
+
+/** Why the page's history cannot be cleared now; null = it can. */
+export type ClearBlock = 'review' | 'aiUndo' | 'nothing';
+
+export function clearBlock(page: IPageRef, versions: readonly IPageVersion[]): ClearBlock | null {
+  if (isPageInReview(page)) return 'review';
+  if (hasPageAiUndo(page)) return 'aiUndo';
+  if (versions.length < 2) return 'nothing';
+  return null;
+}
+
+/**
+ * "Clear history" of ONE page, in this browser: the list becomes the page as it is now, the new starting point. The
+ * saved versions (git) are another store and stay. Refused while the timeline is the way back of something open: an
+ * AI change in review, or an applied one the AI tab can still discard.
+ */
+export async function clearPageVersions(page: IPageRef): Promise<'cleared' | 'review' | 'aiUndo' | 'failed'> {
+  if (!isVersionedPage(page)) return 'failed';
+  const ref = refOf(page);
+  if (isPageInReview(ref)) return 'review';
+  if (hasPageAiUndo(ref)) return 'aiUndo';
+  // A pending edit is taken first, so it does not land after the clearing as a version of its own.
+  await flushPageEdit(ref);
+  return serial(ref, async () => {
+    const content = await readPage(ref);
+    if (!content) return 'failed' as const;
+    if (!(await theStore().replace(ref, clearedTimeline(content, Date.now())))) return 'failed' as const;
+    emit(ref);
+    return 'cleared' as const;
+  });
 }
 
 // ─── The saved past: git, through the driver ───
