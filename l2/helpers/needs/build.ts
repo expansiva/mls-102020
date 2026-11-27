@@ -234,7 +234,7 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): PoolNeedsPage[] {
 /**
  * The transitions a decide step offers that no act of the journey already writes. The group is the
  * origin-state group of the act that follows the decision; without one, the branching group the
- * journey actor may fire. Only transitions the lifecycle lets that actor fire become writes.
+ * journey actor may fire. When the next act of the entity has an effect and no transition, the decide only validates: no transition. Only transitions the lifecycle lets that actor fire become writes.
  */
 function decideTransitions(journey: P2JourneyView, stepIndex: number, sources: P2L4Sources, issues: string[]): string[] {
   const step = journey.steps[stepIndex];
@@ -242,6 +242,9 @@ function decideTransitions(journey: P2JourneyView, stepIndex: number, sources: P
   if (sources.entities.find(item => item.entityId === step.entity)?.kind === 'external') return [];
   const groups = transitionGroups(step.entity, sources);
   const written = new Set(journey.steps.filter(item => item.kind === 'act' && item.entity === step.entity && item.transitionRef).map(item => item.transitionRef!));
+  // d2_227: a decide that only validates what the next act of the entity writes (an act with an effect and no transition) offers no transition.
+  const following = journey.steps.slice(stepIndex + 1).find(item => item.kind === 'act' && item.entity === step.entity);
+  if (following?.effect && following.effect !== 'transition' && !following.transitionRef) return [];
   const next = journey.steps.slice(stepIndex + 1).find(item => item.kind === 'act' && item.entity === step.entity && item.transitionRef);
   const candidates = next
     ? groups.filter(group => group.some(item => item.transitionId === next.transitionRef))

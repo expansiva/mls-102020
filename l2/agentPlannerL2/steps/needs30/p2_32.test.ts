@@ -121,3 +121,49 @@ void test('l4_p4_108: a decide step on an external entity writes nothing and rai
   // and with its lifecycle it is the p2_32 behaviour
   assert.deepEqual(writesOf(build(expense, asEntity('entity', true)).pages, 'despesas_da_equipe'), ['Despesa.transition:aprovarDespesa', 'Despesa.transition:rejeitarDespesa']);
 });
+
+void test('d2_227: a decide whose next act of the entity has an effect and no transition validates only: no transition, no issue; the other forms keep their result', () => {
+  const expense = load('expense');
+  const journeyId = 'analisarDecidirDespesa';
+  const decideIndex = expense.sources.journeys.find(item => item.journeyId === journeyId)!.steps.findIndex(step => step.kind === 'decide');
+  const withNext = (act?: { effect: string; transitionRef?: string }): P2L4Sources => ({
+    ...expense.sources,
+    journeys: expense.sources.journeys.map(journey => journey.journeyId !== journeyId ? journey : {
+      ...journey,
+      steps: [
+        ...journey.steps.slice(0, decideIndex + 1),
+        ...(act ? [{ stepId: 'saveAfterDecide', kind: 'act', entity: 'Despesa', ...act }] : []),
+        ...journey.steps.slice(decideIndex + 1).filter(step => !(step.kind === 'act' && step.entity === 'Despesa')),
+      ],
+    }),
+  });
+  const decideWrites = (sources: P2L4Sources) => build(expense, sources).pages.flatMap(page => page.writes).filter(write => write.from.some(from => from.startsWith(`journey:${journeyId}/`) && write.operation === 'transition'));
+  // a) next act with an effect and no transition: nothing from the decide, no issue
+  const validated = withNext({ effect: 'update' });
+  assert.doesNotThrow(() => build(expense, validated));
+  assert.deepEqual(writesOf(build(expense, validated).pages, 'despesas_da_equipe').filter(item => item.includes(':')), []);
+  // b) next act that carries its transition: the group is its own (unchanged)
+  const own = withNext({ effect: 'transition', transitionRef: 'aprovarDespesa' });
+  assert.ok(writesOf(build(expense, own).pages, 'despesas_da_equipe').includes('Despesa.transition:aprovarDespesa'));
+  // c) no next act of the entity: the branching group of the actor (unchanged, p2_32)
+  assert.deepEqual(writesOf(build(expense, withNext()).pages, 'despesas_da_equipe'), ['Despesa.transition:aprovarDespesa', 'Despesa.transition:rejeitarDespesa']);
+  assert.equal(decideWrites(validated).length, 0);
+});
+
+void test('d2_227: the telegram change of the access key (decide, then act update) no longer matches three groups', () => {
+  const l4 = new URL('../../../../../mls-102047/l4/telegram/', import.meta.url);
+  const read = (rel: string): unknown => { const parsed = parseNs4ClassicDefsSource<unknown>(readFileSync(new URL(rel, l4), 'utf8')); if (!parsed) throw new Error(rel); return parsed; };
+  const list = (sub: string) => readdirSync(new URL(`${sub}/`, l4)).filter(name => name.endsWith('.defs.ts') && name !== 'index.defs.ts').sort();
+  const access = read('access.defs.ts');
+  const module = read('module.defs.ts') as { moduleName?: string; userLanguage?: string };
+  const sources = parseP2L4Sources({
+    moduleName: module.moduleName, userLanguage: module.userLanguage,
+    journeyIndex: read('journeys/index.defs.ts'), journeys: list('journeys').map(name => read(`journeys/${name}`)),
+    access, ontologyIndex: read('ontology/index.defs.ts'), ontologyEntities: list('ontology').map(name => read(`ontology/${name}`)),
+  });
+  const journey = sources.journeys.find(item => item.journeyId === 'changeBotAccessKey')!;
+  assert.deepEqual(journey.steps.map(step => `${step.kind}:${step.effect ?? ''}:${step.transitionRef ?? ''}`), ['locate::', 'decide::', 'act:update:']);
+  const menu = JSON.parse(readFileSync(new URL('pool/l2/web/menu.json', l4), 'utf8')) as PoolMenuFile;
+  const withRecords: PoolMenuFile = { ...menu, meta: { ...menu.meta, records: menu.meta.records ?? {} } };
+  assert.doesNotThrow(() => buildP2NeedsFile({ menu: withRecords, sources, grants: parseP2Grants(access), processes: parseP2Processes(read('workflows.defs.ts')), now: AT }));
+});
