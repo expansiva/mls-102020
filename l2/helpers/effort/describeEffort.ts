@@ -8,8 +8,14 @@ const MASTER = { project: '102020', kind: 'l2', device: 'web' } as const;
 const NO_LANGUAGES = 'module has no declared languages';
 const JOURNEY_INDEX_PATH = 'journeys/index.defs.ts';
 const JOURNEY_INDEX_REASON = 'journeys index follows its journey items';
+const WORKFLOWS_PATH = 'workflows.defs.ts';
+/** The list of journeys inside `workflows.defs.ts`; every other key (processes, tasks, transitions) has items of its own. */
+const WORKFLOWS_JOURNEY_LIST = 'journeyDecisions';
+const WORKFLOWS_JOURNEYS_REASON = 'workflows journey list follows its journey items';
 
 export interface DescribeEffortSources {
+  /** `l4/<module>/workflows.defs.ts` of the base and of the candidate, for an `artifact:workflows.defs.ts` item. */
+  workflows?: { before?: string; after?: string };
   /** `l4/<module>/module.defs.ts` body. Absent is the same as a file with no languages. */
   moduleSource?: string;
   /** `l5/config.json` body. Absent means the module has no `userLanguage` there. */
@@ -619,11 +625,42 @@ function malformed(input: EffortInput): EffortAnswer {
 /** Pure: text-only field changes materialize the screens that show the field; a changed rule cites its pages; a removed rule drops its id in code; a grant follows its class. A journey or a step follows its class. A process, task or transition follows its class. A published event regenerates page and shared where its id is cited. The journeys index artifact is empty because each journey item already answers. An inbound change is empty because the arrival writes through the use case and the route. A new entity or process is empty because screens follow journeys. A changed entity answers by attribute. Text-only on any other kind is an empty computed answer. */
 const NO_L2_LAYER = 'has no generated L2; the first generation reads the changed L4';
 
+/** The JSON literal of an L4 defs file (`export const x = {...} as const satisfies T;`), or null. */
+function parseDefsLiteral(source: string): Record<string, unknown> | null {
+  const text = source.replace(/\r\n/gu, '\n');
+  const start = text.indexOf('{', text.search(/export const [A-Za-z0-9_$]+\s*=/u));
+  const end = text.lastIndexOf('} as const');
+  if (start < 0 || end < start) return null;
+  try {
+    const value = JSON.parse(text.slice(start, end + 1)) as unknown;
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True when both bodies parse and differ in `journeyDecisions` only. A file that cannot be compared stays refused. */
+function onlyJourneyListChanged(workflows: { before?: string; after?: string } | undefined): boolean {
+  if (!workflows?.before || !workflows.after) return false;
+  const before = parseDefsLiteral(workflows.before);
+  const after = parseDefsLiteral(workflows.after);
+  if (!before || !after) return false;
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const key of keys) {
+    if (key === WORKFLOWS_JOURNEY_LIST) continue;
+    if (!sameJson(before[key], after[key])) return false;
+  }
+  return true;
+}
+
 export function describeEffortFrom(input: EffortInput, contracts: Record<string, string>, sources?: DescribeEffortSources): EffortAnswer {
   if (sources?.moduleHasL2 === false) return notedEmpty(input, `module ${input.module} ${NO_L2_LAYER}`);
   if (input.item.kind === 'artifact' && input.item.changeId === `artifact:${JOURNEY_INDEX_PATH}`) {
     console.info(input.item.changeId, JOURNEY_INDEX_REASON);
     return answer(input, []);
+  }
+  if (input.item.kind === 'artifact' && input.item.changeId === `artifact:${WORKFLOWS_PATH}` && onlyJourneyListChanged(sources?.workflows)) {
+    return notedEmpty(input, WORKFLOWS_JOURNEYS_REASON);
   }
   if (input.item.kind === 'artifact') {
     const path = input.item.changeId.startsWith('artifact:') ? input.item.changeId.slice('artifact:'.length) : input.item.changeId;
@@ -1000,6 +1037,18 @@ export async function describeEffort(input: EffortInput): Promise<EffortAnswer> 
   const project = projectId(input);
   if (project === undefined) return answer(input, [], `cannot resolve the project of base ${input.base.baseId}`);
   const loaded = await moduleWebDefs(input);
+  if (input.item.kind === 'artifact' && input.item.changeId === `artifact:${WORKFLOWS_PATH}`) {
+    const beforeFolder = `${input.module}/pipeline/releases/${input.base.baseId}/l4`;
+    const afterSuffix = `/revisions/${input.base.revisionId}/l4`;
+    const workflows: { before?: string; after?: string } = {};
+    for (const file of Object.values(mls.stor.files) as StorFile[]) {
+      if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+      if (file.shortName !== 'workflows' || file.extension !== '.defs.ts') continue;
+      if (file.folder === beforeFolder) workflows.before = await fileBody(file);
+      else if (file.folder.startsWith(`${input.module}/pipeline/changes/`) && file.folder.endsWith(afterSuffix)) workflows.after = await fileBody(file);
+    }
+    return describeEffortFrom(input, loaded.contracts, { workflows, shared: loaded.shared, moduleHasL2: loaded.hasL2 });
+  }
   if (input.item.kind === 'field' && isTextOnlyChange(input.item)) {
     let moduleSource: string | undefined;
     let configSource: string | undefined;

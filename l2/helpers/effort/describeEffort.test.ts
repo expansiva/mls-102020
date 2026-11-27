@@ -129,6 +129,38 @@ void test('the journeys index artifact is an empty computed answer; any other ar
   assert.deepEqual(other.materialize, []);
 });
 
+const WORKFLOWS_ITEM = { changeId: 'artifact:workflows.defs.ts', kind: 'artifact', op: 'changed', entity: '' } as const;
+const workflowsFile = (processes: unknown[], journeys: unknown[]) => `/// <mls fileReference="_102047_/l4/telegram/workflows.defs.ts" enhancement="_blank"/>\n\nexport const w = ${JSON.stringify({ schemaVersion: 'x', moduleName: 'telegram', processes, journeyDecisions: journeys }, null, 2)} as const satisfies W;\n`;
+
+void test('workflows.defs.ts: a change only in the journey list is an empty computed answer; any other difference abends', () => {
+  const seen: unknown[][] = [];
+  const original = console.info;
+  console.info = (...args: unknown[]) => { seen.push(args); };
+  try {
+    const before = workflowsFile([{ processId: 'p1' }], [{ journeyId: 'a', inProcess: false }]);
+    const grown = workflowsFile([{ processId: 'p1' }], [{ journeyId: 'a', inProcess: false }, { journeyId: 'b', inProcess: false }]);
+    const listOnly = describeEffortFrom(input({ ...WORKFLOWS_ITEM }), {}, { workflows: { before, after: grown } });
+    assert.equal(listOnly.status, 'computed');
+    assert.equal(listOnly.abend, undefined);
+    assert.deepEqual([listOnly.materialize, listOnly.regenerateDefs, listOnly.create, listOnly.remove], [[], [], [], []]);
+    assert.equal(listOnly.contract, 'keep');
+    assert.deepEqual(seen, [['artifact:workflows.defs.ts', 'workflows journey list follows its journey items']]);
+
+    const process = describeEffortFrom(input({ ...WORKFLOWS_ITEM }), {}, { workflows: { before, after: workflowsFile([{ processId: 'p2' }], [{ journeyId: 'a', inProcess: false }, { journeyId: 'b', inProcess: false }]) } });
+    assert.equal(process.status, 'abend');
+    assert.equal(process.abend?.reason, 'l4 file workflows.defs.ts is not a known kind; Apply cannot plan it');
+
+    const noSources = describeEffortFrom(input({ ...WORKFLOWS_ITEM }), {});
+    assert.equal(noSources.status, 'abend');
+    const unreadable = describeEffortFrom(input({ ...WORKFLOWS_ITEM }), {}, { workflows: { before, after: 'not a defs file' } });
+    assert.equal(unreadable.status, 'abend');
+    const missingBefore = describeEffortFrom(input({ ...WORKFLOWS_ITEM }), {}, { workflows: { after: grown } });
+    assert.equal(missingBefore.status, 'abend');
+  } finally {
+    console.info = original;
+  }
+});
+
 void test('a rule no route cites, other kinds, and a module without contracts abend', () => {
   const pages = contracts();
   const missing = describeEffortFrom(input({
