@@ -126,6 +126,7 @@ void test('d2_227: a decide whose next act of the entity has an effect and no tr
   const expense = load('expense');
   const journeyId = 'analisarDecidirDespesa';
   const decideIndex = expense.sources.journeys.find(item => item.journeyId === journeyId)!.steps.findIndex(step => step.kind === 'decide');
+  const decideStepId = expense.sources.journeys.find(item => item.journeyId === journeyId)!.steps[decideIndex].stepId;
   const withNext = (act?: { effect: string; transitionRef?: string }): P2L4Sources => ({
     ...expense.sources,
     journeys: expense.sources.journeys.map(journey => journey.journeyId !== journeyId ? journey : {
@@ -137,7 +138,7 @@ void test('d2_227: a decide whose next act of the entity has an effect and no tr
       ],
     }),
   });
-  const decideWrites = (sources: P2L4Sources) => build(expense, sources).pages.flatMap(page => page.writes).filter(write => write.from.some(from => from.startsWith(`journey:${journeyId}/`) && write.operation === 'transition'));
+  const decideWrites = (sources: P2L4Sources) => build(expense, sources).pages.flatMap(page => page.writes).filter(write => write.operation === 'transition' && write.from.some(from => from.startsWith(`journey:${journeyId}/${decideStepId}`)));
   // a) next act with an effect and no transition: nothing from the decide, no issue
   const validated = withNext({ effect: 'update' });
   assert.doesNotThrow(() => build(expense, validated));
@@ -148,6 +149,21 @@ void test('d2_227: a decide whose next act of the entity has an effect and no tr
   // c) no next act of the entity: the branching group of the actor (unchanged, p2_32)
   assert.deepEqual(writesOf(build(expense, withNext()).pages, 'despesas_da_equipe'), ['Despesa.transition:aprovarDespesa', 'Despesa.transition:rejeitarDespesa']);
   assert.equal(decideWrites(validated).length, 0);
+  // d) decide, then an act with an effect and no transition, then an act with a transition: the first act decides, the decide stays empty
+  const both: P2L4Sources = {
+    ...expense.sources,
+    journeys: expense.sources.journeys.map(journey => journey.journeyId !== journeyId ? journey : {
+      ...journey,
+      steps: [
+        ...journey.steps.slice(0, decideIndex + 1),
+        { stepId: 'saveAfterDecide', kind: 'act', entity: 'Despesa', effect: 'update' },
+        { stepId: 'approveAfterSave', kind: 'act', entity: 'Despesa', effect: 'transition', transitionRef: 'aprovarDespesa' },
+      ],
+    }),
+  };
+  assert.doesNotThrow(() => build(expense, both));
+  assert.deepEqual(writesOf(build(expense, both).pages, 'despesas_da_equipe').filter(item => item.includes(':')), ['Despesa.transition:aprovarDespesa']);
+  assert.equal(decideWrites(both).length, 0);
 });
 
 void test('d2_227: the telegram change of the access key (decide, then act update) no longer matches three groups', () => {
