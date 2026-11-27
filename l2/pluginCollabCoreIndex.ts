@@ -30,6 +30,15 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 widget: '_102020_/l2/aura/services/serviceExploreProjects'
             },
             {
+                // Prototype: jobs and component packs in one list, fictitious data in memory.
+                // Proposal: collabMyFiles/marketplaceIdea.md.
+                category: 'Services',
+                scope: ['l6ServicesRight'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_102020_/l2/aura/services/serviceMarketplace'
+            },
+            {
                 // The l5/config.json of the project as sections, next to the 100555 items of the L6
                 // project panel (selectProject). Declared here, not in 100554: 102020 is what knows
                 // what a client app is. Proposal: collabMyFiles/configideia.md.
@@ -144,7 +153,7 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 scope: ['l5ServicesLeft'],
                 priority: 1,
                 auth: ['*'],
-                widget: '_100554_serviceSave'
+                widget: '_100554_serviceSave2' // teste: serviceSave2 no lugar do serviceSave
             },
 
             {
