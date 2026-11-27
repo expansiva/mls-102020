@@ -118,3 +118,40 @@ export const HEADER_EDITOR_TOUR: TourDef = {
     { anchor: '[data-tour="header-editor-bar"]', titleKey: 'tour.headerEditor.barTitle', textKey: 'tour.headerEditor.barText' },
   ],
 };
+
+/** The UX knob (l3): the UX of the app, using molecules, and the template of the page open. */
+export const UX_TOUR: TourDef = {
+  id: 'ux',
+  version: 1,
+  welcome: {
+    kickerKey: 'tour.ux.kicker',
+    titleKey: 'tour.ux.welcomeTitle',
+    lineKeys: ['tour.ux.welcome1', 'tour.ux.welcome2', 'tour.ux.welcome3'],
+  },
+  steps: [
+    { anchor: '[data-tour="ux-nav"]', titleKey: 'tour.ux.navTitle', textKey: 'tour.ux.navText' },
+    { anchor: '[data-tour="ux-list"]', titleKey: 'tour.ux.listTitle', textKey: 'tour.ux.listText' },
+    { anchor: '[data-tour="ux-name"]', titleKey: 'tour.ux.nameTitle', textKey: 'tour.ux.nameText' },
+    { anchor: '[data-tour="ux-molecules"]', titleKey: 'tour.ux.moleculesTitle', textKey: 'tour.ux.moleculesText' },
+    { anchor: '[data-tour="ux-templates"]', titleKey: 'tour.ux.templatesTitle', textKey: 'tour.ux.templatesText' },
+  ],
+};
+
+/** The Molecules knob (l3): the variants of the molecule selected on the page, the preview, the swap. */
+export const MOLECULES_TOUR: TourDef = {
+  id: 'molecules',
+  version: 1,
+  welcome: {
+    kickerKey: 'tour.molecules.kicker',
+    titleKey: 'tour.molecules.welcomeTitle',
+    lineKeys: ['tour.molecules.welcome1', 'tour.molecules.welcome2', 'tour.molecules.welcome3'],
+  },
+  steps: [
+    { anchor: '[data-tour="mol-nav"]', titleKey: 'tour.molecules.navTitle', textKey: 'tour.molecules.navText' },
+    { anchor: '[data-tour="mol-empty"]', titleKey: 'tour.molecules.emptyTitle', textKey: 'tour.molecules.emptyText' },
+    { anchor: '[data-tour="mol-group"]', titleKey: 'tour.molecules.groupTitle', textKey: 'tour.molecules.groupText' },
+    { anchor: '[data-tour="mol-all"]', titleKey: 'tour.molecules.allTitle', textKey: 'tour.molecules.allText' },
+    { anchor: '[data-tour="mol-variants"]', titleKey: 'tour.molecules.variantsTitle', textKey: 'tour.molecules.variantsText' },
+    { anchor: '[data-tour="mol-module-swap"]', titleKey: 'tour.molecules.moduleSwapTitle', textKey: 'tour.molecules.moduleSwapText' },
+  ],
+};

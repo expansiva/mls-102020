@@ -22,6 +22,9 @@ import {
 } from '/_102020_/l2/aura/helpers/uxTemplates.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 import '/_102020_/l2/aura/plugins/infoTip.js';
+import { offerTour, startTour } from '/_102020_/l2/aura/studio/studioTour.js';
+import { UX_TOUR } from '/_102020_/l2/aura/studio/studioTours.js';
+import { t as tStudio } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -262,6 +265,16 @@ export class PluginSelectUx extends StateLitElement {
 
     createRenderRoot() { return this; }
 
+    // The first time the UX are on screen, their tour is offered (once per version: studioTour remembers).
+    private _tourOffered = false;
+
+    updated(changed: Map<string, unknown>) {
+        super.updated(changed);
+        if (this._tourOffered || !this._uxOptions.length) return;
+        this._tourOffered = true;
+        setTimeout(() => offerTour(UX_TOUR, { busy: this._addSaving }), 800);
+    }
+
     render() {
         const addValue = this._addValue;
         const max = addValue;                 // last navigable slot is "+"
@@ -272,7 +285,7 @@ export class PluginSelectUx extends StateLitElement {
             return html`
                 <div class="flex flex-col gap-3">
                     ${this._renderHeader(0, max, this.msg.allTitle, this.msg.desc)}
-                    <div class="flex flex-col gap-1.5">
+                    <div class="flex flex-col gap-1.5" data-tour="ux-list">
                         ${this._uxOptions.map(opt => this._renderUxRow(opt))}
                     </div>
                 </div>
@@ -301,19 +314,28 @@ export class PluginSelectUx extends StateLitElement {
     /** `renameable` is the selected UX: only it can be renamed from the navigator (not "every UX" nor "+"). */
     private _renderHeader(value: number, max: number, itemName: string, desc: string, renameable?: IUxOption) {
         return html`
-            <aura--plugins--nav-header-102020
-                .fixedLabel=${this.msg.title}
-                .itemName=${itemName}
-                .desc=${desc}
-                .value=${value}
-                .min=${0}
-                .max=${max}
-                .editable=${!!renameable}
-                .editLabel=${this.msg.renameLabel}
-                .editHint=${this.msg.nameHint}
-                @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
-                @name-change=${(e: CustomEvent) => { if (renameable) this._onRename(renameable, e.detail.name); }}
-            ></aura--plugins--nav-header-102020>
+            <div class="flex items-start gap-1.5">
+                <aura--plugins--nav-header-102020
+                    class="flex-1 min-w-0"
+                    data-tour="ux-nav"
+                    .fixedLabel=${this.msg.title}
+                    .itemName=${itemName}
+                    .desc=${desc}
+                    .value=${value}
+                    .min=${0}
+                    .max=${max}
+                    .editable=${!!renameable}
+                    .editLabel=${this.msg.renameLabel}
+                    .editHint=${this.msg.nameHint}
+                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                    @name-change=${(e: CustomEvent) => { if (renameable) this._onRename(renameable, e.detail.name); }}
+                ></aura--plugins--nav-header-102020>
+                <button type="button"
+                    class="shrink-0 mt-0.5 w-6 h-6 rounded-full border border-gray-300 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer"
+                    title=${tStudio('tour.help')}
+                    aria-label=${tStudio('tour.help')}
+                    @click=${() => startTour(UX_TOUR)}>?</button>
+            </div>
         `;
     }
 
@@ -362,7 +384,7 @@ export class PluginSelectUx extends StateLitElement {
     private _renderMoleculesSection(opt: IUxOption) {
         const on = opt.layout.useMolecules !== false;
         return html`
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2" data-tour="ux-molecules">
                 ${this._renderSectionTitle(this.msg.moleculesHeader, this.msg.useMoleculesDesc)}
                 <div class="flex items-center gap-2.5 pt-0.5">
                     <button
@@ -393,7 +415,7 @@ export class PluginSelectUx extends StateLitElement {
             isBase ? this.msg.templatesDescBase : this.msg.templatesDesc,
             this.page ? html`<span class="ml-auto font-mono text-[11px] text-gray-400 dark:text-gray-500 truncate">${this.page}</span>` : nothing,
         );
-        const note = (text: string) => html`<div class="flex flex-col gap-2">${header}<span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${text}</span></div>`;
+        const note = (text: string) => html`<div class="flex flex-col gap-2" data-tour="ux-templates">${header}<span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${text}</span></div>`;
 
         if (!this.module || !this.page) return note(this.msg.noPage);
         if (this._templatesLoading) return note(this.msg.loading);
@@ -405,7 +427,7 @@ export class PluginSelectUx extends StateLitElement {
         const effective = resolveEffectiveTemplate(opt.layout, key, this._page11Template, options);
         const changed = !effective.isDefault && !effective.missing;
         return html`
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2" data-tour="ux-templates">
                 ${header}
                 ${effective.missing ? html`
                     <div class="flex flex-col gap-1 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-2.5 py-1.5">
@@ -482,7 +504,7 @@ export class PluginSelectUx extends StateLitElement {
     private _renderAddForm() {
         const canSave = !!this._addName.trim() && !this._addSaving;
         return html`
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2" data-tour="ux-name">
                 <label class="flex flex-col gap-1">
                     <span class="text-xs font-medium text-gray-500 dark:text-gray-400">${this.msg.nameHeader}</span>
                     <input

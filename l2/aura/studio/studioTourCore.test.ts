@@ -149,3 +149,23 @@ test('the step scrolls to its element: nothing when it is well inside, centered,
   const engine = read('studioTour.ts');
   assert.ok(engine.includes('reveal(found);') && !engine.includes("block: 'nearest'"));
 });
+
+test('the UX and Molecules tours (l3): every anchor marked in its panel, offered once, reopened by the "?"', () => {
+  const tours = read('studioTours.ts');
+  const anchorsOf = (id: string) => {
+    const start = tours.indexOf(`export const ${id}`);
+    return [...tours.slice(start, tours.indexOf('\n};', start)).matchAll(/data-tour="([\w-]+)"/gu)].map(m => m[1]);
+  };
+  const ux = read('../plugins/selectUx.ts');
+  const uxAnchors = anchorsOf('UX_TOUR');
+  assert.equal(uxAnchors.length, 5);
+  for (const anchor of uxAnchors) assert.ok(ux.includes(`data-tour="${anchor}"`), anchor);
+  assert.equal(ux.split('data-tour="ux-templates"').length - 1, 2, 'the templates section is marked in every state');
+  assert.ok(ux.includes('offerTour(UX_TOUR, { busy: this._addSaving })') && ux.includes('startTour(UX_TOUR)'));
+  const mol = read('../plugins/selectMolecule.ts');
+  const molAnchors = anchorsOf('MOLECULES_TOUR');
+  assert.equal(molAnchors.length, 6);
+  for (const anchor of molAnchors) assert.ok(mol.includes(`data-tour="${anchor}"`), anchor);
+  assert.ok(mol.includes('if (this._tourOffered || !this.group || !this.files.length) return;'), 'offered only with a molecule selected');
+  assert.ok(mol.includes('startTour(MOLECULES_TOUR)'), 'the "?" works with nothing selected too');
+});

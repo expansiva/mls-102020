@@ -4,6 +4,9 @@ import { html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
+import { offerTour, startTour } from '/_102020_/l2/aura/studio/studioTour.js';
+import { MOLECULES_TOUR } from '/_102020_/l2/aura/studio/studioTours.js';
+import { t as tStudio } from '/_102020_/l2/aura/studio/studioMessages.js';
 import { getGroupLabel, groupLabels } from '/_102020_/l2/aura/molecules/skills/groupLabels.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -149,7 +152,7 @@ export class PluginSelectMolecule extends StateLitElement {
         return html`
             <div class="flex flex-col gap-3">
                 ${this._renderHeader(1, 1)}
-                <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
+                <div data-tour="mol-empty" class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
                     <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.noMolecule}</span>
                 </div>
             </div>
@@ -177,6 +180,7 @@ export class PluginSelectMolecule extends StateLitElement {
 
                 <div
                     class="flex flex-col gap-1"
+                    data-tour="mol-variants"
                     @mouseleave=${() => this._schedulePreview(null)}
                     @focusout=${(e: FocusEvent) => this._onListFocusOut(e)}
                 >
@@ -197,7 +201,7 @@ export class PluginSelectMolecule extends StateLitElement {
         const label = getGroupLabel(this.group, this.getMessageKey(groupLabels));
         if (label) {
             return html`
-                <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
+                <div data-tour="mol-group" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
                     <div class="flex items-baseline gap-2 mb-1">
                         <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${label.title}</span>
                         <span class="ml-auto font-mono text-[10px] text-gray-400 dark:text-gray-600 truncate">${this.group}</span>
@@ -209,7 +213,7 @@ export class PluginSelectMolecule extends StateLitElement {
         }
         if (!this.description) return nothing;
         return html`
-            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
+            <div data-tour="mol-group" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
                 <div class="flex items-center gap-2 mb-1">
                     <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${this.group}</span>
                 </div>
@@ -243,22 +247,41 @@ export class PluginSelectMolecule extends StateLitElement {
 
     private _renderHeader(value: number, max: number, itemName: string = '') {
         return html`
-            <aura--plugins--nav-header-102020
-                .fixedLabel=${this.msg.title}
-                .itemName=${itemName}
-                .desc=${this.msg.desc}
-                .value=${value}
-                .min=${1}
-                .max=${max}
-                @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
-            ></aura--plugins--nav-header-102020>
+            <div class="flex items-start gap-1.5">
+                <aura--plugins--nav-header-102020
+                    class="flex-1 min-w-0"
+                    data-tour="mol-nav"
+                    .fixedLabel=${this.msg.title}
+                    .itemName=${itemName}
+                    .desc=${this.msg.desc}
+                    .value=${value}
+                    .min=${1}
+                    .max=${max}
+                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                ></aura--plugins--nav-header-102020>
+                <button type="button"
+                    class="shrink-0 mt-0.5 w-6 h-6 rounded-full border border-gray-300 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 cursor-pointer"
+                    title=${tStudio('tour.help')}
+                    aria-label=${tStudio('tour.help')}
+                    @click=${() => startTour(MOLECULES_TOUR)}>?</button>
+            </div>
         `;
+    }
+
+    // Offered the first time a molecule's variants are on screen (with nothing selected there is little to show).
+    private _tourOffered = false;
+
+    updated(changed: Map<string, unknown>) {
+        super.updated(changed);
+        if (this._tourOffered || !this.group || !this.files.length) return;
+        this._tourOffered = true;
+        setTimeout(() => offerTour(MOLECULES_TOUR, { busy: !!this.moduleSwap?.busy }), 800);
     }
 
     private _renderReplaceModeToggle() {
         const isAll = this.replaceMode === 'all';
         return html`
-            <div class="flex items-center justify-between gap-2 px-0.5">
+            <div class="flex items-center justify-between gap-2 px-0.5" data-tour="mol-all">
                 <span class="text-xs text-gray-500 dark:text-gray-400">${this.msg.applyToAll}</span>
                 <button
                     role="switch"
@@ -287,7 +310,7 @@ export class PluginSelectMolecule extends StateLitElement {
         const send = (detail: Record<string, unknown>) => this.dispatchEvent(new CustomEvent('molecule-module-swap', { detail, bubbles: true, composed: true }));
         const picked = swap.pages.filter(p => p.picked).length;
         return html`
-            <div class="rounded-lg border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-3 py-2.5 flex flex-col gap-2">
+            <div data-tour="mol-module-swap" class="rounded-lg border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-3 py-2.5 flex flex-col gap-2">
                 <span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">${this.msg.moduleSwapTitle}</span>
                 ${swap.done ? html`
                     ${swap.done.done.length ? html`<span class="text-xs text-emerald-700 dark:text-emerald-300">${this.msg.moduleSwapDone.replace('{n}', String(swap.done.done.length))}</span>` : nothing}
